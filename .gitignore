@@ -27,3 +27,6 @@ pnpm-debug.log*
 
 # convex
 .convex/
+
+#docs
+docs/
