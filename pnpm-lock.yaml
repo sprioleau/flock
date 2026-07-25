@@ -11,6 +11,9 @@ importers:
       '@typescript/native':
         specifier: npm:typescript@7.0.2
         version: typescript@7.0.2
+      convex:
+        specifier: ^1.42.3
+        version: 1.42.3(react@19.2.8)
       typescript:
         specifier: npm:@typescript/typescript6@6.0.2
         version: '@typescript/typescript6@6.0.2'
