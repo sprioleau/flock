@@ -203,3 +203,85 @@ export {
   createLogEntry,
 } from "./operations/log";
 export type { OperationAuthor, OperationLogEntry, CreateLogEntryInput } from "./operations/log";
+
+// --- Actions: caller provenance (actions/context) ---------------------------------------------
+export { ACTION_CALLERS, actionCallerSchema } from "./actions/context";
+export type { ActionCaller, ActionContext } from "./actions/context";
+
+// --- Actions: factory (actions/define) ---------------------------------------------------------
+export { EMAIL_ACTION_KINDS, defineEmailAction, resolveNeedsApproval } from "./actions/define";
+export type {
+  EmailActionKind,
+  NeedsApprovalOption,
+  ContentEmailActionConfig,
+  EditorEmailActionConfig,
+  AnalysisEmailActionConfig,
+  ContentEmailAction,
+  EditorEmailAction,
+  AnalysisEmailAction,
+  AnyEmailAction,
+} from "./actions/define";
+
+// --- Actions: stop-vs-retry taxonomy (actions/taxonomy) ----------------------------------------
+export {
+  OPERATION_ERROR_FAILURE_KINDS,
+  DISPATCH_ERROR_FAILURE_KINDS,
+  ACTION_ERROR_FAILURE_KINDS,
+  classifyActionErrors,
+} from "./actions/taxonomy";
+export type { ActionFailureKind, ActionDispatchErrorCode } from "./actions/taxonomy";
+
+// --- Actions: editor-command channel (actions/editor-commands) ---------------------------------
+export {
+  PREVIEW_MODES,
+  previewModeSchema,
+  showPreviewInputSchema,
+  showPreviewCommandSchema,
+  sendTestEmailInputSchema,
+  sendTestEmailCommandSchema,
+  editorCommandSchema,
+} from "./actions/editor-commands";
+export type {
+  PreviewMode,
+  ShowPreviewInput,
+  ShowPreviewCommand,
+  SendTestEmailInput,
+  SendTestEmailCommand,
+  EditorCommand,
+} from "./actions/editor-commands";
+
+// --- Actions: registry & generated surfaces (actions/registry) ---------------------------------
+export {
+  createActionRegistry,
+  getAction,
+  toAISDKToolDefinitions,
+  dispatchContentAction,
+  dispatchEditorAction,
+} from "./actions/registry";
+export type {
+  EmailActionRegistry,
+  AISDKToolDefinition,
+  ActionDispatchError,
+  DispatchContentActionResult,
+  DispatchEditorActionResult,
+} from "./actions/registry";
+
+// --- Actions: built-in definitions & static registry (actions/builtins) ------------------------
+export {
+  updateBlockPropertiesAction,
+  replaceBlockPropertiesAction,
+  updateDocumentSettingsAction,
+  applyThemeAction,
+  addBlockAction,
+  addSectionAction,
+  restoreBlocksAction,
+  removeBlockAction,
+  moveBlockAction,
+  reorderChildrenAction,
+  updateTextAction,
+  contentEmailActions,
+  showPreviewAction,
+  sendTestEmailAction,
+  editorEmailActions,
+  emailActionRegistry,
+} from "./actions/builtins";

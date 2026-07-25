@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { actionCallerSchema, type ActionCaller } from "../actions/context";
 import type { RandomFn } from "../schema/ids";
 import { operationSchema } from "./ops";
 
@@ -45,6 +46,18 @@ export const operationLogEntrySchema = z
       .describe(
         "Groups entries applied atomically as one batch (e.g. all operations from one AI turn). Batch revert rolls back every entry sharing this id. Omit for standalone operations.",
       ),
+    caller: actionCallerSchema
+      .optional()
+      .describe(
+        "Which surface the operation arrived through (Phase 1.5 action-dispatch provenance). Omitted when the operation was applied outside the action layer.",
+      ),
+    threadId: z
+      .string()
+      .min(1)
+      .optional()
+      .describe(
+        "Chat/agent thread the operation belongs to, for precise attribution of AI edits. Omitted for non-threaded callers.",
+      ),
     timestamp: z
       .number()
       .int()
@@ -87,6 +100,10 @@ export interface CreateLogEntryInput {
   author: OperationAuthor;
   /** Optional batch grouping id — same value for every op in one atomic batch. */
   batchId?: string;
+  /** Optional caller provenance: which surface the operation arrived through. */
+  caller?: ActionCaller;
+  /** Optional chat/agent thread id for attribution of AI edits. */
+  threadId?: string;
   /** Override the generated entry id (e.g. persistence-layer ids, tests). */
   id?: string;
   /** Override the timestamp (epoch ms). Defaults to Date.now(). */
@@ -107,6 +124,12 @@ export function createLogEntry(input: CreateLogEntryInput): OperationLogEntry {
   };
   if (input.batchId !== undefined) {
     entry.batchId = input.batchId;
+  }
+  if (input.caller !== undefined) {
+    entry.caller = input.caller;
+  }
+  if (input.threadId !== undefined) {
+    entry.threadId = input.threadId;
   }
   return entry;
 }
