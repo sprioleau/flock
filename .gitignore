@@ -30,3 +30,5 @@ pnpm-debug.log*
 
 #docs
 docs/
+# spike code (contains reference doc structures)
+apps/web/src/app/spike/
