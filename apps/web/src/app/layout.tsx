@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
+import "@react-email/editor/themes/default.css";
 import { ConvexClientProvider } from "./ConvexClientProvider";
 
 const geistSans = Geist({

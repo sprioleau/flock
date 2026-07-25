@@ -10,11 +10,14 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@ai-sdk/anthropic": "^4.0.20",
+    "@ai-sdk/react": "^4.0.40",
     "@base-ui/react": "^1.6.0",
     "@convex-dev/prosemirror-sync": "^0.2.5",
     "@react-email/editor": "^1.6.11",
     "@tandem/email-sdk": "workspace:*",
     "@tiptap/core": "^3.29.0",
+    "@tiptap/extension-collaboration": "^3.29.0",
     "@tiptap/pm": "^3.29.0",
     "@tiptap/react": "^3.29.0",
     "@tiptap/starter-kit": "^3.29.0",
@@ -38,10 +41,10 @@
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "@typescript/native": "npm:typescript@7.0.2",
     "eslint": "^9",
     "eslint-config-next": "16.3.0-canary.96",
     "tailwindcss": "^4",
-    "@typescript/native": "npm:typescript@7.0.2",
     "typescript": "npm:@typescript/typescript6@6.0.2"
   },
   "packageManager": "pnpm@10.33.2"

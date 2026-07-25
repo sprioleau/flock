@@ -9,6 +9,7 @@
  */
 
 import type * as healthcheck from "../healthcheck.js";
+import type * as prosemirror from "../prosemirror.js";
 
 import type {
   ApiFromModules,
@@ -18,6 +19,7 @@ import type {
 
 declare const fullApi: ApiFromModules<{
   healthcheck: typeof healthcheck;
+  prosemirror: typeof prosemirror;
 }>;
 
 /**
@@ -46,4 +48,6 @@ export declare const internal: FilterApi<
   FunctionReference<any, "internal">
 >;
 
-export declare const components: {};
+export declare const components: {
+  prosemirrorSync: import("@convex-dev/prosemirror-sync/_generated/component.js").ComponentApi<"prosemirrorSync">;
+};
