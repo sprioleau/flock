@@ -109,3 +109,97 @@ export type {
   IntegrityError,
   IntegrityErrorCode,
 } from "./store/integrity";
+
+// --- Renderers (render) ---------------------------------------------------------------
+export {
+  resolveGlobalStyles,
+  resolveBlockStyles,
+  resolveRootBlockStyles,
+} from "./render/styles";
+export type {
+  ResolvedPadding,
+  ResolvedRootStyles,
+  ResolvedSectionStyles,
+  ResolvedRowStyles,
+  ResolvedColumnStyles,
+  ResolvedTextNodeStyles,
+  ResolvedTextStyles,
+  ResolvedButtonStyles,
+  ResolvedImageStyles,
+  ResolvedDividerStyles,
+  ResolvedStylesByBlockType,
+  ResolvedBlockStyles,
+} from "./render/styles";
+export { DocumentIntegrityError } from "./render/errors";
+export { renderToReactEmail } from "./render/render-to-react-email";
+export { renderToHTML } from "./render/render-to-html";
+export type { RenderToHTMLOptions } from "./render/render-to-html";
+export { renderToJSON } from "./render/render-to-json";
+export type { RenderedEmailNode } from "./render/render-to-json";
+
+// Per-block wrapper views — reused by the Phase 2 editing canvas.
+export { SectionBlockView } from "./render/blocks/SectionBlockView";
+export type { SectionBlockViewProps } from "./render/blocks/SectionBlockView";
+export { RowBlockView } from "./render/blocks/RowBlockView";
+export type { RowBlockViewProps } from "./render/blocks/RowBlockView";
+export { ColumnBlockView } from "./render/blocks/ColumnBlockView";
+export type { ColumnBlockViewProps } from "./render/blocks/ColumnBlockView";
+export { TextBlockView } from "./render/blocks/TextBlockView";
+export type { TextBlockViewProps } from "./render/blocks/TextBlockView";
+export { ButtonBlockView } from "./render/blocks/ButtonBlockView";
+export type { ButtonBlockViewProps } from "./render/blocks/ButtonBlockView";
+export { ImageBlockView } from "./render/blocks/ImageBlockView";
+export type { ImageBlockViewProps } from "./render/blocks/ImageBlockView";
+export { DividerBlockView } from "./render/blocks/DividerBlockView";
+export type { DividerBlockViewProps } from "./render/blocks/DividerBlockView";
+
+// --- Operations (operations/ops) --------------------------------------------------------
+export {
+  operationSchema,
+  OPERATION_NAMES,
+  updateBlockPropertiesOperationSchema,
+  replaceBlockPropertiesOperationSchema,
+  updateDocumentSettingsOperationSchema,
+  applyThemeOperationSchema,
+  addBlockOperationSchema,
+  addSectionOperationSchema,
+  restoreBlocksOperationSchema,
+  removeBlockOperationSchema,
+  moveBlockOperationSchema,
+  reorderChildrenOperationSchema,
+  updateTextOperationSchema,
+} from "./operations/ops";
+export type {
+  Operation,
+  OperationName,
+  UpdateBlockPropertiesOperation,
+  ReplaceBlockPropertiesOperation,
+  UpdateDocumentSettingsOperation,
+  ApplyThemeOperation,
+  AddBlockOperation,
+  AddSectionOperation,
+  RestoreBlocksOperation,
+  RemoveBlockOperation,
+  MoveBlockOperation,
+  ReorderChildrenOperation,
+  UpdateTextOperation,
+} from "./operations/ops";
+
+// --- Applying operations (operations/apply) ------------------------------------------------
+export { applyOperation, applyOperations } from "./operations/apply";
+export type {
+  ApplyOperationResult,
+  ApplyOperationsResult,
+  OperationError,
+  OperationErrorCode,
+} from "./operations/apply";
+
+// --- Operation log (operations/log) ---------------------------------------------------------
+export {
+  OPERATION_AUTHORS,
+  operationAuthorSchema,
+  operationLogEntrySchema,
+  generateLogEntryId,
+  createLogEntry,
+} from "./operations/log";
+export type { OperationAuthor, OperationLogEntry, CreateLogEntryInput } from "./operations/log";
