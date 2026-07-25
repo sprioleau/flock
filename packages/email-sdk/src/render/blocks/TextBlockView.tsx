@@ -1,0 +1,112 @@
+import { Fragment, type ReactNode } from "react";
+import { Column, Heading, Link, Row, Text } from "react-email";
+import type { TextBlock } from "../../schema/blocks";
+import type { InlineNode, TextMark, TextNode } from "../../schema/text";
+import type { ResolvedTextNodeStyles, ResolvedTextStyles } from "../styles";
+import { blockPaddingStyle } from "./shared";
+
+export interface TextBlockViewProps {
+  block: TextBlock;
+  resolvedStyles: ResolvedTextStyles;
+}
+
+/**
+ * Renderer constants for heading typography. The globals carry per-level
+ * font/color/alignment; sizes are fixed here for cross-client consistency
+ * (email clients disagree on default hN sizes).
+ */
+const HEADING_FONT_SIZES = { 1: "32px", 2: "24px", 3: "20px" } as const;
+
+/**
+ * Wrap a text run in email-safe inline elements, innermost-first in mark
+ * order: bold → <strong>, italic → <em>, underline/strike → styled <span>
+ * (text-decoration inherits through nesting, so both can apply), link →
+ * <Link> colored by globals.linkTextColor.
+ */
+function applyMarks(node: TextNode, linkTextColor: string): ReactNode {
+  return (node.marks ?? []).reduce<ReactNode>((content, mark: TextMark) => {
+    switch (mark.type) {
+      case "bold":
+        return <strong>{content}</strong>;
+      case "italic":
+        return <em>{content}</em>;
+      case "underline":
+        return <span style={{ textDecoration: "underline" }}>{content}</span>;
+      case "strike":
+        return <span style={{ textDecoration: "line-through" }}>{content}</span>;
+      case "link":
+        return (
+          <Link
+            href={mark.attrs.href}
+            style={{ color: linkTextColor, textDecoration: "underline" }}
+          >
+            {content}
+          </Link>
+        );
+    }
+  }, node.text);
+}
+
+function renderInlineNodes(
+  nodes: InlineNode[] | undefined,
+  linkTextColor: string,
+): ReactNode[] {
+  return (nodes ?? []).map((node, index) =>
+    node.type === "hardBreak" ? (
+      <br key={index} />
+    ) : (
+      <Fragment key={index}>{applyMarks(node, linkTextColor)}</Fragment>
+    ),
+  );
+}
+
+/**
+ * text → the block's TextDoc walked node by node: heading nodes →
+ * <Heading as={h1|h2|h3}> styled from the level-matching heading globals,
+ * paragraphs → <Text> styled from the paragraph globals; both overridden by
+ * the block's own textColor/textAlign. Intra-block node margins are zeroed —
+ * vertical rhythm comes from block padding (text-block-model doctrine:
+ * spacing is block-level, the doc is content-only).
+ */
+export function TextBlockView({ block, resolvedStyles }: TextBlockViewProps) {
+  const nodeStyle = (styles: ResolvedTextNodeStyles) => ({
+    fontFamily: styles.fontFamily,
+    color: styles.textColor,
+    textAlign: styles.textAlign,
+  });
+
+  return (
+    <Row>
+      <Column style={blockPaddingStyle(resolvedStyles)}>
+        {block.properties.text.content.map((node, index) => {
+          if (node.type === "heading") {
+            const { level } = node.attrs;
+            return (
+              <Heading
+                key={index}
+                as={`h${level}`}
+                style={{
+                  ...nodeStyle(resolvedStyles[`heading${level}`]),
+                  fontSize: HEADING_FONT_SIZES[level],
+                  lineHeight: "1.3",
+                  fontWeight: "bold",
+                  margin: 0,
+                }}
+              >
+                {renderInlineNodes(node.content, resolvedStyles.linkTextColor)}
+              </Heading>
+            );
+          }
+          return (
+            <Text
+              key={index}
+              style={{ ...nodeStyle(resolvedStyles.paragraph), marginTop: 0, marginBottom: 0 }}
+            >
+              {renderInlineNodes(node.content, resolvedStyles.linkTextColor)}
+            </Text>
+          );
+        })}
+      </Column>
+    </Row>
+  );
+}

@@ -146,10 +146,19 @@ importers:
 
   packages/email-sdk:
     dependencies:
+      react:
+        specifier: 19.2.8
+        version: 19.2.8
+      react-email:
+        specifier: ^6.9.1
+        version: 6.9.1(react-dom@19.2.8(react@19.2.8))(react@19.2.8)
       zod:
         specifier: ^4.1.0
         version: 4.4.3
     devDependencies:
+      '@types/react':
+        specifier: ^19.2.17
+        version: 19.2.17
       '@typescript/native':
         specifier: npm:typescript@7.0.2
         version: typescript@7.0.2
