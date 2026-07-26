@@ -112,7 +112,7 @@ export function createSampleDocument(): EmailDocument {
       parentId: "sec_a1b2",
       childrenIds: [],
       properties: {
-        src: "https://example.com/hero.png",
+        src: "https://placehold.co/600x400",
         alt: "Two riders on a tandem bicycle",
         width: 520,
         align: "center",

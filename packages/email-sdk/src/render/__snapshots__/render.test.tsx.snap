@@ -842,7 +842,7 @@ exports[`golden fixtures (plan §1.4: globals-only, overrides-only, mixed) > sam
                                     style="padding-top:0px;padding-bottom:24px;padding-left:0px;padding-right:0px">
                                     <img
                                       alt="Two riders on a tandem bicycle"
-                                      src="https://example.com/hero.png"
+                                      src="https://placehold.co/600x400"
                                       style="display:block;outline:none;border:none;text-decoration:none;max-width:100%;height:auto;margin-left:auto;margin-right:auto"
                                       width="520" />
                                   </td>
