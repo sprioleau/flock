@@ -167,18 +167,15 @@ exports[`golden fixtures (plan §1.4: globals-only, overrides-only, mixed) > blo
                           <td
                             style="padding-top:24px;padding-bottom:0px;padding-left:24px;padding-right:24px">
                             <table
-                              align="center"
+                              role="presentation"
                               width="100%"
-                              border="0"
                               cellpadding="0"
                               cellspacing="0"
-                              role="presentation"
-                              style="padding-top:8px;padding-bottom:8px">
-                              <tbody style="width:100%">
-                                <tr style="width:100%">
+                              style="border-collapse:collapse">
+                              <tbody>
+                                <tr>
                                   <td
-                                    data-id="__react-email-column"
-                                    style="width:65%;vertical-align:middle;background-color:#eef0f2;padding-top:0px;padding-bottom:0px;padding-left:0px;padding-right:12px">
+                                    style="padding-top:8px;padding-bottom:8px">
                                     <table
                                       align="center"
                                       width="100%"
@@ -190,44 +187,60 @@ exports[`golden fixtures (plan §1.4: globals-only, overrides-only, mixed) > blo
                                         <tr style="width:100%">
                                           <td
                                             data-id="__react-email-column"
-                                            style="padding-top:0px;padding-bottom:24px;padding-left:0px;padding-right:0px">
-                                            <p
-                                              style="font-size:14px;line-height:24px;font-family:Helvetica, Arial, sans-serif;color:#333333;text-align:left;margin-top:0;margin-bottom:0">
-                                              Side-by-side copy.
-                                            </p>
+                                            style="width:65%;vertical-align:middle;background-color:#eef0f2;padding-top:0px;padding-bottom:0px;padding-left:0px;padding-right:12px">
+                                            <table
+                                              align="center"
+                                              width="100%"
+                                              border="0"
+                                              cellpadding="0"
+                                              cellspacing="0"
+                                              role="presentation">
+                                              <tbody style="width:100%">
+                                                <tr style="width:100%">
+                                                  <td
+                                                    data-id="__react-email-column"
+                                                    style="padding-top:0px;padding-bottom:24px;padding-left:0px;padding-right:0px">
+                                                    <p
+                                                      style="font-size:14px;line-height:24px;font-family:Helvetica, Arial, sans-serif;color:#333333;text-align:left;margin-top:0;margin-bottom:0">
+                                                      Side-by-side copy.
+                                                    </p>
+                                                  </td>
+                                                </tr>
+                                              </tbody>
+                                            </table>
                                           </td>
-                                        </tr>
-                                      </tbody>
-                                    </table>
-                                  </td>
-                                  <td
-                                    data-id="__react-email-column"
-                                    style="width:35%;vertical-align:bottom;padding-top:0px;padding-bottom:0px;padding-left:0px;padding-right:0px">
-                                    <table
-                                      align="center"
-                                      width="100%"
-                                      border="0"
-                                      cellpadding="0"
-                                      cellspacing="0"
-                                      role="presentation">
-                                      <tbody style="width:100%">
-                                        <tr style="width:100%">
                                           <td
                                             data-id="__react-email-column"
-                                            style="padding-top:0px;padding-bottom:4px;padding-left:0px;padding-right:0px;text-align:right">
-                                            <a
-                                              href="https://example.com/shop"
-                                              style="line-height:100%;text-decoration:none;display:inline-block;max-width:100%;mso-padding-alt:0px;background-color:#4a4e69;color:#f2e9e4;border-radius:0px;border:3px solid #9a8c98;padding:16px 40px;font-family:Courier New, Courier, monospace;padding-top:16px;padding-right:40px;padding-bottom:16px;padding-left:40px"
-                                              target="_blank"
-                                              ><span
-                                                ><!--[if mso]><i style="mso-font-width:500%;mso-text-raise:24px" hidden>&#8202;&#8202;&#8202;&#8202;</i><![endif]--></span
-                                              ><span
-                                                style="max-width:100%;display:inline-block;line-height:120%;mso-padding-alt:0px;mso-text-raise:12px"
-                                                >Shop the launch</span
-                                              ><span
-                                                ><!--[if mso]><i style="mso-font-width:500%" hidden>&#8202;&#8202;&#8202;&#8202;&#8203;</i><![endif]--></span
-                                              ></a
-                                            >
+                                            style="width:35%;vertical-align:bottom;padding-top:0px;padding-bottom:0px;padding-left:0px;padding-right:0px">
+                                            <table
+                                              align="center"
+                                              width="100%"
+                                              border="0"
+                                              cellpadding="0"
+                                              cellspacing="0"
+                                              role="presentation">
+                                              <tbody style="width:100%">
+                                                <tr style="width:100%">
+                                                  <td
+                                                    data-id="__react-email-column"
+                                                    style="padding-top:0px;padding-bottom:4px;padding-left:0px;padding-right:0px;text-align:right">
+                                                    <a
+                                                      href="https://example.com/shop"
+                                                      style="line-height:100%;text-decoration:none;display:inline-block;max-width:100%;mso-padding-alt:0px;background-color:#4a4e69;color:#f2e9e4;border-radius:0px;border:3px solid #9a8c98;padding:16px 40px;font-family:Courier New, Courier, monospace;padding-top:16px;padding-right:40px;padding-bottom:16px;padding-left:40px"
+                                                      target="_blank"
+                                                      ><span
+                                                        ><!--[if mso]><i style="mso-font-width:500%;mso-text-raise:24px" hidden>&#8202;&#8202;&#8202;&#8202;</i><![endif]--></span
+                                                      ><span
+                                                        style="max-width:100%;display:inline-block;line-height:120%;mso-padding-alt:0px;mso-text-raise:12px"
+                                                        >Shop the launch</span
+                                                      ><span
+                                                        ><!--[if mso]><i style="mso-font-width:500%" hidden>&#8202;&#8202;&#8202;&#8202;&#8203;</i><![endif]--></span
+                                                      ></a
+                                                    >
+                                                  </td>
+                                                </tr>
+                                              </tbody>
+                                            </table>
                                           </td>
                                         </tr>
                                       </tbody>
@@ -420,8 +433,7 @@ exports[`golden fixtures (plan §1.4: globals-only, overrides-only, mixed) > glo
                               border="0"
                               cellpadding="0"
                               cellspacing="0"
-                              role="presentation"
-                              style="padding-top:0px;padding-bottom:0px">
+                              role="presentation">
                               <tbody style="width:100%">
                                 <tr style="width:100%">
                                   <td
@@ -669,8 +681,7 @@ exports[`golden fixtures (plan §1.4: globals-only, overrides-only, mixed) > mix
                               border="0"
                               cellpadding="0"
                               cellspacing="0"
-                              role="presentation"
-                              style="padding-top:0px;padding-bottom:0px">
+                              role="presentation">
                               <tbody style="width:100%">
                                 <tr style="width:100%">
                                   <td
@@ -904,8 +915,7 @@ exports[`golden fixtures (plan §1.4: globals-only, overrides-only, mixed) > sam
                               border="0"
                               cellpadding="0"
                               cellspacing="0"
-                              role="presentation"
-                              style="padding-top:0px;padding-bottom:0px">
+                              role="presentation">
                               <tbody style="width:100%">
                                 <tr style="width:100%">
                                   <td
