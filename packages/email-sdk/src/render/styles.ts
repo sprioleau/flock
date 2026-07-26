@@ -223,11 +223,15 @@ function resolveColumnStyles(block: ColumnBlock): ResolvedColumnStyles {
 
 function resolveTextStyles(globals: Required<GlobalStyles>, block: TextBlock): ResolvedTextStyles {
   const { textColor, textAlign } = block.properties;
-  const nodeStyles = (
-    fontFamily: string,
-    globalColor: string,
-    globalAlign: TextAlign,
-  ): ResolvedTextNodeStyles => ({
+  const nodeStyles = ({
+    fontFamily,
+    globalColor,
+    globalAlign,
+  }: {
+    fontFamily: string;
+    globalColor: string;
+    globalAlign: TextAlign;
+  }): ResolvedTextNodeStyles => ({
     fontFamily,
     // Block-level textColor/textAlign override the per-node-type globals for
     // EVERY node in this block.
@@ -235,10 +239,10 @@ function resolveTextStyles(globals: Required<GlobalStyles>, block: TextBlock): R
     textAlign: textAlign ?? globalAlign,
   });
   return {
-    heading1: nodeStyles(globals.heading1FontFamily, globals.heading1TextColor, globals.heading1TextAlign),
-    heading2: nodeStyles(globals.heading2FontFamily, globals.heading2TextColor, globals.heading2TextAlign),
-    heading3: nodeStyles(globals.heading3FontFamily, globals.heading3TextColor, globals.heading3TextAlign),
-    paragraph: nodeStyles(globals.paragraphFontFamily, globals.paragraphTextColor, globals.paragraphTextAlign),
+    heading1: nodeStyles({ fontFamily: globals.heading1FontFamily, globalColor: globals.heading1TextColor, globalAlign: globals.heading1TextAlign }),
+    heading2: nodeStyles({ fontFamily: globals.heading2FontFamily, globalColor: globals.heading2TextColor, globalAlign: globals.heading2TextAlign }),
+    heading3: nodeStyles({ fontFamily: globals.heading3FontFamily, globalColor: globals.heading3TextColor, globalAlign: globals.heading3TextAlign }),
+    paragraph: nodeStyles({ fontFamily: globals.paragraphFontFamily, globalColor: globals.paragraphTextColor, globalAlign: globals.paragraphTextAlign }),
     linkTextColor: globals.linkTextColor,
     ...resolvePadding(block.properties, leafPaddingDefaults(globals.baseSpacing)),
   };

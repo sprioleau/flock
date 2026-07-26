@@ -85,13 +85,13 @@ describe("emailActionRegistry", () => {
 
   it("dispatches a content action end to end and its inverse restores the doc", () => {
     const doc = createSampleDocument();
-    const result = dispatchContentAction(
-      emailActionRegistry,
+    const result = dispatchContentAction({
+      registry: emailActionRegistry,
       doc,
-      "updateBlockProperties",
-      { name: "updateBlockProperties", blockId: "txt_e5f6", properties: { paddingTop: 32 } },
-      agentContext,
-    );
+      name: "updateBlockProperties",
+      input: { name: "updateBlockProperties", blockId: "txt_e5f6", properties: { paddingTop: 32 } },
+      context: agentContext,
+    });
     expect(result.isOk).toBe(true);
     if (!result.isOk) return;
     expect((result.doc.txt_e5f6!.properties as { paddingTop?: number }).paddingTop).toBe(32);
@@ -104,13 +104,13 @@ describe("emailActionRegistry", () => {
   });
 
   it("surfaces 1.3 repair hints through dispatch (root removal is retryable)", () => {
-    const result = dispatchContentAction(
-      emailActionRegistry,
-      createSampleDocument(),
-      "removeBlock",
-      { name: "removeBlock", blockId: "root" },
-      agentContext,
-    );
+    const result = dispatchContentAction({
+      registry: emailActionRegistry,
+      doc: createSampleDocument(),
+      name: "removeBlock",
+      input: { name: "removeBlock", blockId: "root" },
+      context: agentContext,
+    });
     expect(result.isOk).toBe(false);
     if (result.isOk) return;
     expect(result.failureKind).toBe("retryable");
@@ -118,23 +118,23 @@ describe("emailActionRegistry", () => {
   });
 
   it("dispatches the editor stubs into typed commands", () => {
-    const previewResult = dispatchEditorAction(
-      emailActionRegistry,
-      "showPreview",
-      { mode: "desktop" },
-      agentContext,
-    );
+    const previewResult = dispatchEditorAction({
+      registry: emailActionRegistry,
+      name: "showPreview",
+      input: { mode: "desktop" },
+      context: agentContext,
+    });
     expect(previewResult.isOk).toBe(true);
     if (!previewResult.isOk) return;
     expect(previewResult.command).toEqual({ type: "showPreview", mode: "desktop" });
     expect(previewResult.isApprovalRequired).toBe(false);
 
-    const sendResult = dispatchEditorAction(
-      emailActionRegistry,
-      "sendTestEmail",
-      { to: "reviewer@example.com" },
-      agentContext,
-    );
+    const sendResult = dispatchEditorAction({
+      registry: emailActionRegistry,
+      name: "sendTestEmail",
+      input: { to: "reviewer@example.com" },
+      context: agentContext,
+    });
     expect(sendResult.isOk).toBe(true);
     if (!sendResult.isOk) return;
     expect(sendResult.command).toEqual({ type: "sendTestEmail", to: "reviewer@example.com" });
@@ -142,12 +142,12 @@ describe("emailActionRegistry", () => {
   });
 
   it("rejects a sendTestEmail input that is not an email address", () => {
-    const result = dispatchEditorAction(
-      emailActionRegistry,
-      "sendTestEmail",
-      { to: "not-an-email" },
-      agentContext,
-    );
+    const result = dispatchEditorAction({
+      registry: emailActionRegistry,
+      name: "sendTestEmail",
+      input: { to: "not-an-email" },
+      context: agentContext,
+    });
     expect(result.isOk).toBe(false);
     if (result.isOk) return;
     expect(result.failureKind).toBe("retryable");

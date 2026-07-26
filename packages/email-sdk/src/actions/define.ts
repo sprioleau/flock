@@ -186,15 +186,24 @@ export function defineEmailAction(config: AnyEmailActionConfig): AnyEmailAction 
   });
 }
 
-/**
- * Resolve an action's `needsApproval` gate for one invocation. `input` should
- * already have passed the action's full schema when the option is a predicate.
- */
-export function resolveNeedsApproval(
-  action: AnyEmailAction,
-  input: unknown,
-  context: ActionContext,
-): boolean {
+export interface ResolveNeedsApprovalInput {
+  /** The action whose `needsApproval` option to resolve. */
+  action: AnyEmailAction;
+  /**
+   * The invocation input. Should already have passed the action's full schema
+   * when the option is a predicate.
+   */
+  input: unknown;
+  /** The caller context handed to a predicate-form `needsApproval`. */
+  context: ActionContext;
+}
+
+/** Resolve an action's `needsApproval` gate for one invocation. */
+export function resolveNeedsApproval({
+  action,
+  input,
+  context,
+}: ResolveNeedsApprovalInput): boolean {
   if (typeof action.needsApproval === "function") {
     return action.needsApproval(input, context);
   }

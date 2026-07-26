@@ -31,11 +31,15 @@ function applyOrThrow(document: EmailDocument, operation: Operation) {
   return result;
 }
 
-function expectErrorCode(
-  document: EmailDocument,
-  operation: Operation,
-  code: OperationErrorCode,
-): ApplyOperationResult {
+function expectErrorCode({
+  document,
+  operation,
+  code,
+}: {
+  document: EmailDocument;
+  operation: Operation;
+  code: OperationErrorCode;
+}): ApplyOperationResult {
   const result = applyOperation(document, operation);
   expect(result.isOk).toBe(false);
   if (!result.isOk) {
@@ -143,27 +147,27 @@ describe("applyOperation — updateBlockProperties", () => {
   });
 
   it("rejects a missing target", () => {
-    expectErrorCode(
-      createSampleDocument(),
-      { name: "updateBlockProperties", blockId: "btn_none", properties: { label: "x" } },
-      "target_not_found",
-    );
+    expectErrorCode({
+      document: createSampleDocument(),
+      operation: { name: "updateBlockProperties", blockId: "btn_none", properties: { label: "x" } },
+      code: "target_not_found",
+    });
   });
 
   it("rejects unknown property keys via the merged block's strict schema", () => {
-    expectErrorCode(
-      createSampleDocument(),
-      { name: "updateBlockProperties", blockId: "btn_t9u0", properties: { fontSize: 12 } },
-      "schema_validation_failed",
-    );
+    expectErrorCode({
+      document: createSampleDocument(),
+      operation: { name: "updateBlockProperties", blockId: "btn_t9u0", properties: { fontSize: 12 } },
+      code: "schema_validation_failed",
+    });
   });
 
   it("rejects invalid property values via the merged block's schema", () => {
-    expectErrorCode(
-      createSampleDocument(),
-      { name: "updateBlockProperties", blockId: "btn_t9u0", properties: { label: 42 } },
-      "schema_validation_failed",
-    );
+    expectErrorCode({
+      document: createSampleDocument(),
+      operation: { name: "updateBlockProperties", blockId: "btn_t9u0", properties: { label: 42 } },
+      code: "schema_validation_failed",
+    });
   });
 
   it("leaves the input document unchanged on failure", () => {
@@ -197,19 +201,19 @@ describe("applyOperation — replaceBlockProperties", () => {
   });
 
   it("rejects properties missing required fields", () => {
-    expectErrorCode(
-      createSampleDocument(),
-      { name: "replaceBlockProperties", blockId: "btn_t9u0", properties: { label: "No href" } },
-      "schema_validation_failed",
-    );
+    expectErrorCode({
+      document: createSampleDocument(),
+      operation: { name: "replaceBlockProperties", blockId: "btn_t9u0", properties: { label: "No href" } },
+      code: "schema_validation_failed",
+    });
   });
 
   it("rejects a missing target", () => {
-    expectErrorCode(
-      createSampleDocument(),
-      { name: "replaceBlockProperties", blockId: "txt_none", properties: {} },
-      "target_not_found",
-    );
+    expectErrorCode({
+      document: createSampleDocument(),
+      operation: { name: "replaceBlockProperties", blockId: "txt_none", properties: {} },
+      code: "target_not_found",
+    });
   });
 });
 
@@ -256,11 +260,11 @@ describe("applyOperation — updateDocumentSettings", () => {
   });
 
   it("rejects invalid global values at the envelope", () => {
-    expectErrorCode(
-      createSampleDocument(),
-      { name: "updateDocumentSettings", globals: { contentWidth: 100 } },
-      "op_validation_failed",
-    );
+    expectErrorCode({
+      document: createSampleDocument(),
+      operation: { name: "updateDocumentSettings", globals: { contentWidth: 100 } },
+      code: "op_validation_failed",
+    });
   });
 });
 
@@ -292,11 +296,11 @@ describe("applyOperation — applyTheme", () => {
   });
 
   it("rejects unknown globals keys at the envelope", () => {
-    expectErrorCode(
-      createSampleDocument(),
-      { name: "applyTheme", globals: { brandColor: "#fff" } as never },
-      "op_validation_failed",
-    );
+    expectErrorCode({
+      document: createSampleDocument(),
+      operation: { name: "applyTheme", globals: { brandColor: "#fff" } as never },
+      code: "op_validation_failed",
+    });
   });
 });
 
@@ -342,19 +346,19 @@ describe("applyOperation — addBlock", () => {
   it("rejects a duplicate block id", () => {
     const document = createSampleDocument();
     const divider = { ...createNewDivider(), id: "div_i9j0" } as DividerBlock;
-    expectErrorCode(
-      document,
-      { name: "addBlock", block: divider, parentId: "col_m3n4", index: 0 },
-      "duplicate_block_id",
-    );
+    expectErrorCode({
+      document: document,
+      operation: { name: "addBlock", block: divider, parentId: "col_m3n4", index: 0 },
+      code: "duplicate_block_id",
+    });
   });
 
   it("rejects a missing parent", () => {
-    expectErrorCode(
-      createSampleDocument(),
-      { name: "addBlock", block: createNewDivider(), parentId: "sec_none", index: 0 },
-      "target_not_found",
-    );
+    expectErrorCode({
+      document: createSampleDocument(),
+      operation: { name: "addBlock", block: createNewDivider(), parentId: "sec_none", index: 0 },
+      code: "target_not_found",
+    });
   });
 
   it("rejects a nesting violation (column directly under the root)", () => {
@@ -366,19 +370,19 @@ describe("applyOperation — addBlock", () => {
       childrenIds: [],
       properties: {},
     };
-    expectErrorCode(
-      document,
-      { name: "addBlock", block: column, parentId: "root", index: 0 },
-      "nesting_violation",
-    );
+    expectErrorCode({
+      document: document,
+      operation: { name: "addBlock", block: column, parentId: "root", index: 0 },
+      code: "nesting_violation",
+    });
   });
 
   it("rejects an out-of-range index", () => {
-    expectErrorCode(
-      createSampleDocument(),
-      { name: "addBlock", block: createNewDivider(), parentId: "col_m3n4", index: 5 },
-      "index_out_of_range",
-    );
+    expectErrorCode({
+      document: createSampleDocument(),
+      operation: { name: "addBlock", block: createNewDivider(), parentId: "col_m3n4", index: 5 },
+      code: "index_out_of_range",
+    });
   });
 
   it("fails the post-apply integrity check when a container claims an existing block", () => {
@@ -391,11 +395,11 @@ describe("applyOperation — addBlock", () => {
       properties: {},
     };
     const before = structuredClone(document);
-    expectErrorCode(
-      document,
-      { name: "addBlock", block: trojanRow, parentId: "sec_a1b2", index: 0 },
-      "integrity_check_failed",
-    );
+    expectErrorCode({
+      document: document,
+      operation: { name: "addBlock", block: trojanRow, parentId: "sec_a1b2", index: 0 },
+      code: "integrity_check_failed",
+    });
     expect(document).toEqual(before);
   });
 });
@@ -439,33 +443,37 @@ describe("applyOperation — addSection", () => {
   it("rejects children that do not form a closed subtree", () => {
     const document = createSampleDocument();
     const strayText = { ...createNewSectionText(), parentId: "sec_a1b2" } as TextBlock;
-    expectErrorCode(
-      document,
-      { name: "addSection", section: createNewSection(["txt_zz03"]), index: 0, children: [strayText] },
-      "op_validation_failed",
-    );
+    expectErrorCode({
+      document: document,
+      operation: { name: "addSection", section: createNewSection(["txt_zz03"]), index: 0, children: [strayText] },
+      code: "op_validation_failed",
+    });
   });
 
   it("rejects a section whose childrenIds dangle (integrity net)", () => {
-    expectErrorCode(
-      createSampleDocument(),
-      { name: "addSection", section: createNewSection(["txt_zz03"]), index: 0 },
-      "integrity_check_failed",
-    );
+    expectErrorCode({
+      document: createSampleDocument(),
+      operation: { name: "addSection", section: createNewSection(["txt_zz03"]), index: 0 },
+      code: "integrity_check_failed",
+    });
   });
 
   it("rejects a duplicate section id", () => {
     const document = createSampleDocument();
     const section = { ...createNewSection(), id: "sec_a1b2" } as SectionBlock;
-    expectErrorCode(document, { name: "addSection", section, index: 0 }, "duplicate_block_id");
+    expectErrorCode({
+      document: document,
+      operation: { name: "addSection", section, index: 0 },
+      code: "duplicate_block_id",
+    });
   });
 
   it("rejects an out-of-range index", () => {
-    expectErrorCode(
-      createSampleDocument(),
-      { name: "addSection", section: createNewSection(), index: 3 },
-      "index_out_of_range",
-    );
+    expectErrorCode({
+      document: createSampleDocument(),
+      operation: { name: "addSection", section: createNewSection(), index: 3 },
+      code: "index_out_of_range",
+    });
   });
 });
 
@@ -523,15 +531,19 @@ describe("applyOperation — removeBlock", () => {
   });
 
   it("rejects removing the root", () => {
-    expectErrorCode(createSampleDocument(), { name: "removeBlock", blockId: "root" }, "root_not_allowed");
+    expectErrorCode({
+      document: createSampleDocument(),
+      operation: { name: "removeBlock", blockId: "root" },
+      code: "root_not_allowed",
+    });
   });
 
   it("rejects a missing target", () => {
-    expectErrorCode(
-      createSampleDocument(),
-      { name: "removeBlock", blockId: "sec_none" },
-      "target_not_found",
-    );
+    expectErrorCode({
+      document: createSampleDocument(),
+      operation: { name: "removeBlock", blockId: "sec_none" },
+      code: "target_not_found",
+    });
   });
 });
 
@@ -556,19 +568,19 @@ describe("applyOperation — restoreBlocks (direct)", () => {
   it("rejects ids that already exist in the document", () => {
     const document = createSampleDocument();
     const divider = { ...createNewDivider(), id: "div_i9j0" } as DividerBlock;
-    expectErrorCode(
-      document,
-      { name: "restoreBlocks", blocks: [divider], parentId: "sec_a1b2", index: 0 },
-      "duplicate_block_id",
-    );
+    expectErrorCode({
+      document: document,
+      operation: { name: "restoreBlocks", blocks: [divider], parentId: "sec_a1b2", index: 0 },
+      code: "duplicate_block_id",
+    });
   });
 
   it("rejects a subtree root that violates nesting rules", () => {
-    expectErrorCode(
-      createSampleDocument(),
-      { name: "restoreBlocks", blocks: [createNewDivider()], parentId: "root", index: 0 },
-      "nesting_violation",
-    );
+    expectErrorCode({
+      document: createSampleDocument(),
+      operation: { name: "restoreBlocks", blocks: [createNewDivider()], parentId: "root", index: 0 },
+      code: "nesting_violation",
+    });
   });
 });
 
@@ -620,51 +632,51 @@ describe("applyOperation — moveBlock", () => {
   });
 
   it("rejects moving the root", () => {
-    expectErrorCode(
-      createSampleDocument(),
-      { name: "moveBlock", blockId: "root", newParentId: "sec_a1b2", index: 0 },
-      "root_not_allowed",
-    );
+    expectErrorCode({
+      document: createSampleDocument(),
+      operation: { name: "moveBlock", blockId: "root", newParentId: "sec_a1b2", index: 0 },
+      code: "root_not_allowed",
+    });
   });
 
   it("rejects moving a block into its own subtree (cycle)", () => {
-    const result = expectErrorCode(
-      createSampleDocument(),
-      { name: "moveBlock", blockId: "sec_c3d4", newParentId: "col_m3n4", index: 0 },
-      "nesting_violation",
-    );
+    const result = expectErrorCode({
+      document: createSampleDocument(),
+      operation: { name: "moveBlock", blockId: "sec_c3d4", newParentId: "col_m3n4", index: 0 },
+      code: "nesting_violation",
+    });
     if (!result.isOk) {
       expect(result.errors[0]!.message).toMatch(/own subtree/);
     }
   });
 
   it("rejects a move that violates nesting rules (text into a row)", () => {
-    expectErrorCode(
-      createSampleDocument(),
-      { name: "moveBlock", blockId: "txt_e5f6", newParentId: "row_k1l2", index: 0 },
-      "nesting_violation",
-    );
+    expectErrorCode({
+      document: createSampleDocument(),
+      operation: { name: "moveBlock", blockId: "txt_e5f6", newParentId: "row_k1l2", index: 0 },
+      code: "nesting_violation",
+    });
   });
 
   it("rejects a missing block and a missing destination", () => {
-    expectErrorCode(
-      createSampleDocument(),
-      { name: "moveBlock", blockId: "txt_none", newParentId: "sec_a1b2", index: 0 },
-      "target_not_found",
-    );
-    expectErrorCode(
-      createSampleDocument(),
-      { name: "moveBlock", blockId: "txt_e5f6", newParentId: "sec_none", index: 0 },
-      "target_not_found",
-    );
+    expectErrorCode({
+      document: createSampleDocument(),
+      operation: { name: "moveBlock", blockId: "txt_none", newParentId: "sec_a1b2", index: 0 },
+      code: "target_not_found",
+    });
+    expectErrorCode({
+      document: createSampleDocument(),
+      operation: { name: "moveBlock", blockId: "txt_e5f6", newParentId: "sec_none", index: 0 },
+      code: "target_not_found",
+    });
   });
 
   it("rejects an out-of-range index (same-parent bound excludes the moved block)", () => {
-    expectErrorCode(
-      createSampleDocument(),
-      { name: "moveBlock", blockId: "txt_e5f6", newParentId: "sec_a1b2", index: 3 },
-      "index_out_of_range",
-    );
+    expectErrorCode({
+      document: createSampleDocument(),
+      operation: { name: "moveBlock", blockId: "txt_e5f6", newParentId: "sec_a1b2", index: 3 },
+      code: "index_out_of_range",
+    });
   });
 });
 
@@ -689,43 +701,43 @@ describe("applyOperation — reorderChildren", () => {
   });
 
   it("rejects an order missing a child", () => {
-    expectErrorCode(
-      createSampleDocument(),
-      { name: "reorderChildren", parentId: "sec_a1b2", orderedChildIds: ["txt_e5f6", "img_g7h8"] },
-      "children_not_permutation",
-    );
+    expectErrorCode({
+      document: createSampleDocument(),
+      operation: { name: "reorderChildren", parentId: "sec_a1b2", orderedChildIds: ["txt_e5f6", "img_g7h8"] },
+      code: "children_not_permutation",
+    });
   });
 
   it("rejects duplicated ids", () => {
-    expectErrorCode(
-      createSampleDocument(),
-      {
+    expectErrorCode({
+      document: createSampleDocument(),
+      operation: {
         name: "reorderChildren",
         parentId: "sec_a1b2",
         orderedChildIds: ["txt_e5f6", "txt_e5f6", "div_i9j0"],
       },
-      "children_not_permutation",
-    );
+      code: "children_not_permutation",
+    });
   });
 
   it("rejects ids that are not children of the parent", () => {
-    expectErrorCode(
-      createSampleDocument(),
-      {
+    expectErrorCode({
+      document: createSampleDocument(),
+      operation: {
         name: "reorderChildren",
         parentId: "sec_a1b2",
         orderedChildIds: ["txt_e5f6", "img_g7h8", "btn_t9u0"],
       },
-      "children_not_permutation",
-    );
+      code: "children_not_permutation",
+    });
   });
 
   it("rejects a missing parent", () => {
-    expectErrorCode(
-      createSampleDocument(),
-      { name: "reorderChildren", parentId: "sec_none", orderedChildIds: [] },
-      "target_not_found",
-    );
+    expectErrorCode({
+      document: createSampleDocument(),
+      operation: { name: "reorderChildren", parentId: "sec_none", orderedChildIds: [] },
+      code: "target_not_found",
+    });
   });
 });
 
@@ -764,31 +776,31 @@ describe("applyOperation — updateText", () => {
   });
 
   it("rejects a missing text block", () => {
-    expectErrorCode(
-      createSampleDocument(),
-      { name: "updateText", blockId: "txt_none", text: createTextDoc("x") },
-      "target_not_found",
-    );
+    expectErrorCode({
+      document: createSampleDocument(),
+      operation: { name: "updateText", blockId: "txt_none", text: createTextDoc("x") },
+      code: "target_not_found",
+    });
   });
 
   it("rejects a non-text block id at the envelope (typed id prefix)", () => {
-    expectErrorCode(
-      createSampleDocument(),
-      { name: "updateText", blockId: "btn_t9u0", text: createTextDoc("x") } as never,
-      "op_validation_failed",
-    );
+    expectErrorCode({
+      document: createSampleDocument(),
+      operation: { name: "updateText", blockId: "btn_t9u0", text: createTextDoc("x") } as never,
+      code: "op_validation_failed",
+    });
   });
 
   it("rejects an invalid text doc at the envelope", () => {
-    expectErrorCode(
-      createSampleDocument(),
-      {
+    expectErrorCode({
+      document: createSampleDocument(),
+      operation: {
         name: "updateText",
         blockId: "txt_r7s8",
         text: { type: "doc", content: [{ type: "blockquote", content: [] }] },
       } as never,
-      "op_validation_failed",
-    );
+      code: "op_validation_failed",
+    });
   });
 });
 
@@ -798,19 +810,19 @@ describe("applyOperation — updateText", () => {
 
 describe("applyOperation — envelope validation", () => {
   it("rejects an unknown operation name", () => {
-    expectErrorCode(
-      createSampleDocument(),
-      { name: "explodeBlock", blockId: "txt_e5f6" } as never,
-      "op_validation_failed",
-    );
+    expectErrorCode({
+      document: createSampleDocument(),
+      operation: { name: "explodeBlock", blockId: "txt_e5f6" } as never,
+      code: "op_validation_failed",
+    });
   });
 
   it("rejects extra keys on the envelope", () => {
-    expectErrorCode(
-      createSampleDocument(),
-      { name: "removeBlock", blockId: "txt_e5f6", force: true } as never,
-      "op_validation_failed",
-    );
+    expectErrorCode({
+      document: createSampleDocument(),
+      operation: { name: "removeBlock", blockId: "txt_e5f6", force: true } as never,
+      code: "op_validation_failed",
+    });
   });
 });
 

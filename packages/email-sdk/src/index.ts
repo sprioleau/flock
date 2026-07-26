@@ -213,6 +213,7 @@ export { EMAIL_ACTION_KINDS, defineEmailAction, resolveNeedsApproval } from "./a
 export type {
   EmailActionKind,
   NeedsApprovalOption,
+  ResolveNeedsApprovalInput,
   ContentEmailActionConfig,
   EditorEmailActionConfig,
   AnalysisEmailActionConfig,
@@ -262,7 +263,9 @@ export type {
   EmailActionRegistry,
   AISDKToolDefinition,
   ActionDispatchError,
+  DispatchContentActionInput,
   DispatchContentActionResult,
+  DispatchEditorActionInput,
   DispatchEditorActionResult,
 } from "./actions/registry";
 

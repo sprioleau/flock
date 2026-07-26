@@ -156,7 +156,13 @@ describe("dispatchContentAction", () => {
       blockId: "txt_e5f6",
       properties: { paddingTop: 32 },
     };
-    const result = dispatchContentAction(registry, doc, "updateBlockProperties", input, agentContext);
+    const result = dispatchContentAction({
+      registry,
+      doc,
+      name: "updateBlockProperties",
+      input,
+      context: agentContext,
+    });
     expect(result.isOk).toBe(true);
     if (!result.isOk) return;
     expect((result.doc.txt_e5f6!.properties as { paddingTop?: number }).paddingTop).toBe(32);
@@ -176,13 +182,13 @@ describe("dispatchContentAction", () => {
 
   it("omits batchId/threadId from the log entry when the context has none", () => {
     const doc = createSampleDocument();
-    const result = dispatchContentAction(
+    const result = dispatchContentAction({
       registry,
       doc,
-      "removeBlock",
-      { name: "removeBlock", blockId: "sec_c3d4" },
-      userContext,
-    );
+      name: "removeBlock",
+      input: { name: "removeBlock", blockId: "sec_c3d4" },
+      context: userContext,
+    });
     expect(result.isOk).toBe(true);
     if (!result.isOk) return;
     expect(result.logEntry.caller).toBe("frontend");
@@ -191,7 +197,13 @@ describe("dispatchContentAction", () => {
   });
 
   it("fails retryable with unknown_action for an unregistered name", () => {
-    const result = dispatchContentAction(registry, createSampleDocument(), "nope", {}, agentContext);
+    const result = dispatchContentAction({
+      registry,
+      doc: createSampleDocument(),
+      name: "nope",
+      input: {},
+      context: agentContext,
+    });
     expect(result.isOk).toBe(false);
     if (result.isOk) return;
     expect(result.failureKind).toBe("retryable");
@@ -200,13 +212,13 @@ describe("dispatchContentAction", () => {
   });
 
   it("fails terminal with wrong_action_kind when given an editor action", () => {
-    const result = dispatchContentAction(
+    const result = dispatchContentAction({
       registry,
-      createSampleDocument(),
-      "showPreview",
-      { mode: "mobile" },
-      agentContext,
-    );
+      doc: createSampleDocument(),
+      name: "showPreview",
+      input: { mode: "mobile" },
+      context: agentContext,
+    });
     expect(result.isOk).toBe(false);
     if (result.isOk) return;
     expect(result.failureKind).toBe("terminal");
@@ -229,13 +241,13 @@ describe("dispatchContentAction", () => {
     const divergentRegistry = createActionRegistry([divergentAction]);
     const compactOnlyInput = { blockId: "sec_a1b2" }; // passes compact, missing `name` for full
     expect(compactSchema.safeParse(compactOnlyInput).success).toBe(true);
-    const result = dispatchContentAction(
-      divergentRegistry,
-      createSampleDocument(),
-      "removeBlockCompact",
-      compactOnlyInput,
-      agentContext,
-    );
+    const result = dispatchContentAction({
+      registry: divergentRegistry,
+      doc: createSampleDocument(),
+      name: "removeBlockCompact",
+      input: compactOnlyInput,
+      context: agentContext,
+    });
     expect(result.isOk).toBe(false);
     if (result.isOk) return;
     expect(result.failureKind).toBe("retryable");
@@ -243,13 +255,13 @@ describe("dispatchContentAction", () => {
   });
 
   it("classifies apply failures as retryable with the structured 1.3 errors", () => {
-    const result = dispatchContentAction(
+    const result = dispatchContentAction({
       registry,
-      createSampleDocument(),
-      "removeBlock",
-      { name: "removeBlock", blockId: "sec_none" },
-      agentContext,
-    );
+      doc: createSampleDocument(),
+      name: "removeBlock",
+      input: { name: "removeBlock", blockId: "sec_none" },
+      context: agentContext,
+    });
     expect(result.isOk).toBe(false);
     if (result.isOk) return;
     expect(result.failureKind).toBe("retryable");
@@ -271,13 +283,13 @@ describe("dispatchContentAction", () => {
         errors: [{ code: "integrity_check_failed", message: "invariant breach" }],
       }),
     });
-    const result = dispatchContentAction(
-      createActionRegistry([brokenAction]),
-      createSampleDocument(),
-      "alwaysBreaksIntegrity",
-      { name: "removeBlock", blockId: "sec_a1b2" },
-      agentContext,
-    );
+    const result = dispatchContentAction({
+      registry: createActionRegistry([brokenAction]),
+      doc: createSampleDocument(),
+      name: "alwaysBreaksIntegrity",
+      input: { name: "removeBlock", blockId: "sec_a1b2" },
+      context: agentContext,
+    });
     expect(result.isOk).toBe(false);
     if (result.isOk) return;
     expect(result.failureKind).toBe("terminal");
@@ -287,7 +299,12 @@ describe("dispatchContentAction", () => {
 
 describe("dispatchEditorAction", () => {
   it("produces the typed client command and resolves the approval gate", () => {
-    const result = dispatchEditorAction(registry, "showPreview", { mode: "mobile" }, userContext);
+    const result = dispatchEditorAction({
+      registry,
+      name: "showPreview",
+      input: { mode: "mobile" },
+      context: userContext,
+    });
     expect(result.isOk).toBe(true);
     if (!result.isOk) return;
     expect(result.command).toEqual({ type: "showPreview", mode: "mobile" });
@@ -295,39 +312,44 @@ describe("dispatchEditorAction", () => {
   });
 
   it("resolves a needsApproval predicate against input and provenance", () => {
-    const internalSend = dispatchEditorAction(
+    const internalSend = dispatchEditorAction({
       registry,
-      "sendTestEmail",
-      { to: "me@tandem.test" },
-      userContext,
-    );
+      name: "sendTestEmail",
+      input: { to: "me@tandem.test" },
+      context: userContext,
+    });
     expect(internalSend.isOk).toBe(true);
     if (!internalSend.isOk) return;
     expect(internalSend.isApprovalRequired).toBe(false);
 
-    const externalSend = dispatchEditorAction(
+    const externalSend = dispatchEditorAction({
       registry,
-      "sendTestEmail",
-      { to: "someone@example.com" },
-      userContext,
-    );
+      name: "sendTestEmail",
+      input: { to: "someone@example.com" },
+      context: userContext,
+    });
     expect(externalSend.isOk).toBe(true);
     if (!externalSend.isOk) return;
     expect(externalSend.isApprovalRequired).toBe(true);
 
-    const agentSend = dispatchEditorAction(
+    const agentSend = dispatchEditorAction({
       registry,
-      "sendTestEmail",
-      { to: "me@tandem.test" },
-      agentContext,
-    );
+      name: "sendTestEmail",
+      input: { to: "me@tandem.test" },
+      context: agentContext,
+    });
     expect(agentSend.isOk).toBe(true);
     if (!agentSend.isOk) return;
     expect(agentSend.isApprovalRequired).toBe(true);
   });
 
   it("fails retryable on input that misses the full schema", () => {
-    const result = dispatchEditorAction(registry, "showPreview", { mode: "tablet" }, userContext);
+    const result = dispatchEditorAction({
+      registry,
+      name: "showPreview",
+      input: { mode: "tablet" },
+      context: userContext,
+    });
     expect(result.isOk).toBe(false);
     if (result.isOk) return;
     expect(result.failureKind).toBe("retryable");
@@ -335,12 +357,12 @@ describe("dispatchEditorAction", () => {
   });
 
   it("fails terminal with wrong_action_kind when given a content action", () => {
-    const result = dispatchEditorAction(
+    const result = dispatchEditorAction({
       registry,
-      "removeBlock",
-      { name: "removeBlock", blockId: "sec_a1b2" },
-      userContext,
-    );
+      name: "removeBlock",
+      input: { name: "removeBlock", blockId: "sec_a1b2" },
+      context: userContext,
+    });
     expect(result.isOk).toBe(false);
     if (result.isOk) return;
     expect(result.failureKind).toBe("terminal");
@@ -348,7 +370,7 @@ describe("dispatchEditorAction", () => {
   });
 
   it("fails retryable with unknown_action for an unregistered name", () => {
-    const result = dispatchEditorAction(registry, "nope", {}, userContext);
+    const result = dispatchEditorAction({ registry, name: "nope", input: {}, context: userContext });
     expect(result.isOk).toBe(false);
     if (result.isOk) return;
     expect(result.failureKind).toBe("retryable");

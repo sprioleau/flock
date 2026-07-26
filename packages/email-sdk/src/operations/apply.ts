@@ -156,7 +156,7 @@ function mergeProperties(
   return merged;
 }
 
-function insertAt<T>(items: readonly T[], index: number, item: T): T[] {
+function insertAt<T>({ items, index, item }: { items: readonly T[]; index: number; item: T }): T[] {
   return [...items.slice(0, index), item, ...items.slice(index)];
 }
 
@@ -315,7 +315,7 @@ function applyAddBlock(document: EmailDocument, op: AddBlockOperation): PerOpRes
     [op.block.id]: parsed.block,
     [op.parentId]: {
       ...parent,
-      childrenIds: insertAt(parent.childrenIds as BlockId[], op.index, op.block.id),
+      childrenIds: insertAt({ items: parent.childrenIds as BlockId[], index: op.index, item: op.block.id }),
     } as Block,
   };
   return ok(nextDocument, { name: "removeBlock", blockId: op.block.id });
@@ -325,12 +325,17 @@ function applyAddBlock(document: EmailDocument, op: AddBlockOperation): PerOpRes
  * Shared core of addSection and restoreBlocks: insert a closed subtree
  * (root-first flat list) under a parent at an index.
  */
-function applyInsertSubtree(
-  document: EmailDocument,
-  blocks: Block[],
-  parentId: BlockId,
-  index: number,
-): PerOpResult {
+function applyInsertSubtree({
+  document,
+  blocks,
+  parentId,
+  index,
+}: {
+  document: EmailDocument;
+  blocks: Block[];
+  parentId: BlockId;
+  index: number;
+}): PerOpResult {
   const parent = document[parentId];
   if (parent === undefined) {
     return fail({
@@ -397,22 +402,22 @@ function applyInsertSubtree(
   nextDocument[subtreeRoot.id] = parsedRoot.block;
   nextDocument[parentId] = {
     ...parent,
-    childrenIds: insertAt(parent.childrenIds as BlockId[], index, subtreeRoot.id),
+    childrenIds: insertAt({ items: parent.childrenIds as BlockId[], index, item: subtreeRoot.id }),
   } as Block;
   return ok(nextDocument, { name: "removeBlock", blockId: subtreeRoot.id });
 }
 
 function applyAddSection(document: EmailDocument, op: AddSectionOperation): PerOpResult {
-  return applyInsertSubtree(
+  return applyInsertSubtree({
     document,
-    [op.section, ...(op.children ?? [])],
-    ROOT_BLOCK_ID,
-    op.index,
-  );
+    blocks: [op.section, ...(op.children ?? [])],
+    parentId: ROOT_BLOCK_ID,
+    index: op.index,
+  });
 }
 
 function applyRestoreBlocks(document: EmailDocument, op: RestoreBlocksOperation): PerOpResult {
-  return applyInsertSubtree(document, op.blocks, op.parentId, op.index);
+  return applyInsertSubtree({ document, blocks: op.blocks, parentId: op.parentId, index: op.index });
 }
 
 function applyRemoveBlock(document: EmailDocument, op: RemoveBlockOperation): PerOpResult {
@@ -548,13 +553,13 @@ function applyMoveBlock(document: EmailDocument, op: MoveBlockOperation): PerOpR
   if (isSameParent) {
     nextDocument[oldParentId] = {
       ...oldParent,
-      childrenIds: insertAt(detachedOldChildren, op.index, op.blockId),
+      childrenIds: insertAt({ items: detachedOldChildren, index: op.index, item: op.blockId }),
     } as Block;
   } else {
     nextDocument[oldParentId] = { ...oldParent, childrenIds: detachedOldChildren } as Block;
     nextDocument[op.newParentId] = {
       ...newParent,
-      childrenIds: insertAt(newParent.childrenIds as BlockId[], op.index, op.blockId),
+      childrenIds: insertAt({ items: newParent.childrenIds as BlockId[], index: op.index, item: op.blockId }),
     } as Block;
   }
   return ok(nextDocument, {

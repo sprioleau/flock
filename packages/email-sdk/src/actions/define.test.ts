@@ -151,8 +151,8 @@ describe("resolveNeedsApproval", () => {
   it("passes booleans through", () => {
     const gatedAction = defineEmailAction({ ...contentConfig, needsApproval: true });
     const ungatedAction = defineEmailAction(contentConfig);
-    expect(resolveNeedsApproval(gatedAction, {}, toolContext)).toBe(true);
-    expect(resolveNeedsApproval(ungatedAction, {}, toolContext)).toBe(false);
+    expect(resolveNeedsApproval({ action: gatedAction, input: {}, context: toolContext })).toBe(true);
+    expect(resolveNeedsApproval({ action: ungatedAction, input: {}, context: toolContext })).toBe(false);
   });
 
   it("evaluates predicates with the validated input and caller provenance", () => {
@@ -162,13 +162,25 @@ describe("resolveNeedsApproval", () => {
         context.author === "agent" || input.blockId === "sec_a1b2",
     });
     expect(
-      resolveNeedsApproval(action, { name: "removeBlock", blockId: "sec_zzzz" }, toolContext),
+      resolveNeedsApproval({
+        action,
+        input: { name: "removeBlock", blockId: "sec_zzzz" },
+        context: toolContext,
+      }),
     ).toBe(true);
     expect(
-      resolveNeedsApproval(action, { name: "removeBlock", blockId: "sec_zzzz" }, frontendContext),
+      resolveNeedsApproval({
+        action,
+        input: { name: "removeBlock", blockId: "sec_zzzz" },
+        context: frontendContext,
+      }),
     ).toBe(false);
     expect(
-      resolveNeedsApproval(action, { name: "removeBlock", blockId: "sec_a1b2" }, frontendContext),
+      resolveNeedsApproval({
+        action,
+        input: { name: "removeBlock", blockId: "sec_a1b2" },
+        context: frontendContext,
+      }),
     ).toBe(true);
   });
 });

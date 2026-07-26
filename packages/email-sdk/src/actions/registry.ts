@@ -123,6 +123,19 @@ const formatZodIssues = (error: z.ZodError): string =>
     })
     .join("; ");
 
+export interface DispatchContentActionInput {
+  /** The registry to resolve the action from. */
+  registry: EmailActionRegistry;
+  /** The document to apply the action to. Never mutated. */
+  doc: EmailDocument;
+  /** The action name (the tool name the model called). */
+  name: string;
+  /** Raw, unvalidated input — re-validated here against the action's FULL schema. */
+  input: unknown;
+  /** Caller provenance stamped onto the op-log entry. */
+  context: ActionContext;
+}
+
 /**
  * Dispatch one content action: validate the raw input against the action's
  * FULL schema (the model only saw the compact one), run the pure apply, and on
@@ -132,13 +145,13 @@ const formatZodIssues = (error: z.ZodError): string =>
  * Pure — persistence (Convex mutation, Phase 4) and approval gating (the agent
  * loop halts BEFORE dispatch when `needsApproval` resolves true) live outside.
  */
-export function dispatchContentAction(
-  registry: EmailActionRegistry,
-  doc: EmailDocument,
-  name: string,
-  input: unknown,
-  context: ActionContext,
-): DispatchContentActionResult {
+export function dispatchContentAction({
+  registry,
+  doc,
+  name,
+  input,
+  context,
+}: DispatchContentActionInput): DispatchContentActionResult {
   const action = getAction(registry, name);
   if (action === undefined) {
     const knownContentActionNames = registry.actions
@@ -218,17 +231,28 @@ export type DispatchEditorActionResult =
       errors: ActionDispatchError[];
     };
 
+export interface DispatchEditorActionInput {
+  /** The registry to resolve the action from. */
+  registry: EmailActionRegistry;
+  /** The action name (the tool name the model called). */
+  name: string;
+  /** Raw, unvalidated input — re-validated here against the action's FULL schema. */
+  input: unknown;
+  /** Caller context used to resolve the action's `needsApproval` gate. */
+  context: ActionContext;
+}
+
 /**
  * Dispatch one editor action: validate against the FULL schema and produce the
  * typed `EditorCommand` payload for the streamed data-parts channel. No
  * document is involved — editor actions have no doc effect by definition.
  */
-export function dispatchEditorAction(
-  registry: EmailActionRegistry,
-  name: string,
-  input: unknown,
-  context: ActionContext,
-): DispatchEditorActionResult {
+export function dispatchEditorAction({
+  registry,
+  name,
+  input,
+  context,
+}: DispatchEditorActionInput): DispatchEditorActionResult {
   const action = getAction(registry, name);
   if (action === undefined) {
     const knownEditorActionNames = registry.actions
@@ -273,6 +297,6 @@ export function dispatchEditorAction(
   return {
     isOk: true,
     command: action.run(parsedInput.data),
-    isApprovalRequired: resolveNeedsApproval(action, parsedInput.data, context),
+    isApprovalRequired: resolveNeedsApproval({ action, input: parsedInput.data, context }),
   };
 }
