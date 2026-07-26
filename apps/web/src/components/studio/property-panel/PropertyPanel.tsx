@@ -1,7 +1,15 @@
 "use client";
 
 import type { Block } from "@tandem/email-sdk";
-import { ButtonPanel, DividerPanel, ImagePanel, SectionPanel, TextPanel } from "./block-panels";
+import {
+  ButtonPanel,
+  ColumnPanel,
+  DividerPanel,
+  ImagePanel,
+  RowPanel,
+  SectionPanel,
+  TextPanel,
+} from "./block-panels";
 import { DocumentSettingsPanel } from "./DocumentSettingsPanel";
 
 /**
@@ -28,11 +36,8 @@ export function PropertyPanel({ block }: { block: Block | undefined }) {
     case "root":
       return <DocumentSettingsPanel />;
     case "row":
+      return <RowPanel block={block} />;
     case "column":
-      return (
-        <p className="p-4 text-xs text-muted-foreground">
-          No editable properties for {block.type} blocks yet.
-        </p>
-      );
+      return <ColumnPanel block={block} />;
   }
 }

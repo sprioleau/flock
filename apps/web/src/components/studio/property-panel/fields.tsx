@@ -325,3 +325,56 @@ export function AlignField({
     </FieldShell>
   );
 }
+
+// ---------------------------------------------------------------------------
+// Select (small fixed set of labelled options, rendered as a toggle group)
+// ---------------------------------------------------------------------------
+
+export interface SelectFieldOption<T extends string> {
+  value: T;
+  label: string;
+}
+
+export interface SelectFieldProps<T extends string> {
+  label: string;
+  value: T | undefined;
+  options: ReadonlyArray<SelectFieldOption<T>>;
+  /** When true, unpressing the active option commits `undefined` (clears). */
+  isClearable?: boolean;
+  helpText?: string;
+  onCommit: (value: T | undefined) => void;
+}
+
+export function SelectField<T extends string>({
+  label,
+  value,
+  options,
+  isClearable = false,
+  helpText,
+  onCommit,
+}: SelectFieldProps<T>) {
+  return (
+    <FieldShell label={label} helpText={helpText}>
+      <ToggleGroup
+        aria-label={label}
+        variant="outline"
+        spacing={0}
+        value={value === undefined ? [] : [value]}
+        onValueChange={(groupValue: string[]) => {
+          const next = options.find((option) => option.value === groupValue[0]);
+          if (next !== undefined) {
+            onCommit(next.value);
+          } else if (isClearable) {
+            onCommit(undefined);
+          }
+        }}
+      >
+        {options.map((option) => (
+          <ToggleGroupItem key={option.value} value={option.value} size="sm" className="text-xs">
+            {option.label}
+          </ToggleGroupItem>
+        ))}
+      </ToggleGroup>
+    </FieldShell>
+  );
+}

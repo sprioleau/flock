@@ -2,12 +2,14 @@
 
 import type {
   ButtonBlock,
+  ColumnBlock,
   DividerBlock,
   ImageBlock,
+  RowBlock,
   SectionBlock,
   TextBlock,
 } from "@tandem/email-sdk";
-import { AlignField, ColorField, NumberField, TextField } from "./fields";
+import { AlignField, ColorField, NumberField, SelectField, TextField } from "./fields";
 import { ImageSourceField } from "./ImageSourceField";
 import { PaddingFields } from "./PaddingFields";
 import { getBlockPropertyHelp, type DescribableBlockType } from "./schema-help";
@@ -214,6 +216,90 @@ export function SectionPanel({ block }: { block: SectionBlock }) {
         onCommit={(value) => commit({ outerBackgroundColor: value })}
       />
       <PaddingFields blockType="section" properties={properties} onCommitPadding={commit} />
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Row
+// ---------------------------------------------------------------------------
+
+export function RowPanel({ block }: { block: RowBlock }) {
+  const commit = useCommitBlockProperties(block.id);
+  const { properties } = block;
+  const helpFor = help("row");
+
+  return (
+    <div className="space-y-4 p-4">
+      <div className="grid grid-cols-2 gap-2">
+        <NumberField
+          label="Padding top"
+          value={properties.paddingTop}
+          isClearable
+          min={0}
+          placeholder="auto"
+          helpText={helpFor("paddingTop")}
+          onCommit={(value) => commit({ paddingTop: value })}
+        />
+        <NumberField
+          label="Padding bottom"
+          value={properties.paddingBottom}
+          isClearable
+          min={0}
+          placeholder="auto"
+          helpText={helpFor("paddingBottom")}
+          onCommit={(value) => commit({ paddingBottom: value })}
+        />
+      </div>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Column
+// ---------------------------------------------------------------------------
+
+type ColumnVerticalAlign = NonNullable<ColumnBlock["properties"]["verticalAlign"]>;
+
+const VERTICAL_ALIGN_OPTIONS: ReadonlyArray<{ value: ColumnVerticalAlign; label: string }> = [
+  { value: "top", label: "Top" },
+  { value: "middle", label: "Middle" },
+  { value: "bottom", label: "Bottom" },
+];
+
+export function ColumnPanel({ block }: { block: ColumnBlock }) {
+  const commit = useCommitBlockProperties(block.id);
+  const { properties } = block;
+  const helpFor = help("column");
+
+  return (
+    <div className="space-y-4 p-4">
+      <NumberField
+        label="Width (%)"
+        value={properties.widthPercent}
+        isClearable
+        min={1}
+        max={100}
+        placeholder="auto"
+        helpText={helpFor("widthPercent")}
+        onCommit={(value) => commit({ widthPercent: value })}
+      />
+      <SelectField
+        label="Vertical align"
+        value={properties.verticalAlign}
+        options={VERTICAL_ALIGN_OPTIONS}
+        isClearable
+        helpText={helpFor("verticalAlign")}
+        onCommit={(value) => commit({ verticalAlign: value })}
+      />
+      <ColorField
+        label="Background"
+        value={properties.backgroundColor}
+        isClearable
+        helpText={helpFor("backgroundColor")}
+        onCommit={(value) => commit({ backgroundColor: value })}
+      />
+      <PaddingFields blockType="column" properties={properties} onCommitPadding={commit} />
     </div>
   );
 }

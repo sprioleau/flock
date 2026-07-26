@@ -1,8 +1,10 @@
 import {
   buttonBlockSchema,
+  columnBlockSchema,
   dividerBlockSchema,
   globalStylesSchema,
   imageBlockSchema,
+  rowBlockSchema,
   sectionBlockSchema,
   textBlockSchema,
   type GlobalStyles,
@@ -30,6 +32,8 @@ export function getSchemaDescription(schema: z.ZodType): string | undefined {
 
 const blockPropertyShapesByType = {
   section: sectionBlockSchema.shape.properties.shape,
+  row: rowBlockSchema.shape.properties.shape,
+  column: columnBlockSchema.shape.properties.shape,
   text: textBlockSchema.shape.properties.shape,
   button: buttonBlockSchema.shape.properties.shape,
   image: imageBlockSchema.shape.properties.shape,
