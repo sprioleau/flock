@@ -40,7 +40,7 @@ export function EditorCanvas() {
 
   return (
     <div
-      className="flex-1 overflow-y-auto"
+      className="email-canvas flex-1 overflow-y-auto"
       style={{ backgroundColor: rootStyles.emailBackgroundColor }}
       onClick={() => selectBlock(null)}
       data-testid="editor-canvas"

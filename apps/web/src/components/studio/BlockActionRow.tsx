@@ -2,20 +2,22 @@
 
 import type { MouseEvent } from "react";
 import { ArrowDownIcon, ArrowUpIcon, Trash2Icon } from "lucide-react";
-import type { BlockId } from "@tandem/email-sdk";
+import type { BlockId, BlockType } from "@tandem/email-sdk";
 import { Button } from "@/components/ui/button";
 import { useEditorStore } from "@/lib/editor-store";
 
 export interface BlockActionRowProps {
   blockId: BlockId;
+  blockType: BlockType;
 }
 
 /**
- * Floating action row on the selected block: move up / move down / delete.
- * Move = a reorderChildren op on the parent (adjacent swap); delete = a
- * removeBlock op. Both flow through the store's dispatch (§7 invariant).
+ * Floating action bar on the selected block: block-type label plus
+ * move up / move down / delete. Move = a reorderChildren op on the parent
+ * (adjacent swap); delete = a removeBlock op. Both flow through the store's
+ * dispatch (§7 invariant).
  */
-export function BlockActionRow({ blockId }: BlockActionRowProps) {
+export function BlockActionRow({ blockId, blockType }: BlockActionRowProps) {
   const doc = useEditorStore((state) => state.doc);
   const dispatch = useEditorStore((state) => state.dispatch);
 
@@ -50,6 +52,9 @@ export function BlockActionRow({ blockId }: BlockActionRowProps) {
       className="absolute -top-9 right-0 z-30 flex items-center gap-0.5 rounded-md border bg-background p-0.5 shadow-md"
       data-testid={`block-actions-${blockId}`}
     >
+      <span className="pointer-events-none select-none rounded-sm bg-sky-500 px-1.5 py-1 font-mono text-[10px] font-semibold uppercase leading-none tracking-wide text-white">
+        {blockType}
+      </span>
       <Button
         variant="ghost"
         size="icon-sm"

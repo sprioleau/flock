@@ -128,3 +128,23 @@
     @apply font-sans;
   }
 }
+
+/*
+ * Editor-canvas fixes for React Email markup rendered inside the app page.
+ *
+ * 1. Tailwind Preflight resets `margin: 0` on every element, which overrides
+ *    the `align="center"` presentational hint (margin: auto) React Email
+ *    tables rely on for horizontal centering — restore it.
+ * 2. Auto table layout lets fixed-width content (e.g. a 520px image) expand
+ *    a section table past the canvas/viewport width; fixed layout keeps
+ *    tables at their declared width so `max-width: 100%` content clamps.
+ *
+ * Canvas-only: the HTML preview iframe and the emitted email HTML are
+ * untouched (no Tailwind inside them).
+ */
+.email-canvas table[align="center"] {
+  margin-inline: auto;
+}
+.email-canvas table {
+  table-layout: fixed;
+}

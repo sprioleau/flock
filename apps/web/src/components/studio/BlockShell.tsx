@@ -46,14 +46,7 @@ export function BlockShell({ block, children, className }: BlockShellProps) {
         className,
       )}
     >
-      {isSelected && (
-        <>
-          <span className="pointer-events-none absolute -top-5 left-0 z-20 rounded-t-sm bg-sky-500 px-1.5 py-0.5 font-mono text-[10px] font-semibold uppercase leading-none tracking-wide text-white">
-            {block.type}
-          </span>
-          <BlockActionRow blockId={block.id} />
-        </>
-      )}
+      {isSelected && <BlockActionRow blockId={block.id} blockType={block.type} />}
       {children}
     </div>
   );
