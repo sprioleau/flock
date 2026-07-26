@@ -1,10 +1,12 @@
 "use client";
 
 import type { MouseEvent, ReactNode } from "react";
-import type { Block } from "@tandem/email-sdk";
+import { useDraggable } from "@dnd-kit/core";
+import { LEAF_BLOCK_TYPES, type Block, type BlockType } from "@tandem/email-sdk";
 import { useEditorStore } from "@/lib/editor-store";
 import { cn } from "@/lib/utils";
 import { BlockActionRow } from "./BlockActionRow";
+import { useCanvasDragStore } from "./dnd/drag-drop-store";
 
 export interface BlockShellProps {
   block: Block;
@@ -14,18 +16,43 @@ export interface BlockShellProps {
 }
 
 /**
+ * Block types that can be picked up on the canvas: leaves move within and
+ * across sections/columns. Containers (sections, rows, columns) are never
+ * drag sources — sections are too large on screen to drag comfortably, so
+ * section reordering stays on the move up/down buttons — but sections and
+ * columns remain drop targets for leaves.
+ */
+const DRAGGABLE_BLOCK_TYPES: readonly BlockType[] = LEAF_BLOCK_TYPES;
+
+/**
  * The interactive wrapper every canvas block renders inside: hover outline,
  * click-to-select, selection ring + block-type label, and the floating
  * move-up / move-down / delete action row for the selected block.
  *
- * Wave-2 seam: inline text editing mounts inside the shell of text blocks;
- * drag-and-drop attaches its handles here.
+ * Drag-and-drop attaches here: the shell registers as a @dnd-kit draggable
+ * (activated from the grab handle in the action row), fades to a ghost while
+ * it is being dragged, and highlights when it is the container a valid drop
+ * would land in. Dragging is disabled while the block's inline text editor
+ * is open.
  */
 export function BlockShell({ block, children, className }: BlockShellProps) {
   const isSelected = useEditorStore((state) => state.selectedBlockId === block.id);
   const isEditingText = useEditorStore((state) => state.editingBlockId === block.id);
   const selectBlock = useEditorStore((state) => state.selectBlock);
   const startTextEditing = useEditorStore((state) => state.startTextEditing);
+
+  const isDraggableType = DRAGGABLE_BLOCK_TYPES.includes(block.type);
+  const { attributes, listeners, setNodeRef, setActivatorNodeRef, isDragging } = useDraggable({
+    id: block.id,
+    disabled: !isDraggableType || isEditingText,
+  });
+  const isValidDropContainer = useCanvasDragStore(
+    (state) =>
+      state.activeBlockId !== null &&
+      state.dropTarget !== null &&
+      !state.dropTarget.isNoop &&
+      state.dropTarget.parentId === block.id,
+  );
 
   const isTextBlock = block.type === "text";
 
@@ -58,10 +85,12 @@ export function BlockShell({ block, children, className }: BlockShellProps) {
 
   return (
     <div
+      ref={setNodeRef}
       data-block-id={block.id}
       data-block-type={block.type}
       data-selected={isSelected || undefined}
       data-editing={isEditingText || undefined}
+      data-dragging={isDragging || undefined}
       onClick={handleClick}
       onDoubleClick={handleDoubleClick}
       className={cn(
@@ -70,10 +99,22 @@ export function BlockShell({ block, children, className }: BlockShellProps) {
         isSelected
           ? "z-10 ring-2 ring-sky-500"
           : "hover:ring-1 hover:ring-sky-300",
+        // The source block ghosts while its lifted copy rides the overlay.
+        isDragging && "opacity-40",
+        // Subtle highlight on the container a valid drop would land in.
+        isValidDropContainer && "bg-sky-400/10 ring-2 ring-sky-300",
         className,
       )}
     >
-      {isSelected && <BlockActionRow blockId={block.id} blockType={block.type} />}
+      {isSelected && (
+        <BlockActionRow
+          blockId={block.id}
+          blockType={block.type}
+          dragHandleRef={isDraggableType && !isEditingText ? setActivatorNodeRef : null}
+          dragListeners={listeners}
+          dragAttributes={attributes}
+        />
+      )}
       {children}
     </div>
   );
