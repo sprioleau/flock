@@ -8,12 +8,12 @@ import {
   resolveBlockStyles,
   RowBlockView,
   SectionBlockView,
-  TextBlockView,
   type EmailTreeNode,
   type GlobalStyles,
 } from "@tandem/email-sdk";
 import { AddBlockMenu } from "./AddBlockMenu";
 import { BlockShell } from "./BlockShell";
+import { TextBlockCanvasSlot } from "./text-editor/TextBlockCanvasSlot";
 
 export interface CanvasNodeProps {
   node: EmailTreeNode;
@@ -63,7 +63,10 @@ export function CanvasNode({ node, globals }: CanvasNodeProps) {
     case "text":
       return (
         <BlockShell block={block}>
-          <TextBlockView block={block} resolvedStyles={resolveBlockStyles(globals, block)} />
+          <TextBlockCanvasSlot
+            block={block}
+            resolvedStyles={resolveBlockStyles(globals, block)}
+          />
         </BlockShell>
       );
     case "button":

@@ -1,11 +1,13 @@
 "use client";
 
 import { useEditorStore } from "@/lib/editor-store";
+import { PropertyPanel } from "./property-panel/PropertyPanel";
 
 /**
- * Wave-2 seam: the right sidebar where the property panel mounts. Selection
- * state already lives in the store (selectedBlockId); wave 2 replaces this
- * component's body with the field editor for the selected block.
+ * The right sidebar hosting the property panel. With a selection it edits the
+ * selected block's properties; with no selection it shows document settings
+ * (the root block's global styles). All edits dispatch SDK operations through
+ * the store — the panel never touches the document directly.
  */
 export function PropertyPanelSlot() {
   const selectedBlockId = useEditorStore((state) => state.selectedBlockId);
@@ -13,9 +15,7 @@ export function PropertyPanelSlot() {
     state.selectedBlockId !== null ? state.doc[state.selectedBlockId] : undefined,
   );
 
-  if (selectedBlockId === null || selectedBlock === undefined) {
-    return null;
-  }
+  const hasSelection = selectedBlock !== undefined;
 
   return (
     <aside
@@ -23,13 +23,17 @@ export function PropertyPanelSlot() {
       className="flex w-[280px] shrink-0 flex-col border-l bg-background"
     >
       <div className="flex h-12 shrink-0 items-center border-b px-4">
-        <h2 className="text-sm font-semibold capitalize">{selectedBlock.type}</h2>
-        <span className="ml-2 font-mono text-xs text-muted-foreground">{selectedBlockId}</span>
+        <h2 className="text-sm font-semibold capitalize">
+          {hasSelection ? selectedBlock.type : "Document"}
+        </h2>
+        {hasSelection ? (
+          <span className="ml-2 font-mono text-xs text-muted-foreground">{selectedBlockId}</span>
+        ) : (
+          <span className="ml-2 text-xs text-muted-foreground">Global styles</span>
+        )}
       </div>
-      <div className="p-4">
-        <p className="text-xs text-muted-foreground">
-          Property editing arrives in wave 2.
-        </p>
+      <div className="min-h-0 flex-1 overflow-y-auto">
+        <PropertyPanel key={selectedBlockId ?? "document"} block={selectedBlock} />
       </div>
     </aside>
   );

@@ -1,0 +1,51 @@
+/*
+ * Theme bridge for the Resend editor's bubble-menu UI inside the studio
+ * canvas.
+ *
+ * The package's default theme (@react-email/editor/themes/default.css,
+ * imported by InlineTextEditor.tsx) paints its menus with --re-* variables
+ * that it defines on :root AND flips via `prefers-color-scheme: dark` — so
+ * with a dark OS preference its menus go dark while our app renders the
+ * shadcn light theme (unreadable light-gray-on-white items). The fix is at
+ * the variable level: remap every --re-* variable to our theme tokens inside
+ * the inline-editor scope. The bubble menu, node-selector popover, and link
+ * form are all descendants of [data-inline-text-editor] (the Tiptap bubble
+ * menu appends to the editor's parent element; the Radix popovers are
+ * non-portaled), so this scope covers all of them, and light/dark stay
+ * coherent with OUR theme (.dark class) instead of the OS preference.
+ */
+
+[data-inline-text-editor] {
+  --re-bg: var(--popover);
+  --re-bg-active: var(--accent);
+  --re-border: var(--border);
+  --re-text: var(--popover-foreground);
+  --re-text-muted: var(--muted-foreground);
+  --re-hover: var(--accent);
+  --re-active: var(--accent);
+  --re-pressed: var(--accent);
+  --re-separator: var(--border);
+  --re-radius: calc(var(--radius) - 2px);
+  --re-radius-sm: calc(var(--radius) - 4px);
+  --re-shadow:
+    0 10px 15px -3px rgb(0 0 0 / 0.1),
+    0 4px 6px -4px rgb(0 0 0 / 0.1);
+  --re-danger: var(--destructive);
+  --re-danger-hover: color-mix(in oklab, var(--destructive) 10%, transparent);
+  --re-tooltip-bg: var(--foreground);
+  --re-tooltip-text: var(--background);
+}
+
+/* Keep the floating UI above block chrome (selection rings, action rows). */
+[data-inline-text-editor] [data-re-bubble-menu],
+[data-inline-text-editor] [data-radix-popper-content-wrapper] {
+  z-index: 50;
+}
+
+/* The editing surface itself: neutral chrome, content styles are injected
+ * per-block by InlineTextEditor for visual congruence with TextBlockView. */
+[data-inline-text-editor] .ProseMirror {
+  outline: none;
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
+}

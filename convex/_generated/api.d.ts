@@ -8,6 +8,7 @@
  * @module
  */
 
+import type * as files from "../files.js";
 import type * as healthcheck from "../healthcheck.js";
 import type * as prosemirror from "../prosemirror.js";
 
@@ -18,6 +19,7 @@ import type {
 } from "convex/server";
 
 declare const fullApi: ApiFromModules<{
+  files: typeof files;
   healthcheck: typeof healthcheck;
   prosemirror: typeof prosemirror;
 }>;

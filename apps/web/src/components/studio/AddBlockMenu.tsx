@@ -42,7 +42,7 @@ export function AddBlockMenu({ parentId }: AddBlockMenuProps) {
     const id = generateUniqueBlockId({ type, doc });
     dispatch({
       name: "addBlock",
-      block: createDefaultLeafBlock({ type, id, parentId }),
+      block: createDefaultLeafBlock({ type, id, parentId, doc }),
       parentId,
       index: parent.childrenIds.length,
     });
