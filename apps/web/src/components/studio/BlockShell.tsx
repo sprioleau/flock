@@ -6,6 +6,7 @@ import { LEAF_BLOCK_TYPES, type Block, type BlockType } from "@tandem/email-sdk"
 import { useEditorStore } from "@/lib/editor-store";
 import { cn } from "@/lib/utils";
 import { BlockActionRow } from "./BlockActionRow";
+import { BlockBreadcrumb } from "./BlockBreadcrumb";
 import { useCanvasDragStore } from "./dnd/drag-drop-store";
 
 export interface BlockShellProps {
@@ -107,13 +108,19 @@ export function BlockShell({ block, children, className }: BlockShellProps) {
       )}
     >
       {isSelected && (
-        <BlockActionRow
-          blockId={block.id}
-          blockType={block.type}
-          dragHandleRef={isDraggableType && !isEditingText ? setActivatorNodeRef : null}
-          dragListeners={listeners}
-          dragAttributes={attributes}
-        />
+        // Selection chrome in two non-colliding zones: the ancestor chip
+        // stack outside the block's left edge (grows downward from its top),
+        // the action row floating above the block's top-right.
+        <>
+          <BlockBreadcrumb blockId={block.id} />
+          <BlockActionRow
+            blockId={block.id}
+            blockType={block.type}
+            dragHandleRef={isDraggableType && !isEditingText ? setActivatorNodeRef : null}
+            dragListeners={listeners}
+            dragAttributes={attributes}
+          />
+        </>
       )}
       {children}
     </div>
