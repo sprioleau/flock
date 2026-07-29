@@ -8,8 +8,11 @@
  * @module
  */
 
+import type * as documents from "../documents.js";
 import type * as files from "../files.js";
 import type * as healthcheck from "../healthcheck.js";
+import type * as history from "../history.js";
+import type * as model_emailDocuments from "../model/emailDocuments.js";
 import type * as prosemirror from "../prosemirror.js";
 
 import type {
@@ -19,8 +22,11 @@ import type {
 } from "convex/server";
 
 declare const fullApi: ApiFromModules<{
+  documents: typeof documents;
   files: typeof files;
   healthcheck: typeof healthcheck;
+  history: typeof history;
+  "model/emailDocuments": typeof model_emailDocuments;
   prosemirror: typeof prosemirror;
 }>;
 
