@@ -1,3 +1,6 @@
+import { ProsemirrorSync } from "@convex-dev/prosemirror-sync";
+import type { TextDoc } from "@tandem/email-sdk";
+import { buildEditorSchema, Transform } from "../../apps/web/src/lib/editorSchema";
 import { components } from "../_generated/api";
 import type { Doc, Id } from "../_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "../_generated/server";
@@ -98,4 +101,65 @@ export async function deleteBlockSyncDoc(ctx: MutationCtx, key: SyncDocKey): Pro
   await ctx.runMutation(components.prosemirrorSync.lib.deleteDocument, {
     id: buildSyncDocId(key),
   });
+}
+
+const prosemirrorSync = new ProsemirrorSync(components.prosemirrorSync);
+
+/**
+ * Synthetic clientIds for non-human step submitters, so the UI (and Phase
+ * 6.2 presence) can attribute/animate them distinctly from keystrokes.
+ * Owner directive from Spike B: the AI has a dedicated clientId from day one.
+ */
+export const AI_AGENT_CLIENT_ID = "tandem-agent";
+export const HISTORY_CLIENT_ID = "tandem-history";
+
+/**
+ * Force a block's sync doc to exactly match an op-authoritative TextDoc —
+ * the write-back half of the "session op + mirror" design: whenever the op
+ * log rewrites a text block's properties.text (undo, redo, revertBatch,
+ * rollbackToVersion), the live ProseMirror doc must follow, or reopening the
+ * editor would resurface the pre-rewrite content from the sync doc.
+ *
+ * Whole-doc replacement is CORRECT here (unlike AI edits, which must merge):
+ * a history rewrite is authoritative, so concurrent in-flight keystrokes on
+ * the old content lose by design. The transform callback is idempotent and
+ * recomputes from the live doc on every rebase retry (Spike B semantics).
+ * No-ops when the sync doc does not exist (properties.text is then the only
+ * truth, and ensureBlockDoc seeds from it on the next edit) or when the doc
+ * already matches.
+ */
+export async function replaceSyncDocContent({
+  ctx,
+  key,
+  text,
+  clientId,
+}: {
+  ctx: MutationCtx;
+  key: SyncDocKey;
+  text: TextDoc;
+  clientId: string;
+}): Promise<void> {
+  const id = buildSyncDocId(key);
+  const existingVersion = await ctx.runQuery(components.prosemirrorSync.lib.latestVersion, {
+    id,
+  });
+  if (existingVersion === null) {
+    return;
+  }
+  const schema = buildEditorSchema();
+  const targetDoc = schema.nodeFromJSON(text);
+  await prosemirrorSync.transform(
+    ctx,
+    id,
+    schema,
+    (doc) => {
+      if (doc.eq(targetDoc)) {
+        return null;
+      }
+      const tr = new Transform(doc);
+      tr.replaceWith(0, doc.content.size, targetDoc.content);
+      return tr;
+    },
+    { clientId },
+  );
 }
