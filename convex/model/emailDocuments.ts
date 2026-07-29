@@ -10,7 +10,7 @@ import type { ActionCaller } from "@tandem/email-sdk";
 import { v } from "convex/values";
 import type { Doc, Id } from "../_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "../_generated/server";
-import { deleteBlockSyncDoc } from "./textBlockSync";
+import { deleteBlockSyncDoc, HISTORY_CLIENT_ID, replaceSyncDocContent } from "./textBlockSync";
 
 /**
  * Shared (non-registered) helpers for the Phase 4.1 document mutations and
@@ -165,24 +165,56 @@ export interface CommitResult {
  * blocks, so a block changed iff `newDoc[blockId] !== state.doc[blockId]`
  * (reference inequality). Blocks absent from `newDoc` are deleted; blocks
  * absent from the old doc are inserted.
+ *
+ * `isHistoryRewrite` (Phase 5.4 boundary rule) — set ONLY by the history
+ * mutations (undo / redo / revertBatch / rollbackToVersion in history.ts):
+ * when a history rewrite changes a text block's properties.text, the block's
+ * live ProseMirror sync doc is forced to match via replaceSyncDocContent
+ * (clientId HISTORY_CLIENT_ID), otherwise reopening the editor would
+ * resurface the pre-rewrite content from the sync doc. Normal FORWARD op
+ * application (a user session commit, an agent action) must NOT write back:
+ * e.g. user A's session commit for a block user B is still typing in would
+ * clobber B's newer keystrokes. History rewrites are authoritative by design
+ * and MAY clobber in-flight typing.
+ *
+ * Concurrent-session duplicate ops (Wave 1 finding, ACCEPTED behavior): two
+ * users editing the same block each commit their own session `updateText` on
+ * close, producing near-duplicate history entries with identical converged
+ * content. A dedupe here (skip an updateText whose text equals the block
+ * row's current properties.text) was considered and REJECTED as unsafe:
+ * (a) the snapshot mirror lags ~1s, so properties.text is routinely stale
+ * relative to the sync doc at commit time — the comparison races; (b) each
+ * entry consumes a version and the client overlay acks pendingOps by
+ * `appliedVersions`/headVersion coverage, so silently skipping an op would
+ * desync the ack contract; (c) the second author's undo would then target an
+ * older, unrelated op. Two identical-content entries are harmless: undoing
+ * either applies an inverse that restores the same converged text.
  */
 export async function commitVersions({
   ctx,
   state,
   newDoc,
-  entries,
+  entries: rawEntries,
   context,
+  isHistoryRewrite = false,
 }: {
   ctx: MutationCtx;
   state: DocumentState;
   newDoc: EmailDocument;
   entries: CommitEntry[];
   context: ApplyContext;
+  /** True only for history rewrites (undo/redo/revert/rollback); forces
+   * changed text blocks' sync docs to match the rewritten properties.text. */
+  isHistoryRewrite?: boolean;
 }): Promise<CommitResult> {
   const { document } = state;
   const now = Date.now();
   const oldHeadVersion = document.headVersion;
-  const newHeadVersion = oldHeadVersion + entries.length;
+  const newHeadVersion = oldHeadVersion + rawEntries.length;
+
+  // 0. Anchor updateText inverses to the OP LOG before appending (see
+  // withOpLogTextInverses — the mirror otherwise degenerates them).
+  const entries = await withOpLogTextInverses({ ctx, document, entries: rawEntries });
 
   // 1. Append the operation rows.
   const appliedVersions: number[] = [];
@@ -232,6 +264,26 @@ export async function commitVersions({
         properties: newBlock.properties as Record<string, unknown>,
       });
     }
+    // History write-back (see the doc comment): force the sync doc to the
+    // rewritten text. Runs for inserted text blocks too — normally a no-op
+    // (deletion already removed the sync doc; ensureBlockDoc re-seeds on the
+    // next edit) but it heals any sync doc a missed cleanup left behind.
+    // Structural sharing makes the reference gate exact: unchanged text keeps
+    // its identity, and replaceSyncDocContent itself no-ops on absent/equal.
+    if (
+      isHistoryRewrite &&
+      newBlock.type === "text" &&
+      (oldBlock === undefined ||
+        oldBlock.type !== "text" ||
+        oldBlock.properties.text !== newBlock.properties.text)
+    ) {
+      await replaceSyncDocContent({
+        ctx,
+        key: { documentId: document._id, blockId },
+        text: newBlock.properties.text,
+        clientId: HISTORY_CLIENT_ID,
+      });
+    }
   }
   for (const [blockId, row] of state.blockRowsByBlockId) {
     if (!newBlockIdSet.has(blockId)) {
@@ -262,6 +314,81 @@ export async function commitVersions({
   }
 
   return { headVersion: newHeadVersion, appliedVersions };
+}
+
+/**
+ * Phase 5.4 finding (session-op inverse degeneracy): the SDK computes an
+ * updateText inverse from the document it applies to — which here is
+ * assembled from BLOCK ROWS, whose properties.text the snapshot mirror
+ * (prosemirror.ts onSnapshot) advances ~1s behind live typing WITHOUT op
+ * rows. So by the time a session's `updateText` op commits, properties.text
+ * usually already equals (or nearly equals) the op's own text, and the SDK
+ * inverse degenerates to "restore what the mirror already wrote" — undoing a
+ * text session became a visible no-op, and rollbackToVersion's "result
+ * equals getDocumentAtVersion(version)" guarantee silently broke for text.
+ *
+ * Fix, applied to EVERY commit at the single append point: replay the
+ * entries over the OP-LOG document (reconstructed at the old head) and
+ * re-anchor each updateText entry's inverse to the op-log text the entry is
+ * really superseding. Ops depend on structure, never on text values, so the
+ * replay cannot diverge from the block-row apply that already succeeded
+ * (guarded anyway). Cost: one bounded reconstruction plus one re-apply per
+ * entry, only when a commit contains an updateText.
+ *
+ * Known edge (accepted): version snapshots are written from block-row state,
+ * so a snapshot that lands mid-session bakes that moment's mirror text into
+ * the reconstruction anchor for blocks with no later updateText op. The
+ * correction and getDocumentAtVersion share the anchor, so history stays
+ * self-consistent.
+ */
+async function withOpLogTextInverses({
+  ctx,
+  document,
+  entries,
+}: {
+  ctx: MutationCtx;
+  document: Doc<"documents">;
+  entries: CommitEntry[];
+}): Promise<CommitEntry[]> {
+  const hasTextEntry = entries.some((entry) => entry.op.name === "updateText");
+  if (!hasTextEntry) {
+    return entries;
+  }
+  let opLogDoc = await reconstructDocumentAtVersion({
+    ctx,
+    document,
+    version: document.headVersion,
+  });
+  if (opLogDoc === null) {
+    // Unreachable (headVersion is always in range); keep the SDK inverses.
+    return entries;
+  }
+  const corrected: CommitEntry[] = [];
+  for (const entry of entries) {
+    let inverse = entry.inverse;
+    if (entry.op.name === "updateText" && inverse.name === "updateText") {
+      const opLogBlock = opLogDoc[entry.op.blockId];
+      if (opLogBlock !== undefined && opLogBlock.type === "text") {
+        inverse = { ...inverse, text: opLogBlock.properties.text };
+      }
+      // Block absent from the op-log doc = born earlier in this same batch;
+      // the SDK inverse came from in-batch state and is already correct.
+    }
+    corrected.push(inverse === entry.inverse ? entry : { ...entry, inverse });
+    const replay = applyOperation(opLogDoc, entry.op);
+    if (!replay.isOk) {
+      // Should not happen (the op already applied to the block-row doc, and
+      // applicability never depends on text values). Fall back to the SDK
+      // inverses for the remaining entries rather than fail the commit.
+      console.warn(
+        `withOpLogTextInverses: op-log replay of ${entry.op.name} failed; keeping SDK inverses for the remainder.`,
+      );
+      corrected.push(...entries.slice(corrected.length));
+      break;
+    }
+    opLogDoc = replay.doc;
+  }
+  return corrected;
 }
 
 // ---------------------------------------------------------------------------
