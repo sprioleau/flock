@@ -71,7 +71,8 @@ export function BlockActionRow({
       className="absolute -top-9 right-0 z-30 flex items-center gap-0.5 rounded-md border bg-background p-0.5 shadow-md"
       data-testid={`block-actions-${blockId}`}
     >
-      <span className="pointer-events-none select-none rounded-sm bg-sky-500 px-1.5 py-1 font-mono text-[10px] font-semibold uppercase leading-none tracking-wide text-white">
+      {/* ml-1 matches the visual whitespace the ghost icon buttons give the right edge. */}
+      <span className="pointer-events-none ml-1 select-none rounded-sm bg-sky-500 px-1.5 py-1 font-mono text-[10px] font-semibold uppercase leading-none tracking-wide text-white">
         {blockType}
       </span>
       {dragHandleRef !== null && (

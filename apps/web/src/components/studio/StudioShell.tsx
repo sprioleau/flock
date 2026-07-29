@@ -11,6 +11,7 @@ import { useEditorStore } from "@/lib/editor-store";
 import { getOrCreateSessionId } from "@/lib/session";
 import { ChatPanel } from "./chat/ChatPanel";
 import { EditorCanvas } from "./EditorCanvas";
+import { HistoryPanel } from "./history/HistoryPanel";
 import { HtmlPreviewDialog } from "./HtmlPreviewDialog";
 import { PropertyPanelSlot } from "./PropertyPanelSlot";
 import { StudioToolbar } from "./StudioToolbar";
@@ -146,6 +147,7 @@ export function StudioShell() {
       <ChatPanel />
       <main className="relative flex min-w-0 flex-1 flex-col">
         <StudioToolbar>
+          <HistoryPanel />
           <HtmlPreviewDialog />
         </StudioToolbar>
         <EditorCanvas />

@@ -144,6 +144,9 @@ const HISTORY_FAILURE_MESSAGES: Record<string, string> = {
   document_not_found: "This document no longer exists.",
   batch_not_found: "Those changes couldn't be found.",
   nothing_to_revert: "Those changes were already reverted.",
+  invalid_version: "That version doesn't exist.",
+  nothing_to_restore: "The document is already at this version.",
+  too_many_operations: "Too many changes since that version to restore in one step.",
 };
 
 function toHistoryFailureMessage(reason: string): string {
@@ -152,6 +155,9 @@ function toHistoryFailureMessage(reason: string): string {
 
 /** Result surfaced to the AI-batch revert affordance. */
 export type RevertBatchResult = { isOk: true } | { isOk: false; message: string };
+
+/** Result surfaced to the history panel's restore affordance. */
+export type RestoreVersionResult = { isOk: true } | { isOk: false; message: string };
 
 interface EditorState {
   /** The rendered email document: server head + the pending local overlay. */
@@ -215,6 +221,8 @@ interface EditorState {
   redo: () => void;
   /** Revert one AI turn's batch (history.revertBatch). */
   revertAgentBatch: (batchId: string) => Promise<RevertBatchResult>;
+  /** Restore the document to a historical version (history.rollbackToVersion). */
+  restoreVersion: (version: number) => Promise<RestoreVersionResult>;
 
   showNotice: (message: string) => void;
   dismissNotice: () => void;
@@ -537,6 +545,27 @@ export const useEditorStore = create<EditorState>()((set, get) => {
         return { isOk: true as const };
       } catch {
         return { isOk: false as const, message: "Revert failed (connection error)." };
+      }
+    },
+
+    restoreVersion: async (version) => {
+      const { documentId, authorId } = get();
+      if (documentId === null || authorId === null || convexClient === null) {
+        return { isOk: false as const, message: "Not connected to the document." };
+      }
+      flushHeldOp();
+      try {
+        const result = await convexClient.mutation(api.history.rollbackToVersion, {
+          documentId,
+          version,
+          authorId,
+        });
+        if (!result.isOk) {
+          return { isOk: false as const, message: toHistoryFailureMessage(result.reason) };
+        }
+        return { isOk: true as const };
+      } catch {
+        return { isOk: false as const, message: "Restore failed (connection error)." };
       }
     },
 

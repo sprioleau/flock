@@ -9,6 +9,7 @@ import { mutation, query, type QueryCtx } from "./_generated/server";
 import {
   commitVersions,
   loadDocumentState,
+  MAX_OPERATIONS_PER_CALL,
   operationErrorValidator,
   toTransportErrors,
   type CommitEntry,
@@ -329,6 +330,130 @@ export const revertBatch = mutation({
     return {
       isOk: true as const,
       revertedVersions: targets.map((row) => row.version),
+      appliedVersions: commit.appliedVersions,
+      headVersion: commit.headVersion,
+    };
+  },
+});
+
+// ---------------------------------------------------------------------------
+// rollbackToVersion — restore the document to a historical version
+// ---------------------------------------------------------------------------
+
+const rollbackFailureValidator = v.object({
+  isOk: v.literal(false),
+  reason: v.union(
+    v.literal("document_not_found"),
+    v.literal("invalid_version"),
+    v.literal("nothing_to_restore"),
+    v.literal("too_many_operations"),
+    v.literal("conflict"),
+  ),
+  errors: v.optional(v.array(operationErrorValidator)),
+});
+
+/**
+ * Restore the document to the exact state it had at `version`, WITHOUT
+ * rewriting history: the stored inverses of every operation row newer than
+ * `version` are applied newest-first (LIFO) as NEW op rows — same style as
+ * revertBatch. Because each inverse was generated against the exact document
+ * state its op transformed, a full LIFO unwind is deterministic: the result
+ * equals `getDocumentAtVersion(version)` and, unlike a partial unwind, it is
+ * conflict-free by construction. All-or-nothing.
+ *
+ * ALL rows in the range are unwound — including undo/redo bookkeeping entries
+ * and edits already marked undone (their reversing entry is in the range too,
+ * so the pair cancels). Undo-semantics bookkeeping: every unwound row not
+ * already `isUndone` is marked undone by its rollback entry, so per-author
+ * undo/redo targeting stays consistent afterwards.
+ *
+ * The rollback entries share batchId `rollback:<version>`: the restore shows
+ * up in history as one attributable group and is itself reversible — restore
+ * the pre-rollback head version (or redo) to step back.
+ */
+export const rollbackToVersion = mutation({
+  args: {
+    documentId: v.id("documents"),
+    /** The historical version to restore (0 = the document as created). */
+    version: v.number(),
+    /** The requester; the rollback entries are authored by them. */
+    authorId: v.string(),
+  },
+  returns: v.union(
+    v.object({
+      isOk: v.literal(true),
+      /** The version whose state the document was restored to. */
+      restoredVersion: v.number(),
+      /** Versions of the new rollback entries, in application order. */
+      appliedVersions: v.array(v.number()),
+      headVersion: v.number(),
+    }),
+    rollbackFailureValidator,
+  ),
+  handler: async (ctx, args) => {
+    const state = await loadDocumentState(ctx, args.documentId);
+    if (state === null) {
+      return { isOk: false as const, reason: "document_not_found" as const };
+    }
+    const { headVersion } = state.document;
+    if (!Number.isInteger(args.version) || args.version < 0 || args.version > headVersion) {
+      return { isOk: false as const, reason: "invalid_version" as const };
+    }
+    if (args.version === headVersion) {
+      return { isOk: false as const, reason: "nothing_to_restore" as const };
+    }
+    // Every op row newer than the target version, newest first (LIFO unwind
+    // order). Versions are dense, so this is exactly head - version rows.
+    const targets = await ctx.db
+      .query("operations")
+      .withIndex("by_documentId_and_version", (q) =>
+        q.eq("documentId", args.documentId).gt("version", args.version),
+      )
+      .order("desc")
+      .take(MAX_OPERATIONS_PER_CALL + 1);
+    if (targets.length > MAX_OPERATIONS_PER_CALL) {
+      return { isOk: false as const, reason: "too_many_operations" as const };
+    }
+    if (targets.length === 0) {
+      return { isOk: false as const, reason: "nothing_to_restore" as const };
+    }
+    // Unreachable in practice (see doc comment) but the SDK still arbitrates;
+    // on any failure nothing is written.
+    const inverseOps = targets.map((row) => row.inverse as Operation);
+    const result = applyOperationsToDocument(state.doc, inverseOps);
+    if (!result.isOk) {
+      return {
+        isOk: false as const,
+        reason: "conflict" as const,
+        errors: toTransportErrors(result.errors),
+      };
+    }
+    const rollbackBatchId = `rollback:${args.version}`;
+    const entries: CommitEntry[] = targets.map((row, targetIndex) => ({
+      op: row.inverse as Operation,
+      inverse: result.inverses[targets.length - 1 - targetIndex]!,
+      kind: "undo" as const,
+      undoesVersion: row.version,
+      batchId: rollbackBatchId,
+    }));
+    const commit = await commitVersions({
+      ctx,
+      state,
+      newDoc: result.doc,
+      entries,
+      context: { authorId: args.authorId, author: "user", caller: "frontend" },
+    });
+    for (const [targetIndex, row] of targets.entries()) {
+      if (row.isUndone !== true) {
+        await ctx.db.patch(row._id, {
+          isUndone: true,
+          undoneByVersion: commit.appliedVersions[targetIndex]!,
+        });
+      }
+    }
+    return {
+      isOk: true as const,
+      restoredVersion: args.version,
       appliedVersions: commit.appliedVersions,
       headVersion: commit.headVersion,
     };
