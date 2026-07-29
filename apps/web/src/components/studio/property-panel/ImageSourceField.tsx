@@ -8,15 +8,23 @@ import type { Id } from "@convex/_generated/dataModel";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { useEndCoalescing } from "./usePanelDispatch";
+import { useLiveDraft } from "./useLiveDraft";
 
 /**
- * The image block's `src` control: a readonly URL display plus an Upload
+ * The image block's `src` control: an editable URL field plus an Upload
  * button backed by Convex file storage (docs/uploading-storing-files-convex.md):
  *
  *   generateUploadUrl (mutation) → POST file bytes → { storageId }
  *   → getFileUrl (query) → plain https URL → onCommitSrc(url)
  *
- * Blocks store the plain storage URL string — no Convex coupling in the SDK.
+ * Blocks store the plain URL string — no Convex coupling in the SDK.
+ *
+ * URL edits follow the panel's live-commit pattern (useLiveDraft) but skip
+ * drafts that aren't absolute http(s) URLs — the SDK schema documents that
+ * email clients can't load relative or data: URLs, so partial/invalid text
+ * never reaches the store. Blur resyncs an invalid draft to the last
+ * committed value.
  */
 
 export interface ImageSourceFieldProps {
@@ -25,12 +33,35 @@ export interface ImageSourceFieldProps {
   onCommitSrc: (src: string) => void;
 }
 
+function isAbsoluteHttpUrl(value: string): boolean {
+  let parsed: URL;
+  try {
+    parsed = new URL(value);
+  } catch {
+    return false;
+  }
+  return parsed.protocol === "https:" || parsed.protocol === "http:";
+}
+
 export function ImageSourceField({ src, helpText, onCommitSrc }: ImageSourceFieldProps) {
   const convex = useConvex();
   const generateUploadUrl = useMutation(api.files.generateUploadUrl);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [isUploading, setIsUploading] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
+
+  const endCoalescing = useEndCoalescing();
+  const { draft, setDraft, handleFocus, handleBlur } = useLiveDraft<string>({
+    value: src,
+    onCommit: (next) => {
+      const trimmed = next.trim();
+      if (isAbsoluteHttpUrl(trimmed)) {
+        onCommitSrc(trimmed);
+      }
+    },
+    onGestureEnd: endCoalescing,
+  });
+  const isDraftInvalid = draft.trim() !== "" && !isAbsoluteHttpUrl(draft.trim());
 
   async function uploadFile(file: File) {
     setIsUploading(true);
@@ -60,10 +91,25 @@ export function ImageSourceField({ src, helpText, onCommitSrc }: ImageSourceFiel
 
   return (
     <div className="space-y-1.5" data-slot="panel-field">
-      <Label title={helpText} className="text-xs text-muted-foreground">
+      <Label htmlFor="image-source-url-input" title={helpText} className="text-xs text-muted-foreground">
         Source
       </Label>
-      <Input value={src} readOnly className="font-mono text-xs" aria-label="Image source URL" />
+      <Input
+        id="image-source-url-input"
+        value={draft}
+        placeholder="https://…"
+        className="font-mono text-xs"
+        aria-label="Image source URL"
+        aria-invalid={isDraftInvalid}
+        onChange={(event) => setDraft(event.target.value)}
+        onFocus={handleFocus}
+        onBlur={handleBlur}
+      />
+      {isDraftInvalid ? (
+        <p className="text-xs text-muted-foreground">
+          Must be an absolute http(s) URL — reverts on blur until valid.
+        </p>
+      ) : null}
       <input
         ref={fileInputRef}
         type="file"
