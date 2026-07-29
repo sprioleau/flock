@@ -38,13 +38,28 @@ const DOCUMENT_CONTEXT_NOTE = `## Document context
 The current document state is attached as the final user message, marked [DOCUMENT CONTEXT]. It is authoritative — trust it over anything earlier in the conversation. It is a compressed outline: text is truncated and most properties are omitted, so call getBlockDetails when an edit depends on a block's exact current contents. When the user says "this" or "the selected" block, use the id under "## Selection".`;
 
 /**
- * Layers (a) + (b) + the route note, assembled ONCE at module load: all are
+ * Route-level static tail: how the agent SPEAKS to the user, and what it
+ * refuses. Constant — safe inside the cached prefix.
+ */
+const USER_FACING_CONDUCT_NOTE = `## Talking to the user
+
+Your visible replies must read like a helpful design partner, never an engineer's log:
+- NEVER include block ids (sec_a1b2, btn_x9k3, "root", …), tool names, operation names, schema or validation details, batch ids, or any other internal identifiers in your prose. Ids are for tool calls only. Refer to blocks by what the user sees: "the button", "the headline", "the second section".
+- Keep replies short and plain-language: say what you changed or found, not how the machinery did it.
+
+## Scope
+
+You ONLY help with this email — its content, structure, styling, previews, and test sends. If the user asks for anything else (general questions, code, other documents, unrelated tasks), reply with one short sentence explaining you can only help with editing this email, and do not call any tools for that request.`;
+
+/**
+ * Layers (a) + (b) + the route notes, assembled ONCE at module load: all are
  * constants for a given build, and pre-joining guarantees the byte-identical
  * prefix Gemini's implicit caching keys on.
  */
 const STATIC_INSTRUCTIONS = [
   SYSTEM_STATIC,
   buildToolGuidance(chatActionRegistry),
+  USER_FACING_CONDUCT_NOTE,
   DOCUMENT_CONTEXT_NOTE,
 ].join("\n\n");
 

@@ -11,14 +11,19 @@ import {
   XIcon,
 } from "lucide-react";
 import type { ToolUIPart } from "ai";
+import type { BlockId } from "@tandem/email-sdk";
 import { Button } from "@/components/ui/button";
 import type { TandemChatTools } from "@/lib/chat-contract";
+import { useEditorStore } from "@/lib/editor-store";
 import { cn } from "@/lib/utils";
 
 /**
- * One tool call rendered as a compact chip: "updateBlockProperties · btn_x9k3"
+ * One tool call rendered as a compact chip: "updateBlockProperties · button"
  * plus a state affordance (streaming spinner → applied check / failed cross,
  * or Approve/Deny buttons for approval-gated tools like sendTestEmail).
+ *
+ * Block ids are NEVER user-facing: when an op targets a block, the chip shows
+ * the block's TYPE (looked up live from the document), not its raw id.
  */
 
 type TandemToolPart = ToolUIPart<TandemChatTools>;
@@ -29,14 +34,17 @@ function getToolName(part: TandemToolPart): string {
   return part.type.slice("tool-".length);
 }
 
-/** Human-readable target: the op's blockId, a recipient, a viewport mode… */
-function getTargetLabel(part: TandemToolPart): string | undefined {
+/** The op's target blockId, if its input carries one (not user-facing). */
+function getTargetBlockId(part: TandemToolPart): BlockId | undefined {
+  const input = part.input as Record<string, unknown> | undefined;
+  return typeof input?.blockId === "string" ? (input.blockId as BlockId) : undefined;
+}
+
+/** Human-readable non-block target: a recipient, a viewport mode… */
+function getNonBlockTargetLabel(part: TandemToolPart): string | undefined {
   const input = part.input as Record<string, unknown> | undefined;
   if (input === undefined || input === null) {
     return undefined;
-  }
-  if (typeof input.blockId === "string") {
-    return input.blockId;
   }
   if (typeof input.mode === "string") {
     return input.mode;
@@ -130,7 +138,13 @@ export interface ToolPartChipProps {
 
 export function ToolPartChip({ part, onApprovalResponse }: ToolPartChipProps) {
   const toolName = getToolName(part);
-  const targetLabel = getTargetLabel(part);
+  const targetBlockId = getTargetBlockId(part);
+  // "· button", "· text"… — the target block's type, not its id. Undefined
+  // when the block is gone (removed/reverted later): the chip just omits it.
+  const targetBlockType = useEditorStore((state) =>
+    targetBlockId === undefined ? undefined : state.doc[targetBlockId]?.type,
+  );
+  const targetLabel = targetBlockType ?? getNonBlockTargetLabel(part);
   const isReadOnlyTool = READ_ONLY_TOOL_NAMES.has(toolName);
   const hasFailed = part.state === "output-error";
   const statusText = getStatusText(part);

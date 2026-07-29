@@ -51,10 +51,8 @@ export function PropertyPanelSlot() {
                 </span>
               </Fragment>
             ))}
+            {/* Block ids are internal — the header shows only the type. */}
             <h2 className="text-sm font-semibold capitalize">{selectedBlock.type}</h2>
-            <span className="ml-2 min-w-0 truncate font-mono text-xs text-muted-foreground">
-              {selectedBlockId}
-            </span>
           </nav>
         ) : (
           <>

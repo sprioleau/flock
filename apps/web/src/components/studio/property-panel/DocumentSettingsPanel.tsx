@@ -7,7 +7,7 @@ import {
   AccordionItem,
   AccordionTrigger,
 } from "@/components/ui/accordion";
-import { AlignField, ColorField, NumberField, TextField } from "./fields";
+import { AlignField, ColorField, DropdownField, NumberField } from "./fields";
 import { getGlobalStyleHelp } from "./schema-help";
 import { useCommitGlobalStyles, useResolvedGlobals } from "./usePanelDispatch";
 
@@ -35,6 +35,23 @@ interface TypographyGroup {
   textColorKey: GlobalColorKey;
   textAlignKey: GlobalAlignKey;
 }
+
+/**
+ * Email-safe font stacks — fonts reliably installed across mail clients, each
+ * with fallbacks. The Helvetica stack string matches the SDK's
+ * DEFAULT_FONT_STACK byte-for-byte so untouched documents resolve to a
+ * selected option (not "Custom").
+ */
+const EMAIL_SAFE_FONT_OPTIONS = [
+  { value: "Helvetica, Arial, sans-serif", label: "Helvetica" },
+  { value: "Arial, Helvetica, sans-serif", label: "Arial" },
+  { value: "Verdana, Geneva, sans-serif", label: "Verdana" },
+  { value: "Tahoma, Geneva, sans-serif", label: "Tahoma" },
+  { value: "'Trebuchet MS', Helvetica, sans-serif", label: "Trebuchet MS" },
+  { value: "Georgia, 'Times New Roman', serif", label: "Georgia" },
+  { value: "'Times New Roman', Times, serif", label: "Times New Roman" },
+  { value: "'Courier New', Courier, monospace", label: "Courier New" },
+] as const;
 
 const TYPOGRAPHY_GROUPS: readonly TypographyGroup[] = [
   {
@@ -99,15 +116,12 @@ export function DocumentSettingsPanel() {
   );
 
   const fontFamilyField = (label: string, key: GlobalColorKey) => (
-    <TextField
+    <DropdownField
       label={label}
       value={resolvedGlobals[key]}
+      options={EMAIL_SAFE_FONT_OPTIONS}
       helpText={getGlobalStyleHelp(key)}
-      onCommit={(value) => {
-        if (value !== undefined) {
-          commitGlobals({ [key]: value } as GlobalStyles);
-        }
-      }}
+      onCommit={(value) => commitGlobals({ [key]: value } as GlobalStyles)}
     />
   );
 

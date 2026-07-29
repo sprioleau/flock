@@ -1,9 +1,16 @@
 "use client";
 
 import { useState } from "react";
-import { MessagesSquareIcon, PanelLeftCloseIcon, SendIcon } from "lucide-react";
+import {
+  MessagesSquareIcon,
+  MousePointerClickIcon,
+  PanelLeftCloseIcon,
+  SendIcon,
+  XIcon,
+} from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
+import { useEditorStore } from "@/lib/editor-store";
 import { cn } from "@/lib/utils";
 import { ChatMessageList } from "./ChatMessageList";
 import { QueuedMessageList } from "./QueuedMessageList";
@@ -38,10 +45,18 @@ export function ChatPanel() {
     respondToApproval,
     hasPendingApproval,
     getIsAgentIdle,
-    isMockEnabled,
-    setIsMockEnabled,
   } = useTandemChat();
   const promptHistory = usePromptHistory();
+
+  // The composer's selection-context chip: the selected block's TYPE (ids are
+  // never user-facing). The selection itself already rides along as request
+  // context — the transport reads selectedBlockId from the store at send time
+  // and the system prompt targets it for "this"/"the selected block" edits;
+  // the chip makes that context visible and dismissable.
+  const selectedBlockType = useEditorStore((state) =>
+    state.selectedBlockId !== null ? state.doc[state.selectedBlockId]?.type : undefined,
+  );
+  const selectBlock = useEditorStore((state) => state.selectBlock);
 
   // Every send funnels through here — direct sends AND queue auto-dispatches
   // record prompt history with the FINAL text (queued edits included).
@@ -60,8 +75,6 @@ export function ChatPanel() {
     sendUserMessage,
   });
   const hasQueuedMessages = queue.queuedMessages.length > 0;
-
-  const isDevelopment = process.env.NODE_ENV === "development";
 
   const submitDraft = (): void => {
     const trimmedText = draftText.trim();
@@ -142,28 +155,15 @@ export function ChatPanel() {
       >
         <div className="flex h-12 shrink-0 items-center justify-between border-b px-4">
           <h1 className="font-heading text-sm font-semibold">Tandem</h1>
-          <div className="flex items-center gap-2">
-            {isDevelopment && (
-              <label className="flex items-center gap-1 text-xs text-muted-foreground">
-                <input
-                  type="checkbox"
-                  checked={isMockEnabled}
-                  onChange={(event) => setIsMockEnabled(event.target.checked)}
-                  data-testid="chat-mock-toggle"
-                />
-                mock
-              </label>
-            )}
-            <Button
-              variant="ghost"
-              size="icon-sm"
-              aria-label="Collapse chat panel"
-              tabIndex={isExpanded ? 0 : -1}
-              onClick={() => setIsExpanded(false)}
-            >
-              <PanelLeftCloseIcon />
-            </Button>
-          </div>
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            aria-label="Collapse chat panel"
+            tabIndex={isExpanded ? 0 : -1}
+            onClick={() => setIsExpanded(false)}
+          >
+            <PanelLeftCloseIcon />
+          </Button>
         </div>
 
         <ChatMessageList
@@ -179,22 +179,60 @@ export function ChatPanel() {
           isErrorPaused={isErrorPaused}
         />
 
-        {/* Composer: textarea and send button share a 36px (size-9) height
-            when single-line — py-1.75 + one text-sm line + 1px borders is
-            exactly the min-h-9 floor — and stay bottom-aligned (items-end)
-            as the textarea grows. */}
+        {/* Composer: a single bordered box holding the selection-context chip
+            (when a block is selected) above a borderless textarea; the send
+            button sits beside it, bottom-aligned. Without a chip the box is
+            exactly 36px (size-9) single-line — py-1.75 + one text-sm line +
+            1px borders — matching the size-9 send button. */}
         <div className="flex shrink-0 items-end gap-2 border-t p-3">
-          <Textarea
-            value={draftText}
-            onChange={(event) => setDraftText(event.target.value)}
-            onKeyDown={handleComposerKeyDown}
-            placeholder={
-              isAgentBusy || hasQueuedMessages ? "Queue a message…" : "Describe your email…"
-            }
-            className="min-h-9 resize-none py-1.75"
-            aria-label="Chat message"
-            tabIndex={isExpanded ? 0 : -1}
-          />
+          <div
+            className={cn(
+              "flex min-w-0 flex-1 flex-col rounded-lg border border-input transition-colors",
+              "focus-within:border-ring focus-within:ring-3 focus-within:ring-ring/50",
+            )}
+          >
+            {selectedBlockType !== undefined && (
+              <div className="flex px-1.5 pt-1.5">
+                <span
+                  className={cn(
+                    "inline-flex items-center gap-1 rounded-md bg-muted px-1.5 py-0.5",
+                    "text-[10px] font-medium text-muted-foreground",
+                  )}
+                  data-testid="composer-selection-chip"
+                >
+                  <MousePointerClickIcon className="size-3" />
+                  <span className="capitalize">{selectedBlockType}</span>
+                  <button
+                    type="button"
+                    aria-label="Clear selected block context"
+                    tabIndex={isExpanded ? 0 : -1}
+                    onClick={() => selectBlock(null)}
+                    className="cursor-pointer rounded-sm hover:text-foreground"
+                  >
+                    <XIcon className="size-3" />
+                  </button>
+                </span>
+              </div>
+            )}
+            <Textarea
+              value={draftText}
+              onChange={(event) => setDraftText(event.target.value)}
+              onKeyDown={handleComposerKeyDown}
+              placeholder={
+                isAgentBusy || hasQueuedMessages
+                  ? "Queue a message…"
+                  : selectedBlockType !== undefined
+                    ? `Describe a change to this ${selectedBlockType}…`
+                    : "Describe your email…"
+              }
+              className={cn(
+                "min-h-9 resize-none border-0 bg-transparent py-1.75",
+                "focus-visible:ring-0 dark:bg-transparent",
+              )}
+              aria-label="Chat message"
+              tabIndex={isExpanded ? 0 : -1}
+            />
+          </div>
           <Button
             disabled={draftText.trim().length === 0}
             size="icon-lg"

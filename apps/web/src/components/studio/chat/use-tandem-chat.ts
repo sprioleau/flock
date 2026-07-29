@@ -249,7 +249,11 @@ export interface TandemChat {
    * rounds) and StrictMode double-effects can never double-send.
    */
   getIsAgentIdle: () => boolean;
-  /** Dev-only: force the deterministic mock model via x-tandem-mock. */
+  /**
+   * Test-only lever (no UI since the dev "mock" checkbox was removed): force
+   * the deterministic mock model via the x-tandem-mock header. The server
+   * still falls back to the mock automatically when no API key is set.
+   */
   isMockEnabled: boolean;
   setIsMockEnabled: (isMockEnabled: boolean) => void;
 }

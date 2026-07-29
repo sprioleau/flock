@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
+import { cn } from "@/lib/utils";
 import { useEndCoalescing } from "./usePanelDispatch";
 import { useLiveDraft } from "./useLiveDraft";
 
@@ -239,6 +240,9 @@ export function ColorField({
   return (
     <FieldShell inputId={inputId} label={label} helpText={helpText}>
       <div className="flex items-center gap-1.5">
+        {/* The native swatch fills the WHOLE rounded control: zero padding on
+            the input and its WebKit wrapper, no inner swatch border, and
+            overflow-hidden lets rounded-md clip the swatch's corners. */}
         <input
           type="color"
           aria-label={`${label} color swatch`}
@@ -246,7 +250,12 @@ export function ColorField({
           onChange={(event) => setDraft(event.target.value)}
           onFocus={handleFocus}
           onBlur={handleBlur}
-          className="size-8 shrink-0 cursor-pointer rounded-md border border-input bg-transparent p-0.5"
+          className={cn(
+            "size-8 shrink-0 cursor-pointer overflow-hidden rounded-md border border-input bg-transparent p-0",
+            "[&::-webkit-color-swatch-wrapper]:p-0",
+            "[&::-webkit-color-swatch]:border-0",
+            "[&::-moz-color-swatch]:border-0",
+          )}
         />
         <Input
           id={inputId}
@@ -343,6 +352,56 @@ export interface SelectFieldProps<T extends string> {
   isClearable?: boolean;
   helpText?: string;
   onCommit: (value: T | undefined) => void;
+}
+
+export interface DropdownFieldOption {
+  value: string;
+  label: string;
+}
+
+export interface DropdownFieldProps {
+  label: string;
+  value: string | undefined;
+  options: ReadonlyArray<DropdownFieldOption>;
+  helpText?: string;
+  onCommit: (value: string) => void;
+}
+
+/**
+ * A native single-select dropdown styled like the Input control — for option
+ * sets too large for SelectField's segmented toggle (e.g. email-safe font
+ * stacks). A current value that matches no option renders as a disabled
+ * "Custom" entry so the control always reflects the underlying doc.
+ */
+export function DropdownField({ label, value, options, helpText, onCommit }: DropdownFieldProps) {
+  const inputId = useId();
+  const isKnownValue = value === undefined || options.some((option) => option.value === value);
+
+  return (
+    <FieldShell inputId={inputId} label={label} helpText={helpText}>
+      <select
+        id={inputId}
+        value={value ?? ""}
+        onChange={(event) => onCommit(event.target.value)}
+        className={cn(
+          "h-8 w-full min-w-0 cursor-pointer rounded-lg border border-input bg-transparent px-2 text-base",
+          "transition-colors outline-none focus-visible:border-ring focus-visible:ring-3",
+          "focus-visible:ring-ring/50 md:text-sm dark:bg-input/30",
+        )}
+      >
+        {!isKnownValue && (
+          <option value={value} disabled>
+            Custom
+          </option>
+        )}
+        {options.map((option) => (
+          <option key={option.value} value={option.value} style={{ fontFamily: option.value }}>
+            {option.label}
+          </option>
+        ))}
+      </select>
+    </FieldShell>
+  );
 }
 
 export function SelectField<T extends string>({

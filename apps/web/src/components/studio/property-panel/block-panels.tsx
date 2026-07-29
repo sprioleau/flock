@@ -269,6 +269,7 @@ const VERTICAL_ALIGN_OPTIONS: ReadonlyArray<{ value: ColumnVerticalAlign; label:
 
 export function ColumnPanel({ block }: { block: ColumnBlock }) {
   const commit = useCommitBlockProperties(block.id);
+  const globals = useResolvedGlobals();
   const { properties } = block;
   const helpFor = help("column");
 
@@ -295,6 +296,9 @@ export function ColumnPanel({ block }: { block: ColumnBlock }) {
       <ColorField
         label="Background"
         value={properties.backgroundColor}
+        // Unset column backgrounds are transparent — the content background
+        // shows through, so it is the value the user actually sees.
+        fallbackColor={globals.contentBackgroundColor}
         isClearable
         helpText={helpFor("backgroundColor")}
         onCommit={(value) => commit({ backgroundColor: value })}
@@ -344,6 +348,7 @@ export function DividerPanel({ block }: { block: DividerBlock }) {
 
 export function TextPanel({ block }: { block: TextBlock }) {
   const commit = useCommitBlockProperties(block.id);
+  const globals = useResolvedGlobals();
   const { properties } = block;
   const helpFor = help("text");
 
@@ -352,6 +357,10 @@ export function TextPanel({ block }: { block: TextBlock }) {
       <ColorField
         label="Text color"
         value={properties.textColor}
+        // No single resolved value exists (headings and paragraphs differ);
+        // body text color is the honest representative so the field always
+        // shows the doc's current effective value instead of a blank input.
+        fallbackColor={globals.paragraphTextColor}
         isClearable
         helpText={helpFor("textColor")}
         onCommit={(value) => commit({ textColor: value })}

@@ -73,7 +73,8 @@ function planMockToolCall({
       blockId,
       properties: { label: lastUserText.slice(0, 40) || "Updated" },
     },
-    acknowledgementText: `Updating block ${blockId}.`,
+    // Block ids are never user-facing — keep the prose generic.
+    acknowledgementText: "Updating the selected block.",
   };
 }
 

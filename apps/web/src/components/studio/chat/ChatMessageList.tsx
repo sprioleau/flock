@@ -15,12 +15,28 @@ import { ToolPartChip } from "./ToolPartChip";
  * failures. Auto-scrolls to the newest content.
  */
 
-function ErrorBubble({ error }: { error: Error }) {
+/**
+ * User-facing copy for a terminal turn failure. Structured payloads carry
+ * curated messages; anything else (raw provider/network errors) is translated
+ * — internal details like API error dumps never render as the message. The
+ * raw text stays available behind a collapsed "Details" disclosure.
+ */
+function getFriendlyErrorMessage(error: Error): { messageText: string; rawText?: string } {
   const payload = parseChatErrorText(error.message);
-  const messageText =
-    payload !== undefined
-      ? payload.errors.map(({ message }) => message).join(" ")
-      : error.message;
+  if (payload !== undefined) {
+    return { messageText: payload.errors.map(({ message }) => message).join(" ") };
+  }
+  const isRateLimited = /quota|rate.?limit|resource.?exhausted|429/i.test(error.message);
+  return {
+    messageText: isRateLimited
+      ? "The AI service is temporarily over its usage limit. Wait a moment, then try again."
+      : "Something went wrong while responding. Try sending your message again.",
+    rawText: error.message,
+  };
+}
+
+function ErrorBubble({ error }: { error: Error }) {
+  const { messageText, rawText } = getFriendlyErrorMessage(error);
 
   return (
     <div
@@ -28,7 +44,15 @@ function ErrorBubble({ error }: { error: Error }) {
       data-chat-error
     >
       <TriangleAlertIcon className="mt-0.5 size-3.5 shrink-0" />
-      <p>{messageText}</p>
+      <div className="min-w-0 flex-1">
+        <p>{messageText}</p>
+        {rawText !== undefined && (
+          <details className="mt-1 text-destructive/70">
+            <summary className="cursor-pointer select-none">Details</summary>
+            <p className="mt-1 break-words whitespace-pre-wrap">{rawText}</p>
+          </details>
+        )}
+      </div>
     </div>
   );
 }
