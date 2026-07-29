@@ -31,6 +31,12 @@ import {
   updateRemoteCursors,
   type RemoteCursor,
 } from "./remote-cursors-extension";
+import {
+  FontFamilySelector,
+  FontSizeSelector,
+  HighlightSelector,
+  TextColorSelector,
+} from "./span-style-controls";
 import { createTextBlockExtensions } from "./text-block-extensions";
 
 export interface InlineTextEditorProps {
@@ -447,6 +453,15 @@ function SyncedTextEditor({
             <BubbleMenu.Italic />
             <BubbleMenu.Underline />
             <BubbleMenu.Strike />
+          </BubbleMenu.ItemGroup>
+          {/* Span-level typography: the textStyle + highlight marks
+              (span-style-controls.tsx; popovers are non-portaled — see the
+              outside-pointerdown invariant above). */}
+          <BubbleMenu.ItemGroup>
+            <FontFamilySelector />
+            <FontSizeSelector />
+            <TextColorSelector />
+            <HighlightSelector />
           </BubbleMenu.ItemGroup>
           <BubbleMenu.LinkSelector />
         </BubbleMenu.Root>

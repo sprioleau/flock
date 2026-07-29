@@ -36,8 +36,30 @@ describe("textDocSchema — happy paths", () => {
       { type: "text", text: "u", marks: [{ type: "underline" }] },
       { type: "text", text: "s", marks: [{ type: "strike" }] },
       { type: "text", text: "l", marks: [{ type: "link", attrs: { href: "https://example.com" } }] },
+      {
+        type: "text",
+        text: "t",
+        marks: [
+          {
+            type: "textStyle",
+            attrs: { fontFamily: "Georgia, 'Times New Roman', serif", color: "#c0392b", fontSize: "18px" },
+          },
+        ],
+      },
+      { type: "text", text: "h", marks: [{ type: "highlight", attrs: { color: "#fff3a3" } }] },
     ]);
     expect(textDocSchema.safeParse(doc).success).toBe(true);
+  });
+
+  it("accepts a textStyle mark carrying a single attribute", () => {
+    for (const attrs of [
+      { fontFamily: "Helvetica, Arial, sans-serif" },
+      { color: "#1a1a2e" },
+      { fontSize: "12px" },
+    ]) {
+      const doc = paragraphWith([{ type: "text", text: "x", marks: [{ type: "textStyle", attrs }] }]);
+      expect(textDocSchema.safeParse(doc).success).toBe(true);
+    }
   });
 
   it("accepts stacked marks on one text run", () => {
@@ -62,16 +84,59 @@ describe("textDocSchema — happy paths", () => {
 });
 
 describe("textDocSchema — email-safety rejections", () => {
-  it("rejects unknown mark types (highlight)", () => {
-    const doc = paragraphWith([{ type: "text", text: "x", marks: [{ type: "highlight" }] }]);
+  it("rejects unknown mark types (code)", () => {
+    const doc = paragraphWith([{ type: "text", text: "x", marks: [{ type: "code" }] }]);
     expect(textDocSchema.safeParse(doc).success).toBe(false);
   });
 
-  it("rejects the Nuni fontSize mark (not in our subset)", () => {
+  it("rejects the Nuni fontSize mark (not in our subset — size lives on textStyle)", () => {
     const doc = paragraphWith([
       { type: "text", text: "x", marks: [{ type: "fontSize", attrs: { size: "12px" } }] },
     ]);
     expect(textDocSchema.safeParse(doc).success).toBe(false);
+  });
+
+  it("rejects a textStyle mark with no attrs, empty attrs, or empty-string attrs", () => {
+    expect(textMarkSchema.safeParse({ type: "textStyle" }).success).toBe(false);
+    expect(textMarkSchema.safeParse({ type: "textStyle", attrs: {} }).success).toBe(false);
+    expect(
+      textMarkSchema.safeParse({ type: "textStyle", attrs: { fontFamily: "" } }).success,
+    ).toBe(false);
+    expect(textMarkSchema.safeParse({ type: "textStyle", attrs: { color: "" } }).success).toBe(
+      false,
+    );
+  });
+
+  it("rejects unknown attrs on a textStyle mark (lineHeight, backgroundColor)", () => {
+    expect(
+      textMarkSchema.safeParse({ type: "textStyle", attrs: { lineHeight: "1.5" } }).success,
+    ).toBe(false);
+    expect(
+      textMarkSchema.safeParse({ type: "textStyle", attrs: { backgroundColor: "#fff" } }).success,
+    ).toBe(false);
+  });
+
+  it("rejects non-pixel textStyle font sizes (em, %, bare numbers)", () => {
+    for (const fontSize of ["1.2em", "120%", "18", "large"]) {
+      expect(textMarkSchema.safeParse({ type: "textStyle", attrs: { fontSize } }).success).toBe(
+        false,
+      );
+    }
+  });
+
+  it("rejects a highlight mark without a color", () => {
+    expect(textMarkSchema.safeParse({ type: "highlight" }).success).toBe(false);
+    expect(textMarkSchema.safeParse({ type: "highlight", attrs: {} }).success).toBe(false);
+    expect(textMarkSchema.safeParse({ type: "highlight", attrs: { color: "" } }).success).toBe(
+      false,
+    );
+  });
+
+  it("rejects extra attributes on a highlight mark", () => {
+    expect(
+      textMarkSchema.safeParse({ type: "highlight", attrs: { color: "#fff3a3", opacity: 0.5 } })
+        .success,
+    ).toBe(false);
   });
 
   it("rejects a link mark without attrs.href", () => {

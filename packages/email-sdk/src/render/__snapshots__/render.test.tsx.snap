@@ -85,6 +85,13 @@ exports[`golden fixtures (plan §1.4: globals-only, overrides-only, mixed) > blo
                                         ><em
                                           ><strong>bold italic link</strong></em
                                         ></a
+                                      >,
+                                      <span
+                                        style="font-family:Georgia, &#x27;Times New Roman&#x27;, serif;color:#c0392b;font-size:18px"
+                                        >styled span</span
+                                      >,
+                                      <span style="background-color:#fff3a3"
+                                        >highlighted</span
                                       >.
                                     </p>
                                   </td>
@@ -352,6 +359,13 @@ exports[`golden fixtures (plan §1.4: globals-only, overrides-only, mixed) > glo
                                         ><em
                                           ><strong>bold italic link</strong></em
                                         ></a
+                                      >,
+                                      <span
+                                        style="font-family:Georgia, &#x27;Times New Roman&#x27;, serif;color:#c0392b;font-size:18px"
+                                        >styled span</span
+                                      >,
+                                      <span style="background-color:#fff3a3"
+                                        >highlighted</span
                                       >.
                                     </p>
                                   </td>
@@ -599,6 +613,13 @@ exports[`golden fixtures (plan §1.4: globals-only, overrides-only, mixed) > mix
                                         ><em
                                           ><strong>bold italic link</strong></em
                                         ></a
+                                      >,
+                                      <span
+                                        style="font-family:Georgia, &#x27;Times New Roman&#x27;, serif;color:#c0392b;font-size:18px"
+                                        >styled span</span
+                                      >,
+                                      <span style="background-color:#fff3a3"
+                                        >highlighted</span
                                       >.
                                     </p>
                                   </td>

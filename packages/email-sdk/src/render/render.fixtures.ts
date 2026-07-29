@@ -56,6 +56,27 @@ const richTextDoc: TextDoc = {
             { type: "link", attrs: { href: "https://example.com/launch" } },
           ],
         },
+        { type: "text", text: ", " },
+        {
+          type: "text",
+          text: "styled span",
+          marks: [
+            {
+              type: "textStyle",
+              attrs: {
+                fontFamily: "Georgia, 'Times New Roman', serif",
+                color: "#c0392b",
+                fontSize: "18px",
+              },
+            },
+          ],
+        },
+        { type: "text", text: ", " },
+        {
+          type: "text",
+          text: "highlighted",
+          marks: [{ type: "highlight", attrs: { color: "#fff3a3" } }],
+        },
         { type: "text", text: "." },
       ],
     },

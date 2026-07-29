@@ -21,7 +21,10 @@ const HEADING_FONT_SIZES = { 1: "32px", 2: "24px", 3: "20px" } as const;
  * Wrap a text run in email-safe inline elements, innermost-first in mark
  * order: bold → <strong>, italic → <em>, underline/strike → styled <span>
  * (text-decoration inherits through nesting, so both can apply), link →
- * <Link> colored by globals.linkTextColor.
+ * <Link> colored by globals.linkTextColor, textStyle → <span> carrying the
+ * span-level typography (font-family / color / font-size) as plain inline
+ * CSS, highlight → <span> with an inline background-color. Everything stays
+ * on span/anchor elements with inline styles only — the email-safe subset.
  */
 function applyMarks(node: TextNode, linkTextColor: string): ReactNode {
   return (node.marks ?? []).reduce<ReactNode>((content, mark: TextMark) => {
@@ -34,6 +37,22 @@ function applyMarks(node: TextNode, linkTextColor: string): ReactNode {
         return <span style={{ textDecoration: "underline" }}>{content}</span>;
       case "strike":
         return <span style={{ textDecoration: "line-through" }}>{content}</span>;
+      case "textStyle": {
+        const { fontFamily, color, fontSize } = mark.attrs;
+        return (
+          <span
+            style={{
+              ...(fontFamily !== undefined ? { fontFamily } : {}),
+              ...(color !== undefined ? { color } : {}),
+              ...(fontSize !== undefined ? { fontSize } : {}),
+            }}
+          >
+            {content}
+          </span>
+        );
+      }
+      case "highlight":
+        return <span style={{ backgroundColor: mark.attrs.color }}>{content}</span>;
       case "link":
         return (
           <Link

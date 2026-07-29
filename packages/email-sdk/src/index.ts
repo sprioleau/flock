@@ -55,6 +55,8 @@ export {
   underlineMarkSchema,
   strikeMarkSchema,
   linkMarkSchema,
+  textStyleMarkSchema,
+  highlightMarkSchema,
   createTextDoc,
 } from "./schema/text";
 export type {

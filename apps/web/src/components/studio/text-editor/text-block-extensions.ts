@@ -1,5 +1,7 @@
 import { StarterKit } from "@react-email/editor/extensions";
 import type { Extensions } from "@tiptap/core";
+import { Highlight } from "@tiptap/extension-highlight";
+import { Color, FontFamily, FontSize, TextStyle } from "@tiptap/extension-text-style";
 
 /**
  * The Resend editor's StarterKit reduced to a per-text-block schema
@@ -11,9 +13,26 @@ import type { Extensions } from "@tiptap/core";
  * bold / italic / underline / strike / link marks — exactly the shape
  * `textDocSchema` accepts (modulo the attr-stripping in
  * normalize-editor-doc.ts).
+ *
+ * Span-level typography (gap #7 candidate set, out-of-the-box only): the
+ * Resend StarterKit ships no TextStyle-family extensions, so the OFFICIAL
+ * Tiptap ones are layered on top — one `textStyle` mark carrying
+ * fontFamily/color/fontSize attrs, plus the multicolor `highlight` mark.
+ * Both map 1:1 onto the SDK's textStyleMarkSchema/highlightMarkSchema.
+ * LineHeight/BackgroundColor (the rest of the text-style family) stay OUT:
+ * they are not in the SDK vocabulary.
  */
 export function createTextBlockExtensions(): Extensions {
   return [
+    // One mark type ("textStyle") whose attrs the three sub-extensions
+    // register; renders as a plain inline-styled <span> — email-safe.
+    TextStyle,
+    FontFamily,
+    Color,
+    FontSize,
+    // Renders <mark data-color style="background-color:…">; multicolor so the
+    // color is explicit (the SDK schema requires it — no UA-default yellow).
+    Highlight.configure({ multicolor: true }),
     StarterKit.configure({
       // Structural / email chrome — the flat map owns structure; the editor
       // never sees it (canvas-architecture decision).

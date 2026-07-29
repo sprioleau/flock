@@ -45,6 +45,68 @@ export const strikeMarkSchema = z
   })
   .describe("Renders the covered text struck through. Carries no attributes.");
 
+/**
+ * Text-style mark — mirrors Tiptap's TextStyle model: ONE mark type carrying
+ * span-level typography attributes (font family, text color, font size), so
+ * editor JSON round-trips 1:1. Every attribute renders as plain inline CSS on
+ * a <span> (email-safe). At least one attribute must be present — an empty
+ * textStyle mark is meaningless and is normalized away before validation.
+ */
+export const textStyleMarkSchema = z
+  .strictObject({
+    type: z.literal("textStyle").describe("Span-level typography mark."),
+    attrs: z
+      .strictObject({
+        fontFamily: z
+          .string()
+          .min(1)
+          .optional()
+          .describe(
+            'A CSS font-family stack of email-safe fonts (e.g. "Georgia, \'Times New Roman\', serif"). Overrides the block-level font for this run only.',
+          ),
+        color: z
+          .string()
+          .min(1)
+          .optional()
+          .describe(
+            'Text color for this run. Any email-safe CSS color (hex recommended, e.g. "#c0392b").',
+          ),
+        fontSize: z
+          .string()
+          .regex(/^\d+px$/)
+          .optional()
+          .describe('Font size for this run in pixels, e.g. "18px". Pixel values only.'),
+      })
+      .refine((attrs) => Object.values(attrs).some((value) => value !== undefined), {
+        message: "A textStyle mark must carry at least one attribute.",
+      })
+      .describe(
+        "Typography attributes. At least one of fontFamily, color, fontSize is required.",
+      ),
+  })
+  .describe(
+    "Styles the covered text with inline typography: font family, text color, and/or font size. One mark carries all three attributes (Tiptap TextStyle model).",
+  );
+
+/** Highlight (background color) mark. `color` is required. */
+export const highlightMarkSchema = z
+  .strictObject({
+    type: z.literal("highlight").describe("Background-color highlight mark."),
+    attrs: z
+      .strictObject({
+        color: z
+          .string()
+          .min(1)
+          .describe(
+            'Highlight background color. Any email-safe CSS color (hex recommended, e.g. "#fff3a3").',
+          ),
+      })
+      .describe("Highlight attributes. Only color is allowed, and it is required."),
+  })
+  .describe(
+    "Paints a background color behind the covered text. Renders as an inline background-color span.",
+  );
+
 /** Link mark. `href` is the only allowed attribute. */
 export const linkMarkSchema = z
   .strictObject({
@@ -65,7 +127,7 @@ export const linkMarkSchema = z
   );
 
 /**
- * Any inline mark. Unknown mark types (e.g. highlight, code, fontSize) fail
+ * Any inline mark. Unknown mark types (e.g. code, subscript) fail
  * validation — the email renderer only supports this exact set.
  */
 export const textMarkSchema = z
@@ -75,8 +137,12 @@ export const textMarkSchema = z
     underlineMarkSchema,
     strikeMarkSchema,
     linkMarkSchema,
+    textStyleMarkSchema,
+    highlightMarkSchema,
   ])
-  .describe("An inline formatting mark: bold, italic, underline, strike, or link.");
+  .describe(
+    "An inline formatting mark: bold, italic, underline, strike, link, textStyle (font family / text color / font size), or highlight.",
+  );
 
 export type TextMark = z.infer<typeof textMarkSchema>;
 

@@ -129,6 +129,95 @@ describe("TextBlockView", () => {
     expect(html).toMatch(/<a[^>]*><em><strong>all<\/strong><\/em><\/a>/);
   });
 
+  it("maps textStyle attrs to inline font-family / color / font-size on a span", async () => {
+    const html = await renderDoc({
+      type: "doc",
+      content: [
+        {
+          type: "paragraph",
+          content: [
+            {
+              type: "text",
+              text: "styled",
+              marks: [
+                {
+                  type: "textStyle",
+                  attrs: {
+                    fontFamily: "Georgia, 'Times New Roman', serif",
+                    color: "#c0392b",
+                    fontSize: "18px",
+                  },
+                },
+              ],
+            },
+          ],
+        },
+      ],
+    });
+    expect(html).toMatch(
+      /<span[^>]*font-family:Georgia, &#x27;Times New Roman&#x27;, serif[^>]*>styled<\/span>/,
+    );
+    expect(html).toMatch(/<span[^>]*color:#c0392b[^>]*>styled<\/span>/);
+    expect(html).toMatch(/<span[^>]*font-size:18px[^>]*>styled<\/span>/);
+  });
+
+  it("emits only the textStyle attrs that are present", async () => {
+    const html = await renderDoc({
+      type: "doc",
+      content: [
+        {
+          type: "paragraph",
+          content: [
+            { type: "text", text: "red", marks: [{ type: "textStyle", attrs: { color: "#ff0000" } }] },
+          ],
+        },
+      ],
+    });
+    expect(html).toMatch(/<span style="color:#ff0000">red<\/span>/);
+    expect(html).not.toContain("font-family:undefined");
+    expect(html).not.toContain("font-size:undefined");
+  });
+
+  it("maps highlight to an inline background-color span", async () => {
+    const html = await renderDoc({
+      type: "doc",
+      content: [
+        {
+          type: "paragraph",
+          content: [
+            { type: "text", text: "hi", marks: [{ type: "highlight", attrs: { color: "#fff3a3" } }] },
+          ],
+        },
+      ],
+    });
+    expect(html).toMatch(/<span[^>]*background-color:#fff3a3[^>]*>hi<\/span>/);
+  });
+
+  it("nests textStyle and highlight with the classic marks", async () => {
+    const html = await renderDoc({
+      type: "doc",
+      content: [
+        {
+          type: "paragraph",
+          content: [
+            {
+              type: "text",
+              text: "all",
+              marks: [
+                { type: "bold" },
+                { type: "textStyle", attrs: { color: "#0044cc" } },
+                { type: "highlight", attrs: { color: "#fff3a3" } },
+              ],
+            },
+          ],
+        },
+      ],
+    });
+    expect(html).toMatch(
+      /<span[^>]*background-color:#fff3a3[^>]*><span[^>]*color:#0044cc[^>]*><strong>all<\/strong><\/span><\/span>/,
+    );
+  });
+
   it("renders hardBreak as <br", async () => {
     const html = await renderDoc({
       type: "doc",

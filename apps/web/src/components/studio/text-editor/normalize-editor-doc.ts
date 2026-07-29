@@ -21,6 +21,13 @@ import type {
  * - link marks: Tiptap's Link mark carries `target`, `rel`, and `class`
  *   attrs (and `openOnClick` UI state) — only `href` survives; empty-href
  *   links are dropped entirely.
+ * - textStyle marks: Tiptap emits every registered attr with `null` for the
+ *   unset ones — only non-empty fontFamily/color/fontSize strings survive; a
+ *   textStyle mark with no surviving attrs is dropped entirely (the SDK
+ *   schema rejects empty textStyle marks).
+ * - highlight marks: only a non-empty `color` survives (multicolor
+ *   highlights); a colorless highlight is dropped — the email renderer needs
+ *   an explicit background-color.
  * - hardBreak: may carry marks in Tiptap JSON (a break inside a bold run);
  *   the SDK hardBreak is bare.
  * - heading attrs: only `level` (1-3) survives; any other level demotes the
@@ -104,12 +111,46 @@ function normalizeMarks(marks: JSONContent["marks"]): TextMark[] | undefined {
         }
         break;
       }
+      case "textStyle": {
+        const attrs = normalizeTextStyleAttrs(mark.attrs);
+        if (attrs !== null) {
+          normalized.push({ type: "textStyle", attrs });
+        }
+        break;
+      }
+      case "highlight": {
+        const color = mark.attrs?.color;
+        if (typeof color === "string" && color.length > 0) {
+          normalized.push({ type: "highlight", attrs: { color } });
+        }
+        break;
+      }
       default:
         // Unknown mark types are dropped.
         break;
     }
   }
   return normalized.length > 0 ? normalized : undefined;
+}
+
+type TextStyleAttrs = Extract<TextMark, { type: "textStyle" }>["attrs"];
+
+/**
+ * Keep only the SDK's textStyle attrs, each a non-empty string; fontSize must
+ * be a pixel value (mirrors the schema's regex — the FontSize extension only
+ * ever writes px, but the boundary is defensive). Null when nothing survives,
+ * so the caller drops the mark instead of emitting an empty textStyle.
+ */
+function normalizeTextStyleAttrs(attrs: Record<string, unknown> | undefined): TextStyleAttrs | null {
+  const fontFamily = attrs?.fontFamily;
+  const color = attrs?.color;
+  const fontSize = attrs?.fontSize;
+  const normalized: TextStyleAttrs = {
+    ...(typeof fontFamily === "string" && fontFamily.length > 0 ? { fontFamily } : {}),
+    ...(typeof color === "string" && color.length > 0 ? { color } : {}),
+    ...(typeof fontSize === "string" && /^\d+px$/.test(fontSize) ? { fontSize } : {}),
+  };
+  return Object.keys(normalized).length > 0 ? normalized : null;
 }
 
 /** Structural equality for text docs (key-order independent). */
