@@ -73,6 +73,12 @@ export function TextBlockView({ block, resolvedStyles }: TextBlockViewProps) {
     fontFamily: styles.fontFamily,
     color: styles.textColor,
     textAlign: styles.textAlign,
+    // Unbroken runs (long words, pasted tokens) must wrap inside the block
+    // instead of overflowing its edges. `wordWrap` is the email-safe classic
+    // (browsers alias it to overflow-wrap, so the canvas is covered too);
+    // `wordBreak` widens coverage across email clients.
+    wordWrap: "break-word" as const,
+    wordBreak: "break-word" as const,
   });
 
   return (
