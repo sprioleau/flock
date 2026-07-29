@@ -1,70 +1,85 @@
 import { components } from "../_generated/api";
-import type { Doc } from "../_generated/dataModel";
+import type { Doc, Id } from "../_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "../_generated/server";
 
 /**
  * Shared (non-registered) helpers for the Phase 5.2 per-text-block
- * ProseMirror sync docs. The sync doc id IS the SDK block id (arbitrary
- * strings are supported by the component), e.g. "txt_ab12cd34".
+ * ProseMirror sync docs.
  *
- * CAVEAT — block ids are NOT globally unique across documents today:
- * `duplicateDocument` copies block rows verbatim and the seeded sample
- * document uses fixed ids ("txt_e5f6", ...), so one block id can resolve to
- * rows in several documents (which then SHARE one sync doc). Resolution
- * policy until the id scheme is revisited (block-id-format-revisit /
- * Phase 5.4 reconciliation):
- *   - existence gating (checkRead/checkWrite) tolerates ambiguity — any live
- *     row grants access;
- *   - writes never guess — the snapshot mirror skips ambiguous ids instead
- *     of patching an arbitrary document's block.
+ * Sync doc ids are DOCUMENT-SCOPED composites: `${documentId}:${blockId}`
+ * (e.g. "j97eq0gp...:txt_ab12cd34"). SDK block ids are only unique within a
+ * document (the seeded sample uses fixed ids; duplicateDocument copies rows
+ * verbatim), so bare-block-id keying made colliding blocks across drafts
+ * share one live sync doc. Composite keying resolves every sync doc to
+ * exactly one block row, and hands the auth hooks the parent document id for
+ * free (Phase 6.1 capability checks).
  */
 
-/** We only ever need to distinguish 0 / 1 / "more than 1" matching rows. */
-const MAX_BLOCK_ROWS_PER_ID = 2;
+export interface SyncDocKey {
+  documentId: Id<"documents">;
+  blockId: string;
+}
 
-export interface LiveBlockRowsResult {
-  /** Rows for this block id whose parent document still exists (0..MAX). */
-  rows: Doc<"blocks">[];
-  /** True when the block id resolves to rows in more than one document. */
-  hasAmbiguousMatches: boolean;
+/** Compose the sync doc id for a block. The client mirrors this format. */
+export function buildSyncDocId({ documentId, blockId }: SyncDocKey): string {
+  return `${documentId}:${blockId}`;
 }
 
 /**
- * Resolve a sync doc id (= SDK block id) to its live block row(s): rows whose
- * parent document row still exists.
+ * Parse a sync doc id. Returns null for malformed ids (including the bare
+ * block ids of pre-rekey sync docs, which are orphaned component data for
+ * the Phase 6.1 cleanup cron).
  */
-export async function findLiveBlockRows(
-  ctx: QueryCtx | MutationCtx,
-  blockId: string,
-): Promise<LiveBlockRowsResult> {
-  const rows = await ctx.db
-    .query("blocks")
-    .withIndex("by_blockId", (q) => q.eq("blockId", blockId))
-    .take(MAX_BLOCK_ROWS_PER_ID);
-  const liveRows: Doc<"blocks">[] = [];
-  for (const row of rows) {
-    const document = await ctx.db.get(row.documentId);
-    if (document !== null) {
-      liveRows.push(row);
-    }
+export function parseSyncDocId(id: string): SyncDocKey | null {
+  const separatorIndex = id.indexOf(":");
+  if (separatorIndex <= 0 || separatorIndex === id.length - 1) {
+    return null;
   }
-  return { rows: liveRows, hasAmbiguousMatches: liveRows.length > 1 };
+  return {
+    documentId: id.slice(0, separatorIndex) as Id<"documents">,
+    blockId: id.slice(separatorIndex + 1),
+  };
+}
+
+/**
+ * Resolve a sync doc id to its live block row: the row must exist AND its
+ * parent document row must still exist. Returns null otherwise (malformed
+ * id, deleted block, or deleted document).
+ */
+export async function findLiveBlockRow(
+  ctx: QueryCtx | MutationCtx,
+  id: string,
+): Promise<Doc<"blocks"> | null> {
+  const key = parseSyncDocId(id);
+  if (key === null) {
+    return null;
+  }
+  const document = await ctx.db.get(key.documentId);
+  if (document === null) {
+    return null;
+  }
+  return await ctx.db
+    .query("blocks")
+    .withIndex("by_documentId_and_blockId", (q) =>
+      q.eq("documentId", key.documentId).eq("blockId", key.blockId),
+    )
+    .unique();
 }
 
 /**
  * Existence gating for the sync endpoints (checkRead/checkWrite): throw
- * unless the id resolves to at least one block row with a live parent
- * document. Session-capability checks are deferred to Phase 6.1 (no-auth
- * demo-first; the URL/id is the capability).
+ * unless the id resolves to a block row with a live parent document.
+ * Session-capability checks are deferred to Phase 6.1 (no-auth demo-first;
+ * the URL/id is the capability).
  */
 export async function assertBlockSyncAccess(
   ctx: QueryCtx | MutationCtx,
-  blockId: string,
+  id: string,
 ): Promise<void> {
-  const { rows } = await findLiveBlockRows(ctx, blockId);
-  if (rows.length === 0) {
+  const row = await findLiveBlockRow(ctx, id);
+  if (row === null) {
     throw new Error(
-      `Sync access denied: block ${blockId} does not exist (or its document is gone).`,
+      `Sync access denied: sync doc ${id} does not resolve to a live block.`,
     );
   }
 }
@@ -72,13 +87,15 @@ export async function assertBlockSyncAccess(
 /**
  * Delete the component-side sync data (snapshots now, steps via a scheduled
  * follow-up) for a block's sync doc. Callers:
- *   - commitVersions (model/emailDocuments.ts) when the LAST block row with
- *     this id is hard-deleted at head — restorability is unaffected because
- *     the removal's inverse op carries properties.text (kept fresh by the
+ *   - commitVersions (model/emailDocuments.ts) when a text block row is
+ *     hard-deleted at head — restorability is unaffected because the
+ *     removal's inverse op carries properties.text (kept fresh by the
  *     snapshot mirror) and ensureBlockDoc recreates the sync doc from it;
  *   - the Phase 6.1 cleanup cron and Phase 5.4 reconciliation, for orphaned
  *     sync docs this in-line hook misses.
  */
-export async function deleteBlockSyncDoc(ctx: MutationCtx, blockId: string): Promise<void> {
-  await ctx.runMutation(components.prosemirrorSync.lib.deleteDocument, { id: blockId });
+export async function deleteBlockSyncDoc(ctx: MutationCtx, key: SyncDocKey): Promise<void> {
+  await ctx.runMutation(components.prosemirrorSync.lib.deleteDocument, {
+    id: buildSyncDocId(key),
+  });
 }

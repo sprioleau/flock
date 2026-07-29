@@ -9,13 +9,18 @@ import {
 import { components } from "./_generated/api";
 import type { DataModel } from "./_generated/dataModel";
 import { mutation, type MutationCtx } from "./_generated/server";
-import { assertBlockSyncAccess, findLiveBlockRows } from "./model/textBlockSync";
+import {
+  assertBlockSyncAccess,
+  buildSyncDocId,
+  findLiveBlockRow,
+} from "./model/textBlockSync";
 
 /**
- * Phase 5.2 — one synced ProseMirror doc per TEXT block, keyed by the SDK
- * block id ("txt_ab12cd34"). The sync doc mounts only while a user is editing
- * that block; the op log stays the history spine (session op + mirror
- * architecture decision):
+ * Phase 5.2 — one synced ProseMirror doc per TEXT block, keyed by the
+ * document-scoped composite id `${documentId}:${blockId}` (block ids alone
+ * collide across sample/forked documents — see model/textBlockSync.ts). The
+ * sync doc mounts only while a user is editing that block; the op log stays
+ * the history spine (session op + mirror architecture decision):
  *
  *   - client keystrokes flow through the component's OT pipeline
  *     (submitSteps/getSteps below);
@@ -57,14 +62,14 @@ export const {
  * Throws for unknown block ids and for non-text blocks.
  */
 export const ensureBlockDoc = mutation({
-  args: { blockId: v.string() },
+  args: { documentId: v.id("documents"), blockId: v.string() },
   returns: v.null(),
   handler: async (ctx, args) => {
-    const { rows, hasAmbiguousMatches } = await findLiveBlockRows(ctx, args.blockId);
-    if (rows.length === 0) {
-      throw new Error(`Block ${args.blockId} does not exist (or its document is gone).`);
+    const syncDocId = buildSyncDocId(args);
+    const row = await findLiveBlockRow(ctx, syncDocId);
+    if (row === null) {
+      throw new Error(`Block ${args.blockId} does not exist in document ${args.documentId}.`);
     }
-    const row = rows[0]!;
     if (row.type !== "text") {
       throw new Error(
         `Block ${args.blockId} is a "${row.type}" block; only text blocks have sync docs.`,
@@ -74,17 +79,10 @@ export const ensureBlockDoc = mutation({
     // the hood and THROWS if the doc exists with different content, so "check
     // then create" (serializable within this mutation) is the safe pattern.
     const existingVersion = await ctx.runQuery(components.prosemirrorSync.lib.latestVersion, {
-      id: args.blockId,
+      id: syncDocId,
     });
     if (existingVersion !== null) {
       return null;
-    }
-    if (hasAmbiguousMatches) {
-      // Colliding block ids (sample/fork docs) share one sync doc; seeding
-      // from the first row is arbitrary but unavoidable under bare-id keying.
-      console.warn(
-        `[prosemirror] block id ${args.blockId} matches multiple documents; seeding sync doc from document ${row.documentId}.`,
-      );
     }
     // Blocks store SDK TextDoc JSON, which is Tiptap/PM-compatible doc JSON —
     // usable as-is for the initial ProseMirror content.
@@ -94,7 +92,7 @@ export const ensureBlockDoc = mutation({
         `Block ${args.blockId} has no valid properties.text to seed the sync doc from.`,
       );
     }
-    await prosemirrorSync.create(ctx, args.blockId, initialText.data);
+    await prosemirrorSync.create(ctx, syncDocId, initialText.data);
     return null;
   },
 });
@@ -136,22 +134,13 @@ async function mirrorSnapshotIntoBlock({
     );
     return;
   }
-  const { rows, hasAmbiguousMatches } = await findLiveBlockRows(ctx, id);
-  if (rows.length === 0) {
-    // Block was removed while a sync session was still flushing; nothing to
-    // mirror into (the removal path cleans up the sync doc).
+  const row = await findLiveBlockRow(ctx, id);
+  if (row === null) {
+    // Block (or its document) was removed while a sync session was still
+    // flushing; nothing to mirror into (the removal path cleans up the sync
+    // doc).
     return;
   }
-  if (hasAmbiguousMatches) {
-    // Never guess on writes: colliding block ids (sample/fork docs) would
-    // make this patch an arbitrary document's block. The session-end
-    // updateText op still lands via the normal dispatch path.
-    console.warn(
-      `[prosemirror] block id ${id} matches multiple documents; skipping snapshot mirror.`,
-    );
-    return;
-  }
-  const row = rows[0]!;
   if (row.type !== "text") {
     return;
   }

@@ -34,8 +34,9 @@ export interface InlineTextEditorProps {
  * (reduced StarterKit) mounted in place of the static TextBlockView while
  * `editingBlockId === block.id` — now a LIVE collaborative doc.
  *
- * Sync model (Phase 5.1/5.2): the block id doubles as the prosemirror-sync
- * doc id. Opening the editor fires `ensureBlockDoc` (idempotent; the server
+ * Sync model (Phase 5.1/5.2): the sync doc id is the document-scoped
+ * composite `${documentId}:${blockId}` (block ids alone are only unique
+ * within a document). Opening the editor fires `ensureBlockDoc` (idempotent; the server
  * creates the sync doc from the block's current text — the single creation
  * path, so two clients can never race divergent initial content) and mounts
  * via `useTiptapSync`. While the snapshot loads — or the doc doesn't exist
@@ -57,9 +58,16 @@ export interface InlineTextEditorProps {
  */
 export function InlineTextEditor({ block, resolvedStyles }: InlineTextEditorProps) {
   const stopTextEditing = useEditorStore((state) => state.stopTextEditing);
+  const documentId = useEditorStore((state) => state.documentId);
   const ensureBlockDoc = useMutation(api.prosemirror.ensureBlockDoc);
 
-  const sync = useTiptapSync(api.prosemirror, block.id, {
+  // Document-scoped sync doc id (block ids alone collide across sample and
+  // forked documents; format mirrored server-side in model/textBlockSync.ts).
+  // documentId is always set while the studio canvas is interactive; the
+  // fallback id fails checkRead and the editor stays in PendingTextView.
+  const syncDocId = `${documentId ?? "detached"}:${block.id}`;
+
+  const sync = useTiptapSync(api.prosemirror, syncDocId, {
     // One beforeunload guard per synced block gets noisy; "unsaved" signaling
     // belongs at the app level (spike B gotcha #7).
     warnOnUnsyncedClose: false,
@@ -71,15 +79,15 @@ export function InlineTextEditor({ block, resolvedStyles }: InlineTextEditorProp
   // harmless. If it throws, the block row is gone — fail closed.
   const hasEnsuredDocRef = useRef(false);
   useEffect(() => {
-    if (hasEnsuredDocRef.current) {
+    if (hasEnsuredDocRef.current || documentId === null) {
       return;
     }
     hasEnsuredDocRef.current = true;
-    ensureBlockDoc({ blockId: block.id }).catch((error: unknown) => {
+    ensureBlockDoc({ documentId, blockId: block.id }).catch((error: unknown) => {
       console.warn("InlineTextEditor: ensureBlockDoc failed; closing the editor", error);
       stopTextEditing();
     });
-  }, [block.id, ensureBlockDoc, stopTextEditing]);
+  }, [block.id, documentId, ensureBlockDoc, stopTextEditing]);
 
   if (sync.isLoading || sync.initialContent === null) {
     // Waiting on the snapshot (or on ensureBlockDoc's server-side create —

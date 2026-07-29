@@ -237,20 +237,11 @@ export async function commitVersions({
     if (!newBlockIdSet.has(blockId)) {
       await ctx.db.delete(row._id);
       // Phase 5.2: text blocks may have a per-block ProseMirror sync doc
-      // (keyed by the bare block id). Drop its sync data only when NO row
-      // with this id remains anywhere — block ids collide across documents
-      // today (duplicateDocument copies ids; the sample doc uses fixed ids),
-      // so a shared sync doc must survive until the id is globally unused.
-      // Undo stays safe: the removal's inverse op carries properties.text and
+      // (keyed by `${documentId}:${blockId}`, so exactly this row's). Undo
+      // stays safe: the removal's inverse op carries properties.text and
       // ensureBlockDoc recreates the sync doc from it on the next edit.
       if (row.type === "text") {
-        const remainingRow = await ctx.db
-          .query("blocks")
-          .withIndex("by_blockId", (q) => q.eq("blockId", blockId))
-          .first();
-        if (remainingRow === null) {
-          await deleteBlockSyncDoc(ctx, blockId);
-        }
+        await deleteBlockSyncDoc(ctx, { documentId: row.documentId, blockId });
       }
     }
   }
