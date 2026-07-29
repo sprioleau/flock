@@ -11,6 +11,7 @@
   },
   "dependencies": {
     "@ai-sdk/anthropic": "^4.0.20",
+    "@ai-sdk/google": "^4.0.27",
     "@ai-sdk/react": "^4.0.40",
     "@base-ui/react": "^1.6.0",
     "@convex-dev/prosemirror-sync": "^0.2.5",
