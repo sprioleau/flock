@@ -33,3 +33,4 @@ docs/
 # spike code (contains reference doc structures)
 apps/web/src/app/spike/
 apps/web/src/app/api/spike/
+.claude-screenshots/
