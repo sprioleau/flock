@@ -12,6 +12,8 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { useEditorStore } from "@/lib/editor-store";
 import { cn } from "@/lib/utils";
+import { DemoQueueButton } from "../demo/DemoQueueButton";
+import { SettingsFab } from "../demo/SettingsFab";
 import { ChatMessageList } from "./ChatMessageList";
 import { QueuedMessageList } from "./QueuedMessageList";
 import { useMessageQueue } from "./use-message-queue";
@@ -179,6 +181,18 @@ export function ChatPanel() {
           isErrorPaused={isErrorPaused}
         />
 
+        {/* Demo mode (settings FAB toggle): one click sends the first of six
+            doc-derived prompts and queues the rest — real chat turns, drained
+            one per completed turn by the queue. Renders null when demo mode
+            is off. */}
+        <DemoQueueButton
+          isAgentBusy={isAgentBusy}
+          hasQueuedMessages={hasQueuedMessages}
+          sendUserMessage={sendUserMessage}
+          enqueueMessage={queue.enqueueMessage}
+          isPanelExpanded={isExpanded}
+        />
+
         {/* Composer: a single bordered box holding the selection-context chip
             (when a block is selected) above a borderless textarea; the send
             button sits beside it, bottom-aligned. Without a chip the box is
@@ -244,6 +258,10 @@ export function ChatPanel() {
           </Button>
         </div>
       </div>
+
+      {/* App-wide settings FAB (fixed to the viewport, so its position is
+          independent of this panel's width animation). */}
+      <SettingsFab />
     </aside>
   );
 }
