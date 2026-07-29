@@ -115,7 +115,16 @@ export default defineSchema({
     properties: v.record(v.string(), v.any()),
   })
     .index("by_documentId", ["documentId"])
-    .index("by_documentId_and_blockId", ["documentId", "blockId"]),
+    .index("by_documentId_and_blockId", ["documentId", "blockId"])
+    /**
+     * Sync-doc lookup (Phase 5.2): per-text-block ProseMirror sync docs are
+     * keyed by the bare SDK block id, and the sync auth hooks receive ONLY
+     * that id. CAVEAT: block ids are not globally unique today (the seeded
+     * sample document uses fixed ids; duplicateDocument copies rows
+     * verbatim), so this index can yield multiple rows — resolution policy
+     * lives in convex/model/textBlockSync.ts.
+     */
+    .index("by_blockId", ["blockId"]),
 
   operations: defineTable({
     documentId: v.id("documents"),

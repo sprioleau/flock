@@ -13,6 +13,7 @@ import type * as files from "../files.js";
 import type * as healthcheck from "../healthcheck.js";
 import type * as history from "../history.js";
 import type * as model_emailDocuments from "../model/emailDocuments.js";
+import type * as model_textBlockSync from "../model/textBlockSync.js";
 import type * as prosemirror from "../prosemirror.js";
 
 import type {
@@ -27,6 +28,7 @@ declare const fullApi: ApiFromModules<{
   healthcheck: typeof healthcheck;
   history: typeof history;
   "model/emailDocuments": typeof model_emailDocuments;
+  "model/textBlockSync": typeof model_textBlockSync;
   prosemirror: typeof prosemirror;
 }>;
 
