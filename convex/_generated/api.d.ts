@@ -8,6 +8,7 @@
  * @module
  */
 
+import type * as agentText from "../agentText.js";
 import type * as documents from "../documents.js";
 import type * as files from "../files.js";
 import type * as healthcheck from "../healthcheck.js";
@@ -23,6 +24,7 @@ import type {
 } from "convex/server";
 
 declare const fullApi: ApiFromModules<{
+  agentText: typeof agentText;
   documents: typeof documents;
   files: typeof files;
   healthcheck: typeof healthcheck;

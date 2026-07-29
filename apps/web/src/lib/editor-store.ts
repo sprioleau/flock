@@ -296,12 +296,28 @@ export const useEditorStore = create<EditorState>()((set, get) => {
         ),
       }));
     }
-    convexClient
-      .mutation(api.documents.applyOperations, {
-        documentId,
-        ops: [pending.op],
-        context: pending.context,
-      })
+    // Phase 5.3: agent `updateText` ops route through agentText.applyAgentTextEdit,
+    // which records the SAME standard op row (author/batchId provenance intact)
+    // AND merges the edit into the block's live ProseMirror sync doc via the
+    // component's server-side transform — so an agent rewrite lands as a minimal
+    // targeted change that rebases against concurrent human keystrokes instead
+    // of clobbering them. Both mutations return the same result shape, so the
+    // ack/failure handling below is shared. User `updateText` session ops keep
+    // using applyOperations: their content ALREADY came from the sync doc, so
+    // transforming it again would be circular.
+    const isAgentTextEdit = pending.context.author === "agent" && pending.op.name === "updateText";
+    const mutationPromise = isAgentTextEdit
+      ? convexClient.mutation(api.agentText.applyAgentTextEdit, {
+          documentId,
+          op: pending.op,
+          context: pending.context,
+        })
+      : convexClient.mutation(api.documents.applyOperations, {
+          documentId,
+          ops: [pending.op],
+          context: pending.context,
+        });
+    mutationPromise
       .then((result) => {
         if (!result.isOk) {
           const detail = result.errors[0]?.message ?? "the server rejected it";
