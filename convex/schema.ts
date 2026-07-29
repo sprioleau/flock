@@ -79,8 +79,18 @@ export default defineSchema({
     canvasId: v.id("canvases"),
     /** Denormalized from the canvas for direct per-session listing/cleanup. */
     sessionId: v.string(),
-    /** Draft display name ("Draft 1"), visible to user AND agent; unique per canvas by convention. */
+    /** USER-FACING draft name ("Draft 1"): human-editable, never edited by the agent. */
     name: v.string(),
+    /**
+     * AGENT-FACING draft name: an agent-authored semantic summary of the
+     * draft's content ("Spring sale — bold hero, single CTA"), maintained
+     * ASYNCHRONOUSLY off the LLM hot path and persisted here. Read-only to
+     * users (may be displayed, never edited). Exists because human-authored
+     * names can be unhelpful for disambiguation ("asdf", "v2 final FINAL");
+     * the agent resolves references like "draft two" against BOTH names,
+     * with the stable document id as the true key. (§10.2 dual-naming.)
+     */
+    agentName: v.optional(v.string()),
     /** Placement on the canvas (ascending; fractional values allowed for insert-between). */
     orderIndex: v.number(),
     /** Monotonic per-document version; version N = state after operation row N. */
