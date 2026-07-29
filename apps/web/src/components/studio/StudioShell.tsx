@@ -8,6 +8,7 @@ import type { EmailDocument } from "@tandem/email-sdk";
 import { api } from "@convex/_generated/api";
 import { Button } from "@/components/ui/button";
 import { useEditorStore } from "@/lib/editor-store";
+import { PresenceProvider } from "@/lib/presence";
 import { getOrCreateSessionId } from "@/lib/session";
 import { ChatPanel } from "./chat/ChatPanel";
 import { EditorCanvas } from "./EditorCanvas";
@@ -142,7 +143,7 @@ export function StudioShell() {
     );
   }
 
-  return (
+  const studioLayout = (
     <div className="flex h-dvh w-full overflow-hidden">
       <ChatPanel />
       <main className="relative flex min-w-0 flex-1 flex-col">
@@ -155,6 +156,13 @@ export function StudioShell() {
       </main>
       <PropertyPanelSlot />
     </div>
+  );
+
+  // Phase 6.2 presence: one room per open document (roomId = the document id).
+  return documentId !== null ? (
+    <PresenceProvider documentId={documentId}>{studioLayout}</PresenceProvider>
+  ) : (
+    studioLayout
   );
 }
 

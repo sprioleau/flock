@@ -5,6 +5,7 @@ import type { PreviewMode } from "@tandem/email-sdk";
 import { Button } from "@/components/ui/button";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { selectCanRedo, selectCanUndo, useEditorStore } from "@/lib/editor-store";
+import { PresenceFacepile } from "./presence/PresenceFacepile";
 
 /**
  * Slim canvas toolbar: desktop/mobile viewport toggle, undo/redo (disabled
@@ -43,6 +44,7 @@ export function StudioToolbar({ children }: { children?: React.ReactNode }) {
       </ToggleGroup>
 
       <div className="flex items-center gap-1.5">
+        <PresenceFacepile />
         <Button
           variant="ghost"
           size="icon-sm"

@@ -23,6 +23,7 @@ import {
   buildSyncDocId,
   type SyncDocKey,
 } from "./model/textBlockSync";
+import { markAgentEditing } from "./presence";
 
 /**
  * Phase 5.3 — the AI text-edit path ("session op + mirror", agent half).
@@ -130,6 +131,11 @@ export const applyAgentTextEdit = mutation({
       entries: [{ op, inverse: result.inverse, kind: "edit" as const }],
       context: args.context,
     });
+
+    // Phase 6.2a agent presence: surface the agent in the document's presence
+    // room with editingBlockId = this op's block (the "agent is editing…"
+    // indicator); a scheduled follow-up clears it ~2s later so it pulses.
+    await markAgentEditing({ ctx, documentId: args.documentId, blockId: op.blockId });
 
     // Live-doc half. The inverse of updateText carries the block's previous
     // TextDoc (properties.text as of this mutation) — the diff baseline.

@@ -8,6 +8,7 @@ import { cn } from "@/lib/utils";
 import { BlockActionRow } from "./BlockActionRow";
 import { BlockBreadcrumb } from "./BlockBreadcrumb";
 import { useCanvasDragStore } from "./dnd/drag-drop-store";
+import { BlockPresenceIndicator } from "./presence/BlockPresenceIndicator";
 
 export interface BlockShellProps {
   block: Block;
@@ -122,6 +123,8 @@ export function BlockShell({ block, children, className }: BlockShellProps) {
           />
         </>
       )}
+      {/* Presence chrome (merge-notify): who ELSE is editing this block. */}
+      <BlockPresenceIndicator blockId={block.id} isLocallySelected={isSelected} />
       {children}
     </div>
   );
