@@ -102,7 +102,11 @@ export default defineSchema({
     updatedAtMs: v.number(),
   })
     .index("by_sessionId", ["sessionId"])
-    .index("by_canvasId", ["canvasId"]),
+    .index("by_canvasId", ["canvasId"])
+    // Phase 6.1 cleanup cron: range-scan for stale documents. `updatedAtMs`
+    // is the last-activity signal — commitVersions patches it on EVERY
+    // committed operation (all write paths funnel through it).
+    .index("by_updatedAtMs", ["updatedAtMs"]),
 
   blocks: defineTable({
     documentId: v.id("documents"),

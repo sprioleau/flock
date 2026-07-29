@@ -9,12 +9,16 @@
  */
 
 import type * as agentText from "../agentText.js";
+import type * as cleanup from "../cleanup.js";
+import type * as crons from "../crons.js";
 import type * as documents from "../documents.js";
 import type * as files from "../files.js";
 import type * as healthcheck from "../healthcheck.js";
 import type * as history from "../history.js";
+import type * as model_cleanup from "../model/cleanup.js";
 import type * as model_emailDocuments from "../model/emailDocuments.js";
 import type * as model_textBlockSync from "../model/textBlockSync.js";
+import type * as presence from "../presence.js";
 import type * as prosemirror from "../prosemirror.js";
 
 import type {
@@ -25,12 +29,16 @@ import type {
 
 declare const fullApi: ApiFromModules<{
   agentText: typeof agentText;
+  cleanup: typeof cleanup;
+  crons: typeof crons;
   documents: typeof documents;
   files: typeof files;
   healthcheck: typeof healthcheck;
   history: typeof history;
+  "model/cleanup": typeof model_cleanup;
   "model/emailDocuments": typeof model_emailDocuments;
   "model/textBlockSync": typeof model_textBlockSync;
+  presence: typeof presence;
   prosemirror: typeof prosemirror;
 }>;
 
@@ -62,4 +70,5 @@ export declare const internal: FilterApi<
 
 export declare const components: {
   prosemirrorSync: import("@convex-dev/prosemirror-sync/_generated/component.js").ComponentApi<"prosemirrorSync">;
+  presence: import("@convex-dev/presence/_generated/component.js").ComponentApi<"presence">;
 };
