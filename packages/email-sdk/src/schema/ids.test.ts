@@ -6,7 +6,9 @@ import {
   ROOT_BLOCK_ID,
   blockIdSchema,
   blockIdSchemasByType,
+  formatBlockId,
   generateBlockId,
+  parseBlockId,
   rootBlockIdSchema,
   sectionBlockIdSchema,
   type BlockType,
@@ -67,6 +69,57 @@ describe("blockIdSchema (generic)", () => {
     "root_a1b2", // root takes no suffix
   ])("rejects %s", (id) => {
     expect(blockIdSchema.safeParse(id).success).toBe(false);
+  });
+});
+
+describe("parseBlockId / formatBlockId", () => {
+  it('parses the root id to { type: "root", key: "root" }', () => {
+    expect(parseBlockId("root")).toEqual({ type: "root", key: "root" });
+  });
+
+  it.each(NON_ROOT_TYPES)("round-trips a generated %s id", (type) => {
+    const id = generateBlockId(type);
+    const parsed = parseBlockId(id);
+    expect(parsed).toEqual({ type, key: id.slice(id.indexOf("_") + 1) });
+    expect(formatBlockId(parsed!)).toBe(id);
+  });
+
+  it("round-trips the root id", () => {
+    expect(formatBlockId(parseBlockId("root")!)).toBe("root");
+  });
+
+  it.each([
+    "sec_A1B2", // uppercase key
+    "sec_a1b", // key too short
+    "sec_a1b22", // key too long
+    "foo_a1b2", // unknown prefix
+    "sec-a1b2", // wrong separator
+    "seca1b2", // missing underscore
+    "root_a1b2", // root takes no suffix
+    "_a1b2", // empty prefix
+    "sec_", // empty key
+    "", // empty
+  ])("parseBlockId returns null for %j", (id) => {
+    expect(parseBlockId(id)).toBeNull();
+  });
+
+  it("formatBlockId throws on a malformed key", () => {
+    expect(() => formatBlockId({ type: "button", key: "A1B2" })).toThrow(/invalid key/);
+    expect(() => formatBlockId({ type: "button", key: "a1b" })).toThrow(/invalid key/);
+    expect(() => formatBlockId({ type: "button", key: "a1b22" })).toThrow(/invalid key/);
+    expect(() => formatBlockId({ type: "button", key: "" })).toThrow(/invalid key/);
+  });
+
+  it('formatBlockId for root requires the literal "root" key', () => {
+    expect(formatBlockId({ type: "root", key: "root" })).toBe("root");
+    expect(() => formatBlockId({ type: "root", key: "a1b2" })).toThrow(/root block id/);
+  });
+
+  it("produces ids that pass the schemas after a round-trip", () => {
+    for (const type of NON_ROOT_TYPES) {
+      const id = formatBlockId(parseBlockId(generateBlockId(type))!);
+      expect(blockIdSchemasByType[type].safeParse(id).success).toBe(true);
+    }
   });
 });
 

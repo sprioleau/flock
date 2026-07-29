@@ -16,6 +16,8 @@ export {
   BLOCK_ID_PREFIXES,
   BLOCK_ID_SUFFIX_LENGTH,
   generateBlockId,
+  parseBlockId,
+  formatBlockId,
   blockIdSchema,
   blockIdSchemasByType,
   rootBlockIdSchema,
@@ -34,6 +36,8 @@ export type {
   ContainerBlockType,
   LeafBlockType,
   RandomFn,
+  ParsedBlockId,
+  FormatBlockIdInput,
 } from "./schema/ids";
 
 // --- Rich text (schema/text) --------------------------------------------------

@@ -83,6 +83,71 @@ export function generateBlockId(type: BlockType, random: RandomFn = Math.random)
   return `${BLOCK_ID_PREFIXES[type]}_${suffix}`;
 }
 
+/** Reverse of BLOCK_ID_PREFIXES: prefix → block type. */
+const BLOCK_TYPES_BY_PREFIX = Object.fromEntries(
+  Object.entries(BLOCK_ID_PREFIXES).map(([type, prefix]) => [prefix, type as BlockType]),
+) as Readonly<Record<string, BlockType>>;
+
+const BLOCK_ID_KEY_PATTERN = new RegExp(`^[a-z0-9]{${BLOCK_ID_SUFFIX_LENGTH}}$`);
+
+/** A block id decomposed into its type and its random key (suffix). */
+export interface ParsedBlockId {
+  type: BlockType;
+  /** The random suffix after the prefix — for root, the literal "root". */
+  key: string;
+}
+
+/** Input to formatBlockId — the inverse of ParsedBlockId. */
+export type FormatBlockIdInput = ParsedBlockId;
+
+/**
+ * Parse a block id into `{ type, key }`, or null when the string is not a
+ * well-formed block id. The conversion seam between the prefixed id style
+ * (`btn_x9k3`) and opaque-id consumers (logs, UI): everything downstream of
+ * this pair is independent of the id format.
+ *
+ * `parseBlockId("root")` → `{ type: "root", key: "root" }` (the root id has
+ * no random suffix, so its key is the whole id).
+ */
+export function parseBlockId(id: string): ParsedBlockId | null {
+  if (id === ROOT_BLOCK_ID) {
+    return { type: "root", key: ROOT_BLOCK_ID };
+  }
+  const separatorIndex = id.indexOf("_");
+  if (separatorIndex === -1) {
+    return null;
+  }
+  const prefix = id.slice(0, separatorIndex);
+  const key = id.slice(separatorIndex + 1);
+  const type = BLOCK_TYPES_BY_PREFIX[prefix];
+  if (type === undefined || type === "root" || !BLOCK_ID_KEY_PATTERN.test(key)) {
+    return null;
+  }
+  return { type, key };
+}
+
+/**
+ * Format `{ type, key }` back into a block id string — the exact inverse of
+ * parseBlockId. Throws on a malformed key so a bad round-trip fails loudly at
+ * the seam instead of producing an invalid id.
+ */
+export function formatBlockId({ type, key }: FormatBlockIdInput): string {
+  if (type === "root") {
+    if (key !== ROOT_BLOCK_ID) {
+      throw new Error(
+        `formatBlockId: the root block id has no random key — expected key "${ROOT_BLOCK_ID}", got "${key}".`,
+      );
+    }
+    return ROOT_BLOCK_ID;
+  }
+  if (!BLOCK_ID_KEY_PATTERN.test(key)) {
+    throw new Error(
+      `formatBlockId: invalid key "${key}" — expected exactly ${BLOCK_ID_SUFFIX_LENGTH} lowercase alphanumeric characters.`,
+    );
+  }
+  return `${BLOCK_ID_PREFIXES[type]}_${key}`;
+}
+
 function createTypedBlockIdSchema(type: Exclude<BlockType, "root">, noun: string) {
   const prefix = BLOCK_ID_PREFIXES[type];
   return z
