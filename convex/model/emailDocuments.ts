@@ -166,16 +166,21 @@ export interface CommitResult {
  * (reference inequality). Blocks absent from `newDoc` are deleted; blocks
  * absent from the old doc are inserted.
  *
- * `isHistoryRewrite` (Phase 5.4 boundary rule) — set ONLY by the history
- * mutations (undo / redo / revertBatch / rollbackToVersion in history.ts):
- * when a history rewrite changes a text block's properties.text, the block's
- * live ProseMirror sync doc is forced to match via replaceSyncDocContent
- * (clientId HISTORY_CLIENT_ID), otherwise reopening the editor would
- * resurface the pre-rewrite content from the sync doc. Normal FORWARD op
- * application (a user session commit, an agent action) must NOT write back:
- * e.g. user A's session commit for a block user B is still typing in would
- * clobber B's newer keystrokes. History rewrites are authoritative by design
- * and MAY clobber in-flight typing.
+ * `shouldForceTextSyncDocs` (Phase 5.4 boundary rule): when set and the
+ * commit changes a text block's properties.text, the block's live
+ * ProseMirror sync doc is forced to match via replaceSyncDocContent
+ * (clientId HISTORY_CLIENT_ID), otherwise an open editor would keep — and a
+ * later session commit would resurrect — the superseded sync-doc content.
+ * Set by every text write whose content did NOT come from the sync doc:
+ *   - history rewrites (undo / redo / revertBatch / rollbackToVersion) —
+ *     authoritative by design, MAY clobber in-flight typing;
+ *   - non-frontend callers (cli / mcp / http / tool) and frontend
+ *     agent-authored ops applied via documents.applyOperations.
+ * NOT set by:
+ *   - frontend USER session commits (their text came FROM the sync doc; a
+ *     write-back would clobber another user's still-in-flight keystrokes);
+ *   - agentText.applyAgentTextEdit (it merges into the sync doc itself via
+ *     a targeted transform — the whole point of Phase 5.3).
  *
  * Concurrent-session duplicate ops (Wave 1 finding, ACCEPTED behavior): two
  * users editing the same block each commit their own session `updateText` on
@@ -196,16 +201,16 @@ export async function commitVersions({
   newDoc,
   entries: rawEntries,
   context,
-  isHistoryRewrite = false,
+  shouldForceTextSyncDocs = false,
 }: {
   ctx: MutationCtx;
   state: DocumentState;
   newDoc: EmailDocument;
   entries: CommitEntry[];
   context: ApplyContext;
-  /** True only for history rewrites (undo/redo/revert/rollback); forces
-   * changed text blocks' sync docs to match the rewritten properties.text. */
-  isHistoryRewrite?: boolean;
+  /** Force changed text blocks' sync docs to match the committed
+   * properties.text — see the doc comment for exactly who sets this. */
+  shouldForceTextSyncDocs?: boolean;
 }): Promise<CommitResult> {
   const { document } = state;
   const now = Date.now();
@@ -264,14 +269,14 @@ export async function commitVersions({
         properties: newBlock.properties as Record<string, unknown>,
       });
     }
-    // History write-back (see the doc comment): force the sync doc to the
-    // rewritten text. Runs for inserted text blocks too — normally a no-op
+    // Authoritative write-back (see the doc comment): force the sync doc to
+    // the committed text. Runs for inserted text blocks too — normally a no-op
     // (deletion already removed the sync doc; ensureBlockDoc re-seeds on the
     // next edit) but it heals any sync doc a missed cleanup left behind.
     // Structural sharing makes the reference gate exact: unchanged text keeps
     // its identity, and replaceSyncDocContent itself no-ops on absent/equal.
     if (
-      isHistoryRewrite &&
+      shouldForceTextSyncDocs &&
       newBlock.type === "text" &&
       (oldBlock === undefined ||
         oldBlock.type !== "text" ||

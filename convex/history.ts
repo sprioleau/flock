@@ -41,7 +41,7 @@ import {
  *   - The op log records text at SESSION/AGENT-ACTION granularity
  *     (`updateText` ops) and remains the one history spine.
  *   - HISTORY REWRITES (every mutation in this file) are authoritative: each
- *     passes `isHistoryRewrite: true` to commitVersions, which forces the
+ *     passes `shouldForceTextSyncDocs: true` to commitVersions, which forces the
  *     sync doc of every text block whose properties.text changed to match,
  *     via replaceSyncDocContent (clientId HISTORY_CLIENT_ID) — whole-doc
  *     replacement that MAY clobber in-flight typing, by design. Normal
@@ -172,7 +172,7 @@ export const undo = mutation({
       ],
       // The undo entry is authored by the requester through the UI.
       context: { authorId: args.authorId, author: "user", caller: "frontend" },
-      isHistoryRewrite: true,
+      shouldForceTextSyncDocs: true,
     });
     const newVersion = commit.appliedVersions[0]!;
     await ctx.db.patch(target._id, { isUndone: true, undoneByVersion: newVersion });
@@ -243,7 +243,7 @@ export const redo = mutation({
         },
       ],
       context: { authorId: args.authorId, author: "user", caller: "frontend" },
-      isHistoryRewrite: true,
+      shouldForceTextSyncDocs: true,
     });
     const newVersion = commit.appliedVersions[0]!;
     // The undo entry is now itself undone; the original edit is live again
@@ -338,7 +338,7 @@ export const revertBatch = mutation({
       newDoc: result.doc,
       entries,
       context: { authorId: args.authorId, author: "user", caller: "frontend" },
-      isHistoryRewrite: true,
+      shouldForceTextSyncDocs: true,
     });
     for (const [targetIndex, row] of targets.entries()) {
       await ctx.db.patch(row._id, {
@@ -461,7 +461,7 @@ export const rollbackToVersion = mutation({
       newDoc: result.doc,
       entries,
       context: { authorId: args.authorId, author: "user", caller: "frontend" },
-      isHistoryRewrite: true,
+      shouldForceTextSyncDocs: true,
     });
     for (const [targetIndex, row] of targets.entries()) {
       if (row.isUndone !== true) {

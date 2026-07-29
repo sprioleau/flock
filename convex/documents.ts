@@ -256,6 +256,15 @@ export const applyOperations = mutation({
       newDoc: result.doc,
       entries,
       context: args.context,
+      // Text writes whose content did not come from a block's sync doc must
+      // force the sync doc to match (Phase 5.4 gap: a stale sync doc would
+      // resurface in the editor and silently revert this write on the next
+      // session commit). Frontend USER ops are the exception — their text
+      // came FROM the sync doc. Frontend AGENT updateText never lands here
+      // (routed to agentText.applyAgentTextEdit), so forcing the remaining
+      // agent-authored cases is safe.
+      shouldForceTextSyncDocs:
+        args.context.caller !== "frontend" || args.context.author === "agent",
     });
     return { isOk: true as const, ...commit };
   },

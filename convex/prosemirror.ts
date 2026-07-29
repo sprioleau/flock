@@ -13,6 +13,7 @@ import {
   assertBlockSyncAccess,
   buildSyncDocId,
   findLiveBlockRow,
+  parseSyncDocId,
 } from "./model/textBlockSync";
 
 /**
@@ -41,10 +42,20 @@ export const {
   submitSteps,
 } = prosemirrorSync.syncApi<DataModel>({
   // Existence gating ONLY (these hooks receive nothing but the sync doc id):
-  // the id must resolve to a live block row. Session-capability checks are
-  // deferred to Phase 6.1 (no-auth demo-first; capability URLs).
-  checkRead: async (ctx, id) => {
-    await assertBlockSyncAccess(ctx, id);
+  // writes require the id to resolve to a live block row. Session-capability
+  // checks are deferred to Phase 6.1 (no-auth demo-first; capability URLs).
+  //
+  // READS are permitted for well-formed ids even when the block is gone: the
+  // composite id embeds the documentId — the capability itself — and a
+  // deleted block's sync data is already deleted, so there is nothing to
+  // leak. Throwing here instead surfaced an unhandled rejection in every
+  // client whose read subscription outlived a block deletion (Phase 5.4
+  // finding); permitting lets those subscriptions resolve empty and unwind
+  // gracefully.
+  checkRead: async (_ctx, id) => {
+    if (parseSyncDocId(id) === null) {
+      throw new Error(`Sync access denied: malformed sync doc id ${id}.`);
+    }
   },
   checkWrite: async (ctx, id) => {
     await assertBlockSyncAccess(ctx, id);
