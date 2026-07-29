@@ -5,7 +5,7 @@ import {
 } from "@tandem/email-sdk";
 import { v } from "convex/values";
 import type { Doc, Id } from "./_generated/dataModel";
-import { mutation, type MutationCtx } from "./_generated/server";
+import { mutation, query, type QueryCtx } from "./_generated/server";
 import {
   commitVersions,
   loadDocumentState,
@@ -53,7 +53,7 @@ async function findLatestEligible({
   authorId,
   kind,
 }: {
-  ctx: MutationCtx;
+  ctx: QueryCtx;
   documentId: Id<"documents">;
   authorId: string;
   kind: "edit" | "undo";
@@ -74,6 +74,27 @@ async function findLatestEligible({
   }
   return null;
 }
+
+// ---------------------------------------------------------------------------
+// canUndoRedo — reactive enabled/disabled state for the toolbar buttons
+// ---------------------------------------------------------------------------
+
+export const canUndoRedo = query({
+  args: {
+    documentId: v.id("documents"),
+    authorId: v.string(),
+  },
+  returns: v.object({ canUndo: v.boolean(), canRedo: v.boolean() }),
+  handler: async (ctx, args) => {
+    // Mirrors exactly what undo/redo would target: the author's latest
+    // not-yet-undone "edit" (undo) / "undo" (redo) entry.
+    const [undoTarget, redoTarget] = await Promise.all([
+      findLatestEligible({ ctx, documentId: args.documentId, authorId: args.authorId, kind: "edit" }),
+      findLatestEligible({ ctx, documentId: args.documentId, authorId: args.authorId, kind: "undo" }),
+    ]);
+    return { canUndo: undoTarget !== null, canRedo: redoTarget !== null };
+  },
+});
 
 // ---------------------------------------------------------------------------
 // undo

@@ -5,9 +5,10 @@ import { useCallback, useEffect, useRef, useState } from "react";
 /**
  * Live-committing field draft: every input event commits immediately so the
  * canvas tracks in real time (no debounce anywhere in the property panel).
- * Undo granularity is handled downstream by the editor store's undo-stack
- * coalescing (UNDO_COALESCE_WINDOW_MS) — rapid same-field dispatches merge
- * into one undo entry whose inverse snapshots the gesture's starting value.
+ * Convex traffic and undo granularity are handled downstream by the editor
+ * store's gesture coalescing (UNDO_COALESCE_WINDOW_MS) — rapid same-field
+ * dispatches merge into ONE settled op sent to Convex, whose server-generated
+ * inverse snapshots the gesture's starting value.
  *
  * The draft is the field's local text while editing; the external (store)
  * value only resyncs it while the field is NOT focused, so clamped/invalid

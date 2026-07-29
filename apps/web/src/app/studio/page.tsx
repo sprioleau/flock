@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { Suspense } from "react";
 import { StudioShell } from "@/components/studio/StudioShell";
 
 export const metadata: Metadata = {
@@ -7,5 +8,10 @@ export const metadata: Metadata = {
 };
 
 export default function StudioPage() {
-  return <StudioShell />;
+  // Suspense boundary: StudioShell reads useSearchParams (?doc=<id>).
+  return (
+    <Suspense>
+      <StudioShell />
+    </Suspense>
+  );
 }

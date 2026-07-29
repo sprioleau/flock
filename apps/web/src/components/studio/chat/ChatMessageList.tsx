@@ -1,9 +1,10 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 import { isStaticToolUIPart } from "ai";
-import { MessagesSquareIcon, TriangleAlertIcon } from "lucide-react";
+import { Loader2Icon, MessagesSquareIcon, TriangleAlertIcon, Undo2Icon } from "lucide-react";
 import { parseChatErrorText, type TandemChatMessage } from "@/lib/chat-contract";
+import { useEditorStore } from "@/lib/editor-store";
 import { cn } from "@/lib/utils";
 import { EditorCommandChip } from "./EditorCommandChip";
 import { ToolPartChip } from "./ToolPartChip";
@@ -64,6 +65,94 @@ function buildLatestToolPartKeys(messages: TandemChatMessage[]): Map<string, str
   return latestKeyByToolCallId;
 }
 
+/**
+ * batchIds of successfully-applied agent ops in one assistant message,
+ * counting only parts that are this toolCallId's LATEST occurrence (matching
+ * the chip-rendering dedupe, so the affordance lands on the visible turn).
+ */
+function getAppliedBatchIds({
+  message,
+  latestToolPartKeys,
+}: {
+  message: TandemChatMessage;
+  latestToolPartKeys: Map<string, string>;
+}): string[] {
+  const batchIds: string[] = [];
+  message.parts.forEach((part, partIndex) => {
+    if (!isStaticToolUIPart(part) || part.state !== "output-available") {
+      return;
+    }
+    if (latestToolPartKeys.get(part.toolCallId) !== `${message.id}-${partIndex}`) {
+      return;
+    }
+    const output = part.output as { status?: string; batchId?: string } | undefined;
+    if (output?.status === "applied" && typeof output.batchId === "string") {
+      if (!batchIds.includes(output.batchId)) {
+        batchIds.push(output.batchId);
+      }
+    }
+  });
+  return batchIds;
+}
+
+type RevertPhase =
+  | { name: "idle" }
+  | { name: "reverting" }
+  | { name: "reverted" }
+  | { name: "failed"; message: string };
+
+/**
+ * The AI-batch revert affordance (Phase 4): one small action per assistant
+ * turn that applied ops. Uses the turn's batchId → history.revertBatch, so
+ * the whole batch is undone atomically in every open tab; failures (e.g.
+ * conflicts with later edits) surface inline.
+ */
+function RevertBatchAction({ batchId }: { batchId: string }) {
+  const revertAgentBatch = useEditorStore((state) => state.revertAgentBatch);
+  const [phase, setPhase] = useState<RevertPhase>({ name: "idle" });
+
+  const handleRevert = async (): Promise<void> => {
+    setPhase({ name: "reverting" });
+    const result = await revertAgentBatch(batchId);
+    setPhase(result.isOk ? { name: "reverted" } : { name: "failed", message: result.message });
+  };
+
+  if (phase.name === "reverted") {
+    return (
+      <p className="text-xs text-muted-foreground" data-batch-reverted={batchId}>
+        Changes reverted.
+      </p>
+    );
+  }
+
+  return (
+    <div className="flex flex-col gap-1">
+      <button
+        type="button"
+        disabled={phase.name === "reverting"}
+        onClick={() => void handleRevert()}
+        className={cn(
+          "inline-flex w-fit items-center gap-1 rounded-md border px-2 py-1 text-xs",
+          "text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-50",
+        )}
+        data-batch-revert={batchId}
+      >
+        {phase.name === "reverting" ? (
+          <Loader2Icon className="size-3 animate-spin" />
+        ) : (
+          <Undo2Icon className="size-3" />
+        )}
+        Revert these changes
+      </button>
+      {phase.name === "failed" && (
+        <p className="text-xs text-destructive" data-batch-revert-error={batchId}>
+          {phase.message}
+        </p>
+      )}
+    </div>
+  );
+}
+
 function AssistantMessageParts({
   message,
   latestToolPartKeys,
@@ -73,6 +162,7 @@ function AssistantMessageParts({
   latestToolPartKeys: Map<string, string>;
   onApprovalResponse: (input: { approvalId: string; isApproved: boolean }) => void;
 }) {
+  const appliedBatchIds = getAppliedBatchIds({ message, latestToolPartKeys });
   return (
     <div className="flex flex-col gap-1.5">
       {message.parts.map((part, partIndex) => {
@@ -101,6 +191,9 @@ function AssistantMessageParts({
         }
         return null;
       })}
+      {appliedBatchIds.map((batchId) => (
+        <RevertBatchAction key={batchId} batchId={batchId} />
+      ))}
     </div>
   );
 }

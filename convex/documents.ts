@@ -6,7 +6,7 @@ import {
 } from "@tandem/email-sdk";
 import { v } from "convex/values";
 import type { Id } from "./_generated/dataModel";
-import { mutation, query, type MutationCtx } from "./_generated/server";
+import { mutation, query, type MutationCtx, type QueryCtx } from "./_generated/server";
 import { emailDocumentValidator, operationAuthorValidator, actionCallerValidator } from "./schema";
 import {
   applyContextValidator,
@@ -265,45 +265,66 @@ export const applyOperations = mutation({
 // Reads
 // ---------------------------------------------------------------------------
 
+const documentPayloadValidator = v.object({
+  documentId: v.id("documents"),
+  doc: emailDocumentValidator,
+  headVersion: v.number(),
+  canvasId: v.id("canvases"),
+  name: v.string(),
+  orderIndex: v.number(),
+  forkedFromDocumentId: v.optional(v.id("documents")),
+  forkedFromVersion: v.optional(v.number()),
+  sessionId: v.string(),
+  createdAtMs: v.number(),
+  updatedAtMs: v.number(),
+});
+
+/** Shared read for getDocument / getDocumentByKey: head doc + metadata, or null. */
+async function readDocumentPayload(ctx: QueryCtx, documentId: Id<"documents">) {
+  const state = await loadDocumentState(ctx, documentId);
+  if (state === null) {
+    return null;
+  }
+  const { document } = state;
+  return {
+    documentId: document._id,
+    doc: state.doc as Record<string, unknown>,
+    headVersion: document.headVersion,
+    canvasId: document.canvasId,
+    name: document.name,
+    orderIndex: document.orderIndex,
+    ...(document.forkedFromDocumentId !== undefined
+      ? { forkedFromDocumentId: document.forkedFromDocumentId }
+      : {}),
+    ...(document.forkedFromVersion !== undefined
+      ? { forkedFromVersion: document.forkedFromVersion }
+      : {}),
+    sessionId: document.sessionId,
+    createdAtMs: document.createdAtMs,
+    updatedAtMs: document.updatedAtMs,
+  };
+}
+
 export const getDocument = query({
   args: { documentId: v.id("documents") },
-  returns: v.union(
-    v.null(),
-    v.object({
-      doc: emailDocumentValidator,
-      headVersion: v.number(),
-      canvasId: v.id("canvases"),
-      name: v.string(),
-      orderIndex: v.number(),
-      forkedFromDocumentId: v.optional(v.id("documents")),
-      forkedFromVersion: v.optional(v.number()),
-      sessionId: v.string(),
-      createdAtMs: v.number(),
-      updatedAtMs: v.number(),
-    }),
-  ),
+  returns: v.union(v.null(), documentPayloadValidator),
+  handler: async (ctx, args) => readDocumentPayload(ctx, args.documentId),
+});
+
+/**
+ * getDocument keyed by an UNTRUSTED string (the `?doc=` URL param). A
+ * malformed or foreign id normalizes to null instead of throwing an argument
+ * validation error, so the frontend can render a clean "not found" state.
+ */
+export const getDocumentByKey = query({
+  args: { documentKey: v.string() },
+  returns: v.union(v.null(), documentPayloadValidator),
   handler: async (ctx, args) => {
-    const state = await loadDocumentState(ctx, args.documentId);
-    if (state === null) {
+    const documentId = ctx.db.normalizeId("documents", args.documentKey);
+    if (documentId === null) {
       return null;
     }
-    const { document } = state;
-    return {
-      doc: state.doc as Record<string, unknown>,
-      headVersion: document.headVersion,
-      canvasId: document.canvasId,
-      name: document.name,
-      orderIndex: document.orderIndex,
-      ...(document.forkedFromDocumentId !== undefined
-        ? { forkedFromDocumentId: document.forkedFromDocumentId }
-        : {}),
-      ...(document.forkedFromVersion !== undefined
-        ? { forkedFromVersion: document.forkedFromVersion }
-        : {}),
-      sessionId: document.sessionId,
-      createdAtMs: document.createdAtMs,
-      updatedAtMs: document.updatedAtMs,
-    };
+    return readDocumentPayload(ctx, documentId);
   },
 });
 

@@ -12,8 +12,9 @@ import { useEditorStore } from "@/lib/editor-store";
 /**
  * Panel-side dispatch helpers. Everything funnels through the store's
  * `dispatch` (the single mutation path); these just shape the operations.
- * Fields dispatch on every input event — the store's undo-stack coalescing
- * (UNDO_COALESCE_WINDOW_MS) keeps undo at one entry per gesture.
+ * Fields dispatch on every input event — the store's gesture coalescing
+ * (UNDO_COALESCE_WINDOW_MS) keeps it at ONE Convex op (= one server-side
+ * undo step) per settled gesture.
  *
  * Clearing an override: `updateBlockProperties` shallow-merges, and a key
  * explicitly set to `undefined` is REMOVED by the SDK's merge (in-memory
@@ -44,8 +45,9 @@ export function useCommitGlobalStyles() {
 }
 
 /**
- * Gesture boundary for the store's undo-stack coalescing: fields call this on
- * blur so the next dispatch starts a fresh undo entry.
+ * Gesture boundary for the store's coalescing: fields call this on blur so
+ * the settled op flushes to Convex and the next dispatch starts a fresh
+ * gesture.
  */
 export function useEndCoalescing() {
   return useEditorStore((state) => state.endCoalescing);

@@ -1,68 +1,83 @@
 import {
   applyOperation,
-  createLogEntry,
   dispatchContentAction,
   emailActionRegistry,
-  createSampleDocument,
+  createEmptyDocument,
   type ActionContext,
   type BlockId,
   type DispatchContentActionResult,
   type EmailDocument,
   type Operation,
-  type OperationLogEntry,
   type PreviewMode,
 } from "@tandem/email-sdk";
+import type { ConvexReactClient } from "convex/react";
 import { create } from "zustand";
+import { api } from "@convex/_generated/api";
+import type { Id } from "@convex/_generated/dataModel";
 
 /**
- * The Phase 2 document store — local, in-memory, single-player.
+ * The Phase 4 document store — Convex is the source of truth; this store is
+ * the instant-feedback layer over it.
  *
- * THE INVARIANT (docs/email-editor-phased-plan.md §7): every document
- * mutation flows through the SDK's action layer. `dispatch` wraps
- * `dispatchContentAction` and is the store's ONLY mutation entry point —
- * components never hand-edit the document. Undo/redo replay SDK-generated
- * inverses through `applyOperation`. Phase 4 swaps this store for Convex
- * live queries + mutations without touching any component.
+ * THE INVARIANT (docs/email-editor-phased-plan.md §7) still holds: every
+ * document mutation flows through the SDK's action layer. `dispatch` remains
+ * the ONLY mutation entry point — it applies the op LOCALLY first (zero
+ * input-path latency: color drags and number bursts never wait on a network
+ * round-trip), then forwards the settled op to Convex `applyOperations`.
+ *
+ * Sync model — "local overlay, server-rebased" (chosen over Convex
+ * `.withOptimisticUpdate` because optimistic updates only run per MUTATION
+ * call, and a color drag produces ~60 local applies per second but exactly
+ * ONE Convex op per settled gesture; the input path must update the doc
+ * without issuing a mutation at all):
+ *
+ * - `serverDoc`/`serverHeadVersion` mirror the reactive `getDocument` query
+ *   (fed by StudioShell via {@link EditorState.applyServerSnapshot}).
+ * - `doc` (what components render) = serverDoc + every pending local op
+ *   replayed on top. Local dispatches update it in place; server snapshots
+ *   rebase it.
+ * - `pendingOps` is the outbound overlay: ops HELD during an open gesture
+ *   (see {@link UNDO_COALESCE_WINDOW_MS}), ops in flight to Convex, and ops
+ *   acked but not yet visible in the query snapshot. An op leaves the overlay
+ *   only when the server snapshot's headVersion covers its acked version —
+ *   so the rendered doc never regresses between ack and snapshot delivery.
+ * - Ordering: Convex executes one client's mutations in submission order, and
+ *   a held gesture is always flushed before any newer op (or an undo/redo/
+ *   revert) is submitted, so the server log matches the local apply order.
+ *
+ * History — one spine, on the server: undo/redo call `history.undo`/`redo`
+ * (per-author; authorId = the anonymous session id), and AI-batch revert
+ * calls `history.revertBatch`. The old local undo/redo stacks are gone;
+ * button enablement comes from the reactive `history.canUndoRedo` query.
  */
 
-/** Default provenance for op-log entries produced by this UI's own controls. */
-const LOCAL_ACTION_CONTEXT: ActionContext = {
+/** Default provenance for ops produced by this UI's own controls. */
+const LOCAL_ACTION_CONTEXT: Omit<ActionContext, "authorId"> = {
   caller: "frontend",
   author: "user",
-  authorId: "local",
 };
 
 /**
- * Per-dispatch provenance overrides, merged over {@link LOCAL_ACTION_CONTEXT}.
- * The chat panel passes `{ caller: "tool", author: "agent", authorId: <chat
- * id>, batchId: <turn batch id> }` so agent-applied ops land in the op log
- * with agent authorship and one shared batchId per assistant turn (Phase 4's
- * AI-batch revert hangs off that batchId).
+ * Per-dispatch provenance overrides. The chat panel passes `{ caller: "tool",
+ * author: "agent", authorId: <chat id>, batchId: <turn batch id>, threadId }`
+ * so agent-applied ops land in Convex with agent authorship and one shared
+ * batchId per assistant turn (the AI-batch revert affordance hangs off it).
  */
 export type DispatchProvenance = Partial<ActionContext>;
 
 export type Viewport = PreviewMode;
 
 /**
- * Undo-stack coalescing window. Property-panel inputs dispatch on EVERY input
+ * Gesture-settling window. Property-panel inputs dispatch on EVERY input
  * event so the canvas tracks in real time (color drags fire ~16ms apart);
  * consecutive ops hitting the same block + operation + property key set
- * within this window merge into ONE undo entry — the earliest inverse (the
- * gesture's starting value) with the latest forward op. A run ends when the
- * window lapses, the field blurs (endCoalescing), or a different target or
- * property is edited.
+ * within this window are ONE gesture: the held outbound op is replaced by the
+ * latest forward op, and only the settled op is sent to Convex. A gesture
+ * ends when the window lapses, the field blurs (endCoalescing), or a
+ * different target or property is edited. One gesture = one Convex op = one
+ * server-side undo step.
  */
 export const UNDO_COALESCE_WINDOW_MS = 120;
-
-/** Tracks the in-flight coalescing run (null = no run active). */
-interface CoalesceRun {
-  /** Discriminates the run: op name + target block + sorted property keys. */
-  key: string;
-  /** Timestamp of the run's most recent dispatch (epoch ms). */
-  lastDispatchedAt: number;
-  /** Log-entry id of the run's merged entry (must still top the undo stack). */
-  entryId: string;
-}
 
 /** Coalesce key for an op, or null when the op never coalesces. */
 function getCoalesceKey(op: Operation): string | null {
@@ -75,11 +90,88 @@ function getCoalesceKey(op: Operation): string | null {
   return null;
 }
 
+/** One op in the outbound overlay (held, in flight, or acked-awaiting-snapshot). */
+interface PendingOp {
+  /** Local identity (server versions don't exist until the ack). */
+  clientId: string;
+  op: Operation;
+  context: ActionContext;
+  /** True while the op is held open for gesture coalescing (not yet sent). */
+  isHeld: boolean;
+  /** Discriminates the gesture: op name + target + sorted property keys. */
+  coalesceKey: string | null;
+  /** Timestamp of the gesture's most recent dispatch (epoch ms). */
+  lastDispatchedAt: number;
+  /** Server headVersion after this op, once the mutation acked (null before). */
+  confirmedVersion: number | null;
+}
+
+/** Replay the still-pending overlay onto a server doc (dropping covered/conflicting ops). */
+function rebasePendingOps({
+  serverDoc,
+  serverHeadVersion,
+  pendingOps,
+}: {
+  serverDoc: EmailDocument;
+  serverHeadVersion: number;
+  pendingOps: PendingOp[];
+}): { doc: EmailDocument; pendingOps: PendingOp[] } {
+  let doc = serverDoc;
+  const remaining: PendingOp[] = [];
+  for (const pending of pendingOps) {
+    const isCoveredByServer =
+      pending.confirmedVersion !== null && pending.confirmedVersion <= serverHeadVersion;
+    if (isCoveredByServer) {
+      continue;
+    }
+    const result = applyOperation(doc, pending.op);
+    if (result.isOk) {
+      doc = result.doc;
+      remaining.push(pending);
+    } else {
+      // A remote edit invalidated this not-yet-applied local op (e.g. the
+      // target block was deleted in another tab). Drop it; the server wins.
+      console.warn(`pending ${pending.op.name} no longer applies after rebase; dropped`);
+    }
+  }
+  return { doc, pendingOps: remaining };
+}
+
+const HISTORY_FAILURE_MESSAGES: Record<string, string> = {
+  nothing_to_undo: "Nothing to undo.",
+  nothing_to_redo: "Nothing to redo.",
+  conflict: "Couldn't apply — a newer change conflicts with it.",
+  document_not_found: "This document no longer exists.",
+  batch_not_found: "Those changes couldn't be found.",
+  nothing_to_revert: "Those changes were already reverted.",
+};
+
+function toHistoryFailureMessage(reason: string): string {
+  return HISTORY_FAILURE_MESSAGES[reason] ?? `Couldn't apply (${reason}).`;
+}
+
+/** Result surfaced to the AI-batch revert affordance. */
+export type RevertBatchResult = { isOk: true } | { isOk: false; message: string };
+
 interface EditorState {
-  /** The current email document — the flat block map, sole source of truth. */
+  /** The rendered email document: server head + the pending local overlay. */
   doc: EmailDocument;
-  /** The active undo-coalescing run (see UNDO_COALESCE_WINDOW_MS). */
-  coalesceRun: CoalesceRun | null;
+  /** Last server snapshot from the reactive getDocument query (null until loaded). */
+  serverDoc: EmailDocument | null;
+  serverHeadVersion: number;
+  /** True once the first server snapshot has been applied. */
+  isDocumentReady: boolean;
+  /** The Convex document this store is bound to (null before connect). */
+  documentId: Id<"documents"> | null;
+  /** The anonymous session id — authorId for user ops and history calls. */
+  authorId: string | null;
+  /** Outbound overlay: held/in-flight/acked-awaiting-snapshot ops, oldest first. */
+  pendingOps: PendingOp[];
+  /** Server-derived button states (fed from the history.canUndoRedo query). */
+  canUndo: boolean;
+  canRedo: boolean;
+  /** Transient user-facing notice (undo/redo/revert failures, dropped ops). */
+  notice: string | null;
   /** The currently selected block on the canvas, or null for no selection. */
   selectedBlockId: BlockId | null;
   /**
@@ -89,30 +181,44 @@ interface EditorState {
   editingBlockId: BlockId | null;
   /** Canvas viewport width preset. */
   viewport: Viewport;
-  /** Entries whose `inverse` undoes them, oldest → newest. */
-  undoStack: OperationLogEntry[];
-  /** Entries undone and eligible for redo, oldest undo → newest undo. */
-  redoStack: OperationLogEntry[];
-  /** Append-only in-memory operation log (every applied op, incl. undo/redo). */
-  opLog: OperationLogEntry[];
+
+  /** Bind the store to a loaded Convex document (called once by StudioShell). */
+  connectDocument: (input: {
+    convexClient: ConvexReactClient;
+    documentId: Id<"documents">;
+    authorId: string;
+  }) => void;
+  /** Detach from the current document and clear all document-scoped state. */
+  resetDocumentState: () => void;
+  /** Feed a reactive getDocument snapshot in; rebases the pending overlay. */
+  applyServerSnapshot: (input: { doc: EmailDocument; headVersion: number }) => void;
+  /** Feed the reactive canUndoRedo query result in. */
+  setHistoryAvailability: (input: { canUndo: boolean; canRedo: boolean }) => void;
 
   /**
    * The only mutation entry point: dispatch one content operation through the
-   * SDK action registry. Returns the full dispatch result so callers can
-   * surface structured errors. `provenance` overrides the default local-user
-   * authorship (see {@link DispatchProvenance}); agent-authored ops never
-   * coalesce with user gestures on the undo stack.
+   * SDK action registry. Applies locally (instant) and forwards the settled
+   * op to Convex. Returns the full LOCAL dispatch result so callers can
+   * surface structured errors synchronously. `provenance` overrides the
+   * default local-user authorship (see {@link DispatchProvenance}); agent
+   * ops never coalesce — each is sent immediately with its own identity.
    */
   dispatch: (op: Operation, provenance?: DispatchProvenance) => DispatchContentActionResult;
   /**
-   * Explicitly end the active coalescing run (field blur / picker close):
-   * the next dispatch starts a fresh undo entry even inside the window.
+   * Explicitly end the active gesture (field blur / picker close): flushes
+   * the held op to Convex; the next dispatch starts a fresh gesture.
    */
   endCoalescing: () => void;
-  /** Apply the most recent undo-stack entry's inverse (through applyOperation). */
+  /** Server-side per-author undo (history.undo); failures surface as a notice. */
   undo: () => void;
-  /** Reapply the most recently undone operation (through applyOperation). */
+  /** Server-side per-author redo (history.redo); failures surface as a notice. */
   redo: () => void;
+  /** Revert one AI turn's batch (history.revertBatch). */
+  revertAgentBatch: (batchId: string) => Promise<RevertBatchResult>;
+
+  showNotice: (message: string) => void;
+  dismissNotice: () => void;
+
   selectBlock: (blockId: BlockId | null) => void;
   /**
    * Open the inline rich-text editor for a text block (also selects it).
@@ -135,167 +241,340 @@ function reconcileSelection(
     : null;
 }
 
-export const useEditorStore = create<EditorState>()((set, get) => ({
-  doc: createSampleDocument(),
-  coalesceRun: null,
-  selectedBlockId: null,
-  editingBlockId: null,
-  viewport: "desktop",
-  undoStack: [],
-  redoStack: [],
-  opLog: [],
+export const useEditorStore = create<EditorState>()((set, get) => {
+  // The Convex client is runtime wiring, not renderable state.
+  let convexClient: ConvexReactClient | null = null;
+  let flushTimerId: ReturnType<typeof setTimeout> | null = null;
+  let noticeTimerId: ReturnType<typeof setTimeout> | null = null;
 
-  dispatch: (op, provenance) => {
-    const context: ActionContext = { ...LOCAL_ACTION_CONTEXT, ...provenance };
-    const result = dispatchContentAction({
-      registry: emailActionRegistry,
-      doc: get().doc,
-      name: op.name,
-      input: op,
-      context,
-    });
-    if (!result.isOk) {
-      // Surface for debugging; UI controls are built to only emit valid ops.
-      // Agent-authored failures are an EXPECTED path (the chat panel surfaces
-      // them as failed chips and reports them back to the model), so they are
-      // not console noise.
-      if (context.author !== "agent") {
-        console.error(`dispatch(${op.name}) failed`, result.errors);
-      }
-      return result;
-    }
+  const getHeldOp = (): PendingOp | null => {
+    const lastPending = get().pendingOps[get().pendingOps.length - 1];
+    return lastPending !== undefined && lastPending.isHeld ? lastPending : null;
+  };
 
-    const now = Date.now();
-    // Agent ops never coalesce: each tool call is a discrete edit, and merging
-    // with an adjacent user gesture would fuse two authors into one undo step.
-    const coalesceKey = context.author === "agent" ? null : getCoalesceKey(op);
-
+  /** Remove one pending op (send failure) and rebase the doc without it. */
+  const dropPendingOp = (clientId: string, noticeMessage: string): void => {
     set((state) => {
-      const topEntry = state.undoStack[state.undoStack.length - 1];
-      const lastLogEntry = state.opLog[state.opLog.length - 1];
-      const shouldCoalesce =
-        coalesceKey !== null &&
-        state.coalesceRun !== null &&
-        state.coalesceRun.key === coalesceKey &&
-        now - state.coalesceRun.lastDispatchedAt <= UNDO_COALESCE_WINDOW_MS &&
-        topEntry !== undefined &&
-        topEntry.id === state.coalesceRun.entryId &&
-        lastLogEntry !== undefined &&
-        lastLogEntry.id === state.coalesceRun.entryId;
-
-      if (shouldCoalesce) {
-        // Merge into the run's entry: keep the EARLIEST inverse (snapshots
-        // the gesture's starting value) under the LATEST forward op, so undo
-        // jumps end→start in one step and redo start→end in one step. The op
-        // log is coalesced identically — one logical entry per gesture is
-        // what Phase 4 persists.
-        const mergedEntry: OperationLogEntry = {
-          ...result.logEntry,
-          id: topEntry.id,
-          inverse: topEntry.inverse,
-        };
-        return {
-          doc: result.doc,
-          opLog: [...state.opLog.slice(0, -1), mergedEntry],
-          undoStack: [...state.undoStack.slice(0, -1), mergedEntry],
-          redoStack: [],
-          coalesceRun: { key: coalesceKey, lastDispatchedAt: now, entryId: mergedEntry.id },
-          selectedBlockId: reconcileSelection(state.selectedBlockId, result.doc),
-          editingBlockId: reconcileSelection(state.editingBlockId, result.doc),
-        };
+      const pendingOps = state.pendingOps.filter((pending) => pending.clientId !== clientId);
+      if (state.serverDoc === null) {
+        return { pendingOps };
       }
-
+      const rebased = rebasePendingOps({
+        serverDoc: state.serverDoc,
+        serverHeadVersion: state.serverHeadVersion,
+        pendingOps,
+      });
       return {
-        doc: result.doc,
-        opLog: [...state.opLog, result.logEntry],
-        undoStack: [...state.undoStack, result.logEntry],
-        redoStack: [],
-        coalesceRun:
-          coalesceKey !== null
-            ? { key: coalesceKey, lastDispatchedAt: now, entryId: result.logEntry.id }
-            : null,
-        selectedBlockId: reconcileSelection(state.selectedBlockId, result.doc),
-        editingBlockId: reconcileSelection(state.editingBlockId, result.doc),
+        pendingOps: rebased.pendingOps,
+        doc: rebased.doc,
+        selectedBlockId: reconcileSelection(state.selectedBlockId, rebased.doc),
+        editingBlockId: reconcileSelection(state.editingBlockId, rebased.doc),
       };
     });
-    return result;
-  },
+    get().showNotice(noticeMessage);
+  };
 
-  endCoalescing: () => set({ coalesceRun: null }),
-
-  undo: () => {
-    const { doc, undoStack } = get();
-    const entry = undoStack[undoStack.length - 1];
-    if (entry === undefined) {
+  /** Submit one pending op to Convex applyOperations and track its outcome. */
+  const sendPendingOp = (clientId: string): void => {
+    const { documentId, pendingOps } = get();
+    const pending = pendingOps.find((candidate) => candidate.clientId === clientId);
+    if (pending === undefined || documentId === null || convexClient === null) {
       return;
     }
-    const result = applyOperation(doc, entry.inverse);
-    if (!result.isOk) {
-      console.error("undo failed", result.errors);
-      return;
+    if (pending.isHeld) {
+      set((state) => ({
+        pendingOps: state.pendingOps.map((candidate) =>
+          candidate.clientId === clientId ? { ...candidate, isHeld: false } : candidate,
+        ),
+      }));
     }
-    const undoEntry = createLogEntry({
-      op: entry.inverse,
-      inverse: result.inverse,
-      authorId: LOCAL_ACTION_CONTEXT.authorId,
-      author: LOCAL_ACTION_CONTEXT.author,
-      caller: LOCAL_ACTION_CONTEXT.caller,
-    });
-    set((state) => ({
-      doc: result.doc,
-      coalesceRun: null,
-      opLog: [...state.opLog, undoEntry],
-      undoStack: state.undoStack.slice(0, -1),
-      redoStack: [...state.redoStack, entry],
-      selectedBlockId: reconcileSelection(state.selectedBlockId, result.doc),
-      editingBlockId: reconcileSelection(state.editingBlockId, result.doc),
-    }));
-  },
+    convexClient
+      .mutation(api.documents.applyOperations, {
+        documentId,
+        ops: [pending.op],
+        context: pending.context,
+      })
+      .then((result) => {
+        if (!result.isOk) {
+          const detail = result.errors[0]?.message ?? "the server rejected it";
+          dropPendingOp(clientId, `A change couldn't be saved and was rolled back: ${detail}`);
+          return;
+        }
+        const confirmedVersion = result.headVersion;
+        set((state) => {
+          const pendingOpsWithAck = state.pendingOps.map((candidate) =>
+            candidate.clientId === clientId ? { ...candidate, confirmedVersion } : candidate,
+          );
+          // If the snapshot covering this version already arrived, prune now.
+          if (state.serverDoc !== null && confirmedVersion <= state.serverHeadVersion) {
+            const rebased = rebasePendingOps({
+              serverDoc: state.serverDoc,
+              serverHeadVersion: state.serverHeadVersion,
+              pendingOps: pendingOpsWithAck,
+            });
+            return { pendingOps: rebased.pendingOps, doc: rebased.doc };
+          }
+          return { pendingOps: pendingOpsWithAck };
+        });
+      })
+      .catch(() => {
+        dropPendingOp(clientId, "A change couldn't be saved (connection error) and was rolled back.");
+      });
+  };
 
-  redo: () => {
-    const { doc, redoStack } = get();
-    const entry = redoStack[redoStack.length - 1];
-    if (entry === undefined) {
-      return;
+  /** Settle the open gesture: send its held op now. */
+  const flushHeldOp = (): void => {
+    if (flushTimerId !== null) {
+      clearTimeout(flushTimerId);
+      flushTimerId = null;
     }
-    const result = applyOperation(doc, entry.op);
-    if (!result.isOk) {
-      console.error("redo failed", result.errors);
-      return;
+    const heldOp = getHeldOp();
+    if (heldOp !== null) {
+      sendPendingOp(heldOp.clientId);
     }
-    const redoEntry = createLogEntry({
-      op: entry.op,
-      inverse: result.inverse,
-      authorId: LOCAL_ACTION_CONTEXT.authorId,
-      author: LOCAL_ACTION_CONTEXT.author,
-      caller: LOCAL_ACTION_CONTEXT.caller,
-    });
-    set((state) => ({
-      doc: result.doc,
-      coalesceRun: null,
-      opLog: [...state.opLog, redoEntry],
-      undoStack: [...state.undoStack, entry],
-      redoStack: state.redoStack.slice(0, -1),
-      selectedBlockId: reconcileSelection(state.selectedBlockId, result.doc),
-      editingBlockId: reconcileSelection(state.editingBlockId, result.doc),
-    }));
-  },
+  };
 
-  selectBlock: (blockId) =>
-    set((state) => ({
-      selectedBlockId: blockId,
-      // Moving selection off the block being edited closes its editor
-      // (the unmounting editor commits its session).
-      editingBlockId: state.editingBlockId === blockId ? state.editingBlockId : null,
-    })),
-  startTextEditing: (blockId) =>
-    set({ selectedBlockId: blockId, editingBlockId: blockId }),
-  stopTextEditing: () => set({ editingBlockId: null }),
-  setViewport: (viewport) => set({ viewport }),
-}));
+  /** (Re)arm the gesture-settle timer. */
+  const scheduleFlush = (): void => {
+    if (flushTimerId !== null) {
+      clearTimeout(flushTimerId);
+    }
+    flushTimerId = setTimeout(() => {
+      flushTimerId = null;
+      flushHeldOp();
+    }, UNDO_COALESCE_WINDOW_MS);
+  };
+
+  return {
+    doc: createEmptyDocument(),
+    serverDoc: null,
+    serverHeadVersion: 0,
+    isDocumentReady: false,
+    documentId: null,
+    authorId: null,
+    pendingOps: [],
+    canUndo: false,
+    canRedo: false,
+    notice: null,
+    selectedBlockId: null,
+    editingBlockId: null,
+    viewport: "desktop",
+
+    connectDocument: ({ convexClient: client, documentId, authorId }) => {
+      convexClient = client;
+      set({ documentId, authorId });
+    },
+
+    resetDocumentState: () => {
+      if (flushTimerId !== null) {
+        clearTimeout(flushTimerId);
+        flushTimerId = null;
+      }
+      set({
+        doc: createEmptyDocument(),
+        serverDoc: null,
+        serverHeadVersion: 0,
+        isDocumentReady: false,
+        documentId: null,
+        pendingOps: [],
+        canUndo: false,
+        canRedo: false,
+        notice: null,
+        selectedBlockId: null,
+        editingBlockId: null,
+      });
+    },
+
+    applyServerSnapshot: ({ doc, headVersion }) => {
+      set((state) => {
+        const rebased = rebasePendingOps({
+          serverDoc: doc,
+          serverHeadVersion: headVersion,
+          pendingOps: state.pendingOps,
+        });
+        return {
+          serverDoc: doc,
+          serverHeadVersion: headVersion,
+          doc: rebased.doc,
+          pendingOps: rebased.pendingOps,
+          isDocumentReady: true,
+          selectedBlockId: reconcileSelection(state.selectedBlockId, rebased.doc),
+          editingBlockId: reconcileSelection(state.editingBlockId, rebased.doc),
+        };
+      });
+    },
+
+    setHistoryAvailability: ({ canUndo, canRedo }) => set({ canUndo, canRedo }),
+
+    dispatch: (op, provenance) => {
+      const context: ActionContext = {
+        ...LOCAL_ACTION_CONTEXT,
+        authorId: get().authorId ?? "local",
+        ...provenance,
+      };
+      const result = dispatchContentAction({
+        registry: emailActionRegistry,
+        doc: get().doc,
+        name: op.name,
+        input: op,
+        context,
+      });
+      if (!result.isOk) {
+        // Surface for debugging; UI controls are built to only emit valid ops.
+        // Agent-authored failures are an EXPECTED path (the chat panel surfaces
+        // them as failed chips and reports them back to the model), so they are
+        // not console noise.
+        if (context.author !== "agent") {
+          console.error(`dispatch(${op.name}) failed`, result.errors);
+        }
+        return result;
+      }
+
+      // 1. Instant local apply — the input path never waits on Convex.
+      set((state) => ({
+        doc: result.doc,
+        selectedBlockId: reconcileSelection(state.selectedBlockId, result.doc),
+        editingBlockId: reconcileSelection(state.editingBlockId, result.doc),
+      }));
+
+      // 2. Outbound bookkeeping. Agent ops never coalesce: each tool call is a
+      // discrete edit with its own provenance.
+      const now = Date.now();
+      const coalesceKey = context.author === "agent" ? null : getCoalesceKey(op);
+      const appliedOp = result.logEntry.op;
+      const heldOp = getHeldOp();
+      const isSameGesture =
+        coalesceKey !== null &&
+        heldOp !== null &&
+        heldOp.coalesceKey === coalesceKey &&
+        now - heldOp.lastDispatchedAt <= UNDO_COALESCE_WINDOW_MS;
+
+      if (isSameGesture) {
+        // Extend the open gesture: the latest forward op supersedes the held
+        // one entirely (same target, same property keys, newest values).
+        set((state) => ({
+          pendingOps: state.pendingOps.map((candidate) =>
+            candidate.clientId === heldOp.clientId
+              ? { ...candidate, op: appliedOp, lastDispatchedAt: now }
+              : candidate,
+          ),
+        }));
+        scheduleFlush();
+        return result;
+      }
+
+      // A new edit always settles the previous gesture first (server order
+      // must match local apply order).
+      flushHeldOp();
+      const pending: PendingOp = {
+        clientId: crypto.randomUUID(),
+        op: appliedOp,
+        context,
+        isHeld: coalesceKey !== null,
+        coalesceKey,
+        lastDispatchedAt: now,
+        confirmedVersion: null,
+      };
+      set((state) => ({ pendingOps: [...state.pendingOps, pending] }));
+      if (coalesceKey === null) {
+        sendPendingOp(pending.clientId);
+      } else {
+        scheduleFlush();
+      }
+      return result;
+    },
+
+    endCoalescing: () => flushHeldOp(),
+
+    undo: () => {
+      const { documentId, authorId } = get();
+      if (documentId === null || authorId === null || convexClient === null) {
+        return;
+      }
+      // Settle the open gesture first so it is what gets undone.
+      flushHeldOp();
+      convexClient
+        .mutation(api.history.undo, { documentId, authorId })
+        .then((result) => {
+          if (!result.isOk) {
+            get().showNotice(toHistoryFailureMessage(result.reason));
+          }
+        })
+        .catch(() => get().showNotice("Undo failed (connection error)."));
+    },
+
+    redo: () => {
+      const { documentId, authorId } = get();
+      if (documentId === null || authorId === null || convexClient === null) {
+        return;
+      }
+      flushHeldOp();
+      convexClient
+        .mutation(api.history.redo, { documentId, authorId })
+        .then((result) => {
+          if (!result.isOk) {
+            get().showNotice(toHistoryFailureMessage(result.reason));
+          }
+        })
+        .catch(() => get().showNotice("Redo failed (connection error)."));
+    },
+
+    revertAgentBatch: async (batchId) => {
+      const { documentId, authorId } = get();
+      if (documentId === null || authorId === null || convexClient === null) {
+        return { isOk: false as const, message: "Not connected to the document." };
+      }
+      flushHeldOp();
+      try {
+        const result = await convexClient.mutation(api.history.revertBatch, {
+          documentId,
+          batchId,
+          authorId,
+        });
+        if (!result.isOk) {
+          return { isOk: false as const, message: toHistoryFailureMessage(result.reason) };
+        }
+        return { isOk: true as const };
+      } catch {
+        return { isOk: false as const, message: "Revert failed (connection error)." };
+      }
+    },
+
+    showNotice: (message) => {
+      if (noticeTimerId !== null) {
+        clearTimeout(noticeTimerId);
+      }
+      noticeTimerId = setTimeout(() => {
+        noticeTimerId = null;
+        set({ notice: null });
+      }, 4000);
+      set({ notice: message });
+    },
+
+    dismissNotice: () => {
+      if (noticeTimerId !== null) {
+        clearTimeout(noticeTimerId);
+        noticeTimerId = null;
+      }
+      set({ notice: null });
+    },
+
+    selectBlock: (blockId) =>
+      set((state) => ({
+        selectedBlockId: blockId,
+        // Moving selection off the block being edited closes its editor
+        // (the unmounting editor commits its session).
+        editingBlockId: state.editingBlockId === blockId ? state.editingBlockId : null,
+      })),
+    startTextEditing: (blockId) =>
+      set({ selectedBlockId: blockId, editingBlockId: blockId }),
+    stopTextEditing: () => set({ editingBlockId: null }),
+    setViewport: (viewport) => set({ viewport }),
+  };
+});
 
 // Dev-only escape hatch so in-browser verification (agents, debugging) can
-// inspect the op log and document without going through React.
+// inspect the pending overlay and document without going through React.
 declare global {
   interface Window {
     __tandemEditorStore?: typeof useEditorStore;
@@ -305,8 +584,8 @@ if (typeof window !== "undefined" && process.env.NODE_ENV !== "production") {
   window.__tandemEditorStore = useEditorStore;
 }
 
-/** Selector: is there anything to undo? */
-export const selectCanUndo = (state: EditorState): boolean => state.undoStack.length > 0;
+/** Selector: can history.undo do anything for this author? (server-derived) */
+export const selectCanUndo = (state: EditorState): boolean => state.canUndo;
 
-/** Selector: is there anything to redo? */
-export const selectCanRedo = (state: EditorState): boolean => state.redoStack.length > 0;
+/** Selector: can history.redo do anything for this author? (server-derived) */
+export const selectCanRedo = (state: EditorState): boolean => state.canRedo;
