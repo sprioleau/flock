@@ -21,6 +21,13 @@ export type {
 export { describeBlock } from "./describe-block";
 export type { DescribeBlockInput, BlockDetails } from "./describe-block";
 
+// --- Agent actions & registry (§9.4 item 1, Phase 3 integration) -----------------
+export {
+  getBlockDetailsAction,
+  agentAnalysisActions,
+  buildAgentActionRegistry,
+} from "./actions";
+
 // --- Prompt layers (static/cacheable → per-request, §3.2) --------------------------
 export {
   SYSTEM_STATIC,

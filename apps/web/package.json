@@ -19,6 +19,7 @@
     "@dnd-kit/sortable": "^10.0.0",
     "@dnd-kit/utilities": "^3.2.2",
     "@react-email/editor": "^1.6.11",
+    "@tandem/agent": "workspace:*",
     "@tandem/email-sdk": "workspace:*",
     "@tiptap/core": "^3.29.0",
     "@tiptap/extension-collaboration": "^3.29.0",

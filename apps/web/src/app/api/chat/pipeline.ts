@@ -170,7 +170,7 @@ async function runSinglePassPipeline(input: ChatPipelineInput): Promise<void> {
     threadId,
   };
 
-  const { tools, schemaOnlyTools, toolApproval } = buildChatTools({ writer, actionContext });
+  const { tools, schemaOnlyTools, toolApproval } = buildChatTools({ writer, actionContext, doc });
   const { staticInstructions, documentContext } = buildSystemContext({ doc, selectedBlockId });
 
   // Message order for Gemini implicit context caching: static system text

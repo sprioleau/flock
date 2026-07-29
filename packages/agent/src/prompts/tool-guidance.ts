@@ -25,9 +25,9 @@ export function buildToolGuidance(registry: EmailActionRegistry): string {
     return `- ${action.name} (${flags.join(", ")}) — ${action.description}`;
   });
   // §9.4 catalog-lookup: advertise the read-back path only when it is registered.
-  const hasBlockDetailsTool = registry.actionsByName.has("get-block-details");
+  const hasBlockDetailsTool = registry.actionsByName.has("getBlockDetails");
   const catalogHint = hasBlockDetailsTool
-    ? "Tool inputs are compact; call get-block-details for a block's full shape before complex edits.\n\n"
+    ? "Tool inputs are compact; call getBlockDetails for a block's full shape before complex edits.\n\n"
     : "";
   return `## Available tools\n\n${catalogHint}${lines.join("\n")}`;
 }

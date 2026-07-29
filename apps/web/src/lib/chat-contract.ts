@@ -1,3 +1,4 @@
+import type { BlockDetails } from "@tandem/agent";
 import type { UIMessage } from "ai";
 import { z } from "zod";
 import {
@@ -11,6 +12,7 @@ import {
   type AddBlockOperation,
   type AddSectionOperation,
   type ApplyThemeOperation,
+  type BlockId,
   type EditorCommand,
   type MoveBlockOperation,
   type Operation,
@@ -127,6 +129,19 @@ export interface EditorToolOutput {
 }
 
 /**
+ * Tool output returned by ANALYSIS actions (kind: "analysis") — executed
+ * server-side against the request's document, returned to the model in-loop.
+ * `isFound: false` is the model-facing "no such block" shape for a null
+ * lookup result.
+ */
+export type AnalysisToolOutput<TData = unknown> =
+  | { isFound: true; data: TData }
+  | { isFound: false; message: string };
+
+/** getBlockDetails result data: the full block JSON + root-first ancestor ids. */
+export type GetBlockDetailsToolOutput = AnalysisToolOutput<BlockDetails>;
+
+/**
  * TOOLS generic for {@link TandemChatMessage} — one entry per registry action
  * (tool names match `emailActionRegistry` action names exactly).
  *
@@ -148,6 +163,7 @@ export type TandemChatTools = {
   updateText: { input: UpdateTextOperation; output: never };
   showPreview: { input: ShowPreviewInput; output: EditorToolOutput };
   sendTestEmail: { input: SendTestEmailInput; output: EditorToolOutput };
+  getBlockDetails: { input: { blockId: BlockId }; output: GetBlockDetailsToolOutput };
 };
 
 /** The typed UI message flowing over /api/chat in both directions. */

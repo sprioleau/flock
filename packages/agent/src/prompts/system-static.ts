@@ -34,7 +34,7 @@ Rich text lives ONLY inside a text block's properties.text as a small Tiptap-sty
 Every edit is one typed operation applied atomically to the flat map:
 - Property edits: updateBlockProperties merges fields into one block; replaceBlockProperties swaps the whole properties object; updateText replaces one text block's rich-text doc.
 - Document-wide: updateDocumentSettings merges globals; applyTheme replaces the entire globals object.
-- Structure: addBlock / addSection insert (server generates ids); removeBlock cascades to descendants; moveBlock reparents; reorderChildren permutes one parent's children; restoreBlocks undoes a removal.
+- Structure: addBlock / addSection insert a complete new block — YOU generate its id (correct type prefix + underscore + 4 random lowercase alphanumerics, e.g. btn_x7k2, not already in the document); removeBlock cascades to descendants; moveBlock reparents; reorderChildren permutes one parent's children; restoreBlocks undoes a removal.
 Each operation is validated against its schema and the document integrity rules before it applies; on failure you get a structured error to correct — fix and retry once, then explain to the user.
 
 Prefer the smallest operation that expresses the change: merge one property rather than replace all of them; touch globals for "make all buttons blue", touch one block for "make THIS button blue".

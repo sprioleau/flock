@@ -1,25 +1,29 @@
 import {
   dispatchEditorAction,
-  emailActionRegistry,
   getAction,
   toAISDKToolDefinitions,
   type ActionContext,
   type ActionDispatchError,
+  type EmailDocument,
 } from "@tandem/email-sdk";
 import { tool, type ToolApprovalStatus, type ToolSet, type UIMessageStreamWriter } from "ai";
 import {
   serializeChatError,
+  type AnalysisToolOutput,
   type EditorToolOutput,
   type TandemChatMessage,
 } from "@/lib/chat-contract";
 import { toModelInputSchema } from "./model-schema";
+import { chatActionRegistry } from "./registry";
 
 /**
- * Registry → AI SDK toolset (Phase 3.2/3.3).
+ * Registry → AI SDK toolset (Phase 3.2/3.3, agent registry since Phase 3
+ * integration).
  *
- * Every action in `emailActionRegistry` is advertised to the model as a tool
- * (name, description, compact agentInputSchema straight from
- * `toAISDKToolDefinitions`). The two kinds diverge on execution:
+ * Every action in `chatActionRegistry` (email-sdk built-ins + agent analysis
+ * actions) is advertised to the model as a tool (name, description, compact
+ * agentInputSchema straight from `toAISDKToolDefinitions`). The kinds diverge
+ * on execution:
  *
  * - CONTENT actions get NO execute(). The validated tool call streams to the
  *   client as a `tool-<name>` part; the CLIENT applies it optimistically
@@ -32,6 +36,11 @@ import { toModelInputSchema } from "./model-schema";
  *   written onto the stream as a `data-editor-command` part for the Phase 3.4
  *   frontend dispatcher. The tool output ({status:"dispatched"}) closes the
  *   tool-call loop so the model can confirm the result.
+ *
+ * - ANALYSIS actions (getBlockDetails, §9.4 catalog-lookup) execute
+ *   server-side against THIS REQUEST'S document and return their JSON result
+ *   straight to the model in-loop. Read-only: nothing is applied client-side
+ *   and no data part is written.
  */
 
 /** Thrown for terminal dispatch failures — see pipeline onError handling. */
@@ -48,6 +57,8 @@ export class TerminalChatError extends Error {
 export interface BuildChatToolsInput {
   writer: UIMessageStreamWriter<TandemChatMessage>;
   actionContext: ActionContext;
+  /** This request's document — what analysis actions read (never mutated). */
+  doc: EmailDocument;
 }
 
 export interface BuiltChatTools {
@@ -67,13 +78,17 @@ export interface BuiltChatTools {
 }
 
 /** Build the per-request toolset. The writer is this request's stream writer. */
-export function buildChatTools({ writer, actionContext }: BuildChatToolsInput): BuiltChatTools {
+export function buildChatTools({
+  writer,
+  actionContext,
+  doc,
+}: BuildChatToolsInput): BuiltChatTools {
   const tools: ToolSet = {};
   const schemaOnlyTools: ToolSet = {};
   const toolApproval: BuiltChatTools["toolApproval"] = {};
 
-  for (const definition of toAISDKToolDefinitions(emailActionRegistry)) {
-    const action = getAction(emailActionRegistry, definition.name);
+  for (const definition of toAISDKToolDefinitions(chatActionRegistry)) {
+    const action = getAction(chatActionRegistry, definition.name);
     if (action === undefined) continue; // unreachable: definitions come from the registry
 
     // Gemini-compatible JSON Schema declaration; validation still runs the
@@ -92,7 +107,7 @@ export function buildChatTools({ writer, actionContext }: BuildChatToolsInput): 
         inputSchema: modelInputSchema,
         execute: async (input, { toolCallId }): Promise<EditorToolOutput> => {
           const result = dispatchEditorAction({
-            registry: emailActionRegistry,
+            registry: chatActionRegistry,
             name: definition.name,
             input,
             context: actionContext,
@@ -125,8 +140,35 @@ export function buildChatTools({ writer, actionContext }: BuildChatToolsInput): 
           return { status: "dispatched", command: result.command };
         },
       });
+    } else if (action.kind === "analysis") {
+      // Analysis actions run server-side against the request's document and
+      // hand their JSON straight back to the model (read-only, in-loop; no
+      // client application, no data part).
+      tools[definition.name] = tool({
+        description: definition.description,
+        inputSchema: modelInputSchema,
+        execute: async (input): Promise<AnalysisToolOutput> => {
+          const parsedInput = action.schema.safeParse(input);
+          if (!parsedInput.success) {
+            // Retryable, mirroring the dispatchers: the model sees the error
+            // as the tool result on the next step and can correct itself.
+            throw new Error(
+              `Input for action "${definition.name}" failed validation: ${parsedInput.error.message}`,
+            );
+          }
+          const data = action.run(doc, parsedInput.data);
+          if (data === null || data === undefined) {
+            return {
+              isFound: false,
+              message: `No result — the requested id does not exist in the current document. Use ids exactly as they appear in the document context.`,
+            };
+          }
+          return { isFound: true, data };
+        },
+      });
     } else {
-      // Content (and future analysis) actions: no execute — client-applied.
+      // Content actions: no execute — the tool call streams to the client,
+      // which validates and applies it.
       tools[definition.name] = schemaOnlyTool;
     }
 

@@ -53,8 +53,8 @@ describe("buildToolGuidance (layer b — cacheable per registry)", () => {
     expect(buildToolGuidance(emailActionRegistry)).toBe(guidance);
   });
 
-  it("omits the get-block-details hint until that tool is registered", () => {
-    expect(guidance).not.toContain("get-block-details");
+  it("omits the getBlockDetails hint until that tool is registered", () => {
+    expect(guidance).not.toContain("getBlockDetails");
   });
 });
 
