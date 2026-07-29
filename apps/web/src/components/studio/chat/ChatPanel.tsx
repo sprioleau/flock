@@ -6,6 +6,9 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
 import { ChatMessageList } from "./ChatMessageList";
+import { QueuedMessageList } from "./QueuedMessageList";
+import { useMessageQueue } from "./use-message-queue";
+import { usePromptHistory } from "./use-prompt-history";
 import { useTandemChat } from "./use-tandem-chat";
 
 const EXPANDED_WIDTH_PX = 360;
@@ -16,6 +19,13 @@ const COLLAPSED_WIDTH_PX = 48;
  * to the studio canvas. Collapsible with an animated width transition
  * (expanded by default now that the chat is real); the rail and the panel
  * body cross-fade so neither state pops in.
+ *
+ * Chat-UX layer (this file wires, the hooks decide):
+ * - Submitting while the agent is busy QUEUES the message (FIFO, editable
+ *   until sent — see use-message-queue.ts); the composer is never disabled.
+ * - ArrowUp/ArrowDown recall prompt history (see use-prompt-history.ts).
+ * - "Busy" includes a pending sendTestEmail approval — queued messages hold
+ *   until the user approves/denies, and hold again if a turn errors.
  */
 export function ChatPanel() {
   const [isExpanded, setIsExpanded] = useState(true);
@@ -24,21 +34,76 @@ export function ChatPanel() {
     messages,
     status,
     error,
-    sendUserMessage,
+    sendUserMessage: sendChatMessage,
     respondToApproval,
+    hasPendingApproval,
+    getIsAgentIdle,
     isMockEnabled,
     setIsMockEnabled,
   } = useTandemChat();
+  const promptHistory = usePromptHistory();
 
-  const isBusy = status === "submitted" || status === "streaming";
+  // Every send funnels through here — direct sends AND queue auto-dispatches
+  // record prompt history with the FINAL text (queued edits included).
+  const sendUserMessage = (text: string): void => {
+    promptHistory.recordPrompt(text);
+    promptHistory.resetNavigation();
+    sendChatMessage(text);
+  };
+
+  const isAgentBusy = status === "submitted" || status === "streaming" || hasPendingApproval;
+  const isErrorPaused = status === "error";
+  const queue = useMessageQueue({
+    isAgentIdle: status === "ready" && !hasPendingApproval,
+    isErrorPaused,
+    getIsAgentIdle,
+    sendUserMessage,
+  });
+  const hasQueuedMessages = queue.queuedMessages.length > 0;
+
   const isDevelopment = process.env.NODE_ENV === "development";
 
   const submitDraft = (): void => {
-    if (isBusy || draftText.trim().length === 0) {
+    const trimmedText = draftText.trim();
+    if (trimmedText.length === 0) {
       return;
     }
-    sendUserMessage(draftText);
+    // Queue behind existing items even when momentarily idle (FIFO fairness);
+    // an error pause with an EMPTY queue sends directly (send clears the
+    // error), matching how native chats let you just try again.
+    if (isAgentBusy || hasQueuedMessages) {
+      queue.enqueueMessage(trimmedText);
+    } else {
+      sendUserMessage(trimmedText);
+    }
     setDraftText("");
+  };
+
+  const handleComposerKeyDown = (event: React.KeyboardEvent<HTMLTextAreaElement>): void => {
+    if (event.key === "Enter" && !event.shiftKey) {
+      event.preventDefault();
+      submitDraft();
+      return;
+    }
+    if (event.key !== "ArrowUp" && event.key !== "ArrowDown") {
+      return;
+    }
+    const textarea = event.currentTarget;
+    const recalledText = promptHistory.navigate({
+      direction: event.key === "ArrowUp" ? "older" : "newer",
+      draftText,
+      selectionStart: textarea.selectionStart,
+      selectionEnd: textarea.selectionEnd,
+    });
+    if (recalledText === null) {
+      return; // fall through: normal caret movement inside the draft
+    }
+    event.preventDefault();
+    setDraftText(recalledText);
+    // Caret to the end of the recalled text after React commits the value.
+    requestAnimationFrame(() => {
+      textarea.setSelectionRange(recalledText.length, recalledText.length);
+    });
   };
 
   return (
@@ -108,26 +173,32 @@ export function ChatPanel() {
           onApprovalResponse={respondToApproval}
         />
 
+        <QueuedMessageList
+          queue={queue}
+          hasPendingApproval={hasPendingApproval}
+          isErrorPaused={isErrorPaused}
+        />
+
+        {/* Composer: textarea and send button share a 36px (size-9) height
+            when single-line — py-1.75 + one text-sm line + 1px borders is
+            exactly the min-h-9 floor — and stay bottom-aligned (items-end)
+            as the textarea grows. */}
         <div className="flex shrink-0 items-end gap-2 border-t p-3">
           <Textarea
             value={draftText}
             onChange={(event) => setDraftText(event.target.value)}
-            onKeyDown={(event) => {
-              if (event.key === "Enter" && !event.shiftKey) {
-                event.preventDefault();
-                submitDraft();
-              }
-            }}
-            disabled={isBusy}
-            placeholder="Describe your email…"
-            className="min-h-9 resize-none"
+            onKeyDown={handleComposerKeyDown}
+            placeholder={
+              isAgentBusy || hasQueuedMessages ? "Queue a message…" : "Describe your email…"
+            }
+            className="min-h-9 resize-none py-1.75"
             aria-label="Chat message"
             tabIndex={isExpanded ? 0 : -1}
           />
           <Button
-            disabled={isBusy || draftText.trim().length === 0}
-            size="icon-sm"
-            aria-label="Send message"
+            disabled={draftText.trim().length === 0}
+            size="icon-lg"
+            aria-label={isAgentBusy || hasQueuedMessages ? "Queue message" : "Send message"}
             tabIndex={isExpanded ? 0 : -1}
             onClick={submitDraft}
           >

@@ -4,6 +4,7 @@ import { useState } from "react";
 import { Chat, useChat } from "@ai-sdk/react";
 import {
   DefaultChatTransport,
+  isStaticToolUIPart,
   lastAssistantMessageIsCompleteWithApprovalResponses,
   lastAssistantMessageIsCompleteWithToolCalls,
 } from "ai";
@@ -210,6 +211,26 @@ function createTandemChatController(): TandemChatController {
   };
 }
 
+/**
+ * True while the LAST assistant message holds a tool approval the user has
+ * not finished resolving: `approval-requested` (waiting on Approve/Deny) or
+ * `approval-responded` (answered, but the auto-resubmit round has not yet
+ * rewritten the part with its outcome). Both must hold the message queue —
+ * a queued user message must never auto-send past a pending approval, and
+ * the responded→resubmit window is a race the queue must not slip through.
+ */
+function getHasPendingApproval(messages: TandemChatMessage[]): boolean {
+  const lastMessage = messages.at(-1);
+  if (lastMessage === undefined || lastMessage.role !== "assistant") {
+    return false;
+  }
+  return lastMessage.parts.some(
+    (part) =>
+      isStaticToolUIPart(part) &&
+      (part.state === "approval-requested" || part.state === "approval-responded"),
+  );
+}
+
 export interface TandemChat {
   messages: TandemChatMessage[];
   status: "submitted" | "streaming" | "ready" | "error";
@@ -218,6 +239,16 @@ export interface TandemChat {
   sendUserMessage: (text: string) => void;
   /** Respond to a tool approval request (sendTestEmail). */
   respondToApproval: (input: { approvalId: string; isApproved: boolean }) => void;
+  /** Reactive: an approval chip is on screen (or mid-resubmit) — see above. */
+  hasPendingApproval: boolean;
+  /**
+   * LIVE idle check against the Chat instance (not render-stale props):
+   * status is "ready" AND no approval is pending. The message queue re-checks
+   * this at dispatch time so mid-turn "ready" flickers (the SDK sets status
+   * "ready" before evaluating sendAutomaticallyWhen between continuation
+   * rounds) and StrictMode double-effects can never double-send.
+   */
+  getIsAgentIdle: () => boolean;
   /** Dev-only: force the deterministic mock model via x-tandem-mock. */
   isMockEnabled: boolean;
   setIsMockEnabled: (isMockEnabled: boolean) => void;
@@ -254,12 +285,17 @@ export function useTandemChat(): TandemChat {
     setIsMockEnabledState(nextIsMockEnabled);
   };
 
+  const getIsAgentIdle = (): boolean =>
+    controller.chat.status === "ready" && !getHasPendingApproval(controller.chat.messages);
+
   return {
     messages: chat.messages,
     status: chat.status,
     error: chat.error,
     sendUserMessage,
     respondToApproval,
+    hasPendingApproval: getHasPendingApproval(chat.messages),
+    getIsAgentIdle,
     isMockEnabled,
     setIsMockEnabled,
   };
