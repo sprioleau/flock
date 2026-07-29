@@ -11,7 +11,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - uses: pnpm/action-setup@v4
+      # pnpm comes from corepack (pinned by package.json's packageManager
+      # field) — third-party actions are disallowed by the GHE pre-receive
+      # policy, so pnpm/action-setup can't be used here.
+      - name: Enable corepack
+        run: corepack enable
 
       - uses: actions/setup-node@v4
         with:
