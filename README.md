@@ -4,27 +4,15 @@ An AI-powered collaborative email editor: natural-language chat on the left, a l
 
 ## Architecture at a glance
 
-```
-            flat normalized block map          (source of truth)
-      Record<BlockId, Block> · { id, type, parentId, childrenIds, properties }
-                       │
-                       ▼
-              operations SDK                   (pure core)
-      applyOperation(doc, op) → { doc', inverse } · Zod validation
-      + integrity checks after every apply · append-only op log
-                       │
-                       ▼
-              action envelope                  (exposure layer)
-      defineEmailAction: one definition per op → AI SDK tool def,
-      typed UI dispatcher, Convex mutation (Phase 4), HTTP/MCP (later)
-                       │
-                       ▼
-                 renderers                     (thin wrappers over React Email)
-      inflate(flat) → tree → per-block views → email-safe HTML
-                       │
-                       ▼
-               studio canvas                   (the same block views,
-                                                composed with interactivity)
+```mermaid
+flowchart TD
+    MAP["<b>Flat normalized block map</b> — source of truth<br/>Record&lt;BlockId, Block&gt; · { id, type, parentId, childrenIds, properties }"]
+    OPS["<b>Operations SDK</b> — pure core<br/>applyOperation(doc, op) → { doc', inverse } · Zod validation<br/>integrity checks after every apply · append-only op log"]
+    ENV["<b>Action envelope</b> — exposure layer<br/>defineEmailAction: one definition per op → AI SDK tool def,<br/>typed UI dispatcher, Convex mutation (Phase 4), HTTP/MCP (later)"]
+    REN["<b>Renderers</b> — thin wrappers over React Email<br/>inflate(flat) → tree → per-block views → email-safe HTML"]
+    CANVAS["<b>Studio canvas</b><br/>the same block views, composed with interactivity"]
+
+    MAP --> OPS --> ENV --> REN --> CANVAS
 ```
 
 - **Flat block map.** Blocks keyed by short LLM-addressable ids (`sec_a1b2`, `btn_x9k3`); structure lives in `parentId`/`childrenIds` pointers. The nested tree is derived, ephemeral, render-time only. An integrity checker (orphans, cycles, nesting rules) runs after every mutation.
