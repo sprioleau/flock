@@ -1,0 +1,61 @@
+/*
+ * Pointer presence — Figma-style remote mouse cursors on the editing canvas.
+ *
+ * Layer contract: the overlay is the last child of the `relative`
+ * [data-dnd-canvas-root] div, absolutely covering it (canvas-CONTENT space,
+ * so it scrolls with the email and clips at the .email-canvas scrollport).
+ * z-order inside the canvas stacking context: block presence border z-[5] <
+ * selection ring z-10 < CURSORS z-20 < action row / breadcrumb z-30 <
+ * bubble menu / dnd chrome z-50.
+ *
+ * Nothing here may affect layout or intercept input: everything is
+ * pointer-events-none and moves only via GPU-composited transforms.
+ */
+
+.tandem-pointer-overlay {
+  position: absolute;
+  inset: 0;
+  z-index: 20;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.tandem-pointer-cursor {
+  position: absolute;
+  top: 0;
+  left: 0;
+  opacity: 0;
+  pointer-events: none;
+  will-change: transform;
+  /* Read-side smoothing: presence delivers ~5 positions/sec; a ~180ms linear
+   * transform transition glides between them so motion reads as continuous
+   * (transport is throttled — the RENDERED motion never is). Opacity eases
+   * ~200ms so unresolvable/stale cursors fade rather than pop. */
+  transition:
+    transform 180ms linear,
+    opacity 200ms ease;
+}
+
+.tandem-pointer-cursor__arrow {
+  display: block;
+  filter: drop-shadow(0 1px 1px rgb(0 0 0 / 0.25));
+}
+
+/* Name tag: same visual language as the block presence labels
+ * (rounded-sm px-1 py-px text-[9px] font-medium leading-3 text-white on the
+ * user's presence color). */
+.tandem-pointer-cursor__label {
+  position: absolute;
+  top: 14px;
+  left: 11px;
+  max-width: 160px;
+  overflow: hidden;
+  padding: 1px 4px;
+  border-radius: 2px;
+  font-size: 9px;
+  font-weight: 500;
+  line-height: 12px;
+  color: white;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}

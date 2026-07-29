@@ -9,6 +9,7 @@ import { cn } from "@/lib/utils";
 import { createDefaultSection, generateUniqueBlockId } from "./block-defaults";
 import { CanvasNode } from "./CanvasNode";
 import { CanvasDndContext } from "./dnd/CanvasDndContext";
+import { PointerPresenceOverlay } from "./presence/PointerPresenceOverlay";
 
 /**
  * The editing canvas: the store's document inflated and rendered through the
@@ -54,7 +55,7 @@ export function EditorCanvas() {
       >
         <div
           className={cn(
-            "mx-auto flex min-h-full flex-col pt-10 transition-[width] duration-200",
+            "relative mx-auto flex min-h-full flex-col pt-10 transition-[width] duration-200",
             viewport === "mobile" ? "w-[375px] shadow-lg" : "w-full",
           )}
           style={{ backgroundColor: rootStyles.emailBackgroundColor }}
@@ -78,6 +79,10 @@ export function EditorCanvas() {
               Add section
             </Button>
           </div>
+          {/* Pointer presence (remote cursors + local capture): inside the
+              canvas root so cursors live in content space — scrolling and
+              scrollport clipping come for free. */}
+          <PointerPresenceOverlay />
         </div>
       </div>
     </CanvasDndContext>

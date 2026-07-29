@@ -61,6 +61,20 @@ export interface PresenceData {
     head: number;
     version?: number;
   };
+  /**
+   * Live mouse pointer on the editing canvas (pointer presence). `x`/`y` are
+   * 0..1 fractions of the anchor rect: the innermost `[data-block-id]`
+   * element under the pointer, or the `[data-dnd-canvas-root]` surface when
+   * `blockId` is null (off-block hover). Block anchoring makes the position
+   * land on the same CONTENT across clients with different canvas widths.
+   * The sender clears this key (broadcasts `pointer: undefined`) on canvas
+   * leave, window blur, and pointer idle.
+   */
+  pointer?: {
+    blockId: string | null;
+    x: number;
+    y: number;
+  };
 }
 
 export interface PresenceRosterEntry {
