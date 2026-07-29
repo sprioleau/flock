@@ -1,7 +1,7 @@
 import type { Block, EmailDocument, TextDoc } from "@tandem/email-sdk";
 
 /**
- * Demo-mode prompt composer: turns the CURRENT document into 6 natural-
+ * Demo-mode prompt composer: turns the CURRENT document into a handful of natural-
  * language chat prompts, the way a user would type them. Composed at click
  * time from the store's live doc — prompts reference real visible content
  * ("the Get started button", the actual heading text), never block ids
@@ -14,7 +14,9 @@ import type { Block, EmailDocument, TextDoc } from "@tandem/email-sdk";
  * template randomization keeps repeat clicks from looking canned.
  */
 
-export const DEMO_PROMPT_COUNT = 6;
+// Kept small on purpose: Gemini's free tier rate-limits aggressively, and
+// each prompt is a full real agent turn (owner-tuned from 6 → 3).
+export const DEMO_PROMPT_COUNT = 3;
 
 /** Pick one entry at random (client-side variety; determinism not needed here). */
 function pickRandom<T>(options: readonly T[]): T {
