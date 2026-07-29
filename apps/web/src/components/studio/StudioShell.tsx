@@ -2,14 +2,14 @@
 
 import { useEffect } from "react";
 import { useEditorStore } from "@/lib/editor-store";
-import { ChatPanelPlaceholder } from "./ChatPanelPlaceholder";
+import { ChatPanel } from "./chat/ChatPanel";
 import { EditorCanvas } from "./EditorCanvas";
 import { HtmlPreviewDialog } from "./HtmlPreviewDialog";
 import { PropertyPanelSlot } from "./PropertyPanelSlot";
 import { StudioToolbar } from "./StudioToolbar";
 
 /**
- * The /studio product surface: chat panel (Phase 3 seam) | toolbar + canvas |
+ * The /studio product surface: AI chat panel (Phase 3) | toolbar + canvas |
  * property panel slot (wave-2 seam).
  */
 export function StudioShell() {
@@ -23,7 +23,7 @@ export function StudioShell() {
 
   return (
     <div className="flex h-dvh w-full overflow-hidden">
-      <ChatPanelPlaceholder />
+      <ChatPanel />
       <main className="flex min-w-0 flex-1 flex-col">
         <StudioToolbar>
           <HtmlPreviewDialog />

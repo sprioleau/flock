@@ -25,12 +25,21 @@ import { create } from "zustand";
  * live queries + mutations without touching any component.
  */
 
-/** Provenance stamped on every op-log entry produced by this UI. */
+/** Default provenance for op-log entries produced by this UI's own controls. */
 const LOCAL_ACTION_CONTEXT: ActionContext = {
   caller: "frontend",
   author: "user",
   authorId: "local",
 };
+
+/**
+ * Per-dispatch provenance overrides, merged over {@link LOCAL_ACTION_CONTEXT}.
+ * The chat panel passes `{ caller: "tool", author: "agent", authorId: <chat
+ * id>, batchId: <turn batch id> }` so agent-applied ops land in the op log
+ * with agent authorship and one shared batchId per assistant turn (Phase 4's
+ * AI-batch revert hangs off that batchId).
+ */
+export type DispatchProvenance = Partial<ActionContext>;
 
 export type Viewport = PreviewMode;
 
@@ -90,9 +99,11 @@ interface EditorState {
   /**
    * The only mutation entry point: dispatch one content operation through the
    * SDK action registry. Returns the full dispatch result so callers can
-   * surface structured errors.
+   * surface structured errors. `provenance` overrides the default local-user
+   * authorship (see {@link DispatchProvenance}); agent-authored ops never
+   * coalesce with user gestures on the undo stack.
    */
-  dispatch: (op: Operation) => DispatchContentActionResult;
+  dispatch: (op: Operation, provenance?: DispatchProvenance) => DispatchContentActionResult;
   /**
    * Explicitly end the active coalescing run (field blur / picker close):
    * the next dispatch starts a fresh undo entry even inside the window.
@@ -134,22 +145,30 @@ export const useEditorStore = create<EditorState>()((set, get) => ({
   redoStack: [],
   opLog: [],
 
-  dispatch: (op) => {
+  dispatch: (op, provenance) => {
+    const context: ActionContext = { ...LOCAL_ACTION_CONTEXT, ...provenance };
     const result = dispatchContentAction({
       registry: emailActionRegistry,
       doc: get().doc,
       name: op.name,
       input: op,
-      context: LOCAL_ACTION_CONTEXT,
+      context,
     });
     if (!result.isOk) {
       // Surface for debugging; UI controls are built to only emit valid ops.
-      console.error(`dispatch(${op.name}) failed`, result.errors);
+      // Agent-authored failures are an EXPECTED path (the chat panel surfaces
+      // them as failed chips and reports them back to the model), so they are
+      // not console noise.
+      if (context.author !== "agent") {
+        console.error(`dispatch(${op.name}) failed`, result.errors);
+      }
       return result;
     }
 
     const now = Date.now();
-    const coalesceKey = getCoalesceKey(op);
+    // Agent ops never coalesce: each tool call is a discrete edit, and merging
+    // with an adjacent user gesture would fuse two authors into one undo step.
+    const coalesceKey = context.author === "agent" ? null : getCoalesceKey(op);
 
     set((state) => {
       const topEntry = state.undoStack[state.undoStack.length - 1];

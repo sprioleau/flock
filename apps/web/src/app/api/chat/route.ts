@@ -84,6 +84,11 @@ export async function POST(request: Request) {
     : google(DEFAULT_GEMINI_MODEL_ID);
 
   const stream = createUIMessageStream<TandemChatMessage>({
+    // Reusing the incoming message history lets continuation rounds (tool
+    // results, approval responses) merge into the SAME assistant message id
+    // instead of replaying prior tool parts as a fresh message — without
+    // this, every approve/deny re-renders duplicate chips client-side.
+    originalMessages: messages,
     execute: ({ writer }) =>
       runChatPipeline({
         model,

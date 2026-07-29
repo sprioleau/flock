@@ -181,10 +181,20 @@ async function runSinglePassPipeline(input: ChatPipelineInput): Promise<void> {
   // client does not (yet) report apply results back, so prior assistant
   // messages contain dangling tool calls that would otherwise throw
   // AI_MissingToolResultsError (Spike C finding 2).
-  const modelMessages: ModelMessage[] = [
-    ...(await convertToModelMessages(messages, { tools, ignoreIncompleteToolCalls: true })),
-    { role: "user", content: documentContext },
-  ];
+  const convertedMessages = await convertToModelMessages(messages, {
+    tools,
+    ignoreIncompleteToolCalls: true,
+  });
+
+  // Approval collection (collectToolApprovals) only runs when the FINAL
+  // message is a tool message; appending the doc context after it would
+  // silently skip approved executions (e.g. sendTestEmail). An approval
+  // resubmission round is just completing already-approved calls, so it
+  // doesn't need fresh document context — skip the append in that case.
+  const hasTrailingToolMessage = convertedMessages.at(-1)?.role === "tool";
+  const modelMessages: ModelMessage[] = hasTrailingToolMessage
+    ? convertedMessages
+    : [...convertedMessages, { role: "user", content: documentContext }];
 
   const result = streamText({
     model,
