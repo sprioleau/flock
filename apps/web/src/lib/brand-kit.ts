@@ -1,4 +1,4 @@
-import type { GlobalStyles } from "@tandem/email-sdk";
+import { DEFAULT_GLOBAL_STYLES, type GlobalStyles } from "@tandem/email-sdk";
 
 /**
  * Brand kit — the data contract behind the studio's theme selector.
@@ -143,6 +143,88 @@ export function getVariationContrastPairs(variation: ThemeVariation): {
 
 /** Minimum contrast every pairing in {@link getVariationContrastPairs} must hit. */
 export const MIN_THEME_CONTRAST_RATIO = 4.5;
+
+// ---------------------------------------------------------------------------
+// Whole-kit validation (shared by the Convex saveBrandKit guard and dev checks)
+// ---------------------------------------------------------------------------
+
+/** Upper bound on variations per kit (the pipeline emits 3–4; keep it bounded). */
+export const MAX_BRAND_KIT_VARIATIONS = 8;
+
+/** Every GlobalStyles key — a variation's payload must define all of them (completeness invariant above). */
+const REQUIRED_GLOBAL_KEYS = Object.keys(DEFAULT_GLOBAL_STYLES) as (keyof Required<GlobalStyles>)[];
+
+/**
+ * All the reasons a brand kit violates its contract, as human-readable
+ * messages (empty array = valid): non-empty name/font stacks, 1..8 variations
+ * with unique non-empty ids, COMPLETE globals payloads (applyTheme replaces
+ * `root.properties.globals` wholesale), and WCAG-AA contrast on every guarded
+ * pairing. This is the single validation implementation: the module-load
+ * guard below runs it against the mock, and convex/brandKits.ts runs it
+ * server-side so a failing kit is NEVER stored.
+ */
+export function getBrandKitValidationErrors(brandKit: BrandKit): string[] {
+  const errors: string[] = [];
+  if (brandKit.name.trim().length === 0) {
+    errors.push("The brand kit needs a non-empty name.");
+  }
+  if (brandKit.fonts.heading.trim().length === 0) {
+    errors.push("The heading font stack must not be empty.");
+  }
+  if (brandKit.fonts.body.trim().length === 0) {
+    errors.push("The body font stack must not be empty.");
+  }
+  if (brandKit.variations.length === 0) {
+    errors.push("The brand kit needs at least one theme variation.");
+  }
+  if (brandKit.variations.length > MAX_BRAND_KIT_VARIATIONS) {
+    errors.push(
+      `The brand kit has ${brandKit.variations.length} variations; the maximum is ${MAX_BRAND_KIT_VARIATIONS}.`,
+    );
+  }
+  const seenVariationIds = new Set<string>();
+  for (const variation of brandKit.variations) {
+    if (variation.id.trim().length === 0 || variation.name.trim().length === 0) {
+      errors.push("Every variation needs a non-empty id and name.");
+    }
+    if (seenVariationIds.has(variation.id)) {
+      errors.push(`Duplicate variation id "${variation.id}".`);
+    }
+    seenVariationIds.add(variation.id);
+    const missingKeys = REQUIRED_GLOBAL_KEYS.filter((key) => variation.globals[key] === undefined);
+    if (missingKeys.length > 0) {
+      errors.push(
+        `Variation "${variation.id}" is missing globals: ${missingKeys.join(", ")}. ` +
+          "Every variation must be a complete payload (applyTheme replaces globals wholesale).",
+      );
+      continue; // Contrast pairs would read undefined colors — report the real problem only.
+    }
+    for (const pair of getVariationContrastPairs(variation)) {
+      if (pair.ratio === null || pair.ratio < MIN_THEME_CONTRAST_RATIO) {
+        errors.push(
+          `Variation "${variation.id}" fails contrast: ${pair.label} is ` +
+            `${pair.ratio?.toFixed(2) ?? "unparseable"} (needs ≥ ${MIN_THEME_CONTRAST_RATIO}) — ` +
+            `${pair.foreground} on ${pair.background}.`,
+        );
+      }
+    }
+  }
+  return errors;
+}
+
+// ---------------------------------------------------------------------------
+// Generate-route contract (POST /api/brand-kit/generate)
+// ---------------------------------------------------------------------------
+
+/**
+ * The response shape of POST /api/brand-kit/generate ({ url } in): the
+ * website-scraper pipeline returns a validated, contrast-guarded kit or a
+ * FRIENDLY, user-displayable failure message. The brand kit panel codes
+ * against exactly this union.
+ */
+export type BrandKitGenerateResult =
+  | { isOk: true; brandKit: BrandKit }
+  | { isOk: false; message: string };
 
 // ---------------------------------------------------------------------------
 // Current-theme detection
@@ -320,17 +402,11 @@ export const MOCK_BRAND_KIT: BrandKit = {
 };
 
 // Dev-time guard: the mock (and any kit swapped in during development) must
-// honor the contrast contract. Computed, not eyeballed.
+// honor the whole contract — completeness AND contrast. Computed, not
+// eyeballed; same implementation the server enforces on save.
 if (process.env.NODE_ENV !== "production") {
-  for (const variation of MOCK_BRAND_KIT.variations) {
-    for (const pair of getVariationContrastPairs(variation)) {
-      if (pair.ratio === null || pair.ratio < MIN_THEME_CONTRAST_RATIO) {
-        throw new Error(
-          `Brand kit variation "${variation.id}" fails contrast: ${pair.label} is ` +
-            `${pair.ratio?.toFixed(2) ?? "unparseable"} (needs ≥ ${MIN_THEME_CONTRAST_RATIO}). ` +
-            `${pair.foreground} on ${pair.background}`,
-        );
-      }
-    }
+  const mockKitErrors = getBrandKitValidationErrors(MOCK_BRAND_KIT);
+  if (mockKitErrors.length > 0) {
+    throw new Error(`MOCK_BRAND_KIT violates the brand kit contract:\n${mockKitErrors.join("\n")}`);
   }
 }

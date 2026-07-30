@@ -182,6 +182,44 @@ export default defineSchema({
     startedAtMs: v.number(),
   }).index("by_documentId", ["documentId"]),
 
+  /**
+   * The per-session brand kit (Phase 7.x brand kit panel): at most ONE active
+   * kit per anonymous session in v1 — saveBrandKit replaces any existing row.
+   * Every canvas/tab of the session reads the same kit reactively
+   * (getActiveBrandKit), falling back to the frontend MOCK_BRAND_KIT when no
+   * row exists. `variations[].globals` is unvalidated JSON on purpose (same
+   * policy as ops/blocks above): its runtime guards are the email-sdk
+   * `globalStylesSchema` (Zod, strict) plus the shared WCAG contrast check in
+   * convex/brandKits.ts, both run BEFORE anything is written.
+   *
+   * NOTE (Phase 6.1 cleanup cron): the cron reaps stale DOCUMENTS only —
+   * brandKits rows are keyed to sessions, not documents, and are NOT reaped
+   * yet. They're tiny (one small JSON row per browser session); revisit if a
+   * session-level cleanup pass ever lands.
+   */
+  brandKits: defineTable({
+    /** Anonymous owner session (localStorage id) — the "user" this kit belongs to. */
+    sessionId: v.string(),
+    /** Brand name (scraped or user-provided). */
+    name: v.string(),
+    /** The scraped website, when the kit came from the generate pipeline. */
+    sourceUrl: v.optional(v.string()),
+    /** Email-safe CSS font stacks the kit was built around. */
+    fonts: v.object({ heading: v.string(), body: v.string() }),
+    /** Brand logo URL (type-field only for now, mirrors the frontend BrandKit type). */
+    logoUrl: v.optional(v.string()),
+    /** ThemeVariation[]: complete `Required<GlobalStyles>` payloads (see guard note above). */
+    variations: v.array(
+      v.object({
+        id: v.string(),
+        name: v.string(),
+        globals: v.record(v.string(), v.any()),
+      }),
+    ),
+    createdAtMs: v.number(),
+    updatedAtMs: v.number(),
+  }).index("by_sessionId", ["sessionId"]),
+
   snapshots: defineTable({
     documentId: v.id("documents"),
     /** The headVersion this snapshot captures (0 = the freshly created document). */

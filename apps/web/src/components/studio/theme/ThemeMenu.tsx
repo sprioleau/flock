@@ -11,8 +11,9 @@ import {
   DropdownMenuLabel,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import { findMatchingVariation, MOCK_BRAND_KIT, type ThemeVariation } from "@/lib/brand-kit";
+import { findMatchingVariation, type ThemeVariation } from "@/lib/brand-kit";
 import { useEditorStore } from "@/lib/editor-store";
+import { useActiveBrandKit } from "../brand-kit/useActiveBrandKit";
 import { ThemeSwatch } from "./ThemeSwatch";
 
 /**
@@ -26,8 +27,13 @@ import { ThemeSwatch } from "./ThemeSwatch";
  * The checkmark tracks live: a variation is checked only while the document's
  * raw globals exactly equal its payload; any manual global edit flips the
  * trigger label to "Custom" with nothing checked.
+ *
+ * The kit itself comes from useActiveBrandKit — the session's SAVED kit via a
+ * reactive Convex query, mock fallback when none — so saving a kit in the
+ * brand kit panel restyles this dropdown in every open tab live.
  */
 export function ThemeMenu() {
+  const { brandKit } = useActiveBrandKit();
   const dispatch = useEditorStore((state) => state.dispatch);
   const isDocumentReady = useEditorStore((state) => state.isDocumentReady);
   const rawGlobals = useEditorStore((state) => {
@@ -46,7 +52,7 @@ export function ThemeMenu() {
   );
 
   const activeVariation = findMatchingVariation({
-    brandKit: MOCK_BRAND_KIT,
+    brandKit,
     globals: rawGlobals,
   });
   const currentGlobals = resolveGlobalStyles(rawGlobals);
@@ -80,10 +86,10 @@ export function ThemeMenu() {
           <DropdownMenuLabel>
             Theme
             <span className="block text-xs font-normal text-muted-foreground">
-              {MOCK_BRAND_KIT.name}
+              {brandKit.name}
             </span>
           </DropdownMenuLabel>
-          {MOCK_BRAND_KIT.variations.map((variation) => (
+          {brandKit.variations.map((variation) => (
             <DropdownMenuCheckboxItem
               key={variation.id}
               checked={activeVariation?.id === variation.id}

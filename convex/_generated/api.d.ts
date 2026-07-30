@@ -9,6 +9,7 @@
  */
 
 import type * as agentText from "../agentText.js";
+import type * as brandKits from "../brandKits.js";
 import type * as cleanup from "../cleanup.js";
 import type * as crons from "../crons.js";
 import type * as documents from "../documents.js";
@@ -30,6 +31,7 @@ import type {
 
 declare const fullApi: ApiFromModules<{
   agentText: typeof agentText;
+  brandKits: typeof brandKits;
   cleanup: typeof cleanup;
   crons: typeof crons;
   documents: typeof documents;
