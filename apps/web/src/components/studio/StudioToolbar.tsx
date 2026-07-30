@@ -6,11 +6,12 @@ import { Button } from "@/components/ui/button";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { selectCanRedo, selectCanUndo, useEditorStore } from "@/lib/editor-store";
 import { PresenceFacepile } from "./presence/PresenceFacepile";
+import { ThemeMenu } from "./theme/ThemeMenu";
 
 /**
- * Slim canvas toolbar: desktop/mobile viewport toggle, undo/redo (disabled
- * states from stack depth), and the HTML preview dialog trigger (mounted by
- * StudioShell next to this component's slot).
+ * Slim canvas toolbar: desktop/mobile viewport toggle, theme selector,
+ * undo/redo (disabled states from stack depth), and the HTML preview dialog
+ * trigger (mounted by StudioShell next to this component's slot).
  */
 export function StudioToolbar({ children }: { children?: React.ReactNode }) {
   const viewport = useEditorStore((state) => state.viewport);
@@ -22,26 +23,29 @@ export function StudioToolbar({ children }: { children?: React.ReactNode }) {
 
   return (
     <header className="flex h-12 shrink-0 items-center justify-between gap-2 border-b bg-background px-3">
-      <ToggleGroup
-        value={[viewport]}
-        onValueChange={(groupValue) => {
-          const next = groupValue[0] as PreviewMode | undefined;
-          if (next !== undefined) {
-            setViewport(next);
-          }
-        }}
-        variant="outline"
-        size="sm"
-        spacing={0}
-        aria-label="Canvas viewport"
-      >
-        <ToggleGroupItem value="desktop" aria-label="Desktop viewport">
-          <MonitorIcon />
-        </ToggleGroupItem>
-        <ToggleGroupItem value="mobile" aria-label="Mobile viewport">
-          <SmartphoneIcon />
-        </ToggleGroupItem>
-      </ToggleGroup>
+      <div className="flex items-center gap-2">
+        <ToggleGroup
+          value={[viewport]}
+          onValueChange={(groupValue) => {
+            const next = groupValue[0] as PreviewMode | undefined;
+            if (next !== undefined) {
+              setViewport(next);
+            }
+          }}
+          variant="outline"
+          size="sm"
+          spacing={0}
+          aria-label="Canvas viewport"
+        >
+          <ToggleGroupItem value="desktop" aria-label="Desktop viewport">
+            <MonitorIcon />
+          </ToggleGroupItem>
+          <ToggleGroupItem value="mobile" aria-label="Mobile viewport">
+            <SmartphoneIcon />
+          </ToggleGroupItem>
+        </ToggleGroup>
+        <ThemeMenu />
+      </div>
 
       <div className="flex items-center gap-1.5">
         <PresenceFacepile />
