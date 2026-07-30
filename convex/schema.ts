@@ -154,6 +154,34 @@ export default defineSchema({
     .index("by_documentId_and_batchId", ["documentId", "batchId"])
     .index("by_documentId_and_authorId", ["documentId", "authorId"]),
 
+  /**
+   * Demo-mode ghost collaborator (convex/ghost.ts): at most one row per
+   * document while a ghost typing session is live; deleted when the session
+   * finishes or is stopped. `generation` (the session's start timestamp)
+   * stamps every scheduled tick so stale ticks from a superseded session
+   * self-cancel. Rows are transient by design — a chain that dies leaves a
+   * row that the STALE_GHOST_SESSION_MS guard treats as not-running and the
+   * next startGhost sweeps.
+   */
+  ghostSessions: defineTable({
+    documentId: v.id("documents"),
+    /** The text block the ghost is typing into. */
+    blockId: v.string(),
+    /** Session nonce (start timestamp); ticks with a different one self-cancel. */
+    generation: v.number(),
+    /** The full message the ghost types, character by character. */
+    script: v.string(),
+    /** Script index where the ghost mistypes once (-1 = no typo step). */
+    typoIndex: v.number(),
+    /** The wrong character typed at typoIndex (then backspaced). */
+    typoChar: v.string(),
+    /** Next keystroke-plan step to apply (0 .. script.length [+2 with typo]). */
+    planIndex: v.number(),
+    /** Flattened tail of the block's text at start — the content anchor. */
+    anchorTail: v.string(),
+    startedAtMs: v.number(),
+  }).index("by_documentId", ["documentId"]),
+
   snapshots: defineTable({
     documentId: v.id("documents"),
     /** The headVersion this snapshot captures (0 = the freshly created document). */
