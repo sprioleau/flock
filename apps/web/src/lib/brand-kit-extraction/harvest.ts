@@ -16,7 +16,7 @@
  * invented.
  */
 
-import { isNearBlack, isNearWhite, normalizeCssColor } from "./color-utils";
+import { getChroma, isNearBlack, isNearWhite, normalizeCssColor } from "./color-utils";
 
 export interface LogoCandidate {
   /** Absolute URL. */
@@ -25,14 +25,33 @@ export interface LogoCandidate {
   hint: string;
 }
 
+export interface RankedColor {
+  color: string;
+  /** Effective usage count: raw occurrences + var(--…) references. */
+  count: number;
+  /**
+   * The CSS custom property this color was declared as (e.g. "--ui-accent-1"),
+   * when it was — a strong brand-role hint passed through to the model.
+   */
+  variableName: string | null;
+}
+
 export interface BrandSignals {
   siteName: string | null;
   pageTitle: string | null;
   themeColor: string | null;
   /** Distinct font family names seen in CSS / Google Fonts links. */
   fontFamilies: string[];
-  /** Normalized #rrggbb colors, most frequent first, noise filtered. */
-  rankedColors: { color: string; count: number }[];
+  /**
+   * Normalized #rrggbb colors, noise filtered, ordered by a vibrancy-boosted
+   * usage score (NOT raw frequency — signature accents are used sparingly).
+   */
+  rankedColors: RankedColor[];
+  /**
+   * The high-chroma subset of rankedColors — likely signature accents. Kept
+   * as a separate list so the model is explicitly pointed at them.
+   */
+  accentCandidates: RankedColor[];
   logoCandidates: LogoCandidate[];
 }
 
@@ -192,7 +211,9 @@ function harvestFontFamiliesFromCss(cssText: string): string[] {
 
 function harvestColorTokens(cssOrHtml: string): string[] {
   const tokens =
-    cssOrHtml.match(/#[0-9a-f]{6}\b|#[0-9a-f]{3}\b|rgba?\([\d\s.,%]{5,40}\)/gi) ?? [];
+    cssOrHtml.match(
+      /#[0-9a-f]{6}\b|#[0-9a-f]{3}\b|rgba?\([\d\s.,%]{5,40}\)|hsla?\([\d\s.,%deg/]{5,40}\)/gi,
+    ) ?? [];
   const normalized: string[] = [];
   for (const token of tokens) {
     const color = normalizeCssColor(token);
@@ -203,16 +224,104 @@ function harvestColorTokens(cssOrHtml: string): string[] {
   return normalized;
 }
 
-function rankColors(colors: string[]): { color: string; count: number }[] {
+interface CustomPropertyColor {
+  variableName: string;
+  color: string;
+  /** How many times `var(--name)` is used across the scanned text. */
+  referenceCount: number;
+}
+
+const MAX_CUSTOM_PROPERTIES = 200;
+
+/**
+ * CSS custom properties that hold a color, with their var() reference counts.
+ * This is how design-system sites actually express their palette: the brand
+ * accent is DECLARED once (`--ui-accent-1: #ffc400`) and referenced dozens of
+ * times via var() — invisible to raw color-token frequency. The reference
+ * count restores the color's true weight, and the variable name itself
+ * ("accent", "brand", …) is a role hint for the model.
+ */
+function harvestCustomPropertyColors(text: string): CustomPropertyColor[] {
+  const definitions =
+    text.match(
+      /--[a-zA-Z0-9_-]+\s*:\s*(?:#[0-9a-f]{3,6}\b|rgba?\([\d\s.,%]{5,40}\)|hsla?\([\d\s.,%deg/]{5,40}\))/gi,
+    ) ?? [];
+  const results: CustomPropertyColor[] = [];
+  const seenNames = new Set<string>();
+  for (const definition of definitions.slice(0, MAX_CUSTOM_PROPERTIES)) {
+    const [rawName, ...valueParts] = definition.split(":");
+    const variableName = rawName.trim();
+    const color = normalizeCssColor(valueParts.join(":"));
+    if (color === null || seenNames.has(variableName)) {
+      continue;
+    }
+    seenNames.add(variableName);
+    // Bounded count of `var(--name)` / `var(--name,` occurrences.
+    const referencePattern = new RegExp(
+      `var\\(\\s*${variableName.replace(/[.*+?^${}()|[\]\\-]/g, "\\$&")}\\s*[,)]`,
+      "g",
+    );
+    const referenceCount = (text.match(referencePattern) ?? []).length;
+    results.push({ variableName, color, referenceCount });
+  }
+  return results;
+}
+
+/** Chroma at or above this marks a color as a potential signature accent. */
+const ACCENT_CHROMA_THRESHOLD = 0.35;
+const MAX_ACCENT_CANDIDATES = 6;
+
+/**
+ * Rank colors by a vibrancy-boosted usage score. Two deliberate departures
+ * from raw frequency (both learned from real sites):
+ * - custom-property var() references count as uses (see above);
+ * - score = count × (1 + 2 × chroma): brand accents are low-frequency,
+ *   high-saturation colors, so a vivid yellow seen 3× outranks a gray
+ *   seen 40×. Raw frequency buried exactly the colors that matter.
+ */
+function rankColors({
+  colors,
+  customPropertyColors,
+}: {
+  colors: string[];
+  customPropertyColors: CustomPropertyColor[];
+}): { rankedColors: RankedColor[]; accentCandidates: RankedColor[] } {
   const counts = new Map<string, number>();
   for (const color of colors) {
     counts.set(color, (counts.get(color) ?? 0) + 1);
   }
-  return [...counts.entries()]
+  const variableNames = new Map<string, string>();
+  for (const { variableName, color, referenceCount } of customPropertyColors) {
+    counts.set(color, (counts.get(color) ?? 0) + referenceCount);
+    // Keep the most-referenced variable name per color.
+    const existing = customPropertyColors.find(
+      (candidate) => candidate.variableName === variableNames.get(color),
+    );
+    if (existing === undefined || referenceCount > existing.referenceCount) {
+      variableNames.set(color, variableName);
+    }
+  }
+  const scored = [...counts.entries()]
     .filter(([color]) => !isNearWhite(color) && !isNearBlack(color))
-    .sort((a, b) => b[1] - a[1])
+    .map(([color, count]) => {
+      const chroma = getChroma(color) ?? 0;
+      return {
+        color,
+        count,
+        variableName: variableNames.get(color) ?? null,
+        chroma,
+        score: count * (1 + 2 * chroma),
+      };
+    })
+    .sort((a, b) => b.score - a.score);
+  const rankedColors = scored
     .slice(0, MAX_RANKED_COLORS)
-    .map(([color, count]) => ({ color, count }));
+    .map(({ color, count, variableName }) => ({ color, count, variableName }));
+  const accentCandidates = scored
+    .filter(({ chroma }) => chroma >= ACCENT_CHROMA_THRESHOLD)
+    .slice(0, MAX_ACCENT_CANDIDATES)
+    .map(({ color, count, variableName }) => ({ color, count, variableName }));
+  return { rankedColors, accentCandidates };
 }
 
 // ---------------------------------------------------------------------------
@@ -345,19 +454,25 @@ export async function harvestBrandSignals({
   const themeColorRaw = findMetaContent({ html, key: "theme-color" });
   const themeColor = themeColorRaw === null ? null : normalizeCssColor(themeColorRaw);
 
+  // Colors are scanned across the WHOLE document plus external CSS — brand
+  // colors frequently live outside <style> blocks (inline SVG fills, style
+  // attributes, framework-inlined props). <style> blocks are part of html.
+  const documentAndCss = [html, ...externalCssTexts].join("\n");
+  const { rankedColors, accentCandidates } = rankColors({
+    colors: [
+      ...(themeColor === null ? [] : [themeColor]),
+      ...harvestColorTokens(documentAndCss),
+    ],
+    customPropertyColors: harvestCustomPropertyColors(documentAndCss),
+  });
+
   return {
     siteName: findMetaContent({ html, key: "og:site_name" }),
     pageTitle: findPageTitle(html),
     themeColor,
     fontFamilies: uniqueFontFamilies,
-    // Colors are scanned across the WHOLE document plus external CSS — brand
-    // colors frequently live outside <style> blocks (inline SVG fills, style
-    // attributes, framework-inlined props). <style> blocks are part of html.
-    rankedColors: rankColors([
-      ...(themeColor === null ? [] : [themeColor]),
-      ...harvestColorTokens(html),
-      ...externalCssTexts.flatMap(harvestColorTokens),
-    ]),
+    rankedColors,
+    accentCandidates,
     logoCandidates: harvestLogoCandidates({ html, baseUrl: finalUrl }),
   };
 }

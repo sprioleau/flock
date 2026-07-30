@@ -55,12 +55,30 @@ export function rgbToHex(rgb: [number, number, number]): string {
   return `#${toHexByte(rgb[0])}${toHexByte(rgb[1])}${toHexByte(rgb[2])}`;
 }
 
+/** hsl → rgb (h in degrees, s/l in 0–1). Standard CSS algorithm. */
+function hslToRgb({ h, s, l }: { h: number; s: number; l: number }): [number, number, number] {
+  const hue = ((h % 360) + 360) % 360;
+  const chroma = (1 - Math.abs(2 * l - 1)) * s;
+  const x = chroma * (1 - Math.abs(((hue / 60) % 2) - 1));
+  const m = l - chroma / 2;
+  const sextant = Math.floor(hue / 60);
+  const [r, g, b] = [
+    [chroma, x, 0],
+    [x, chroma, 0],
+    [0, chroma, x],
+    [0, x, chroma],
+    [x, 0, chroma],
+    [chroma, 0, x],
+  ][sextant] ?? [0, 0, 0];
+  return [(r + m) * 255, (g + m) * 255, (b + m) * 255];
+}
+
 /**
  * Normalize a scraped CSS color token to lowercase "#rrggbb".
- * Accepts #rgb, #rrggbb, rgb(r, g, b) and rgba(r, g, b, a); rgba with
- * alpha < 0.5 is treated as noise (overlays/shadows) and rejected.
- * Anything else (named colors, hsl, var()) returns null — the harvester
- * only reports colors it can represent exactly.
+ * Accepts #rgb, #rrggbb, rgb()/rgba() and hsl()/hsla() (comma or space
+ * syntax); an alpha < 0.5 is treated as noise (overlays/shadows) and
+ * rejected. Anything else (named colors, oklch, var()) returns null — the
+ * harvester only reports colors it can represent exactly.
  */
 export function normalizeCssColor(raw: string): string | null {
   const value = raw.trim().toLowerCase();
@@ -71,18 +89,48 @@ export function normalizeCssColor(raw: string): string | null {
   const rgbMatch = value.match(
     /^rgba?\(\s*(\d{1,3})\s*,\s*(\d{1,3})\s*,\s*(\d{1,3})\s*(?:,\s*([\d.]+)\s*)?\)$/,
   );
-  if (rgbMatch === null) {
-    return null;
+  if (rgbMatch !== null) {
+    const [, r, g, b, alpha] = rgbMatch;
+    if (alpha !== undefined && Number.parseFloat(alpha) < 0.5) {
+      return null;
+    }
+    const channels = [r, g, b].map(Number) as [number, number, number];
+    if (channels.some((channel) => channel > 255)) {
+      return null;
+    }
+    return rgbToHex(channels);
   }
-  const [, r, g, b, alpha] = rgbMatch;
-  if (alpha !== undefined && Number.parseFloat(alpha) < 0.5) {
-    return null;
+  const hslMatch = value.match(
+    /^hsla?\(\s*([\d.]+)(?:deg)?\s*[,\s]\s*([\d.]+)%\s*[,\s]\s*([\d.]+)%\s*(?:[,/]\s*([\d.]+%?)\s*)?\)$/,
+  );
+  if (hslMatch !== null) {
+    const [, h, s, l, alphaRaw] = hslMatch;
+    if (alphaRaw !== undefined) {
+      const alpha = alphaRaw.endsWith("%")
+        ? Number.parseFloat(alphaRaw) / 100
+        : Number.parseFloat(alphaRaw);
+      if (alpha < 0.5) {
+        return null;
+      }
+    }
+    const saturation = Number.parseFloat(s) / 100;
+    const lightness = Number.parseFloat(l) / 100;
+    if (saturation > 1 || lightness > 1) {
+      return null;
+    }
+    return rgbToHex(hslToRgb({ h: Number.parseFloat(h), s: saturation, l: lightness }));
   }
-  const channels = [r, g, b].map(Number) as [number, number, number];
-  if (channels.some((channel) => channel > 255)) {
-    return null;
-  }
-  return rgbToHex(channels);
+  return null;
+}
+
+/**
+ * Normalized chroma (0–1): max minus min RGB channel. High-chroma colors are
+ * vivid/saturated; grays are 0. Used by the harvester's vibrancy-aware
+ * ranking — brand accents are typically LOW-frequency HIGH-chroma colors.
+ */
+export function getChroma(color: string): number | null {
+  const rgb = parseHexColor(color);
+  return rgb === null ? null : (Math.max(...rgb) - Math.min(...rgb)) / 255;
 }
 
 /** Mix `base` toward `target` by `amount` (0 = base, 1 = target). */

@@ -28,7 +28,7 @@ export type BrandKitGenerationResult =
   | { isOk: false; message: string; statusCode: number };
 
 const MIN_VARIATIONS = 3;
-const GENERATION_TIMEOUT_MS = 45_000;
+const GENERATION_TIMEOUT_MS = 60_000; // flash-lite has been observed near 45s on color-heavy sites
 
 /**
  * Model for the one structured brand-kit call. Deliberately NOT the chat
@@ -118,10 +118,14 @@ export const brandKitSchema = z.object({
 // Prompt
 // ---------------------------------------------------------------------------
 
+function describeRankedColor({ color, count, variableName }: BrandSignals["rankedColors"][number]): string {
+  const declaration = variableName === null ? "" : `, declared as "${variableName}"`;
+  return `  - ${color} (used ${count}×${declaration})`;
+}
+
 function buildPrompt({ signals, sourceUrl }: { signals: BrandSignals; sourceUrl: string }): string {
-  const paletteLines = signals.rankedColors
-    .map(({ color, count }) => `  - ${color} (seen ${count}×)`)
-    .join("\n");
+  const paletteLines = signals.rankedColors.map(describeRankedColor).join("\n");
+  const accentLines = signals.accentCandidates.map(describeRankedColor).join("\n");
   const logoLines = signals.logoCandidates
     .map(({ url, hint }) => `  - ${url} (${hint})`)
     .join("\n");
@@ -133,13 +137,18 @@ function buildPrompt({ signals, sourceUrl }: { signals: BrandSignals; sourceUrl:
     `Page title: ${signals.pageTitle ?? "(none found)"}`,
     `Theme color meta tag: ${signals.themeColor ?? "(none found)"}`,
     `Font families seen on the site: ${signals.fontFamilies.length > 0 ? signals.fontFamilies.join(", ") : "(none found)"}`,
-    `Color palette harvested from the site's CSS (most frequent first):`,
+    `Color palette harvested from the site (ordered by usage, var() references included):`,
     paletteLines.length > 0 ? paletteLines : "  (only neutrals found)",
+    `Signature accent candidates (the vibrant, high-saturation subset — brand accents are often used`,
+    `sparingly, so low counts here do NOT mean unimportant; one declared as an "accent"/"brand"/"primary"`,
+    `variable is almost certainly the brand's signature color):`,
+    accentLines.length > 0 ? accentLines : "  (none found)",
     `Logo candidates (absolute URLs found on the page):`,
     logoLines.length > 0 ? logoLines : "  (none found)",
     ``,
     `Rules:`,
-    `- Accent colors MUST come from the harvested palette above (prefer saturated, frequent brand colors over grays).`,
+    `- Accent colors MUST come from the harvested palette above. Prefer the signature accent candidates; a generic library color (variables like "--toastify-…") is NOT the brand.`,
+    `- Feature the leading signature accent prominently in at least one variation (as accentColor). Vivid accents like yellows and oranges read best against dark or deep-toned content backgrounds — pair them that way rather than washing them onto white.`,
     `- Backgrounds and text colors should be the harvested colors or plain neutrals (white, near-black, or a light/dark tint of a harvested color).`,
     `- Never invent a logo URL: copy one candidate verbatim, or return "".`,
     `- Aim for strong text contrast: dark text on light backgrounds, light text on dark backgrounds. Contrast is verified and repaired downstream, so favor faithful brand colors over timid ones.`,

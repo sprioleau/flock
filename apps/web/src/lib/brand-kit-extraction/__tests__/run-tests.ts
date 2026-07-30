@@ -83,14 +83,18 @@ check("allows public resolved addresses", () => {
 // ---------------------------------------------------------------------------
 
 console.log("color-utils");
-check("normalizes hex + rgb forms, rejects noise", () => {
+check("normalizes hex + rgb + hsl forms, rejects noise", () => {
   assert.equal(normalizeCssColor("#ABC"), "#aabbcc");
   assert.equal(normalizeCssColor("#0f4c81"), "#0f4c81");
   assert.equal(normalizeCssColor("rgb(31, 41, 55)"), "#1f2937");
   assert.equal(normalizeCssColor("rgba(224, 89, 42, 0.9)"), "#e0592a");
   assert.equal(normalizeCssColor("rgba(0, 0, 0, 0.2)"), null); // low alpha
-  assert.equal(normalizeCssColor("hsl(20, 50%, 50%)"), null);
+  assert.equal(normalizeCssColor("hsl(210, 70%, 40%)"), "#1f66ad");
+  assert.equal(normalizeCssColor("hsl(210 70% 40%)"), "#1f66ad"); // space syntax
+  assert.equal(normalizeCssColor("hsl(0, 100%, 50%)"), "#ff0000");
+  assert.equal(normalizeCssColor("hsla(210, 70%, 40%, 0.2)"), null); // low alpha
   assert.equal(normalizeCssColor("var(--brand)"), null);
+  assert.equal(normalizeCssColor("oklch(0.7 0.1 200)"), null);
 });
 
 // ---------------------------------------------------------------------------
@@ -141,11 +145,25 @@ check("colors ranked, low-alpha + near-white/black filtered, external css includ
   assert.ok(colors.includes("#0f4c81"));
   assert.ok(colors.includes("#e0592a"));
   assert.ok(colors.includes("#1f2937"));
+  assert.ok(colors.includes("#1f66ad")); // from hsl(210, 70%, 40%)
   assert.ok(colors.includes("#2dd4bf")); // from stubbed external stylesheet
   assert.ok(!colors.includes("#ffffff"));
   const accentRank = colors.indexOf("#e0592a");
   const tealRank = colors.indexOf("#2dd4bf");
   assert.ok(accentRank < tealRank, "frequent accent ranks above one-off color");
+});
+check("custom-property accent: var() references weight it to the top", () => {
+  const top = signals.rankedColors[0];
+  assert.equal(top.color, "#ffd23f");
+  assert.equal(top.variableName, "--acme-accent");
+  assert.equal(top.count, 4, "1 definition + 3 var() references"); // effective usage
+});
+check("accent candidates: vibrant subset, signature accent first, no grays/navies", () => {
+  assert.ok(signals.accentCandidates.length > 0);
+  assert.equal(signals.accentCandidates[0].color, "#ffd23f");
+  const accentColors = signals.accentCandidates.map(({ color }) => color);
+  assert.ok(accentColors.includes("#e0592a"));
+  assert.ok(!accentColors.includes("#1f2937"), "muted body-text color is not an accent");
 });
 check("logo candidates: logo img first, absolute urls, no photo", () => {
   assert.equal(signals.logoCandidates[0].url, "https://acme.test/img/acme-logo.svg");

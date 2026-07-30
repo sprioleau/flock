@@ -15,6 +15,21 @@
       href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@600&family=Inter:wght@400;700"
     />
     <style>
+      :root {
+        --acme-accent: #ffd23f; /* signature accent: defined once, var()'d below */
+      }
+      a.cta {
+        color: var(--acme-accent);
+      }
+      .badge {
+        border-color: var(--acme-accent);
+      }
+      .cursor {
+        background: var(--acme-accent);
+      }
+      .banner {
+        background: hsl(210, 70%, 40%);
+      }
       body {
         font-family: "Inter", -apple-system, sans-serif;
         color: rgb(31, 41, 55);
