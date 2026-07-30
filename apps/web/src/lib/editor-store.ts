@@ -9,6 +9,7 @@ import {
   type EmailDocument,
   type Operation,
   type PreviewMode,
+  type StyleTextSpanInput,
 } from "@tandem/email-sdk";
 import type { ConvexReactClient } from "convex/react";
 import { create } from "zustand";
@@ -79,8 +80,16 @@ export type Viewport = PreviewMode;
  */
 export const UNDO_COALESCE_WINDOW_MS = 120;
 
+/**
+ * A dispatchable content input: a plain email-sdk Operation, or the ONE
+ * intent-shaped input (styleTextSpan) whose translation to an updateText op
+ * happens inside dispatchContentAction (SDK resolveOperation hook) against
+ * the CURRENT local document.
+ */
+export type DispatchableOp = Operation | StyleTextSpanInput;
+
 /** Coalesce key for an op, or null when the op never coalesces. */
-function getCoalesceKey(op: Operation): string | null {
+function getCoalesceKey(op: DispatchableOp): string | null {
   if (op.name === "updateBlockProperties") {
     return `updateBlockProperties:${op.blockId}:${Object.keys(op.properties).sort().join(",")}`;
   }
@@ -94,7 +103,16 @@ function getCoalesceKey(op: Operation): string | null {
 interface PendingOp {
   /** Local identity (server versions don't exist until the ack). */
   clientId: string;
+  /** The RESOLVED operation (styleTextSpan intents resolve to updateText). */
   op: Operation;
+  /**
+   * The raw styleTextSpan intent when this pending op came from one (null
+   * otherwise). Sent to Convex INSTEAD of the locally-resolved op so the
+   * server re-runs the same deterministic translation against the
+   * authoritative document (agentText.applyAgentStyleTextSpan); `op` remains
+   * what the local overlay replays for instant feedback.
+   */
+  styleTextSpanIntent: StyleTextSpanInput | null;
   context: ActionContext;
   /** True while the op is held open for gesture coalescing (not yet sent). */
   isHeld: boolean;
@@ -209,7 +227,7 @@ interface EditorState {
    * default local-user authorship (see {@link DispatchProvenance}); agent
    * ops never coalesce — each is sent immediately with its own identity.
    */
-  dispatch: (op: Operation, provenance?: DispatchProvenance) => DispatchContentActionResult;
+  dispatch: (op: DispatchableOp, provenance?: DispatchProvenance) => DispatchContentActionResult;
   /**
    * Explicitly end the active gesture (field blur / picker close): flushes
    * the held op to Convex; the next dispatch starts a fresh gesture.
@@ -301,22 +319,35 @@ export const useEditorStore = create<EditorState>()((set, get) => {
     // AND merges the edit into the block's live ProseMirror sync doc via the
     // component's server-side transform — so an agent rewrite lands as a minimal
     // targeted change that rebases against concurrent human keystrokes instead
-    // of clobbering them. Both mutations return the same result shape, so the
-    // ack/failure handling below is shared. User `updateText` session ops keep
-    // using applyOperations: their content ALREADY came from the sync doc, so
+    // of clobbering them. Agent `styleTextSpan` intents route through the
+    // sibling agentText.applyAgentStyleTextSpan, which re-runs the same
+    // deterministic find→marks translation against the AUTHORITATIVE document
+    // before recording the one resulting updateText op the same way. All
+    // mutations return the same result shape, so the ack/failure handling
+    // below is shared. User `updateText` session ops keep using
+    // applyOperations: their content ALREADY came from the sync doc, so
     // transforming it again would be circular.
-    const isAgentTextEdit = pending.context.author === "agent" && pending.op.name === "updateText";
-    const mutationPromise = isAgentTextEdit
-      ? convexClient.mutation(api.agentText.applyAgentTextEdit, {
+    const isAgentAuthored = pending.context.author === "agent";
+    const isAgentSpanStyle = isAgentAuthored && pending.styleTextSpanIntent !== null;
+    const isAgentTextEdit =
+      isAgentAuthored && !isAgentSpanStyle && pending.op.name === "updateText";
+    const mutationPromise = isAgentSpanStyle
+      ? convexClient.mutation(api.agentText.applyAgentStyleTextSpan, {
           documentId,
-          op: pending.op,
+          input: pending.styleTextSpanIntent,
           context: pending.context,
         })
-      : convexClient.mutation(api.documents.applyOperations, {
-          documentId,
-          ops: [pending.op],
-          context: pending.context,
-        });
+      : isAgentTextEdit
+        ? convexClient.mutation(api.agentText.applyAgentTextEdit, {
+            documentId,
+            op: pending.op,
+            context: pending.context,
+          })
+        : convexClient.mutation(api.documents.applyOperations, {
+            documentId,
+            ops: [pending.op],
+            context: pending.context,
+          });
     mutationPromise
       .then((result) => {
         if (!result.isOk) {
@@ -465,7 +496,11 @@ export const useEditorStore = create<EditorState>()((set, get) => {
       // discrete edit with its own provenance.
       const now = Date.now();
       const coalesceKey = context.author === "agent" ? null : getCoalesceKey(op);
+      // logEntry.op is always a plain Operation: for styleTextSpan the SDK's
+      // resolveOperation hook already translated the intent into an updateText
+      // op against the current doc — that's what the local overlay replays.
       const appliedOp = result.logEntry.op;
+      const styleTextSpanIntent = op.name === "styleTextSpan" ? op : null;
       const heldOp = getHeldOp();
       const isSameGesture =
         coalesceKey !== null &&
@@ -493,6 +528,7 @@ export const useEditorStore = create<EditorState>()((set, get) => {
       const pending: PendingOp = {
         clientId: crypto.randomUUID(),
         op: appliedOp,
+        styleTextSpanIntent,
         context,
         isHeld: coalesceKey !== null,
         coalesceKey,

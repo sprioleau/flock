@@ -1,8 +1,11 @@
 import { ProsemirrorSync } from "@convex-dev/prosemirror-sync";
 import {
   applyOperation,
+  resolveStyleTextSpanOperation,
+  styleTextSpanInputSchema,
   updateTextOperationSchema,
   type TextDoc,
+  type UpdateTextOperation,
 } from "@tandem/email-sdk";
 import { v } from "convex/values";
 import {
@@ -10,6 +13,7 @@ import {
   Transform,
 } from "../apps/web/src/lib/editorSchema";
 import { components } from "./_generated/api";
+import type { Id } from "./_generated/dataModel";
 import { mutation, type MutationCtx } from "./_generated/server";
 import {
   applyContextValidator,
@@ -17,6 +21,7 @@ import {
   loadDocumentState,
   operationErrorValidator,
   toTransportErrors,
+  type ApplyContext,
 } from "./model/emailDocuments";
 import {
   AI_AGENT_CLIENT_ID,
@@ -102,54 +107,152 @@ export const applyAgentTextEdit = mutation({
 
     const state = await loadDocumentState(ctx, args.documentId);
     if (state === null) {
+      return documentNotFoundResult(args.documentId);
+    }
+
+    return await commitAgentUpdateText({ ctx, documentId: args.documentId, state, op, context: args.context });
+  },
+});
+
+/**
+ * Phase "styleTextSpan" — the intent-level span-styling path, sibling to
+ * applyAgentTextEdit. The tool's args are SIMPLE intent (blockId + find +
+ * occurrence + style); this mutation is the thin server-side wrapper around
+ * the SDK's pure deterministic translation:
+ *
+ *  1. resolveStyleTextSpanOperation locates `find` in the block's CURRENT
+ *     properties.text (the authoritative doc, not the client's snapshot) and
+ *     computes ONE canonical `updateText` op with marks applied to exactly
+ *     that span. Not-found / out-of-range come back as structured retryable
+ *     errors quoting the block's actual text — the model's repair loop hint.
+ *  2. the resolved op then rides the exact applyAgentTextEdit path: one
+ *     standard op row on the history spine (agent author/batchId — provenance
+ *     chips, revertBatch, undo all unchanged) plus the content-anchored
+ *     ProseMirror sync-doc transform for live editors.
+ */
+export const applyAgentStyleTextSpan = mutation({
+  args: {
+    documentId: v.id("documents"),
+    /** One styleTextSpan intent payload; SDK-validated before any write. */
+    input: v.any(),
+    /** Agent provenance: author "agent", authorId = chat id, the turn's batchId. */
+    context: applyContextValidator,
+  },
+  returns: applyAgentTextEditResultValidator,
+  handler: async (ctx, args) => {
+    const parsedInput = styleTextSpanInputSchema.safeParse(args.input);
+    if (!parsedInput.success) {
       return {
         isOk: false as const,
         failedOperationIndex: 0,
         errors: [
-          { code: "target_not_found", message: `Document ${args.documentId} does not exist.` },
+          {
+            code: "op_validation_failed",
+            message: `styleTextSpan input failed validation: ${parsedInput.error.issues
+              .map((issue) => issue.message)
+              .join("; ")}`,
+          },
         ],
       };
     }
 
-    // The SDK apply engine re-validates the resulting document (schema +
-    // referential integrity); on failure nothing is written and the errors go
-    // back to the model's repair loop, exactly like applyOperations.
-    const result = applyOperation(state.doc, op);
-    if (!result.isOk) {
+    const state = await loadDocumentState(ctx, args.documentId);
+    if (state === null) {
+      return documentNotFoundResult(args.documentId);
+    }
+
+    // The deterministic intent→operation translation, against the server's doc.
+    const resolved = resolveStyleTextSpanOperation({ doc: state.doc, input: parsedInput.data });
+    if (!resolved.isOk) {
       return {
         isOk: false as const,
         failedOperationIndex: 0,
-        errors: toTransportErrors(result.errors),
+        errors: resolved.errors.map((error) => ({
+          code: error.code,
+          message: error.message,
+          ...(error.blockId !== undefined ? { blockId: error.blockId as string } : {}),
+          ...(error.relatedBlockId !== undefined
+            ? { relatedBlockId: error.relatedBlockId as string }
+            : {}),
+        })),
       };
     }
 
-    // History-spine half: one standard op row (kind "edit", agent context).
-    const commit = await commitVersions({
+    return await commitAgentUpdateText({
       ctx,
+      documentId: args.documentId,
       state,
-      newDoc: result.doc,
-      entries: [{ op, inverse: result.inverse, kind: "edit" as const }],
+      op: resolved.op,
       context: args.context,
     });
-
-    // Phase 6.2a agent presence: surface the agent in the document's presence
-    // room with editingBlockId = this op's block (the "agent is editing…"
-    // indicator); a scheduled follow-up clears it ~2s later so it pulses.
-    await markAgentEditing({ ctx, documentId: args.documentId, blockId: op.blockId });
-
-    // Live-doc half. The inverse of updateText carries the block's previous
-    // TextDoc (properties.text as of this mutation) — the diff baseline.
-    const previousText = result.inverse.name === "updateText" ? result.inverse.text : null;
-    await mergeAgentTextIntoSyncDoc({
-      ctx,
-      key: { documentId: args.documentId, blockId: op.blockId },
-      previousText,
-      targetText: op.text,
-    });
-
-    return { isOk: true as const, ...commit };
   },
 });
+
+function documentNotFoundResult(documentId: Id<"documents">) {
+  return {
+    isOk: false as const,
+    failedOperationIndex: 0,
+    errors: [{ code: "target_not_found", message: `Document ${documentId} does not exist.` }],
+  };
+}
+
+/**
+ * The shared agent-text commit core ("session op + mirror", both halves):
+ * apply one updateText op through the SDK engine, record it on the history
+ * spine with the agent's provenance, pulse agent presence, and merge the edit
+ * into the block's live ProseMirror sync doc.
+ */
+async function commitAgentUpdateText({
+  ctx,
+  documentId,
+  state,
+  op,
+  context,
+}: {
+  ctx: MutationCtx;
+  documentId: Id<"documents">;
+  state: NonNullable<Awaited<ReturnType<typeof loadDocumentState>>>;
+  op: UpdateTextOperation;
+  context: ApplyContext;
+}) {
+  // The SDK apply engine re-validates the resulting document (schema +
+  // referential integrity); on failure nothing is written and the errors go
+  // back to the model's repair loop, exactly like applyOperations.
+  const result = applyOperation(state.doc, op);
+  if (!result.isOk) {
+    return {
+      isOk: false as const,
+      failedOperationIndex: 0,
+      errors: toTransportErrors(result.errors),
+    };
+  }
+
+  // History-spine half: one standard op row (kind "edit", agent context).
+  const commit = await commitVersions({
+    ctx,
+    state,
+    newDoc: result.doc,
+    entries: [{ op, inverse: result.inverse, kind: "edit" as const }],
+    context,
+  });
+
+  // Phase 6.2a agent presence: surface the agent in the document's presence
+  // room with editingBlockId = this op's block (the "agent is editing…"
+  // indicator); a scheduled follow-up clears it ~2s later so it pulses.
+  await markAgentEditing({ ctx, documentId, blockId: op.blockId });
+
+  // Live-doc half. The inverse of updateText carries the block's previous
+  // TextDoc (properties.text as of this mutation) — the diff baseline.
+  const previousText = result.inverse.name === "updateText" ? result.inverse.text : null;
+  await mergeAgentTextIntoSyncDoc({
+    ctx,
+    key: { documentId, blockId: op.blockId },
+    previousText,
+    targetText: op.text,
+  });
+
+  return { isOk: true as const, ...commit };
+}
 
 /**
  * Merge an agent text edit into the block's synced ProseMirror doc — a no-op

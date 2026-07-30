@@ -22,6 +22,7 @@ import {
   type ShowPreviewCommand,
 } from "./editor-commands";
 import { createActionRegistry } from "./registry";
+import { styleTextSpanAction } from "./style-text-span";
 
 /**
  * The built-in action definitions: one content action per 1.3 operation, plus
@@ -136,7 +137,7 @@ export const updateTextAction = defineContentOperationAction({
   parallelSafe: true, // distinct-block whole-doc text replaces are independent
 });
 
-/** Every built-in content action — one per 1.3 operation. */
+/** Every built-in content action whose input IS a 1.3 operation (one per op). */
 export const contentEmailActions = [
   updateBlockPropertiesAction,
   replaceBlockPropertiesAction,
@@ -185,8 +186,14 @@ export const editorEmailActions = [showPreviewAction, sendTestEmailAction] as co
  * The static registry of all built-in actions. Phase 3 feeds
  * `toAISDKToolDefinitions(emailActionRegistry)` to the AI route and routes
  * tool calls through `dispatchContentAction` / `dispatchEditorAction`.
+ *
+ * styleTextSpan (defined in ./style-text-span with its intent→updateText
+ * translation) registers after the op-mirroring content actions: it is a
+ * content action too — the chat client applies it through the same
+ * validateAndClassifyOp → store-dispatch path as every other content op.
  */
 export const emailActionRegistry = createActionRegistry([
   ...contentEmailActions,
+  styleTextSpanAction,
   ...editorEmailActions,
 ]);

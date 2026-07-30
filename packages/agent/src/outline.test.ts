@@ -11,13 +11,13 @@ describe("generateDocumentOutline (default depth: blocks)", () => {
     expect(outline).toMatchInlineSnapshot(`
       "globals: buttonBackgroundColor=#1a1a2e, heading1TextAlign=center
       sec_a1b2 section
-        txt_e5f6 text h1,p "Welcome to Tandem | You describe, your partner builds — read…" +bold
+        txt_e5f6 text h1,p "Welcome to Tandem | You describe, your partner builds — read…" +bold+link
         img_g7h8 image alt="Two riders on a tandem bicycle" w=520 src=placehold.co
         div_i9j0 divider
       sec_c3d4 section
         row_k1l2 row (2 col)
           col_m3n4 column 60%
-            txt_r7s8 text p "Ready to ride? Grab a seat on the right."
+            txt_r7s8 text p "Ready to ride? Grab a seat on the right." +italic
           col_p5q6 column 40%
             btn_t9u0 button "Get started" href=https://example.com/start"
     `);
@@ -61,11 +61,33 @@ describe("generateDocumentOutline (default depth: blocks)", () => {
     expect([...positions].sort((a, b) => a - b)).toEqual(positions);
   });
 
-  it("notes heading levels and bold marks on text blocks", () => {
-    expect(outline).toMatch(/txt_e5f6 text h1,p ".*" \+bold/);
-    // txt_r7s8 has italic but no bold — no +bold flag.
-    expect(outline).toMatch(/txt_r7s8 text p "[^"]*"\n/);
+  it("notes heading levels and a compact span-mark summary on text blocks", () => {
+    expect(outline).toMatch(/txt_e5f6 text h1,p ".*" \+bold\+link/);
+    // txt_r7s8 has italic but no bold — only the +italic badge.
+    expect(outline).toMatch(/txt_r7s8 text p "[^"]*" \+italic\n?/);
     expect(outline).not.toMatch(/txt_r7s8[^\n]*\+bold/);
+  });
+
+  it("shows value marks with their value when uniform, bare badge when mixed", () => {
+    const doc = createSampleDocument();
+    const block = structuredClone(doc.txt_r7s8!);
+    if (block.type !== "text") throw new Error("fixture");
+    block.properties.text.content[0]!.content = [
+      {
+        type: "text",
+        text: "Ready to ride?",
+        marks: [
+          { type: "textStyle", attrs: { color: "#16a34a", fontSize: "18px", fontFamily: "Georgia, serif" } },
+          { type: "highlight", attrs: { color: "#fff3a3" } },
+        ],
+      },
+      { type: "text", text: " Grab a seat.", marks: [{ type: "textStyle", attrs: { fontSize: "12px" } }] },
+    ];
+    const outlineWithValues = generateDocumentOutline({ doc: { ...doc, txt_r7s8: block } });
+    // color/font/highlight are uniform → value shown; size differs → bare badge.
+    expect(outlineWithValues).toContain(
+      'txt_r7s8 text p "Ready to ride? Grab a seat." +font(Georgia)+color(#16a34a)+size+highlight(#fff3a3)',
+    );
   });
 
   it("stays terse — a few hundred tokens on the sample doc", () => {

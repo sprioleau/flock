@@ -193,7 +193,22 @@ export function dispatchContentAction({
       ],
     };
   }
-  const result = action.run(doc, parsedInput.data);
+  // Intent-shaped actions (styleTextSpan) translate to a canonical operation
+  // first — the op log only ever holds replayable email-sdk Operations. `run`
+  // then receives the RESOLVED operation (the documented dispatch contract).
+  let operation = parsedInput.data as Operation;
+  if (action.resolveOperation !== undefined) {
+    const resolved = action.resolveOperation(doc, parsedInput.data);
+    if (!resolved.isOk) {
+      return {
+        isOk: false,
+        failureKind: classifyActionErrors(resolved.errors),
+        errors: resolved.errors.map((error): ActionDispatchError => ({ ...error })),
+      };
+    }
+    operation = resolved.op;
+  }
+  const result = action.run(doc, operation);
   if (!result.isOk) {
     return {
       isOk: false,
@@ -202,7 +217,7 @@ export function dispatchContentAction({
     };
   }
   const logEntry = createLogEntry({
-    op: parsedInput.data as Operation,
+    op: operation,
     inverse: result.inverse,
     authorId: context.authorId,
     author: context.author,

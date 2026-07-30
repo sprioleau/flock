@@ -74,13 +74,50 @@ interface TextDocSummary {
   nodeKinds: string[];
   /** All plain text, node boundaries joined with " | ", hard breaks as spaces. */
   plainText: string;
-  hasBoldMark: boolean;
+  /**
+   * Compact span-mark summary, e.g. " +bold+link+color(#16a34a)" — "" when
+   * the block has no inline marks. Presence badges in a fixed order; the
+   * value-carrying kinds (font/color/size/highlight) show their value only
+   * when it is the SAME everywhere in the block (else the bare badge — call
+   * getBlockDetails for per-span values). Keeps the outline terse while
+   * letting the model see existing span styling before styleTextSpan edits.
+   */
+  marksSummary: string;
+}
+
+/** Badge render order — fixed for determinism. */
+const MARK_BADGES = ["bold", "italic", "underline", "strike", "link", "font", "color", "size", "highlight"] as const;
+
+type MarkBadge = (typeof MARK_BADGES)[number];
+
+/** First font family of a CSS stack, unquoted — "Georgia, serif" → "Georgia". */
+function firstFontFamily(fontFamily: string): string {
+  return (fontFamily.split(",")[0] ?? fontFamily).trim().replace(/^['"]|['"]$/g, "");
+}
+
+function formatMarksSummary(valuesByBadge: Map<MarkBadge, Set<string>>): string {
+  const badges: string[] = [];
+  for (const badge of MARK_BADGES) {
+    const values = valuesByBadge.get(badge);
+    if (values === undefined) {
+      continue;
+    }
+    const [onlyValue] = values;
+    badges.push(values.size === 1 && onlyValue !== "" ? `${badge}(${onlyValue})` : badge);
+  }
+  return badges.length > 0 ? ` +${badges.join("+")}` : "";
 }
 
 function summarizeTextDoc(textDoc: TextDoc): TextDocSummary {
   const nodeKinds: string[] = [];
   const nodeTexts: string[] = [];
-  let hasBoldMark = false;
+  // badge → distinct values seen ("" for the valueless boolean/link kinds).
+  const valuesByBadge = new Map<MarkBadge, Set<string>>();
+  const recordBadge = (badge: MarkBadge, value = ""): void => {
+    const values = valuesByBadge.get(badge) ?? new Set<string>();
+    values.add(value);
+    valuesByBadge.set(badge, values);
+  };
   for (const node of textDoc.content) {
     nodeKinds.push(node.type === "heading" ? `h${node.attrs.level}` : "p");
     const inlineParts: string[] = [];
@@ -90,13 +127,33 @@ function summarizeTextDoc(textDoc: TextDoc): TextDocSummary {
         continue;
       }
       inlineParts.push(inline.text);
-      if (inline.marks?.some((mark) => mark.type === "bold") === true) {
-        hasBoldMark = true;
+      for (const mark of inline.marks ?? []) {
+        switch (mark.type) {
+          case "bold":
+          case "italic":
+          case "underline":
+          case "strike":
+          case "link":
+            recordBadge(mark.type);
+            break;
+          case "textStyle":
+            if (mark.attrs.fontFamily !== undefined) recordBadge("font", firstFontFamily(mark.attrs.fontFamily));
+            if (mark.attrs.color !== undefined) recordBadge("color", mark.attrs.color);
+            if (mark.attrs.fontSize !== undefined) recordBadge("size", mark.attrs.fontSize);
+            break;
+          case "highlight":
+            recordBadge("highlight", mark.attrs.color);
+            break;
+        }
       }
     }
     nodeTexts.push(inlineParts.join(""));
   }
-  return { nodeKinds, plainText: nodeTexts.join(" | "), hasBoldMark };
+  return {
+    nodeKinds,
+    plainText: nodeTexts.join(" | "),
+    marksSummary: formatMarksSummary(valuesByBadge),
+  };
 }
 
 interface TruncateInput {
@@ -162,7 +219,7 @@ function summarizeBlockProps({ block, maxTextChars }: SummarizeBlockInput): stri
       const summary = summarizeTextDoc(block.properties.text);
       const kinds = summary.nodeKinds.join(",");
       const text = truncate({ text: summary.plainText, maxChars: maxTextChars });
-      return ` ${kinds} "${text}"${summary.hasBoldMark ? " +bold" : ""}`;
+      return ` ${kinds} "${text}"${summary.marksSummary}`;
     }
     case "button":
       return ` "${block.properties.label}" href=${block.properties.href}`;

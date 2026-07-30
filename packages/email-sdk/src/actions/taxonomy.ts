@@ -59,6 +59,10 @@ export const DISPATCH_ERROR_FAILURE_KINDS = {
    * editor action through `dispatchContentAction`). A wiring bug, not a
    * payload the model can repair. */
   wrong_action_kind: "terminal",
+  /** styleTextSpan could not locate `find` (or the occurrence is out of
+   * range) in the block's CURRENT text. The error message quotes the block's
+   * actual text so the model can copy it verbatim and self-correct. */
+  span_not_found: "retryable",
 } as const satisfies Record<string, ActionFailureKind>;
 
 export type ActionDispatchErrorCode = OperationErrorCode | keyof typeof DISPATCH_ERROR_FAILURE_KINDS;

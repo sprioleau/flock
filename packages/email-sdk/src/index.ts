@@ -294,3 +294,29 @@ export {
   editorEmailActions,
   emailActionRegistry,
 } from "./actions/builtins";
+
+// --- Operations: applyTheme section-override payload (operations/ops) ---------------------------
+export { themeSectionOverrideSchema } from "./operations/ops";
+export type { ThemeSectionOverride } from "./operations/ops";
+
+// --- Actions: styleTextSpan — intent-level span styling (actions/style-text-span) ---------------
+export {
+  styleTextSpanInputSchema,
+  styleTextSpanStyleSchema,
+  styleTextSpanOccurrenceSchema,
+  applySpanStyle,
+  resolveStyleTextSpanOperation,
+  styleTextSpanAction,
+} from "./actions/style-text-span";
+export type {
+  StyleTextSpanInput,
+  StyleTextSpanStyle,
+  StyleTextSpanOccurrence,
+  ApplySpanStyleInput,
+  ApplySpanStyleResult,
+  ResolveStyleTextSpanOperationInput,
+  ResolveStyleTextSpanResult,
+} from "./actions/style-text-span";
+
+// --- Actions: intent→operation resolution contract (actions/define) -----------------------------
+export type { ResolveContentOperationResult, ResolvedOperationError } from "./actions/define";

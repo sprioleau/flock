@@ -1,8 +1,11 @@
 import type { z } from "zod";
 import type { ApplyOperationResult } from "../operations/apply";
+import type { Operation } from "../operations/ops";
+import type { BlockId } from "../schema/ids";
 import type { EmailDocument } from "../store/document";
 import type { ActionContext } from "./context";
 import type { EditorCommand } from "./editor-commands";
+import type { ActionDispatchErrorCode } from "./taxonomy";
 
 /**
  * `defineEmailAction` — the action envelope factory (plan §9.3).
@@ -54,10 +57,24 @@ interface EmailActionConfigBase<TSchema extends z.ZodType> {
   needsApproval: NeedsApprovalOption<z.output<TSchema>>;
 }
 
+/** One structured intent-resolution failure — a repair hint for the model. */
+export interface ResolvedOperationError {
+  code: ActionDispatchErrorCode;
+  /** Human-readable explanation, written to be fed back to the model as a repair hint. */
+  message: string;
+  blockId?: BlockId;
+  relatedBlockId?: BlockId;
+}
+
+/** Result of an intent→operation translation (see `resolveOperation`). */
+export type ResolveContentOperationResult =
+  | { isOk: true; op: Operation }
+  | { isOk: false; errors: ResolvedOperationError[] };
+
 /**
  * Content action config: transforms the document. `run` is the pure hook —
  * `(doc, input) → ApplyOperationResult` — for the built-ins simply
- * `(doc, op) => applyOperation(doc, op)`. The input must be (or parse to) an
+ * `(doc, op) => applyOperation(doc, op)`. The input must be (or resolve to) an
  * email-sdk Operation, because the dispatch layer logs it (with its generated
  * inverse) as the op-log entry that powers undo/redo and batch revert.
  */
@@ -66,6 +83,18 @@ export interface ContentEmailActionConfig<TSchema extends z.ZodType = z.ZodType>
   kind: "content";
   /** Content actions mutate the document by definition. */
   readOnly: false;
+  /**
+   * Optional intent→operation translation for actions whose model-facing
+   * input is NOT itself an Operation (e.g. styleTextSpan's `{ blockId, find,
+   * style }`). When present, `dispatchContentAction` resolves the validated
+   * input against the CURRENT document into one canonical Operation BEFORE
+   * running: `run` receives the RESOLVED operation (not the raw input), and
+   * the op-log entry records the resolved operation — intent shapes never
+   * reach the replayable history spine. Resolution failures carry the
+   * stop-vs-retry taxonomy codes and are fed back to the model as repair
+   * hints. Must be pure and deterministic.
+   */
+  resolveOperation?: (doc: EmailDocument, input: z.output<TSchema>) => ResolveContentOperationResult;
   run: (doc: EmailDocument, input: z.output<TSchema>) => ApplyOperationResult;
 }
 

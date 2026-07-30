@@ -24,6 +24,16 @@ describe("SYSTEM_STATIC (layer a — cacheable)", () => {
     expect(SYSTEM_STATIC).not.toContain("${");
     expect(SYSTEM_STATIC).not.toContain("{{");
   });
+
+  it("teaches the span-mark vocabulary and the styleTextSpan-vs-updateText split", () => {
+    expect(SYSTEM_STATIC).toContain("textStyle");
+    expect(SYSTEM_STATIC).toContain("highlight");
+    expect(SYSTEM_STATIC).toContain("styleTextSpan");
+    // The choice rule: styleTextSpan for styling, updateText for content changes.
+    expect(SYSTEM_STATIC).toMatch(/styleTextSpan when only the styling[\s\S]*updateText only when the words themselves change/);
+    // The outline's compact marks suffix is explained.
+    expect(SYSTEM_STATIC).toContain("+bold+link+color(#16a34a)");
+  });
 });
 
 describe("buildToolGuidance (layer b — cacheable per registry)", () => {

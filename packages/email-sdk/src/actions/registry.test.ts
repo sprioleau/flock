@@ -405,7 +405,8 @@ describe("stop-vs-retry taxonomy", () => {
   it("adds the dispatch-level codes to the combined map", () => {
     expect(DISPATCH_ERROR_FAILURE_KINDS.unknown_action).toBe("retryable");
     expect(DISPATCH_ERROR_FAILURE_KINDS.wrong_action_kind).toBe("terminal");
-    expect(Object.keys(ACTION_ERROR_FAILURE_KINDS)).toHaveLength(12);
+    expect(DISPATCH_ERROR_FAILURE_KINDS.span_not_found).toBe("retryable");
+    expect(Object.keys(ACTION_ERROR_FAILURE_KINDS)).toHaveLength(13);
   });
 
   it("classifies a batch as terminal when ANY error is terminal", () => {
