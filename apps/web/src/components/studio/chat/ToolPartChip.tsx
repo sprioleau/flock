@@ -31,7 +31,7 @@ import { cn } from "@/lib/utils";
 
 type TandemToolPart = ToolUIPart<TandemChatTools>;
 
-const READ_ONLY_TOOL_NAMES = new Set(["getBlockDetails"]);
+const READ_ONLY_TOOL_NAMES = new Set(["getBlockDetails", "fetchWebContent"]);
 
 function getToolName(part: TandemToolPart): string {
   return part.type.slice("tool-".length);

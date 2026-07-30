@@ -177,7 +177,9 @@ export function buildChatTools({
               `Input for action "${definition.name}" failed validation: ${parsedInput.error.message}`,
             );
           }
-          const data = action.run(doc, parsedInput.data);
+          // Analysis runs may be async (fetchWebContent does network I/O);
+          // awaiting a sync result (getBlockDetails) is a no-op.
+          const data = await action.run(doc, parsedInput.data);
           if (data === null || data === undefined) {
             return {
               isFound: false,

@@ -7,6 +7,7 @@ import {
 } from "@tandem/email-sdk";
 import { z } from "zod";
 import { describeBlock, type BlockDetails } from "./describe-block";
+import { defineFetchWebContentAction, type FetchWebArticleFn } from "./fetch-web-content";
 
 /**
  * Agent-level action definitions (plan §9.4 item 1 — the catalog-lookup tool).
@@ -46,12 +47,34 @@ export const getBlockDetailsAction = defineEmailAction({
 /** Every agent-only action layered on top of the sdk built-ins. */
 export const agentAnalysisActions = [getBlockDetailsAction] as const;
 
+export interface BuildAgentActionRegistryOptions {
+  /**
+   * Host-app implementation of the Phase 7.4 web-content fetch (SSRF-guarded
+   * fetch + article extraction). When provided, the `fetchWebContent` analysis
+   * action is registered and buildToolGuidance switches on the web-content
+   * workflow guidance; when omitted (e.g. a host with no network layer), the
+   * tool and its guidance are absent — the registry stays purely local.
+   */
+  fetchWebArticle?: FetchWebArticleFn;
+}
+
 /**
  * Build THE registry the chat route advertises and dispatches from: every
  * email-sdk built-in action (registration order preserved) plus the agent
  * analysis actions. Registering getBlockDetails also switches on
- * buildToolGuidance's catalog-lookup hint (see prompts/tool-guidance.ts).
+ * buildToolGuidance's catalog-lookup hint (see prompts/tool-guidance.ts);
+ * likewise the injected fetchWebContent switches on the web-content workflow.
  */
-export function buildAgentActionRegistry(): EmailActionRegistry {
-  return createActionRegistry([...emailActionRegistry.actions, ...agentAnalysisActions]);
+export function buildAgentActionRegistry(
+  options?: BuildAgentActionRegistryOptions,
+): EmailActionRegistry {
+  const webContentActions =
+    options?.fetchWebArticle === undefined
+      ? []
+      : [defineFetchWebContentAction({ fetchWebArticle: options.fetchWebArticle })];
+  return createActionRegistry([
+    ...emailActionRegistry.actions,
+    ...agentAnalysisActions,
+    ...webContentActions,
+  ]);
 }

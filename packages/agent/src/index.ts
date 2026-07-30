@@ -27,6 +27,17 @@ export {
   agentAnalysisActions,
   buildAgentActionRegistry,
 } from "./actions";
+export type { BuildAgentActionRegistryOptions } from "./actions";
+
+// --- Web content ingestion contract (§7.4a — executor injected by the host) ------
+export { defineFetchWebContentAction, fetchWebContentInputSchema } from "./fetch-web-content";
+export type {
+  FetchWebArticleFn,
+  FetchWebContentInput,
+  FetchWebContentResult,
+  WebArticlePayload,
+  WebContentConfidence,
+} from "./fetch-web-content";
 
 // --- Prompt layers (static/cacheable → per-request, §3.2) --------------------------
 export {

@@ -24,6 +24,8 @@ import { MockLanguageModelV4 } from "ai/test";
  * Scripted behavior, keyed off the last user message:
  * - mentions preview/mobile/desktop → showPreview editor tool call
  * - mentions "test email"           → sendTestEmail (exercises approval flow)
+ * - contains a URL                  → fetchWebContent with that URL (the
+ *   server then performs the REAL fetch + extraction — Phase 7.4a seam)
  * - asks to add a section (e.g. "add a hero section") → scaffoldSection with
  *   the mentioned catalog templateId (exercises the Phase 7.2 scaffold seam)
  * - otherwise → updateBlockProperties on the selected block (fallback
@@ -53,7 +55,8 @@ interface MockToolCallPlan {
     | ShowPreviewInput
     | SendTestEmailInput
     | ScaffoldSectionInput
-    | UpdateBlockPropertiesOperation;
+    | UpdateBlockPropertiesOperation
+    | { url: string };
   acknowledgementText: string;
 }
 
@@ -91,6 +94,18 @@ function planMockToolCall({
       toolName: "sendTestEmail",
       input: { to },
       acknowledgementText: `Requesting a test send to ${to}.`,
+    };
+  }
+  // A URL in the message → fetchWebContent (Phase 7.4a). Checked BEFORE the
+  // scaffold intent: "make a section from this article <url>" must fetch, not
+  // scaffold placeholder content. The server executes the REAL fetch +
+  // extraction, so tests exercise the whole read-only tool seam.
+  const urlMatch = lastUserText.match(/https?:\/\/[^\s"'<>)]+/i);
+  if (urlMatch !== null) {
+    return {
+      toolName: "fetchWebContent",
+      input: { url: urlMatch[0] },
+      acknowledgementText: "Reading that page now.",
     };
   }
   const hasScaffoldIntent = /\b(add|insert|scaffold)\b[\s\S]*\bsection\b/i.test(lastUserText);

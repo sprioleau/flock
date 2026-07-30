@@ -38,5 +38,25 @@ export function buildToolGuidance(registry: EmailActionRegistry): string {
         (template) => `- ${template.id} — ${template.useWhen}`,
       ).join("\n")}`
     : "";
-  return `## Available tools\n\n${catalogHint}${lines.join("\n")}${sectionCatalogListing}`;
+  // Phase 7.4(a) web-content workflow: faithfulness, attribution, and honest
+  // failure rules for building from a fetched URL. Only advertised while the
+  // host app has injected the fetchWebContent executor.
+  const hasFetchWebContentTool = registry.actionsByName.has("fetchWebContent");
+  const webContentWorkflow = hasFetchWebContentTool ? `\n\n${WEB_CONTENT_WORKFLOW}` : "";
+  return `## Available tools\n\n${catalogHint}${lines.join("\n")}${sectionCatalogListing}${webContentWorkflow}`;
 }
+
+/**
+ * The §7.4 faithfulness rules as model guidance — constant text so the cached
+ * prefix stays byte-identical. Appended only when fetchWebContent is
+ * registered (see buildToolGuidance).
+ */
+const WEB_CONTENT_WORKFLOW = `## Building from a web page (fetchWebContent)
+
+When the user shares a URL and asks you to build content from it, call fetchWebContent FIRST — never write about a page you have not fetched in this conversation.
+
+- Compose ONLY from the returned payload. Condense the real mainText faithfully; never add facts, quotes, names, or numbers that are not in it. If mainText was truncated, work with what you have — do not guess at the rest.
+- Default to ONE new section for the story; build out a whole email from it only when the user explicitly asks for one.
+- Hand-compose that section with addSection (not scaffoldSection — templates cannot carry a real image URL or link): a heading with the real title, one or two short paragraphs condensed from mainText, the returned heroImageUrl as an image (with meaningful alt text) when there is one, and ALWAYS a button labeled like "Read the full story" whose href is the returned canonicalUrl. Naming the source (sourceName) in the copy is good practice.
+- If the result has isOk: false, the page could not be read (blocked, paywalled, not an article, unreachable). Relay the returned message to the user in your own short words, make NO edits, and STOP — inventing plausible content for an unread page is the one unforgivable failure here.
+- If confidence is "low", tell the user the page was hard to read and the section may need their review.`;

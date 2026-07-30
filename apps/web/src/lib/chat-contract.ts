@@ -1,4 +1,4 @@
-import type { BlockDetails } from "@tandem/agent";
+import type { BlockDetails, FetchWebContentResult } from "@tandem/agent";
 import type { UIMessage } from "ai";
 import { z } from "zod";
 import {
@@ -153,6 +153,13 @@ export type AnalysisToolOutput<TData = unknown> =
 export type GetBlockDetailsToolOutput = AnalysisToolOutput<BlockDetails>;
 
 /**
+ * fetchWebContent result data (Phase 7.4a): the extracted article payload or
+ * the structured refusal — both are SUCCESSFUL tool outputs (`isFound: true`);
+ * a refusal is information the model must relay, not an execution error.
+ */
+export type FetchWebContentToolOutput = AnalysisToolOutput<FetchWebContentResult>;
+
+/**
  * TOOLS generic for {@link TandemChatMessage} — one entry per registry action
  * (tool names match `emailActionRegistry` action names exactly).
  *
@@ -177,6 +184,7 @@ export type TandemChatTools = {
   showPreview: { input: ShowPreviewInput; output: EditorToolOutput };
   sendTestEmail: { input: SendTestEmailInput; output: EditorToolOutput };
   getBlockDetails: { input: { blockId: BlockId }; output: GetBlockDetailsToolOutput };
+  fetchWebContent: { input: { url: string }; output: FetchWebContentToolOutput };
 };
 
 /** The typed UI message flowing over /api/chat in both directions. */
