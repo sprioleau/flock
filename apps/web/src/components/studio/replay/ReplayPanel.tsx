@@ -146,7 +146,9 @@ export function ReplayPanel() {
     playheadVersion === 0
       ? "Document created"
       : currentEntry !== undefined
-        ? describeEntryHuman(currentEntry)
+        ? describeEntryHuman(currentEntry, {
+            getEntryByVersion: (version) => operationsByVersion?.get(version),
+          })
         : null;
 
   return (

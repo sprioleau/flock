@@ -1,6 +1,6 @@
-import type { Operation } from "@tandem/email-sdk";
 import type { FunctionReturnType } from "convex/server";
 import type { api } from "@convex/_generated/api";
+import { describeEntryHuman, type DescribeEntryContext } from "./op-author";
 
 /**
  * Pure presentation helpers for the History panel: turning the flat
@@ -48,33 +48,18 @@ export function buildHistoryGroups(operationsAscending: OperationEntry[]): Histo
   return groups;
 }
 
-/** Short human description of one op: its name plus the block it targeted. */
-export function describeOperation(rawOp: unknown): string {
-  const op = rawOp as Operation & { section?: { id?: string }; block?: { id?: string } };
-  const targetId =
-    "blockId" in op && typeof op.blockId === "string"
-      ? op.blockId
-      : op.section?.id ?? op.block?.id;
-  return targetId !== undefined ? `${op.name} ${targetId}` : op.name;
-}
-
-/** Row label for a single (unbatched) entry, with undo/redo called out distinctly. */
-export function describeEntry(entry: OperationEntry): string {
-  if (entry.kind === "undo") {
-    return entry.undoesVersion !== undefined
-      ? `Undo (v${entry.undoesVersion})`
-      : "Undo";
-  }
-  if (entry.kind === "redo") {
-    return entry.redoesVersion !== undefined
-      ? `Redo (v${entry.redoesVersion})`
-      : "Redo";
-  }
-  return describeOperation(entry.op);
-}
-
-/** Title for a multi-op (or specially-named) batch group. */
-export function describeGroup(group: HistoryGroup): string {
+/**
+ * Title for a group row: specially-named batches get their own phrasing;
+ * single entries delegate to the shared human labeler (op-author.ts — the
+ * single source of truth; no op names or block ids ever surface here).
+ */
+export function describeGroup({
+  group,
+  context,
+}: {
+  group: HistoryGroup;
+  context?: DescribeEntryContext;
+}): string {
   if (group.batchId !== null && group.batchId.startsWith("rollback:")) {
     const targetVersion = group.batchId.slice("rollback:".length);
     return `Restored to version ${targetVersion}`;
@@ -83,7 +68,7 @@ export function describeGroup(group: HistoryGroup): string {
     return "Reverted agent changes";
   }
   if (group.entries.length === 1) {
-    return describeEntry(group.entries[0]!);
+    return describeEntryHuman(group.entries[0]!, context);
   }
   return `${group.entries.length} edits`;
 }

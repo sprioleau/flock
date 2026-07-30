@@ -26,7 +26,11 @@ import {
   type HistoryGroup,
   type OperationEntry,
 } from "../history/history-grouping";
-import { deriveOpAuthor, describeEntryHuman } from "../history/op-author";
+import {
+  deriveOpAuthor,
+  describeEntryHuman,
+  type DescribeEntryContext,
+} from "../history/op-author";
 
 /** Rows fetched per "load earlier" step (and the initial window). */
 const INSPECTOR_PAGE_SIZE = 100;
@@ -194,6 +198,11 @@ export function OpInspector() {
   const groupsAscending = buildHistoryGroups(operationsAscending)
     .reverse()
     .map((group) => ({ ...group, entries: [...group.entries].reverse() }));
+  // Version lookup so undo/redo row labels can name the change they reversed.
+  const entryByVersion = new Map(operationsAscending.map((entry) => [entry.version, entry]));
+  const describeContext: DescribeEntryContext = {
+    getEntryByVersion: (version) => entryByVersion.get(version),
+  };
 
   return (
     // disablePointerDismissal: a console should keep streaming while the
@@ -289,6 +298,7 @@ export function OpInspector() {
                   <InspectorGroup
                     key={group.latestVersion}
                     group={group}
+                    describeContext={describeContext}
                     viewerAuthorId={authorId}
                     nowMs={nowMs}
                   />
@@ -330,10 +340,12 @@ export function OpInspector() {
  */
 function InspectorGroup({
   group,
+  describeContext,
   viewerAuthorId,
   nowMs,
 }: {
   group: HistoryGroup;
+  describeContext: DescribeEntryContext;
   viewerAuthorId: string | null;
   nowMs: number;
 }) {
@@ -347,7 +359,12 @@ function InspectorGroup({
 
   if (!isBatch) {
     return (
-      <InspectorRow entry={oldestEntry} viewerAuthorId={viewerAuthorId} nowMs={nowMs} />
+      <InspectorRow
+        entry={oldestEntry}
+        describeContext={describeContext}
+        viewerAuthorId={viewerAuthorId}
+        nowMs={nowMs}
+      />
     );
   }
 
@@ -367,6 +384,7 @@ function InspectorGroup({
         <InspectorRow
           key={entry.version}
           entry={entry}
+          describeContext={describeContext}
           viewerAuthorId={viewerAuthorId}
           nowMs={nowMs}
         />
@@ -378,10 +396,12 @@ function InspectorGroup({
 /** One op row: human label collapsed, raw op + inverse JSON when expanded. */
 function InspectorRow({
   entry,
+  describeContext,
   viewerAuthorId,
   nowMs,
 }: {
   entry: OperationEntry;
+  describeContext: DescribeEntryContext;
   viewerAuthorId: string | null;
   nowMs: number;
 }) {
@@ -421,7 +441,7 @@ function InspectorRow({
             entry.isUndone === true && "text-muted-foreground line-through",
           )}
         >
-          {describeEntryHuman(entry)}
+          {describeEntryHuman(entry, describeContext)}
         </span>
         <span className="shrink-0 tabular-nums text-muted-foreground">
           v{entry.version}

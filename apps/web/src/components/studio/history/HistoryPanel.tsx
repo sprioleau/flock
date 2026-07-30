@@ -18,12 +18,12 @@ import { cn } from "@/lib/utils";
 import {
   buildHistoryGroups,
   describeGroup,
-  describeOperation,
   formatRelativeTime,
   getGroupAuthorLabel,
   type HistoryGroup,
   type OperationEntry,
 } from "./history-grouping";
+import { describeEntryHuman, type DescribeEntryContext } from "./op-author";
 import { VersionPreview } from "./VersionPreview";
 
 /** Rows fetched per "load older" step (and the size of the initial window). */
@@ -122,6 +122,11 @@ export function HistoryPanel() {
   const isListLoading = headPage === undefined;
   const operationsAscending = [...olderOperations, ...(headPage?.operations ?? [])];
   const groups = buildHistoryGroups(operationsAscending);
+  // Version lookup so undo/redo rows can name the change they reversed.
+  const entryByVersion = new Map(operationsAscending.map((entry) => [entry.version, entry]));
+  const describeContext: DescribeEntryContext = {
+    getEntryByVersion: (version) => entryByVersion.get(version),
+  };
 
   return (
     <Sheet open={isOpen} onOpenChange={handleOpenChange} modal={false}>
@@ -158,6 +163,7 @@ export function HistoryPanel() {
         ) : (
           <HistoryList
             groups={groups}
+            describeContext={describeContext}
             viewerAuthorId={authorId}
             serverHeadVersion={serverHeadVersion}
             nowMs={nowMs}
@@ -189,12 +195,14 @@ function AuthorBadge({ label }: { label: "Agent" | "You" | "User" }) {
 
 function HistoryGroupRow({
   group,
+  describeContext,
   viewerAuthorId,
   isCurrentHead,
   nowMs,
   onSelect,
 }: {
   group: HistoryGroup;
+  describeContext: DescribeEntryContext;
   viewerAuthorId: string | null;
   isCurrentHead: boolean;
   nowMs: number;
@@ -222,7 +230,7 @@ function HistoryGroupRow({
               isFullyUndone && !isCurrentHead && "text-muted-foreground line-through",
             )}
           >
-            {describeGroup(group)}
+            {describeGroup({ group, context: describeContext })}
           </span>
           {isCurrentHead && (
             <span className="shrink-0 rounded-full bg-primary/10 px-1.5 py-px text-[10px] font-medium text-primary">
@@ -238,7 +246,7 @@ function HistoryGroupRow({
             <span className="min-w-0 flex-1 truncate text-[10px] text-muted-foreground">
               {group.entries
                 .slice(0, 3)
-                .map((entry) => describeOperation(entry.op))
+                .map((entry) => describeEntryHuman(entry, describeContext))
                 .join(", ")}
               {group.entries.length > 3 ? ", …" : ""}
             </span>
@@ -259,6 +267,7 @@ function HistoryGroupRow({
 
 function HistoryList({
   groups,
+  describeContext,
   viewerAuthorId,
   serverHeadVersion,
   nowMs,
@@ -268,6 +277,7 @@ function HistoryList({
   onSelectVersion,
 }: {
   groups: HistoryGroup[];
+  describeContext: DescribeEntryContext;
   viewerAuthorId: string | null;
   serverHeadVersion: number;
   nowMs: number;
@@ -294,6 +304,7 @@ function HistoryList({
           <HistoryGroupRow
             key={group.latestVersion}
             group={group}
+            describeContext={describeContext}
             viewerAuthorId={viewerAuthorId}
             isCurrentHead={group.latestVersion === serverHeadVersion}
             nowMs={nowMs}
