@@ -206,10 +206,11 @@ export function BrandKitPanel() {
                 disabled={isGenerating}
                 data-testid="brand-kit-url-input"
               />
+              {/* Filled PRIMARY on purpose (owner call): the panel's main
+                  action. Default size = h-8, matching the input beside it. */}
               <Button
                 type="submit"
-                size="sm"
-                className="shrink-0 gap-1.5"
+                className="shrink-0"
                 disabled={isGenerating || websiteUrl.trim().length === 0}
                 data-testid="brand-kit-generate-button"
               >
