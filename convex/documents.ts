@@ -337,6 +337,27 @@ export const getDocumentByKey = query({
   },
 });
 
+/**
+ * Lean existence check for the web app's access-gate proxy (apps/web/src/proxy.ts):
+ * a URL carrying a valid `?doc=<id>` passes the gate without the password.
+ * Keyed by an UNTRUSTED string — malformed/foreign ids normalize to null and
+ * return false rather than throwing. Exposes nothing beyond a boolean per id,
+ * and the id is only guessable if you already hold it (the id IS the
+ * capability, same as the rest of the app).
+ */
+export const documentExists = query({
+  args: { documentKey: v.string() },
+  returns: v.boolean(),
+  handler: async (ctx, args) => {
+    const documentId = ctx.db.normalizeId("documents", args.documentKey);
+    if (documentId === null) {
+      return false;
+    }
+    const document = await ctx.db.get(documentId);
+    return document !== null;
+  },
+});
+
 const operationEntryValidator = v.object({
   version: v.number(),
   op: v.any(),
