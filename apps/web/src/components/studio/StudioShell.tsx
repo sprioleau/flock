@@ -12,10 +12,9 @@ import { useEditorStore } from "@/lib/editor-store";
 import { PresenceProvider } from "@/lib/presence";
 import { getOrCreateSessionId } from "@/lib/session";
 import { ChatPanel } from "./chat/ChatPanel";
-import { DraftsBar } from "./drafts/DraftsBar";
-import { EditorCanvas } from "./EditorCanvas";
+import { DraftFramesCanvas } from "./drafts/DraftFramesCanvas";
+import { DraftSelector } from "./drafts/DraftSelector";
 import { HistoryPanel } from "./history/HistoryPanel";
-import { HtmlPreviewDialog } from "./HtmlPreviewDialog";
 import { PropertyPanelSlot } from "./PropertyPanelSlot";
 import { StudioToolbar } from "./StudioToolbar";
 
@@ -31,13 +30,16 @@ import { StudioToolbar } from "./StudioToolbar";
  * every snapshot (own ops confirming, other tabs, agent edits) flows into
  * the store, which rebases its pending local overlay on top.
  *
- * Draft switching (§10.2 drafts bar): a tab click pushes the new ?doc= via
- * the native history API (Next syncs useSearchParams with pushState — a
- * SHALLOW navigation, no server round-trip, back/forward walks drafts), the
- * query re-subscribes, and when the new draft's first snapshot arrives the
- * store is reset + reconnected in ONE synchronous batch — the shell (chat
- * panel, presence provider) never unmounts and no loading gate flashes; the
- * canvas simply swaps. `isDocumentReady` only gates the INITIAL load.
+ * Draft ACTIVATION (§10.2 frames UX — clicking a sibling frame, the selector
+ * dropdown, or a nav arrow): pushes the new ?doc= via the native history API
+ * (Next syncs useSearchParams with pushState — a SHALLOW navigation, no
+ * server round-trip, back/forward walks drafts), the query re-subscribes,
+ * and when the new draft's first snapshot arrives the store is reset +
+ * reconnected in ONE synchronous batch — the shell (chat panel, presence
+ * provider) never unmounts and no loading gate flashes; the active frame
+ * simply moves. "Last frame clicked" = the store-connected document = what
+ * the preview toggle, HTML export, history, presence, and chat all target.
+ * `isDocumentReady` only gates the INITIAL load.
  */
 export function StudioShell() {
   const router = useRouter();
@@ -93,7 +95,6 @@ export function StudioShell() {
   // undefined while a switch's new subscription loads) so presence/history/
   // the drafts bar hold the outgoing draft until the incoming one is live.
   const documentId = useEditorStore((state) => state.documentId);
-  const canvasId = useEditorStore((state) => state.canvasId);
   const authorId = useEditorStore((state) => state.authorId);
   const isDocumentReady = useEditorStore((state) => state.isDocumentReady);
 
@@ -178,18 +179,10 @@ export function StudioShell() {
     <div className="flex h-dvh w-full overflow-hidden">
       <ChatPanel />
       <main className="relative flex min-w-0 flex-1 flex-col">
-        <StudioToolbar>
+        <StudioToolbar leading={<DraftSelector onActivateDraft={switchToDraft} />}>
           <HistoryPanel />
-          <HtmlPreviewDialog />
         </StudioToolbar>
-        {canvasId !== null && (
-          <DraftsBar
-            canvasId={canvasId}
-            activeDocumentKey={documentKey}
-            onSwitchDraft={switchToDraft}
-          />
-        )}
-        <EditorCanvas />
+        <DraftFramesCanvas onActivateDraft={switchToDraft} />
         <EditorNotice />
       </main>
       <PropertyPanelSlot />

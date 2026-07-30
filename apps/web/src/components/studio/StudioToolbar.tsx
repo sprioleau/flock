@@ -1,9 +1,7 @@
 "use client";
 
-import { MonitorIcon, Redo2Icon, SmartphoneIcon, Undo2Icon } from "lucide-react";
-import type { PreviewMode } from "@tandem/email-sdk";
+import { Redo2Icon, Undo2Icon } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { selectCanRedo, selectCanUndo, useEditorStore } from "@/lib/editor-store";
 import { BrandKitPanel } from "./brand-kit/BrandKitPanel";
 import { OpInspector } from "./inspector/OpInspector";
@@ -12,16 +10,22 @@ import { ReplayPanel } from "./replay/ReplayPanel";
 import { ThemeMenu } from "./theme/ThemeMenu";
 
 /**
- * Slim canvas toolbar: desktop/mobile viewport toggle, theme selector, the
- * brand kit panel trigger (right next to the theme menu it feeds),
- * undo/redo (disabled states from stack depth), the read-only power lenses
- * over the op-log spine (time-travel replay, op inspector), and the HTML
- * preview dialog trigger (mounted by StudioShell next to this component's
- * slot).
+ * Slim canvas toolbar: the `leading` slot (the drafts selector, mounted by
+ * StudioShell), theme selector, the brand kit panel trigger (right next to
+ * the theme menu it feeds), undo/redo (disabled states from stack depth),
+ * the read-only power lenses over the op-log spine (time-travel replay, op
+ * inspector), and the History drawer trigger (children slot). The
+ * desktop/mobile viewport toggle and the HTML export moved to the floating
+ * per-frame toolbar (§10.2 frames UX — they are per-draft surfaces); History
+ * stays here because its drawer already follows the active document.
  */
-export function StudioToolbar({ children }: { children?: React.ReactNode }) {
-  const viewport = useEditorStore((state) => state.viewport);
-  const setViewport = useEditorStore((state) => state.setViewport);
+export function StudioToolbar({
+  leading,
+  children,
+}: {
+  leading?: React.ReactNode;
+  children?: React.ReactNode;
+}) {
   const undo = useEditorStore((state) => state.undo);
   const redo = useEditorStore((state) => state.redo);
   const canUndo = useEditorStore(selectCanUndo);
@@ -30,26 +34,7 @@ export function StudioToolbar({ children }: { children?: React.ReactNode }) {
   return (
     <header className="flex h-12 shrink-0 items-center justify-between gap-2 border-b bg-background px-3">
       <div className="flex items-center gap-2">
-        <ToggleGroup
-          value={[viewport]}
-          onValueChange={(groupValue) => {
-            const next = groupValue[0] as PreviewMode | undefined;
-            if (next !== undefined) {
-              setViewport(next);
-            }
-          }}
-          variant="outline"
-          size="sm"
-          spacing={0}
-          aria-label="Canvas viewport"
-        >
-          <ToggleGroupItem value="desktop" aria-label="Desktop viewport">
-            <MonitorIcon />
-          </ToggleGroupItem>
-          <ToggleGroupItem value="mobile" aria-label="Mobile viewport">
-            <SmartphoneIcon />
-          </ToggleGroupItem>
-        </ToggleGroup>
+        {leading}
         <ThemeMenu />
         <BrandKitPanel />
       </div>

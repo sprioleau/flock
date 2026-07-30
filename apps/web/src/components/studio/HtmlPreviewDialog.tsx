@@ -20,11 +20,15 @@ type RenderState =
   | { status: "error"; message: string };
 
 /**
- * The "HTML" toolbar button + dialog: renders the current document to
- * email-safe HTML through the SDK (via the existing POST /api/render route,
- * which runs renderToHTML server-side) and shows it in a sandboxed iframe.
+ * The "HTML" button + dialog: renders the current document to email-safe
+ * HTML through the SDK (via the existing POST /api/render route, which runs
+ * renderToHTML server-side) and shows it in a sandboxed iframe. Reads the
+ * store's doc at open time, so it always exports the ACTIVE draft.
+ *
+ * `isIconTrigger` renders the compact icon-only trigger used by the floating
+ * per-frame toolbar (§10.2 frames UX); default is the labeled header button.
  */
-export function HtmlPreviewDialog() {
+export function HtmlPreviewDialog({ isIconTrigger = false }: { isIconTrigger?: boolean }) {
   const [isOpen, setIsOpen] = useState(false);
   const [renderState, setRenderState] = useState<RenderState>({ status: "idle" });
   const requestIdRef = useRef(0);
@@ -66,10 +70,22 @@ export function HtmlPreviewDialog() {
 
   return (
     <Dialog open={isOpen} onOpenChange={handleOpenChange}>
-      <DialogTrigger render={<Button variant="outline" size="sm" className="gap-1.5" />}>
-        <CodeIcon className="size-4" />
-        HTML
-      </DialogTrigger>
+      {isIconTrigger ? (
+        <DialogTrigger
+          render={<Button variant="ghost" size="icon-sm" aria-label="Email HTML" title="HTML" />}
+          data-testid="html-preview-trigger"
+        >
+          <CodeIcon className="size-4" />
+        </DialogTrigger>
+      ) : (
+        <DialogTrigger
+          render={<Button variant="outline" size="sm" className="gap-1.5" />}
+          data-testid="html-preview-trigger"
+        >
+          <CodeIcon className="size-4" />
+          HTML
+        </DialogTrigger>
+      )}
       <DialogContent className="grid h-[85vh] grid-rows-[auto_1fr] sm:max-w-4xl">
         <DialogHeader>
           <DialogTitle>Email HTML</DialogTitle>

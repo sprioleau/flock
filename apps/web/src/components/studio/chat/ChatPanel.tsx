@@ -14,6 +14,7 @@ import { useEditorStore } from "@/lib/editor-store";
 import { cn } from "@/lib/utils";
 import { DemoQueueButton } from "../demo/DemoQueueButton";
 import { SettingsFab } from "../demo/SettingsFab";
+import { ActiveDraftIndicator } from "../drafts/ActiveDraftIndicator";
 import { ChatMessageList } from "./ChatMessageList";
 import { QueuedMessageList } from "./QueuedMessageList";
 import { SuggestionCard } from "./SuggestionCard";
@@ -199,6 +200,11 @@ export function ChatPanel() {
             the composer. Fully self-contained (its hook watches the op log);
             renders null when nothing is suggested. */}
         <SuggestionCard isPanelExpanded={isExpanded} />
+
+        {/* §10.2 frames UX: which draft the agent will edit — activation IS
+            retargeting (ops go to the store-connected document); this makes
+            it visible right above the composer. */}
+        <ActiveDraftIndicator />
 
         {/* Composer: a single bordered box holding the selection-context chip
             (when a block is selected) above a borderless textarea; the send
