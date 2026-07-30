@@ -5,13 +5,17 @@ import type { PreviewMode } from "@tandem/email-sdk";
 import { Button } from "@/components/ui/button";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { selectCanRedo, selectCanUndo, useEditorStore } from "@/lib/editor-store";
+import { OpInspector } from "./inspector/OpInspector";
 import { PresenceFacepile } from "./presence/PresenceFacepile";
+import { ReplayPanel } from "./replay/ReplayPanel";
 import { ThemeMenu } from "./theme/ThemeMenu";
 
 /**
  * Slim canvas toolbar: desktop/mobile viewport toggle, theme selector,
- * undo/redo (disabled states from stack depth), and the HTML preview dialog
- * trigger (mounted by StudioShell next to this component's slot).
+ * undo/redo (disabled states from stack depth), the read-only power lenses
+ * over the op-log spine (time-travel replay, op inspector), and the HTML
+ * preview dialog trigger (mounted by StudioShell next to this component's
+ * slot).
  */
 export function StudioToolbar({ children }: { children?: React.ReactNode }) {
   const viewport = useEditorStore((state) => state.viewport);
@@ -67,6 +71,8 @@ export function StudioToolbar({ children }: { children?: React.ReactNode }) {
         >
           <Redo2Icon />
         </Button>
+        <ReplayPanel />
+        <OpInspector />
         {children}
       </div>
     </header>
