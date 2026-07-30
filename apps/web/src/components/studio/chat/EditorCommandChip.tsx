@@ -21,7 +21,7 @@ export function EditorCommandChip({ data }: { data: EditorCommandDataPart }) {
   );
   const label = isShowPreview
     ? `Canvas switched to ${command.mode} preview`
-    : `Test email to ${command.to} queued (sending lands in Phase 8)`;
+    : `Test email sent to ${command.to}`;
 
   return (
     <div

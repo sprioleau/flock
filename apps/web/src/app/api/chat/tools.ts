@@ -15,6 +15,7 @@ import {
 } from "@/lib/chat-contract";
 import { toModelInputSchema } from "./model-schema";
 import { chatActionRegistry } from "./registry";
+import { sendTestEmailWithResend } from "./send-test-email";
 
 /**
  * Registry → AI SDK toolset (Phase 3.2/3.3, agent registry since Phase 3
@@ -130,6 +131,22 @@ export function buildChatTools({
             // on the next step (stopWhen allows one) and can correct itself.
             throw new Error(result.errors.map((error) => error.message).join("; "));
           }
+          // Phase 8.1: an approved sendTestEmail performs the REAL send here,
+          // server-side, against THIS request's document. The module's
+          // payload-hash idempotency key makes approval-loop double-fires
+          // no-ops. Failures throw with the module's clean human copy (raw
+          // provider errors stay in the server log) — surfaced through the
+          // chip's existing friendly-error + Details pattern, and the model
+          // sees the same sentence to relay. No data part is written on
+          // failure, so no stale "queued" chip renders.
+          let send: EditorToolOutput["send"];
+          if (result.command.type === "sendTestEmail") {
+            const outcome = await sendTestEmailWithResend({ doc, to: result.command.to });
+            if (!outcome.isSent) {
+              throw new Error(`The test email to ${result.command.to} wasn't sent: ${outcome.message}`);
+            }
+            send = { messageId: outcome.messageId };
+          }
           // The Phase 3.4 editor-operations channel: one typed data part per
           // dispatched command. id = toolCallId so re-writes reconcile.
           writer.write({
@@ -137,7 +154,11 @@ export function buildChatTools({
             id: toolCallId,
             data: { toolCallId, command: result.command },
           });
-          return { status: "dispatched", command: result.command };
+          return {
+            status: "dispatched",
+            command: result.command,
+            ...(send === undefined ? {} : { send }),
+          };
         },
       });
     } else if (action.kind === "analysis") {

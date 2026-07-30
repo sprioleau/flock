@@ -156,7 +156,7 @@ function StateBadge({ part }: { part: TandemToolPart }) {
 function getStatusText(part: TandemToolPart): string | undefined {
   const toolName = getToolName(part);
   if (part.state === "output-available" && toolName === "sendTestEmail") {
-    return "queued (sending lands in Phase 8)";
+    return "sent";
   }
   if (part.state === "approval-responded") {
     return part.approval.approved ? "approved, executing…" : "denied";

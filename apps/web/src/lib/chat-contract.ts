@@ -130,6 +130,13 @@ export type TandemChatDataParts = {
 export interface EditorToolOutput {
   status: "dispatched";
   command: EditorCommand;
+  /**
+   * Phase 8.1: present only when the command was an executed sendTestEmail —
+   * the Resend message id of the real send. The model quotes it when
+   * confirming; failed sends never produce an output (the tool call errors
+   * with friendly copy instead).
+   */
+  send?: { messageId: string };
 }
 
 /**

@@ -83,10 +83,14 @@ function planMockToolCall({
     };
   }
   if (/\btest email\b/i.test(lastUserText)) {
+    // Sends are REAL since Phase 8.1 — never invent a third-party address.
+    // Use the address in the message, else Resend's safe test inbox.
+    const to =
+      lastUserText.match(/[\w.+-]+@[\w-]+(?:\.[\w-]+)+/)?.[0] ?? "delivered@resend.dev";
     return {
       toolName: "sendTestEmail",
-      input: { to: "test@example.com" },
-      acknowledgementText: "Requesting a test send to test@example.com.",
+      input: { to },
+      acknowledgementText: `Requesting a test send to ${to}.`,
     };
   }
   const hasScaffoldIntent = /\b(add|insert|scaffold)\b[\s\S]*\bsection\b/i.test(lastUserText);
