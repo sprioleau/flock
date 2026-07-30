@@ -32,6 +32,8 @@ import {
   describeEntryHuman,
   type DescribeEntryContext,
 } from "../history/op-author";
+import { BeforeAfterChip } from "../history/BeforeAfterChip";
+import { describeValueTransition } from "../history/value-transition";
 
 /** Rows fetched per "load earlier" step (and the initial window). */
 const INSPECTOR_PAGE_SIZE = 100;
@@ -419,6 +421,7 @@ function InspectorRow({
     authorId: entry.authorId,
     viewerAuthorId,
   });
+  const transition = describeValueTransition({ op: entry.op, inverse: entry.inverse });
 
   return (
     <div data-testid="inspector-row" data-inspector-version={entry.version}>
@@ -451,6 +454,7 @@ function InspectorRow({
         >
           {describeEntryHuman(entry, describeContext)}
         </span>
+        {transition !== null && <BeforeAfterChip transition={transition} />}
         <span className="shrink-0 tabular-nums text-muted-foreground">
           v{entry.version}
         </span>

@@ -24,6 +24,8 @@ import {
   type OperationEntry,
 } from "./history-grouping";
 import { describeEntryHuman, type DescribeEntryContext } from "./op-author";
+import { BeforeAfterChip } from "./BeforeAfterChip";
+import { describeValueTransition } from "./value-transition";
 import { VersionPreview } from "./VersionPreview";
 
 /** Rows fetched per "load older" step (and the size of the initial window). */
@@ -212,6 +214,10 @@ function HistoryGroupRow({
   const authorLabel = getGroupAuthorLabel({ group, viewerAuthorId });
   const isBatch = group.entries.length > 1;
   const isFullyUndone = group.entries.every((entry) => entry.isUndone === true);
+  // Before → after glance for single-op rows; batch sub-rows get their own.
+  const titleTransition = isBatch
+    ? null
+    : describeValueTransition({ op: newestEntry.op, inverse: newestEntry.inverse });
 
   return (
     <li>
@@ -232,6 +238,7 @@ function HistoryGroupRow({
           >
             {describeGroup({ group, context: describeContext })}
           </span>
+          {titleTransition !== null && <BeforeAfterChip transition={titleTransition} />}
           {isCurrentHead && (
             <span className="shrink-0 rounded-full bg-primary/10 px-1.5 py-px text-[10px] font-medium text-primary">
               Current
@@ -244,10 +251,24 @@ function HistoryGroupRow({
         <span className="flex items-baseline gap-1.5 pl-0.5">
           {isBatch && (
             <span className="min-w-0 flex-1 truncate text-[10px] text-muted-foreground">
-              {group.entries
-                .slice(0, 3)
-                .map((entry) => describeEntryHuman(entry, describeContext))
-                .join(", ")}
+              {group.entries.slice(0, 3).map((entry, index) => {
+                const subTransition = describeValueTransition({
+                  op: entry.op,
+                  inverse: entry.inverse,
+                });
+                return (
+                  <span key={entry.version}>
+                    {index > 0 && ", "}
+                    {describeEntryHuman(entry, describeContext)}
+                    {subTransition !== null && (
+                      <>
+                        {" "}
+                        <BeforeAfterChip transition={subTransition} />
+                      </>
+                    )}
+                  </span>
+                );
+              })}
               {group.entries.length > 3 ? ", …" : ""}
             </span>
           )}

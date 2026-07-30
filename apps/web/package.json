@@ -7,6 +7,7 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
+    "test": "vitest run",
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
@@ -53,7 +54,8 @@
     "eslint": "^9",
     "eslint-config-next": "16.3.0-canary.96",
     "tailwindcss": "^4",
-    "typescript": "npm:@typescript/typescript6@6.0.2"
+    "typescript": "npm:@typescript/typescript6@6.0.2",
+    "vitest": "^4.1.10"
   },
   "packageManager": "pnpm@10.33.2"
 }

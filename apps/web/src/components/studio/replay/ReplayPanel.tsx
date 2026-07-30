@@ -14,8 +14,10 @@ import {
 import { useEditorStore } from "@/lib/editor-store";
 import { cn } from "@/lib/utils";
 import { useAppSettings } from "../demo/app-settings";
+import { BeforeAfterChip } from "../history/BeforeAfterChip";
 import { ReadOnlyEmailPreview } from "../history/ReadOnlyEmailPreview";
 import { deriveOpAuthor, describeEntryHuman } from "../history/op-author";
+import { describeValueTransition } from "../history/value-transition";
 import { useReplayTimeline } from "./use-replay-timeline";
 
 /** Playback rate: versions advanced per second at 1x. */
@@ -152,6 +154,11 @@ export function ReplayPanel() {
             getEntryByVersion: (version) => operationsByVersion?.get(version),
           })
         : null;
+  // The frame's before → after glance ("what just changed"), when it has one.
+  const captionTransition =
+    playheadVersion > 0 && currentEntry !== undefined
+      ? describeValueTransition({ op: currentEntry.op, inverse: currentEntry.inverse })
+      : null;
 
   // Hidden unless enabled via the settings FAB (after the hooks above, per
   // the rules of hooks). Unmounting also closes an open panel on disable.
@@ -217,6 +224,9 @@ export function ReplayPanel() {
                 <span className="min-w-0 flex-1 truncate text-muted-foreground">
                   {captionText}
                 </span>
+                {captionTransition !== null && (
+                  <BeforeAfterChip transition={captionTransition} />
+                )}
               </>
             )}
           </div>
