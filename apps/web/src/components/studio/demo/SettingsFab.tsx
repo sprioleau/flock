@@ -25,6 +25,8 @@ import { updateAppSettings, useAppSettings } from "./app-settings";
  * - "Demo mode" toggle, persisted per browser via app-settings.ts. Enabling
  *   it reveals the chat panel's "Queue demo messages" button
  *   (DemoQueueButton) and the ghost-collaborator control below.
+ * - "Time-travel replay" / "Op inspector" toggles (persisted the same way):
+ *   reveal those power-user toolbar buttons — both hidden by default.
  * - "Ghost collaborator" (demo mode only): starts/stops the server-driven
  *   simulated collaborator (convex/ghost.ts) that types into a text block —
  *   one-person multiplayer. The running state is reactive (getGhostStatus),
@@ -32,7 +34,7 @@ import { updateAppSettings, useAppSettings } from "./app-settings";
  *   bounded run ends on its own.
  */
 export function SettingsFab() {
-  const { isDemoModeEnabled } = useAppSettings();
+  const { isDemoModeEnabled, isTimeTravelReplayEnabled, isOpInspectorEnabled } = useAppSettings();
   const documentId = useEditorStore((state) => state.documentId);
 
   const ghostStatus = useQuery(
@@ -84,6 +86,34 @@ export function SettingsFab() {
                 <span>Demo mode</span>
                 <span className="text-xs text-muted-foreground">
                   Adds a demo-message button to the chat
+                </span>
+              </span>
+            </DropdownMenuCheckboxItem>
+            <DropdownMenuCheckboxItem
+              checked={isTimeTravelReplayEnabled}
+              onCheckedChange={(isChecked) =>
+                updateAppSettings({ isTimeTravelReplayEnabled: isChecked })
+              }
+              closeOnClick={false}
+              data-testid="settings-replay-toggle"
+            >
+              <span className="flex flex-col gap-0.5 py-0.5">
+                <span>Time-travel replay</span>
+                <span className="text-xs text-muted-foreground">
+                  Adds a toolbar button that replays the document&apos;s history
+                </span>
+              </span>
+            </DropdownMenuCheckboxItem>
+            <DropdownMenuCheckboxItem
+              checked={isOpInspectorEnabled}
+              onCheckedChange={(isChecked) => updateAppSettings({ isOpInspectorEnabled: isChecked })}
+              closeOnClick={false}
+              data-testid="settings-inspector-toggle"
+            >
+              <span className="flex flex-col gap-0.5 py-0.5">
+                <span>Op inspector</span>
+                <span className="text-xs text-muted-foreground">
+                  Adds a toolbar button that opens the live change log
                 </span>
               </span>
             </DropdownMenuCheckboxItem>

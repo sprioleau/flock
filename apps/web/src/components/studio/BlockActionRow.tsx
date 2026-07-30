@@ -3,13 +3,12 @@
 import type { MouseEvent } from "react";
 import type { DraggableAttributes, DraggableSyntheticListeners } from "@dnd-kit/core";
 import { ArrowDownIcon, ArrowUpIcon, GripVerticalIcon, Trash2Icon } from "lucide-react";
-import type { BlockId, BlockType } from "@tandem/email-sdk";
+import type { BlockId } from "@tandem/email-sdk";
 import { Button } from "@/components/ui/button";
 import { useEditorStore } from "@/lib/editor-store";
 
 export interface BlockActionRowProps {
   blockId: BlockId;
-  blockType: BlockType;
   /**
    * Grab-handle activator ref from the shell's useDraggable, or null when
    * the block cannot be dragged (rows and columns, or a text block whose
@@ -24,15 +23,15 @@ export interface BlockActionRowProps {
 }
 
 /**
- * Floating action bar on the selected block: block-type label, grab handle
- * (pointer drag), move up / move down / delete. Move = a reorderChildren op
- * on the parent (adjacent swap); delete = a removeBlock op. Both flow
- * through the store's dispatch (§7 invariant); drops dispatch their single
- * op from CanvasDndContext.
+ * Floating action bar on the selected block: grab handle (pointer drag),
+ * move up / move down / delete. No block-type badge here — the left-edge
+ * BlockBreadcrumb chip stack is the "what's selected" cue (owner decision).
+ * Move = a reorderChildren op on the parent (adjacent swap); delete = a
+ * removeBlock op. Both flow through the store's dispatch (§7 invariant);
+ * drops dispatch their single op from CanvasDndContext.
  */
 export function BlockActionRow({
   blockId,
-  blockType,
   dragHandleRef,
   dragListeners,
   dragAttributes,
@@ -71,10 +70,6 @@ export function BlockActionRow({
       className="absolute -top-9 right-0 z-30 flex items-center gap-0.5 rounded-md border bg-background p-0.5 shadow-md"
       data-testid={`block-actions-${blockId}`}
     >
-      {/* ml-1 matches the visual whitespace the ghost icon buttons give the right edge. */}
-      <span className="pointer-events-none ml-1 select-none rounded-sm bg-sky-500 px-1.5 py-1 font-mono text-[10px] font-semibold uppercase leading-none tracking-wide text-white">
-        {blockType}
-      </span>
       {dragHandleRef !== null && (
         <Button
           ref={dragHandleRef}

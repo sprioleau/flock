@@ -20,6 +20,7 @@ import {
 } from "@/components/ui/sheet";
 import { useEditorStore } from "@/lib/editor-store";
 import { cn } from "@/lib/utils";
+import { useAppSettings } from "../demo/app-settings";
 import {
   buildHistoryGroups,
   formatRelativeTime,
@@ -55,6 +56,7 @@ const FOLLOW_PAUSE_THRESHOLD_PX = 48;
  * one reactive `getOperations` subscription, zero mutations.
  */
 export function OpInspector() {
+  const { isOpInspectorEnabled } = useAppSettings();
   const convexClient = useConvex();
   const documentId = useEditorStore((state) => state.documentId);
   const authorId = useEditorStore((state) => state.authorId);
@@ -203,6 +205,12 @@ export function OpInspector() {
   const describeContext: DescribeEntryContext = {
     getEntryByVersion: (version) => entryByVersion.get(version),
   };
+
+  // Hidden unless enabled via the settings FAB (after the hooks above, per
+  // the rules of hooks). Unmounting also closes an open console on disable.
+  if (!isOpInspectorEnabled) {
+    return null;
+  }
 
   return (
     // disablePointerDismissal: a console should keep streaming while the

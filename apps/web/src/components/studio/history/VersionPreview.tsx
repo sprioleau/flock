@@ -89,7 +89,9 @@ export function VersionPreview({
           Viewing version {version} of {versionSnapshot.headVersion}
         </p>
       </div>
-      <div className="min-h-0 flex-1 overflow-y-auto p-3">
+      {/* scrollbar-visible: a tall email must LOOK scrollable (overlay
+          scrollbars hide until scrolled); draws nothing when it fits. */}
+      <div className="scrollbar-visible min-h-0 flex-1 overflow-y-auto p-3">
         <ReadOnlyEmailPreview doc={versionSnapshot.doc as EmailDocument} />
       </div>
       <div className="flex flex-col gap-2 border-t p-3">

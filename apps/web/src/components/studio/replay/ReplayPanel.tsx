@@ -13,6 +13,7 @@ import {
 } from "@/components/ui/sheet";
 import { useEditorStore } from "@/lib/editor-store";
 import { cn } from "@/lib/utils";
+import { useAppSettings } from "../demo/app-settings";
 import { ReadOnlyEmailPreview } from "../history/ReadOnlyEmailPreview";
 import { deriveOpAuthor, describeEntryHuman } from "../history/op-author";
 import { useReplayTimeline } from "./use-replay-timeline";
@@ -39,6 +40,7 @@ type PlaybackSpeed = 1 | 2;
  * stalling (not skipping) on an unwarmed frame, and stops at head.
  */
 export function ReplayPanel() {
+  const { isTimeTravelReplayEnabled } = useAppSettings();
   const documentId = useEditorStore((state) => state.documentId);
   const authorId = useEditorStore((state) => state.authorId);
   const serverHeadVersion = useEditorStore((state) => state.serverHeadVersion);
@@ -151,6 +153,12 @@ export function ReplayPanel() {
           })
         : null;
 
+  // Hidden unless enabled via the settings FAB (after the hooks above, per
+  // the rules of hooks). Unmounting also closes an open panel on disable.
+  if (!isTimeTravelReplayEnabled) {
+    return null;
+  }
+
   return (
     // disablePointerDismissal: replaying continues while the user clicks
     // around the live canvas (and other panels) — close is the X or Escape.
@@ -175,7 +183,12 @@ export function ReplayPanel() {
           </SheetDescription>
         </SheetHeader>
 
-        <div className="min-h-0 flex-1 overflow-y-auto p-3" data-testid="replay-preview">
+        {/* scrollbar-visible: match the History preview pane — a tall email
+            must LOOK scrollable; draws nothing when it fits. */}
+        <div
+          className="scrollbar-visible min-h-0 flex-1 overflow-y-auto p-3"
+          data-testid="replay-preview"
+        >
           {displayedDoc !== null ? (
             <ReadOnlyEmailPreview doc={displayedDoc} />
           ) : (

@@ -18,15 +18,17 @@ const BLOCK_TYPE_LABELS: Record<BlockType, string> = {
 };
 
 export interface BlockBreadcrumbProps {
-  /** The selected block — the stack's final (current) chip. */
+  /** The selected block — the stack's FIRST (top) chip. */
   blockId: BlockId;
 }
 
 /**
  * Ancestor-selection stack on the selected block: a vertical column of
- * compact chips covering the full chain from its section down to the block
- * itself (root excluded; schema caps depth at section › row › column ›
- * leaf, so at most 4 chips). Every ancestor chip is clickable and selects
+ * compact chips, the SELECTED block's type first (it is the primary "what's
+ * selected" cue — the action toolbar carries no type badge), then its
+ * ancestors in ascending order up to the section (root excluded; schema
+ * caps depth at section › row › column › leaf, so at most 4 chips: BUTTON /
+ * COLUMN / ROW / SECTION). Every ancestor chip is clickable and selects
  * that ancestor — this is THE mouse path to rows and columns, whose
  * children tile them completely so canvas clicks always land innermost.
  *
@@ -45,7 +47,8 @@ export function BlockBreadcrumb({ blockId }: BlockBreadcrumbProps) {
   const doc = useEditorStore((state) => state.doc);
   const selectBlock = useEditorStore((state) => state.selectBlock);
 
-  const trailIds = [...getAncestorIds({ doc, blockId }), blockId];
+  // Selected block first, then ancestors ascending (column, row, section).
+  const trailIds = [blockId, ...getAncestorIds({ doc, blockId }).reverse()];
 
   const selectAncestor = (ancestorId: BlockId) => (event: MouseEvent) => {
     // Never bubble into the shell (its click would re-select this block).

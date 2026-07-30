@@ -27,8 +27,10 @@ import { deleteBlockSyncDoc } from "./textBlockSync";
  *   3. storage files referenced by the document's image blocks (before the
  *      block rows go away, so a partial run never loses the src list)
  *   4. per-text-block ProseMirror sync docs + all block rows
- *   5. the document row
- *   6. the parent canvas, iff it now holds no documents (canvases own
+ *   5. the transient ghost-session row, if one was stranded (at most one
+ *      per document; normally deleted when the ghost run ends)
+ *   6. the document row
+ *   7. the parent canvas, iff it now holds no documents (canvases own
  *      documents; an empty canvas of an unclaimed session is dead weight)
  */
 
@@ -185,7 +187,21 @@ export async function deleteDocumentCascade({
     budget.remaining -= 1;
   }
 
-  // 5. The document row, LAST — its presence is the resumption marker.
+  // 5. The transient ghost-session row (at most one per document; a stranded
+  // row would otherwise dangle forever once its document is gone).
+  const ghostSessionRows = await ctx.db
+    .query("ghostSessions")
+    .withIndex("by_documentId", (q) => q.eq("documentId", documentId))
+    .collect();
+  for (const row of ghostSessionRows) {
+    if (budget.remaining <= 0) {
+      return { isComplete: false };
+    }
+    await ctx.db.delete(row._id);
+    budget.remaining -= 1;
+  }
+
+  // 6. The document row, LAST — its presence is the resumption marker.
   if (budget.remaining <= 0) {
     return { isComplete: false };
   }
@@ -193,7 +209,7 @@ export async function deleteDocumentCascade({
   stats.deletedDocuments += 1;
   budget.remaining -= 1;
 
-  // 6. The parent canvas, iff this was its last document.
+  // 7. The parent canvas, iff this was its last document.
   const survivingSibling = await ctx.db
     .query("documents")
     .withIndex("by_canvasId", (q) => q.eq("canvasId", document.canvasId))

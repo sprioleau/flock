@@ -9,18 +9,25 @@ import { useSyncExternalStore } from "react";
  * values apply right after mount — no hydration mismatch, no flash of the
  * wrong control. A "storage" listener keeps multiple tabs in sync.
  *
- * First (and so far only) setting: the demo-mode toggle behind the settings
- * FAB, which reveals the chat panel's "Queue demo messages" button.
+ * Settings all live behind the settings FAB:
+ * - Demo mode: reveals the chat panel's "Queue demo messages" button (and
+ *   the ghost-collaborator control).
+ * - Time-travel replay / Op inspector: reveal their toolbar buttons —
+ *   power-user surfaces hidden by default.
  */
 
 const APP_SETTINGS_STORAGE_KEY = "tandem:app-settings";
 
 export interface AppSettings {
   isDemoModeEnabled: boolean;
+  isTimeTravelReplayEnabled: boolean;
+  isOpInspectorEnabled: boolean;
 }
 
 const DEFAULT_APP_SETTINGS: AppSettings = {
   isDemoModeEnabled: false,
+  isTimeTravelReplayEnabled: false,
+  isOpInspectorEnabled: false,
 };
 
 /** Stable snapshot object (useSyncExternalStore requires reference equality). */
@@ -44,6 +51,12 @@ function readSettingsFromStorage(): AppSettings {
       ...DEFAULT_APP_SETTINGS,
       ...(typeof candidate.isDemoModeEnabled === "boolean"
         ? { isDemoModeEnabled: candidate.isDemoModeEnabled }
+        : {}),
+      ...(typeof candidate.isTimeTravelReplayEnabled === "boolean"
+        ? { isTimeTravelReplayEnabled: candidate.isTimeTravelReplayEnabled }
+        : {}),
+      ...(typeof candidate.isOpInspectorEnabled === "boolean"
+        ? { isOpInspectorEnabled: candidate.isOpInspectorEnabled }
         : {}),
     };
   } catch {

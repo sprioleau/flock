@@ -116,7 +116,6 @@ export function BlockShell({ block, children, className }: BlockShellProps) {
           <BlockBreadcrumb blockId={block.id} />
           <BlockActionRow
             blockId={block.id}
-            blockType={block.type}
             dragHandleRef={isDraggableType && !isEditingText ? setActivatorNodeRef : null}
             dragListeners={listeners}
             dragAttributes={attributes}
