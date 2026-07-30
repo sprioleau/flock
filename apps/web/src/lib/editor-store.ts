@@ -9,6 +9,7 @@ import {
   type EmailDocument,
   type Operation,
   type PreviewMode,
+  type ScaffoldSectionInput,
   type StyleTextSpanInput,
 } from "@tandem/email-sdk";
 import type { ConvexReactClient } from "convex/react";
@@ -81,12 +82,13 @@ export type Viewport = PreviewMode;
 export const UNDO_COALESCE_WINDOW_MS = 120;
 
 /**
- * A dispatchable content input: a plain email-sdk Operation, or the ONE
- * intent-shaped input (styleTextSpan) whose translation to an updateText op
- * happens inside dispatchContentAction (SDK resolveOperation hook) against
- * the CURRENT local document.
+ * A dispatchable content input: a plain email-sdk Operation, or one of the
+ * intent-shaped inputs (styleTextSpan, scaffoldSection) whose translation to
+ * a canonical op (updateText / addSection) happens inside
+ * dispatchContentAction (SDK resolveOperation hooks) against the CURRENT
+ * local document. Type-only union — no dispatch logic branches on it.
  */
-export type DispatchableOp = Operation | StyleTextSpanInput;
+export type DispatchableOp = Operation | StyleTextSpanInput | ScaffoldSectionInput;
 
 /** Coalesce key for an op, or null when the op never coalesces. */
 function getCoalesceKey(op: DispatchableOp): string | null {

@@ -63,6 +63,9 @@ export const DISPATCH_ERROR_FAILURE_KINDS = {
    * range) in the block's CURRENT text. The error message quotes the block's
    * actual text so the model can copy it verbatim and self-correct. */
   span_not_found: "retryable",
+  /** scaffoldSection named a templateId that is not in the section catalog.
+   * The error message lists the valid template ids so the model can pick one. */
+  unknown_section_template: "retryable",
 } as const satisfies Record<string, ActionFailureKind>;
 
 export type ActionDispatchErrorCode = OperationErrorCode | keyof typeof DISPATCH_ERROR_FAILURE_KINDS;

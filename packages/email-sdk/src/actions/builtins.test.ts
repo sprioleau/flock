@@ -71,17 +71,18 @@ describe("built-in editor actions", () => {
 });
 
 describe("emailActionRegistry", () => {
-  it("registers all 14 built-ins and looks them up by name", () => {
-    expect(emailActionRegistry.actions).toHaveLength(14);
+  it("registers all 15 built-ins and looks them up by name", () => {
+    expect(emailActionRegistry.actions).toHaveLength(15);
     expect(getAction(emailActionRegistry, "updateText")?.kind).toBe("content");
     expect(getAction(emailActionRegistry, "styleTextSpan")?.kind).toBe("content");
+    expect(getAction(emailActionRegistry, "scaffoldSection")?.kind).toBe("content");
     expect(getAction(emailActionRegistry, "sendTestEmail")?.kind).toBe("editor");
   });
 
   it("generates a tool definition for every action", () => {
     const definitions = toAISDKToolDefinitions(emailActionRegistry);
-    expect(definitions).toHaveLength(14);
-    expect(new Set(definitions.map((definition) => definition.name)).size).toBe(14);
+    expect(definitions).toHaveLength(15);
+    expect(new Set(definitions.map((definition) => definition.name)).size).toBe(15);
   });
 
   it("dispatches a content action end to end and its inverse restores the doc", () => {

@@ -22,6 +22,7 @@ import {
   type ShowPreviewCommand,
 } from "./editor-commands";
 import { createActionRegistry } from "./registry";
+import { scaffoldSectionAction } from "./scaffold-section";
 import { styleTextSpanAction } from "./style-text-span";
 
 /**
@@ -191,9 +192,13 @@ export const editorEmailActions = [showPreviewAction, sendTestEmailAction] as co
  * translation) registers after the op-mirroring content actions: it is a
  * content action too — the chat client applies it through the same
  * validateAndClassifyOp → store-dispatch path as every other content op.
+ * scaffoldSection (Phase 7.2, ./scaffold-section) follows the same pattern:
+ * an intent-shaped content action whose resolveOperation hook translates
+ * `{ templateId, position, params }` into one canonical addSection op.
  */
 export const emailActionRegistry = createActionRegistry([
   ...contentEmailActions,
   styleTextSpanAction,
+  scaffoldSectionAction,
   ...editorEmailActions,
 ]);

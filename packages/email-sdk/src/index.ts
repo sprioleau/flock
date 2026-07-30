@@ -320,3 +320,34 @@ export type {
 
 // --- Actions: intent→operation resolution contract (actions/define) -----------------------------
 export type { ResolveContentOperationResult, ResolvedOperationError } from "./actions/define";
+
+// --- Sections: the section catalog (sections/*, Phase 7.2) --------------------------------------
+export {
+  SECTION_TEMPLATES,
+  SECTION_TEMPLATE_IDS,
+  getSectionTemplate,
+} from "./sections/catalog";
+export type { SectionTemplateId } from "./sections/catalog";
+export { SECTION_CATEGORIES, defineSectionTemplate } from "./sections/types";
+export type {
+  SectionCategory,
+  SectionTemplate,
+  SectionBuildInput,
+  SectionBuildResult,
+} from "./sections/types";
+export { buildColumns, computeEqualColumnWidths } from "./sections/build-columns";
+export type { BuildColumnsInput, BuildColumnsResult, ColumnSpec } from "./sections/build-columns";
+
+// --- Actions: scaffoldSection — intent-level section scaffolding (actions/scaffold-section) -----
+export {
+  scaffoldSectionInputSchema,
+  scaffoldSectionPositionSchema,
+  resolveScaffoldSectionOperation,
+  scaffoldSectionAction,
+} from "./actions/scaffold-section";
+export type {
+  ScaffoldSectionInput,
+  ScaffoldSectionPosition,
+  ResolveScaffoldSectionOperationInput,
+  ResolveScaffoldSectionResult,
+} from "./actions/scaffold-section";

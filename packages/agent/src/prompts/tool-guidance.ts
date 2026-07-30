@@ -1,4 +1,4 @@
-import type { EmailActionRegistry } from "@tandem/email-sdk";
+import { SECTION_TEMPLATES, type EmailActionRegistry } from "@tandem/email-sdk";
 
 /**
  * Prompt layer (b) — tool guidance, generated from the SDK's action registry.
@@ -29,5 +29,14 @@ export function buildToolGuidance(registry: EmailActionRegistry): string {
   const catalogHint = hasBlockDetailsTool
     ? "Tool inputs are compact; call getBlockDetails for a block's full shape before complex edits.\n\n"
     : "";
-  return `## Available tools\n\n${catalogHint}${lines.join("\n")}`;
+  // Phase 7.2 section catalog: one compact line per template (id + useWhen),
+  // single-sourced from the SDK catalog so this listing can't drift. Only
+  // advertised while scaffoldSection is registered.
+  const hasScaffoldSectionTool = registry.actionsByName.has("scaffoldSection");
+  const sectionCatalogListing = hasScaffoldSectionTool
+    ? `\n\n## Section catalog (scaffoldSection templateId values)\n\n${SECTION_TEMPLATES.map(
+        (template) => `- ${template.id} — ${template.useWhen}`,
+      ).join("\n")}`
+    : "";
+  return `## Available tools\n\n${catalogHint}${lines.join("\n")}${sectionCatalogListing}`;
 }

@@ -7,9 +7,11 @@ import {
   editorCommandSchema,
   emailDocumentSchema,
   operationSchema,
+  scaffoldSectionInputSchema,
   styleTextSpanInputSchema,
   type ActionDispatchError,
   type ActionFailureKind,
+  type ScaffoldSectionInput,
   type StyleTextSpanInput,
   type AddBlockOperation,
   type AddSectionOperation,
@@ -164,6 +166,7 @@ export type TandemChatTools = {
   reorderChildren: { input: ReorderChildrenOperation; output: never };
   updateText: { input: UpdateTextOperation; output: never };
   styleTextSpan: { input: StyleTextSpanInput; output: never };
+  scaffoldSection: { input: ScaffoldSectionInput; output: never };
   showPreview: { input: ShowPreviewInput; output: EditorToolOutput };
   sendTestEmail: { input: SendTestEmailInput; output: EditorToolOutput };
   getBlockDetails: { input: { blockId: BlockId }; output: GetBlockDetailsToolOutput };
@@ -178,11 +181,12 @@ export type TandemChatMessage = UIMessage<never, TandemChatDataParts, TandemChat
 
 /**
  * What the client-side gate hands to the store's dispatch: a plain email-sdk
- * Operation, or the ONE intent-shaped content input (styleTextSpan) — the
- * store resolves the latter into an updateText op against the CURRENT
- * document (see editor-store dispatch / SDK resolveStyleTextSpanOperation).
+ * Operation, or one of the TWO intent-shaped content inputs — styleTextSpan
+ * and scaffoldSection. The store resolves intents into canonical ops against
+ * the CURRENT document via the SDK's resolveOperation hooks (styleTextSpan →
+ * updateText, scaffoldSection → addSection); only plain ops reach the op log.
  */
-export type DispatchableContentInput = Operation | StyleTextSpanInput;
+export type DispatchableContentInput = Operation | StyleTextSpanInput | ScaffoldSectionInput;
 
 export type ValidateAndClassifyOpResult =
   | { isValid: true; operation: DispatchableContentInput }
@@ -202,25 +206,31 @@ const formatZodIssues = (error: z.ZodError): string =>
  * (the model only saw the compact agent schema) and classify any failure with
  * the SDK's stop-vs-retry taxonomy before applying to the canvas.
  *
- * styleTextSpan is the one content tool whose input is NOT an Operation
- * (intent-level args; the translation to an updateText op happens in the
- * store's dispatch, against the current document) — its inputs are gated
- * against the styleTextSpan schema instead, discriminated by `name`.
+ * styleTextSpan and scaffoldSection are the two content tools whose input is
+ * NOT an Operation (intent-level args; the translation to an updateText /
+ * addSection op happens in the store's dispatch, against the current
+ * document) — their inputs are gated against their own intent schemas
+ * instead, discriminated by `name`.
  */
+const INTENT_INPUT_SCHEMAS = {
+  styleTextSpan: styleTextSpanInputSchema,
+  scaffoldSection: scaffoldSectionInputSchema,
+} as const;
+
 export function validateAndClassifyOp(input: unknown): ValidateAndClassifyOpResult {
-  const isStyleTextSpanInput =
-    typeof input === "object" &&
-    input !== null &&
-    (input as { name?: unknown }).name === "styleTextSpan";
-  if (isStyleTextSpanInput) {
-    const parsedIntent = styleTextSpanInputSchema.safeParse(input);
+  const intentName =
+    typeof input === "object" && input !== null
+      ? (input as { name?: unknown }).name
+      : undefined;
+  if (intentName === "styleTextSpan" || intentName === "scaffoldSection") {
+    const parsedIntent = INTENT_INPUT_SCHEMAS[intentName].safeParse(input);
     if (parsedIntent.success) {
       return { isValid: true, operation: parsedIntent.data };
     }
     const intentErrors: ActionDispatchError[] = [
       {
         code: "op_validation_failed",
-        message: `styleTextSpan input failed validation: ${formatZodIssues(parsedIntent.error)}`,
+        message: `${intentName} input failed validation: ${formatZodIssues(parsedIntent.error)}`,
       },
     ];
     return { isValid: false, failureKind: classifyActionErrors(intentErrors), errors: intentErrors };

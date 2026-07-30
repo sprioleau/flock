@@ -1,5 +1,6 @@
 import type {
   BlockId,
+  ScaffoldSectionInput,
   SendTestEmailInput,
   ShowPreviewInput,
   UpdateBlockPropertiesOperation,
@@ -23,6 +24,8 @@ import { MockLanguageModelV4 } from "ai/test";
  * Scripted behavior, keyed off the last user message:
  * - mentions preview/mobile/desktop → showPreview editor tool call
  * - mentions "test email"           → sendTestEmail (exercises approval flow)
+ * - asks to add a section (e.g. "add a hero section") → scaffoldSection with
+ *   the mentioned catalog templateId (exercises the Phase 7.2 scaffold seam)
  * - otherwise → updateBlockProperties on the selected block (fallback
  *   btn_t9u0, the sample document's button), setting its label.
  *
@@ -34,6 +37,14 @@ import { MockLanguageModelV4 } from "ai/test";
 export interface CreateMockChatModelInput {
   lastUserText: string;
   selectedBlockId?: BlockId;
+  /**
+   * True when this request is an auto-continuation carrying tool results
+   * (the conversation already ends with an assistant message). The mock then
+   * emits ONLY the closing text — without this, every continuation round
+   * re-plans the same tool call and non-idempotent ops (scaffoldSection)
+   * would apply once per round.
+   */
+  isContinuationRequest?: boolean;
 }
 
 interface MockToolCallPlan {
@@ -41,9 +52,22 @@ interface MockToolCallPlan {
   input:
     | ShowPreviewInput
     | SendTestEmailInput
+    | ScaffoldSectionInput
     | UpdateBlockPropertiesOperation;
   acknowledgementText: string;
 }
+
+/** Catalog templateIds the mock recognizes by keyword in the user message. */
+const MOCK_SCAFFOLD_TEMPLATE_IDS = [
+  "header",
+  "hero",
+  "feature-columns",
+  "article",
+  "image-gallery",
+  "testimonial",
+  "stats",
+  "footer",
+] as const;
 
 function planMockToolCall({
   lastUserText,
@@ -65,6 +89,19 @@ function planMockToolCall({
       acknowledgementText: "Requesting a test send to test@example.com.",
     };
   }
+  const hasScaffoldIntent = /\b(add|insert|scaffold)\b[\s\S]*\bsection\b/i.test(lastUserText);
+  if (hasScaffoldIntent) {
+    const templateId =
+      MOCK_SCAFFOLD_TEMPLATE_IDS.find((candidate) =>
+        new RegExp(`\\b${candidate.replace("-", "[ -]?")}`, "i").test(lastUserText),
+      ) ?? "hero";
+    const position = /\btop\b/i.test(lastUserText) ? ("top" as const) : ("bottom" as const);
+    return {
+      toolName: "scaffoldSection",
+      input: { name: "scaffoldSection", templateId, position, params: {} },
+      acknowledgementText: `Adding a ${templateId} section from the catalog.`,
+    };
+  }
   const blockId = selectedBlockId ?? ("btn_t9u0" as BlockId);
   return {
     toolName: "updateBlockProperties",
@@ -79,6 +116,7 @@ function planMockToolCall({
 }
 
 export function createMockChatModel(input: CreateMockChatModelInput) {
+  const isContinuationRequest = input.isContinuationRequest ?? false;
   const plan = planMockToolCall(input);
   const inputJson = JSON.stringify(plan.input);
   // Unique per request — clients dedupe applied ops by toolCallId (Spike C).
@@ -98,7 +136,7 @@ export function createMockChatModel(input: CreateMockChatModelInput) {
   return new MockLanguageModelV4({
     doStream: async () => {
       doStreamCallCount += 1;
-      const isFirstStep = doStreamCallCount === 1;
+      const isFirstStep = doStreamCallCount === 1 && !isContinuationRequest;
       // One array literal (conditional spreads) so TS infers a single chunk
       // union for simulateReadableStream's generic across both step shapes.
       return {

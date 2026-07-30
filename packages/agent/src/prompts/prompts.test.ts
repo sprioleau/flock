@@ -1,4 +1,8 @@
-import { createSampleDocument, emailActionRegistry } from "@tandem/email-sdk";
+import {
+  createSampleDocument,
+  emailActionRegistry,
+  SECTION_TEMPLATES,
+} from "@tandem/email-sdk";
 import { describe, expect, it } from "vitest";
 import { generateDocumentOutline } from "../outline";
 import {
@@ -34,6 +38,16 @@ describe("SYSTEM_STATIC (layer a — cacheable)", () => {
     // The outline's compact marks suffix is explained.
     expect(SYSTEM_STATIC).toContain("+bold+link+color(#16a34a)");
   });
+
+  it("teaches scaffoldSection and the scaffold-vs-hand-composed choice rule", () => {
+    expect(SYSTEM_STATIC).toContain("scaffoldSection");
+    // The choice rule: catalog template when one fits, hand-composed otherwise,
+    // and scaffolded sections stay theme-native (no colors/fonts/padding).
+    expect(SYSTEM_STATIC).toMatch(
+      /use scaffoldSection whenever a catalog template fits[\s\S]*hand-compose addSection\/addBlock only for layouts no template covers/,
+    );
+    expect(SYSTEM_STATIC).toContain("never set colors, fonts, or padding on scaffolded sections");
+  });
 });
 
 describe("buildToolGuidance (layer b — cacheable per registry)", () => {
@@ -65,6 +79,17 @@ describe("buildToolGuidance (layer b — cacheable per registry)", () => {
 
   it("omits the getBlockDetails hint until that tool is registered", () => {
     expect(guidance).not.toContain("getBlockDetails");
+  });
+
+  it("lists the compact section catalog: one id + useWhen line per template", () => {
+    expect(guidance).toContain("## Section catalog (scaffoldSection templateId values)");
+    for (const template of SECTION_TEMPLATES) {
+      expect(guidance).toContain(`- ${template.id} — ${template.useWhen}`);
+    }
+    // Compact contract: exactly one line per template, nothing more.
+    const listing = guidance.slice(guidance.indexOf("## Section catalog"));
+    const listingLines = listing.split("\n").filter((line) => line.startsWith("- "));
+    expect(listingLines).toHaveLength(SECTION_TEMPLATES.length);
   });
 });
 

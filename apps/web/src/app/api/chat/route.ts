@@ -80,7 +80,13 @@ export async function POST(request: Request) {
   const isMockForced = request.headers.get(MOCK_MODEL_HEADER) === "1";
   const isUsingMockModel = isMockForced || !hasGoogleApiKey;
   const model: LanguageModel = isUsingMockModel
-    ? createMockChatModel({ lastUserText: getLastUserText(messages), selectedBlockId })
+    ? createMockChatModel({
+        lastUserText: getLastUserText(messages),
+        selectedBlockId,
+        // A trailing assistant message means this request is a continuation
+        // round (tool results coming back) — the mock must close, not re-plan.
+        isContinuationRequest: messages[messages.length - 1]?.role === "assistant",
+      })
     : google(DEFAULT_GEMINI_MODEL_ID);
 
   const stream = createUIMessageStream<TandemChatMessage>({
