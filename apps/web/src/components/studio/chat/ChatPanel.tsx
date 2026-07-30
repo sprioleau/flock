@@ -16,6 +16,7 @@ import { DemoQueueButton } from "../demo/DemoQueueButton";
 import { SettingsFab } from "../demo/SettingsFab";
 import { ChatMessageList } from "./ChatMessageList";
 import { QueuedMessageList } from "./QueuedMessageList";
+import { SuggestionCard } from "./SuggestionCard";
 import { useMessageQueue } from "./use-message-queue";
 import { usePromptHistory } from "./use-prompt-history";
 import { useTandemChat } from "./use-tandem-chat";
@@ -193,6 +194,11 @@ export function ChatPanel() {
           enqueueMessage={queue.enqueueMessage}
           isPanelExpanded={isExpanded}
         />
+
+        {/* Phase 7.3 proactive suggestions: one quiet, dismissible card above
+            the composer. Fully self-contained (its hook watches the op log);
+            renders null when nothing is suggested. */}
+        <SuggestionCard isPanelExpanded={isExpanded} />
 
         {/* Composer: a single bordered box holding the selection-context chip
             (when a block is selected) above a borderless textarea; the send
