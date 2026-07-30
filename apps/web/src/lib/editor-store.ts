@@ -189,6 +189,13 @@ interface EditorState {
   isDocumentReady: boolean;
   /** The Convex document this store is bound to (null before connect). */
   documentId: Id<"documents"> | null;
+  /**
+   * The canvas the connected document lives on (null before connect). Held
+   * here — not derived from the reactive snapshot — so the drafts bar keeps
+   * its canvas while a draft switch's new subscription is still loading
+   * (the snapshot goes undefined in that window; this does not).
+   */
+  canvasId: Id<"canvases"> | null;
   /** The anonymous session id — authorId for user ops and history calls. */
   authorId: string | null;
   /** Outbound overlay: held/in-flight/acked-awaiting-snapshot ops, oldest first. */
@@ -208,10 +215,11 @@ interface EditorState {
   /** Canvas viewport width preset. */
   viewport: Viewport;
 
-  /** Bind the store to a loaded Convex document (called once by StudioShell). */
+  /** Bind the store to a loaded Convex document (called by StudioShell on load and on draft switch). */
   connectDocument: (input: {
     convexClient: ConvexReactClient;
     documentId: Id<"documents">;
+    canvasId: Id<"canvases">;
     authorId: string;
   }) => void;
   /** Detach from the current document and clear all document-scoped state. */
@@ -408,6 +416,7 @@ export const useEditorStore = create<EditorState>()((set, get) => {
     serverHeadVersion: 0,
     isDocumentReady: false,
     documentId: null,
+    canvasId: null,
     authorId: null,
     pendingOps: [],
     canUndo: false,
@@ -417,9 +426,9 @@ export const useEditorStore = create<EditorState>()((set, get) => {
     editingBlockId: null,
     viewport: "desktop",
 
-    connectDocument: ({ convexClient: client, documentId, authorId }) => {
+    connectDocument: ({ convexClient: client, documentId, canvasId, authorId }) => {
       convexClient = client;
-      set({ documentId, authorId });
+      set({ documentId, canvasId, authorId });
     },
 
     resetDocumentState: () => {
@@ -433,6 +442,7 @@ export const useEditorStore = create<EditorState>()((set, get) => {
         serverHeadVersion: 0,
         isDocumentReady: false,
         documentId: null,
+        canvasId: null,
         pendingOps: [],
         canUndo: false,
         canRedo: false,

@@ -170,6 +170,38 @@ export const duplicateDocument = mutation({
   },
 });
 
+/**
+ * Rename a draft's USER-FACING name (§10.2 dual naming: `name` is
+ * human-editable and never touched by the agent; `agentName` is the agent's
+ * parallel summary and is never writable from here). Blank names are
+ * rejected as a no-op rather than thrown — the UI trims and guards, this is
+ * just the server-side backstop.
+ */
+export const renameDocument = mutation({
+  args: {
+    documentId: v.id("documents"),
+    name: v.string(),
+  },
+  returns: v.boolean(),
+  handler: async (ctx, args) => {
+    const name = args.name.trim();
+    if (name.length === 0) {
+      return false;
+    }
+    const document = await ctx.db.get(args.documentId);
+    if (document === null) {
+      return false;
+    }
+    if (document.name === name) {
+      return true;
+    }
+    const now = Date.now();
+    await ctx.db.patch(args.documentId, { name, updatedAtMs: now });
+    await ctx.db.patch(document.canvasId, { updatedAtMs: now });
+    return true;
+  },
+});
+
 // ---------------------------------------------------------------------------
 // applyOperations — THE write path
 // ---------------------------------------------------------------------------
@@ -462,6 +494,8 @@ const documentListEntryValidator = v.object({
   _id: v.id("documents"),
   canvasId: v.id("canvases"),
   name: v.string(),
+  /** Agent-authored semantic summary (§10.2 dual naming) — displayed, never user-edited. */
+  agentName: v.optional(v.string()),
   orderIndex: v.number(),
   headVersion: v.number(),
   forkedFromDocumentId: v.optional(v.id("documents")),
@@ -474,6 +508,7 @@ interface DocumentListEntrySource {
   _id: Id<"documents">;
   canvasId: Id<"canvases">;
   name: string;
+  agentName?: string;
   orderIndex: number;
   headVersion: number;
   forkedFromDocumentId?: Id<"documents">;
@@ -487,6 +522,7 @@ function toDocumentListEntry(row: DocumentListEntrySource) {
     _id: row._id,
     canvasId: row.canvasId,
     name: row.name,
+    ...(row.agentName !== undefined ? { agentName: row.agentName } : {}),
     orderIndex: row.orderIndex,
     headVersion: row.headVersion,
     ...(row.forkedFromDocumentId !== undefined

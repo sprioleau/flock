@@ -6,11 +6,13 @@ import { useConvex, useQuery } from "convex/react";
 import { Loader2Icon, TriangleAlertIcon } from "lucide-react";
 import type { EmailDocument } from "@tandem/email-sdk";
 import { api } from "@convex/_generated/api";
+import type { Id } from "@convex/_generated/dataModel";
 import { Button } from "@/components/ui/button";
 import { useEditorStore } from "@/lib/editor-store";
 import { PresenceProvider } from "@/lib/presence";
 import { getOrCreateSessionId } from "@/lib/session";
 import { ChatPanel } from "./chat/ChatPanel";
+import { DraftsBar } from "./drafts/DraftsBar";
 import { EditorCanvas } from "./EditorCanvas";
 import { HistoryPanel } from "./history/HistoryPanel";
 import { HtmlPreviewDialog } from "./HtmlPreviewDialog";
@@ -28,6 +30,14 @@ import { StudioToolbar } from "./StudioToolbar";
  * action. The reactive `getDocumentByKey` subscription is THE live feed:
  * every snapshot (own ops confirming, other tabs, agent edits) flows into
  * the store, which rebases its pending local overlay on top.
+ *
+ * Draft switching (§10.2 drafts bar): a tab click pushes the new ?doc= via
+ * the native history API (Next syncs useSearchParams with pushState — a
+ * SHALLOW navigation, no server round-trip, back/forward walks drafts), the
+ * query re-subscribes, and when the new draft's first snapshot arrives the
+ * store is reset + reconnected in ONE synchronous batch — the shell (chat
+ * panel, presence provider) never unmounts and no loading gate flashes; the
+ * canvas simply swaps. `isDocumentReady` only gates the INITIAL load.
  */
 export function StudioShell() {
   const router = useRouter();
@@ -79,20 +89,33 @@ export function StudioShell() {
     documentKey !== null ? { documentKey } : "skip",
   );
 
-  const documentId = snapshot?.documentId ?? null;
+  // The connected draft. Sourced from the store (not `snapshot`, which goes
+  // undefined while a switch's new subscription loads) so presence/history/
+  // the drafts bar hold the outgoing draft until the incoming one is live.
+  const documentId = useEditorStore((state) => state.documentId);
+  const canvasId = useEditorStore((state) => state.canvasId);
   const authorId = useEditorStore((state) => state.authorId);
   const isDocumentReady = useEditorStore((state) => state.isDocumentReady);
 
-  // Feed every snapshot into the store (connect on the first one).
+  // Feed every snapshot into the store (connect on the first one; reset +
+  // reconnect when the snapshot is a DIFFERENT draft — i.e. a tab switch).
   useEffect(() => {
     if (snapshot === undefined || snapshot === null) {
       return;
     }
     const store = useEditorStore.getState();
     if (store.documentId !== snapshot.documentId) {
+      if (store.documentId !== null) {
+        // Draft switch: drop the outgoing draft's pending overlay, selection,
+        // and notices so nothing replays onto the incoming draft. The reset
+        // and the snapshot below land in one render batch (this effect is
+        // synchronous), so `isDocumentReady` never flickers false.
+        store.resetDocumentState();
+      }
       store.connectDocument({
         convexClient,
         documentId: snapshot.documentId,
+        canvasId: snapshot.canvasId,
         authorId: getOrCreateSessionId(),
       });
     }
@@ -101,6 +124,14 @@ export function StudioShell() {
       headVersion: snapshot.headVersion,
     });
   }, [snapshot, convexClient]);
+
+  /** Drafts-bar switch: shallow ?doc= update; the snapshot effect does the rest. */
+  const switchToDraft = (nextDocumentId: Id<"documents">): void => {
+    if (nextDocumentId === documentKey) {
+      return;
+    }
+    window.history.pushState(null, "", `/studio?doc=${nextDocumentId}`);
+  };
 
   // Reactive undo/redo enablement for THIS author, fed into the store.
   const historyAvailability = useQuery(
@@ -151,6 +182,13 @@ export function StudioShell() {
           <HistoryPanel />
           <HtmlPreviewDialog />
         </StudioToolbar>
+        {canvasId !== null && (
+          <DraftsBar
+            canvasId={canvasId}
+            activeDocumentKey={documentKey}
+            onSwitchDraft={switchToDraft}
+          />
+        )}
         <EditorCanvas />
         <EditorNotice />
       </main>
