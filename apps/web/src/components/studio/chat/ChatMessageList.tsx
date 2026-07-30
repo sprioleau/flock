@@ -16,22 +16,38 @@ import { ToolPartChip } from "./ToolPartChip";
  */
 
 /**
+ * Payload error codes whose message is a RAW wrapped Error.message (see the
+ * route's toChatErrorText): provider/API dumps, Zod traces — never curated
+ * copy, so never user-facing.
+ */
+const RAW_WRAPPED_ERROR_CODES: ReadonlySet<string> = new Set([
+  "stream_error",
+  "op_validation_failed",
+]);
+
+/**
  * User-facing copy for a terminal turn failure. Structured payloads carry
- * curated messages; anything else (raw provider/network errors) is translated
- * — internal details like API error dumps never render as the message. The
- * raw text stays available behind a collapsed "Details" disclosure.
+ * curated messages EXCEPT for the raw-wrapped codes above; those — and
+ * unstructured errors (raw provider/network failures) — are translated, so
+ * internal details like API error dumps never render as the message. The raw
+ * text stays available behind a collapsed "Details" disclosure.
  */
 function getFriendlyErrorMessage(error: Error): { messageText: string; rawText?: string } {
   const payload = parseChatErrorText(error.message);
-  if (payload !== undefined) {
-    return { messageText: payload.errors.map(({ message }) => message).join(" ") };
+  const curatedMessages =
+    payload?.errors
+      .filter(({ code }) => !RAW_WRAPPED_ERROR_CODES.has(code))
+      .map(({ message }) => message) ?? [];
+  if (curatedMessages.length > 0) {
+    return { messageText: curatedMessages.join(" ") };
   }
-  const isRateLimited = /quota|rate.?limit|resource.?exhausted|429/i.test(error.message);
+  const rawText = payload?.errors.map(({ message }) => message).join(" ") ?? error.message;
+  const isRateLimited = /quota|rate.?limit|resource.?exhausted|429/i.test(rawText);
   return {
     messageText: isRateLimited
       ? "The AI service is temporarily over its usage limit. Wait a moment, then try again."
       : "Something went wrong while responding. Try sending your message again.",
-    rawText: error.message,
+    rawText,
   };
 }
 
@@ -87,6 +103,37 @@ function buildLatestToolPartKeys(messages: TandemChatMessage[]): Map<string, str
     });
   }
   return latestKeyByToolCallId;
+}
+
+/**
+ * Keys of failed tool parts (output-error) SUPERSEDED by a later successful
+ * call to the same tool in the same assistant message. A repaired/retried
+ * call gets a fresh toolCallId, so the toolCallId dedupe never reconciles the
+ * stale failure — this does: continuation rounds merge into the SAME
+ * assistant message (the route streams with originalMessages), so a
+ * same-message, same-tool success after a failure means the agent recovered
+ * and the intermediate error is noise. Suppression is scoped to one message
+ * on purpose — a genuinely failed edit must not be hidden by an unrelated
+ * success in a later turn.
+ */
+function getSupersededFailureKeys(message: TandemChatMessage): Set<string> {
+  const supersededKeys = new Set<string>();
+  message.parts.forEach((part, partIndex) => {
+    if (!isStaticToolUIPart(part) || part.state !== "output-error") {
+      return;
+    }
+    const hasLaterSuccessOfSameTool = message.parts.some(
+      (laterPart, laterPartIndex) =>
+        laterPartIndex > partIndex &&
+        isStaticToolUIPart(laterPart) &&
+        laterPart.type === part.type &&
+        laterPart.state === "output-available",
+    );
+    if (hasLaterSuccessOfSameTool) {
+      supersededKeys.add(`${message.id}-${partIndex}`);
+    }
+  });
+  return supersededKeys;
 }
 
 /**
@@ -180,19 +227,27 @@ function RevertBatchAction({ batchId }: { batchId: string }) {
 function AssistantMessageParts({
   message,
   latestToolPartKeys,
+  isRetryPending,
   onApprovalResponse,
 }: {
   message: TandemChatMessage;
   latestToolPartKeys: Map<string, string>;
+  /** True while this message's turn is still in flight (a retry may follow). */
+  isRetryPending: boolean;
   onApprovalResponse: (input: { approvalId: string; isApproved: boolean }) => void;
 }) {
   const appliedBatchIds = getAppliedBatchIds({ message, latestToolPartKeys });
+  const supersededFailureKeys = getSupersededFailureKeys(message);
   return (
     <div className="flex flex-col gap-1.5">
       {message.parts.map((part, partIndex) => {
         const key = `${message.id}-${partIndex}`;
         const toolCallId = getPartToolCallId(part);
         if (toolCallId !== null && latestToolPartKeys.get(toolCallId) !== key) {
+          return null;
+        }
+        // Transient failures the agent already recovered from draw nothing.
+        if (supersededFailureKeys.has(key)) {
           return null;
         }
         if (part.type === "text") {
@@ -208,7 +263,14 @@ function AssistantMessageParts({
         // The registry only produces statically-typed tools; dynamic tool
         // parts do not occur on this route.
         if (isStaticToolUIPart(part)) {
-          return <ToolPartChip key={key} part={part} onApprovalResponse={onApprovalResponse} />;
+          return (
+            <ToolPartChip
+              key={key}
+              part={part}
+              isRetryPending={isRetryPending}
+              onApprovalResponse={onApprovalResponse}
+            />
+          );
         }
         if (part.type === "data-editor-command") {
           return <EditorCommandChip key={key} data={part.data} />;
@@ -226,6 +288,13 @@ export interface ChatMessageListProps {
   messages: TandemChatMessage[];
   error: Error | undefined;
   isAwaitingResponse: boolean;
+  /**
+   * True while a turn is in flight (submitted or streaming). Failed tool
+   * parts in the LAST assistant message read as "retrying" while this holds —
+   * the error round-trips to the model in-loop — and settle to a final
+   * friendly failure (or are suppressed by a successful retry) once it drops.
+   */
+  isTurnInProgress: boolean;
   onApprovalResponse: (input: { approvalId: string; isApproved: boolean }) => void;
 }
 
@@ -233,6 +302,7 @@ export function ChatMessageList({
   messages,
   error,
   isAwaitingResponse,
+  isTurnInProgress,
   onApprovalResponse,
 }: ChatMessageListProps) {
   const scrollContainerRef = useRef<HTMLDivElement>(null);
@@ -283,6 +353,7 @@ export function ChatMessageList({
               key={message.id}
               message={message}
               latestToolPartKeys={latestToolPartKeys}
+              isRetryPending={isTurnInProgress && message.id === messages.at(-1)?.id}
               onApprovalResponse={onApprovalResponse}
             />
           ),

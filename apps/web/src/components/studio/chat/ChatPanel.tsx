@@ -172,6 +172,7 @@ export function ChatPanel() {
           messages={messages}
           error={error}
           isAwaitingResponse={status === "submitted"}
+          isTurnInProgress={status === "submitted" || status === "streaming"}
           onApprovalResponse={respondToApproval}
         />
 
