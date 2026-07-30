@@ -61,7 +61,7 @@ function ErrorBubble({ error }: { error: Error }) {
     >
       <TriangleAlertIcon className="mt-0.5 size-3.5 shrink-0" />
       <div className="min-w-0 flex-1">
-        <p>{messageText}</p>
+        <p className="break-words">{messageText}</p>
         {rawText !== undefined && (
           <details className="mt-1 text-destructive/70">
             <summary className="cursor-pointer select-none">Details</summary>
@@ -255,7 +255,7 @@ function AssistantMessageParts({
             return null;
           }
           return (
-            <p key={key} className="whitespace-pre-wrap text-sm">
+            <p key={key} className="break-words whitespace-pre-wrap text-sm">
               {part.text}
             </p>
           );
@@ -339,7 +339,7 @@ export function ChatMessageList({
             <div
               key={message.id}
               className={cn(
-                "ml-8 self-end whitespace-pre-wrap rounded-lg bg-primary px-3 py-2",
+                "ml-8 self-end whitespace-pre-wrap wrap-anywhere rounded-lg bg-primary px-3 py-2",
                 "text-sm text-primary-foreground",
               )}
             >
