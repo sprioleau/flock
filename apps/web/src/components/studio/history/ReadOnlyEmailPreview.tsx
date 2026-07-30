@@ -117,8 +117,11 @@ export function ReadOnlyEmailPreview({ doc }: { doc: EmailDocument }) {
       className="overflow-x-hidden rounded-md border"
       data-testid="history-version-preview"
     >
+      {/* mx-auto is the robustness backstop (owner ask): if any measurement
+          is ever stale (e.g. a platform scrollbar reflow), the residual
+          remainder splits evenly instead of piling on one edge. */}
       <div
-        className="pointer-events-none select-none"
+        className="pointer-events-none mx-auto select-none"
         style={{
           width: PREVIEW_LAYOUT_WIDTH_PX,
           zoom,

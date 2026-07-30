@@ -148,6 +148,15 @@
 @utility scrollbar-visible {
   scrollbar-width: thin;
   scrollbar-color: color-mix(in oklab, var(--color-muted-foreground) 45%, transparent) transparent;
+  /*
+   * Reserve the scrollbar gutter permanently, on BOTH edges: on platforms
+   * with classic (non-overlay) scrollbars the bar otherwise consumes layout
+   * width only once content overflows, shifting/shrinking children AFTER
+   * they measured themselves (ReadOnlyEmailPreview's fit-zoom) — a feedback
+   * loop that can strand a stale measurement. Stable gutters make the width
+   * identical for short and tall content, and both-edges keeps it symmetric.
+   */
+  scrollbar-gutter: stable both-edges;
   &::-webkit-scrollbar {
     width: 8px;
   }
