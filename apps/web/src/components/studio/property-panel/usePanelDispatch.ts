@@ -17,17 +17,42 @@ import { useEditorStore } from "@/lib/editor-store";
  * undo step) per settled gesture.
  *
  * Clearing an override: `updateBlockProperties` shallow-merges, and a key
- * explicitly set to `undefined` is REMOVED by the SDK's merge (in-memory
- * callers only — JSON callers must use replaceBlockProperties). The panel
- * dispatches in-memory, so `{ key: undefined }` is the clear path here.
+ * explicitly set to `undefined` is REMOVED by the SDK's merge — but ONLY for
+ * in-memory application. The store forwards the settled op to Convex, whose
+ * serialization silently DROPS object fields whose value is `undefined`, so a
+ * `{ key: undefined }` patch degrades to an empty merge server-side: the
+ * override clears locally, then the next server snapshot rebases it right
+ * back (the "clear snaps back" bug). Clears therefore dispatch
+ * `replaceBlockProperties` with the block's full current properties minus the
+ * cleared keys — one dispatch, JSON-safe, and its generated inverse restores
+ * the override in one undo step.
  */
 
-/** Dispatch a partial property patch to one block. */
+/** Dispatch a partial property patch to one block. Keys set to `undefined` clear overrides. */
 export function useCommitBlockProperties(blockId: BlockId) {
   const dispatch = useEditorStore((state) => state.dispatch);
   return useCallback(
     (properties: Record<string, unknown>) => {
-      dispatch({ name: "updateBlockProperties", blockId, properties });
+      const hasClearedKey = Object.values(properties).some((value) => value === undefined);
+      if (!hasClearedKey) {
+        dispatch({ name: "updateBlockProperties", blockId, properties });
+        return;
+      }
+      // Clear path: replace the whole properties object without the cleared
+      // keys (undefined does not survive the Convex transport — see above).
+      const block = useEditorStore.getState().doc[blockId];
+      if (block === undefined) {
+        return;
+      }
+      const nextProperties: Record<string, unknown> = { ...block.properties };
+      for (const [key, value] of Object.entries(properties)) {
+        if (value === undefined) {
+          delete nextProperties[key];
+        } else {
+          nextProperties[key] = value;
+        }
+      }
+      dispatch({ name: "replaceBlockProperties", blockId, properties: nextProperties });
     },
     [dispatch, blockId],
   );

@@ -273,6 +273,21 @@ describe("applyOperation — updateDocumentSettings", () => {
 // ---------------------------------------------------------------------------
 
 describe("applyOperation — applyTheme", () => {
+  /** Sample doc plus a section carrying BOTH theme-scoped overrides and padding. */
+  const createDocumentWithSectionOverrides = (): EmailDocument => {
+    const document = createSampleDocument();
+    const section = document.sec_c3d4! as SectionBlock;
+    document.sec_c3d4 = {
+      ...section,
+      properties: {
+        ...section.properties,
+        outerBackgroundColor: "#333333",
+        paddingTop: 40,
+      },
+    };
+    return document;
+  };
+
   it("wholesale-replaces the globals (unlisted globals are dropped)", () => {
     const document = createSampleDocument();
     const result = applyOrThrow(document, {
@@ -288,10 +303,110 @@ describe("applyOperation — applyTheme", () => {
     }
   });
 
-  it("is pure and its inverse round-trips", () => {
-    expectPureInverseRoundTrip(createSampleDocument(), {
+  it("strips theme-scoped background overrides from every section, preserving other overrides", () => {
+    const document = createDocumentWithSectionOverrides();
+    const result = applyOrThrow(document, {
+      name: "applyTheme",
+      globals: { emailBackgroundColor: "#000000" },
+    });
+    // sec_c3d4 carried innerBackgroundColor (#fafafa), outerBackgroundColor, and paddingTop.
+    expect(result.doc.sec_c3d4!.properties).toEqual({ paddingTop: 40 });
+    // sec_a1b2 carried no overrides and is untouched (structurally shared).
+    expect(result.doc.sec_a1b2).toBe(document.sec_a1b2);
+  });
+
+  it("is pure and its inverse round-trips (restoring globals AND section overrides)", () => {
+    const applied = expectPureInverseRoundTrip(createDocumentWithSectionOverrides(), {
       name: "applyTheme",
       globals: { emailBackgroundColor: "#101010" },
+    });
+    expect(applied.inverse).toEqual({
+      name: "applyTheme",
+      globals: {
+        emailBackgroundColor: "#f4f4f4",
+        contentBackgroundColor: "#ffffff",
+        contentWidth: 600,
+        buttonBackgroundColor: "#1a1a2e",
+        heading1TextAlign: "center",
+      },
+      sectionOverrides: [
+        {
+          blockId: "sec_c3d4",
+          innerBackgroundColor: "#fafafa",
+          outerBackgroundColor: "#333333",
+        },
+      ],
+    });
+  });
+
+  it("generates the classic root-snapshot inverse when no section carries an override", () => {
+    const document = createSampleDocument();
+    delete document.sec_c3d4; // drop the override-carrying section (and its subtree refs)
+    const root = document.root!;
+    document.root = { ...root, childrenIds: ["sec_a1b2"] } as typeof root;
+    for (const blockId of ["row_k1l2", "col_m3n4", "txt_r7s8", "col_p5q6", "btn_t9u0"] as const) {
+      delete document[blockId];
+    }
+    const applied = expectPureInverseRoundTrip(document, {
+      name: "applyTheme",
+      globals: { emailBackgroundColor: "#101010" },
+    });
+    expect(applied.inverse.name).toBe("replaceBlockProperties");
+  });
+
+  it("round-trips exactly on a root whose properties have no globals key", () => {
+    const documentWithoutGlobals: EmailDocument = {
+      root: { id: "root", type: "root", parentId: null, childrenIds: [], properties: {} },
+    };
+    expectPureInverseRoundTrip(documentWithoutGlobals, {
+      name: "applyTheme",
+      globals: { contentWidth: 640 },
+    });
+  });
+
+  it("undo then redo re-strips the restored overrides (inverse of the inverse)", () => {
+    const original = createDocumentWithSectionOverrides();
+    const applied = applyOrThrow(original, {
+      name: "applyTheme",
+      globals: { emailBackgroundColor: "#101010" },
+    });
+    const undone = applyOrThrow(applied.doc, applied.inverse);
+    expect(undone.doc).toEqual(original);
+    const redone = applyOrThrow(undone.doc, undone.inverse);
+    expect(redone.doc).toEqual(applied.doc);
+  });
+
+  it("sets sectionOverrides after the strip when called directly", () => {
+    const result = applyOrThrow(createDocumentWithSectionOverrides(), {
+      name: "applyTheme",
+      globals: { emailBackgroundColor: "#000000" },
+      sectionOverrides: [{ blockId: "sec_a1b2", innerBackgroundColor: "#abcdef" }],
+    });
+    expect(result.doc.sec_a1b2!.properties).toEqual({ innerBackgroundColor: "#abcdef" });
+    expect(result.doc.sec_c3d4!.properties).toEqual({ paddingTop: 40 });
+  });
+
+  it("rejects a sectionOverrides entry whose section does not exist", () => {
+    expectErrorCode({
+      document: createSampleDocument(),
+      operation: {
+        name: "applyTheme",
+        globals: {},
+        sectionOverrides: [{ blockId: "sec_none", innerBackgroundColor: "#ffffff" }],
+      },
+      code: "target_not_found",
+    });
+  });
+
+  it("rejects a sectionOverrides entry with a non-section block id at the envelope", () => {
+    expectErrorCode({
+      document: createSampleDocument(),
+      operation: {
+        name: "applyTheme",
+        globals: {},
+        sectionOverrides: [{ blockId: "txt_e5f6", innerBackgroundColor: "#ffffff" }],
+      } as never,
+      code: "op_validation_failed",
     });
   });
 

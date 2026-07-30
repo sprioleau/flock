@@ -16,7 +16,11 @@ const sampleOperations: Operation[] = [
     properties: { label: "Go", href: "https://example.com" },
   },
   { name: "updateDocumentSettings", globals: { contentWidth: 640 } },
-  { name: "applyTheme", globals: { emailBackgroundColor: "#000000" } },
+  {
+    name: "applyTheme",
+    globals: { emailBackgroundColor: "#000000" },
+    sectionOverrides: [{ blockId: "sec_a1b2", innerBackgroundColor: "#fafafa" }],
+  },
   {
     name: "addBlock",
     block: { id: "div_a1b2", type: "divider", parentId: "sec_a1b2", childrenIds: [], properties: {} },
@@ -93,6 +97,23 @@ describe("operationSchema", () => {
   it("rejects unknown global style keys on settings ops", () => {
     expect(
       operationSchema.safeParse({ name: "applyTheme", globals: { brandColor: "#fff" } }).success,
+    ).toBe(false);
+  });
+
+  it("applyTheme sectionOverrides require section block ids and known keys", () => {
+    expect(
+      operationSchema.safeParse({
+        name: "applyTheme",
+        globals: {},
+        sectionOverrides: [{ blockId: "txt_a1b2", innerBackgroundColor: "#fff" }],
+      }).success,
+    ).toBe(false);
+    expect(
+      operationSchema.safeParse({
+        name: "applyTheme",
+        globals: {},
+        sectionOverrides: [{ blockId: "sec_a1b2", paddingTop: 12 }],
+      }).success,
     ).toBe(false);
   });
 

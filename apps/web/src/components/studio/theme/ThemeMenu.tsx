@@ -34,6 +34,16 @@ export function ThemeMenu() {
     const root = state.doc[ROOT_BLOCK_ID];
     return root !== undefined && root.type === "root" ? root.properties.globals : undefined;
   });
+  // applyTheme also strips per-section background overrides, so re-selecting
+  // the checked variation is still meaningful while any section carries one.
+  const hasSectionThemeOverrides = useEditorStore((state) =>
+    Object.values(state.doc).some(
+      (block) =>
+        block.type === "section" &&
+        (block.properties.innerBackgroundColor !== undefined ||
+          block.properties.outerBackgroundColor !== undefined),
+    ),
+  );
 
   const activeVariation = findMatchingVariation({
     brandKit: MOCK_BRAND_KIT,
@@ -42,7 +52,7 @@ export function ThemeMenu() {
   const currentGlobals = resolveGlobalStyles(rawGlobals);
 
   const applyVariation = (variation: ThemeVariation) => {
-    if (activeVariation?.id === variation.id) {
+    if (activeVariation?.id === variation.id && !hasSectionThemeOverrides) {
       return; // Already applied verbatim — don't append a no-op history entry.
     }
     dispatch({ name: "applyTheme", globals: variation.globals });

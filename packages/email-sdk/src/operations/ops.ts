@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { blockSchema, sectionBlockSchema } from "../schema/blocks";
 import { globalStylesSchema } from "../schema/globals";
-import { blockIdSchema, textBlockIdSchema } from "../schema/ids";
+import { blockIdSchema, sectionBlockIdSchema, textBlockIdSchema } from "../schema/ids";
 import { textDocSchema } from "../schema/text";
 
 /**
@@ -22,11 +22,17 @@ import { textDocSchema } from "../schema/text";
  * ordinary members of the union and may be issued directly:
  * - `replaceBlockProperties` — wholesale replace of one block's properties.
  *   Inverse of the merging ops (`updateBlockProperties`,
- *   `updateDocumentSettings`, `applyTheme`), because a merge cannot be undone
- *   by another merge when it introduced new keys (and JSON transport cannot
- *   express "delete this key").
+ *   `updateDocumentSettings`, and `applyTheme` when no section override was
+ *   touched), because a merge cannot be undone by another merge when it
+ *   introduced new keys (and JSON transport cannot express "delete this key").
  * - `restoreBlocks` — re-insert a previously removed subtree. Inverse of
  *   `removeBlock`, whose cascade may span many blocks.
+ *
+ * One op additionally carries an inverse-support payload: `applyTheme` strips
+ * every section's theme-scoped background overrides, so its inverse is another
+ * `applyTheme` whose optional `sectionOverrides` restores them together with
+ * the previous globals in ONE op (the same pattern as removeBlock's inverse
+ * carrying a whole subtree).
  */
 
 const insertionIndexSchema = z
@@ -70,7 +76,7 @@ export const replaceBlockPropertiesOperationSchema = z
       ),
   })
   .describe(
-    "Replaces one block's entire properties object. Primarily generated as the inverse of updateBlockProperties / updateDocumentSettings / applyTheme, but valid to call directly (e.g. to clear overrides).",
+    "Replaces one block's entire properties object. Primarily generated as the inverse of updateBlockProperties / updateDocumentSettings, but valid to call directly (e.g. to clear overrides).",
   );
 
 export type ReplaceBlockPropertiesOperation = z.infer<typeof replaceBlockPropertiesOperationSchema>;
@@ -89,6 +95,31 @@ export const updateDocumentSettingsOperationSchema = z
 
 export type UpdateDocumentSettingsOperation = z.infer<typeof updateDocumentSettingsOperationSchema>;
 
+/**
+ * One section's theme-scoped background overrides, re-applied AFTER the
+ * theme's override strip. Carried on `applyTheme` inverses so one undo step
+ * restores both the previous globals and every section's removed overrides.
+ */
+export const themeSectionOverrideSchema = z
+  .strictObject({
+    blockId: sectionBlockIdSchema.describe("Id of the section block to set the overrides on."),
+    innerBackgroundColor: z
+      .string()
+      .min(1)
+      .optional()
+      .describe("innerBackgroundColor to set on the section. Omit to leave it cleared."),
+    outerBackgroundColor: z
+      .string()
+      .min(1)
+      .optional()
+      .describe("outerBackgroundColor to set on the section. Omit to leave it cleared."),
+  })
+  .describe(
+    "One section's theme-scoped background overrides (innerBackgroundColor / outerBackgroundColor), set after the theme apply's override strip.",
+  );
+
+export type ThemeSectionOverride = z.infer<typeof themeSectionOverrideSchema>;
+
 /** Wholesale replace of `root.properties.globals` (a theme switch). */
 export const applyThemeOperationSchema = z
   .strictObject({
@@ -96,9 +127,15 @@ export const applyThemeOperationSchema = z
     globals: globalStylesSchema.describe(
       "The complete new global styles object. Replaces root.properties.globals entirely — any global not listed here reverts to the renderer default.",
     ),
+    sectionOverrides: z
+      .array(themeSectionOverrideSchema)
+      .optional()
+      .describe(
+        "Section background overrides to set AFTER the strip, one entry per section. Primarily generated on inverses (so one undo restores the previous globals AND every section's removed overrides); omit when applying a theme normally.",
+      ),
   })
   .describe(
-    "Applies a theme: wholesale-replaces the document's global styles with the given object. A theme switch is exactly one of these operations (Phase 7 builds theme presets on top).",
+    "Applies a theme: wholesale-replaces the document's global styles with the given object AND removes every section's theme-scoped background overrides (innerBackgroundColor / outerBackgroundColor) so the theme's colors take effect everywhere. Other section overrides (padding, layout) are preserved. A theme switch is exactly one of these operations (Phase 7 builds theme presets on top).",
   );
 
 export type ApplyThemeOperation = z.infer<typeof applyThemeOperationSchema>;

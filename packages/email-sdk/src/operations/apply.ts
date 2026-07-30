@@ -233,15 +233,14 @@ function applyReplaceBlockProperties(
 }
 
 /**
- * Both settings ops share an inverse strategy: snapshot the root's ENTIRE
- * properties object and restore it with replaceBlockProperties. A merge (or
- * wholesale globals swap) cannot generally be undone by another merge, and a
- * whole-properties restore also round-trips the "globals key absent" case
- * exactly.
+ * updateDocumentSettings inverse strategy: snapshot the root's ENTIRE
+ * properties object and restore it with replaceBlockProperties. A merge
+ * cannot generally be undone by another merge, and a whole-properties restore
+ * also round-trips the "globals key absent" case exactly.
  */
-function applyGlobalsChange(
+function applyUpdateDocumentSettings(
   document: EmailDocument,
-  op: UpdateDocumentSettingsOperation | ApplyThemeOperation,
+  op: UpdateDocumentSettingsOperation,
 ): PerOpResult {
   const root = document[ROOT_BLOCK_ID];
   if (root === undefined || root.type !== "root") {
@@ -251,13 +250,10 @@ function applyGlobalsChange(
       blockId: ROOT_BLOCK_ID,
     });
   }
-  const nextGlobals =
-    op.name === "applyTheme"
-      ? op.globals
-      : mergeProperties(
-          (root.properties.globals ?? {}) as Record<string, unknown>,
-          op.globals as Record<string, unknown>,
-        );
+  const nextGlobals = mergeProperties(
+    (root.properties.globals ?? {}) as Record<string, unknown>,
+    op.globals as Record<string, unknown>,
+  );
   const parsed = parseBlock(
     { ...root, properties: { ...root.properties, globals: nextGlobals } },
     ROOT_BLOCK_ID,
@@ -270,6 +266,124 @@ function applyGlobalsChange(
     blockId: ROOT_BLOCK_ID,
     properties: structuredClone(root.properties) as Record<string, unknown>,
   });
+}
+
+/** The two section properties a theme owns (stripped by applyTheme). */
+const THEME_SECTION_OVERRIDE_KEYS = ["innerBackgroundColor", "outerBackgroundColor"] as const;
+
+/**
+ * applyTheme: wholesale-replace `root.properties.globals` AND strip the
+ * theme-scoped background overrides (innerBackgroundColor /
+ * outerBackgroundColor) from every section, then set the overrides listed in
+ * `op.sectionOverrides` (if any). Padding/layout section overrides survive.
+ *
+ * Inverse design: when no section carried either override, the inverse is the
+ * classic root-properties snapshot (replaceBlockProperties — exact, including
+ * the "globals key absent" case). When sections DID carry overrides, the
+ * inverse is another applyTheme whose `globals` is the previous raw globals
+ * and whose `sectionOverrides` re-sets every removed override — one op, one
+ * undo step restoring both. (Corner: a root with NO globals key AND section
+ * overrides round-trips its globals as `{}` — render- and theme-detection-
+ * identical, and unreachable through the SDK's own document constructors.)
+ */
+function applyApplyTheme(document: EmailDocument, op: ApplyThemeOperation): PerOpResult {
+  const root = document[ROOT_BLOCK_ID];
+  if (root === undefined || root.type !== "root") {
+    return fail({
+      code: "target_not_found",
+      message: 'Document has no root block; cannot apply a theme.',
+      blockId: ROOT_BLOCK_ID,
+    });
+  }
+
+  // 1. Strip the theme-scoped overrides from every section, remembering what
+  //    was removed (the inverse's restore payload).
+  const nextDocument: EmailDocument = { ...document };
+  const removedOverrides: NonNullable<ApplyThemeOperation["sectionOverrides"]> = [];
+  for (const block of Object.values(document)) {
+    if (block.type !== "section") {
+      continue;
+    }
+    const { innerBackgroundColor, outerBackgroundColor } = block.properties;
+    if (innerBackgroundColor === undefined && outerBackgroundColor === undefined) {
+      continue;
+    }
+    removedOverrides.push({
+      blockId: block.id,
+      ...(innerBackgroundColor !== undefined ? { innerBackgroundColor } : {}),
+      ...(outerBackgroundColor !== undefined ? { outerBackgroundColor } : {}),
+    });
+    const strippedProperties = { ...block.properties };
+    for (const key of THEME_SECTION_OVERRIDE_KEYS) {
+      delete strippedProperties[key];
+    }
+    nextDocument[block.id] = { ...block, properties: strippedProperties };
+  }
+
+  // 2. Set the overrides carried on the op (inverse restores; direct callers may too).
+  for (const override of op.sectionOverrides ?? []) {
+    const section = nextDocument[override.blockId];
+    if (section === undefined) {
+      return fail({
+        code: "target_not_found",
+        message: `Section "${override.blockId}" in sectionOverrides does not exist in the document.`,
+        blockId: override.blockId,
+      });
+    }
+    if (section.type !== "section") {
+      return fail({
+        code: "wrong_block_type",
+        message: `Block "${override.blockId}" in sectionOverrides is a ${section.type} block; only sections carry theme background overrides.`,
+        blockId: override.blockId,
+      });
+    }
+    const overriddenProperties = { ...section.properties };
+    if (override.innerBackgroundColor !== undefined) {
+      overriddenProperties.innerBackgroundColor = override.innerBackgroundColor;
+    }
+    if (override.outerBackgroundColor !== undefined) {
+      overriddenProperties.outerBackgroundColor = override.outerBackgroundColor;
+    }
+    const parsedSection = parseBlock(
+      { ...section, properties: overriddenProperties },
+      override.blockId,
+    );
+    if ("isOk" in parsedSection) {
+      return parsedSection;
+    }
+    nextDocument[override.blockId] = parsedSection.block;
+  }
+
+  // 3. Replace the globals wholesale.
+  const parsedRoot = parseBlock(
+    { ...root, properties: { ...root.properties, globals: op.globals } },
+    ROOT_BLOCK_ID,
+  );
+  if ("isOk" in parsedRoot) {
+    return parsedRoot;
+  }
+  nextDocument[ROOT_BLOCK_ID] = parsedRoot.block;
+
+  // The classic root-snapshot inverse is only correct when this apply neither
+  // removed nor set any section override (a replaceBlockProperties on the
+  // root cannot re-strip overrides this op set — e.g. redo after undo).
+  const hasSetOverrides = (op.sectionOverrides ?? []).some(
+    (override) =>
+      override.innerBackgroundColor !== undefined || override.outerBackgroundColor !== undefined,
+  );
+  const inverse: Operation =
+    removedOverrides.length === 0 && !hasSetOverrides
+      ? {
+          name: "replaceBlockProperties",
+          blockId: ROOT_BLOCK_ID,
+          properties: structuredClone(root.properties) as Record<string, unknown>,
+        }
+      : {
+          name: "applyTheme",
+          globals: structuredClone(root.properties.globals ?? {}),
+          sectionOverrides: removedOverrides,
+        };
+  return ok(nextDocument, inverse);
 }
 
 function applyAddBlock(document: EmailDocument, op: AddBlockOperation): PerOpResult {
@@ -655,8 +769,9 @@ function applyParsedOperation(document: EmailDocument, op: Operation): PerOpResu
     case "replaceBlockProperties":
       return applyReplaceBlockProperties(document, op);
     case "updateDocumentSettings":
+      return applyUpdateDocumentSettings(document, op);
     case "applyTheme":
-      return applyGlobalsChange(document, op);
+      return applyApplyTheme(document, op);
     case "addBlock":
       return applyAddBlock(document, op);
     case "addSection":
