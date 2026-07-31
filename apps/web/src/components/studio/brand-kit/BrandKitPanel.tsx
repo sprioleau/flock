@@ -9,13 +9,13 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
-  Sheet,
-  SheetContent,
-  SheetDescription,
-  SheetHeader,
-  SheetTitle,
-  SheetTrigger,
-} from "@/components/ui/sheet";
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
 import type { BrandKit, BrandKitGenerateResult } from "@/lib/brand-kit";
 import { useEditorStore } from "@/lib/editor-store";
 import { ThemeSwatch } from "../theme/ThemeSwatch";
@@ -23,9 +23,9 @@ import { useActiveBrandKit } from "./useActiveBrandKit";
 
 /**
  * The brand kit panel: a "Brand kit" toolbar button (next to the theme
- * selector it feeds) opening a right-side NON-MODAL sheet — the house
- * HistoryPanel pattern — so the canvas and the ThemeMenu stay visible and
- * you can watch every open tab restyle live the moment a kit is saved.
+ * selector it feeds) opening a centered MODAL dialog (owner decision — it
+ * was a right-side sheet before; the modal at sm:max-w-xl gives the fields
+ * and swatch rows room to read comfortably).
  *
  * v1 scope (demo-lean, no multi-kit library):
  * - shows the session's ACTIVE kit (saved kit → MOCK_BRAND_KIT fallback);
@@ -146,28 +146,23 @@ export function BrandKitPanel() {
   };
 
   return (
-    <Sheet open={isOpen} onOpenChange={handleOpenChange} modal={false}>
-      <SheetTrigger
+    <Dialog open={isOpen} onOpenChange={handleOpenChange}>
+      <DialogTrigger
         render={<Button variant="outline" size="sm" className="gap-1.5" />}
         data-testid="brand-kit-open-button"
       >
         <PaletteIcon className="size-4" />
         Brand kit
-      </SheetTrigger>
-      <SheetContent
-        side="right"
-        hasOverlay={false}
-        className="w-[380px] max-w-[calc(100vw-2rem)]"
-        data-testid="brand-kit-panel"
-      >
-        <SheetHeader>
-          <SheetTitle>Brand kit</SheetTitle>
-          <SheetDescription>
+      </DialogTrigger>
+      <DialogContent className="sm:max-w-xl" data-testid="brand-kit-panel">
+        <DialogHeader>
+          <DialogTitle>Brand kit</DialogTitle>
+          <DialogDescription>
             One kit per browser — every canvas and its theme menu use it.
-          </SheetDescription>
-        </SheetHeader>
+          </DialogDescription>
+        </DialogHeader>
 
-        <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto p-4">
+        <div className="flex max-h-[70vh] min-h-0 flex-col gap-4 overflow-y-auto">
           <section className="flex flex-col gap-2">
             <h3 className="text-xs font-medium text-muted-foreground">Active kit</h3>
             <BrandKitSummary brandKit={activeBrandKit} isDefaultKit={!hasSavedKit} />
@@ -264,8 +259,8 @@ export function BrandKitPanel() {
             </section>
           )}
         </div>
-      </SheetContent>
-    </Sheet>
+      </DialogContent>
+    </Dialog>
   );
 }
 
