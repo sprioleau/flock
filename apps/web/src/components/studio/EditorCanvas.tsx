@@ -50,7 +50,12 @@ export function EditorCanvas() {
   return (
     <CanvasDndContext>
       <div
-        className="email-canvas flex-1 overflow-y-auto bg-neutral-200/70"
+        // No inner scroller (owner decision): the email content defines the
+        // frame's height, and the frames surface (DraftFramesCanvas) is the
+        // ONE scroll region. Pointer/persona cursor overlays live in content
+        // space inside, so they scroll with the email and clip at that outer
+        // scrollport instead.
+        className="email-canvas bg-neutral-200/70"
         onClick={() => selectBlock(null)}
         data-testid="editor-canvas"
       >

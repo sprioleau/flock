@@ -137,6 +137,10 @@ export function DraftSelector({
         size="icon-sm"
         aria-label="Previous draft"
         disabled={previousDraft === null}
+        // On the first draft this must READ disabled at a glance (owner
+        // emphasis) — the base button's 50%-opacity alone is too subtle for
+        // a bare ghost chevron, so drop to washed-out muted (same below).
+        className="disabled:text-muted-foreground disabled:opacity-30"
         onClick={() => previousDraft !== null && onActivateDraft(previousDraft._id)}
         data-testid="draft-selector-prev"
       >
@@ -225,6 +229,7 @@ export function DraftSelector({
         size="icon-sm"
         aria-label="Next draft"
         disabled={nextDraft === null}
+        className="disabled:text-muted-foreground disabled:opacity-30"
         onClick={() => nextDraft !== null && onActivateDraft(nextDraft._id)}
         data-testid="draft-selector-next"
       >

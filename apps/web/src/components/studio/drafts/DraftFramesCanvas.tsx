@@ -95,7 +95,11 @@ export function DraftFramesCanvas({
 
   return (
     <div className="relative flex min-h-0 flex-1 flex-col" data-testid="draft-frames-canvas">
-      <div className="flex min-h-0 flex-1 items-stretch gap-20 overflow-x-auto overflow-y-hidden bg-neutral-200/70 px-16 py-4">
+      {/* THE one scroll region (owner decision): frames grow with their
+          content — no frame has an inner scroller — so this surface scrolls
+          both axes: horizontally across frames, vertically through the
+          tallest one. Frames stay top-aligned (items-start). */}
+      <div className="flex min-h-0 flex-1 items-start gap-20 overflow-auto bg-neutral-200/70 px-16 py-4">
         {(drafts ?? []).map((draft) => {
           const isActive = draft._id === activeDocumentId;
           const registerFrameRef = (element: HTMLDivElement | null): void => {
@@ -156,21 +160,24 @@ function ActiveDraftFrame({
   return (
     <div
       ref={registerFrameRef}
-      className="relative flex h-full shrink-0 flex-col transition-[width] duration-200"
+      className="relative flex shrink-0 flex-col transition-[width] duration-200"
       style={{ width: frameWidthPx }}
       data-testid="draft-frame"
       data-active="true"
       data-document-id={draft._id}
     >
       <DraftFrameLabel draft={draft} isActive />
-      <div className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-lg border bg-background shadow-md ring-1 ring-black/5">
-        <EditorCanvas />
-      </div>
-      {/* Floating per-frame toolbar: pinned to the frame's top-right corner
-          (inside, floating above content) so it follows activation and never
-          clips against the scroller edge when the frame is rightmost. */}
-      <div className="absolute top-8 right-2 z-10">
+      {/* Floating per-frame toolbar: STICKY against the frames surface (the
+          one scroller) so it stays reachable while scrolling a tall email;
+          zero-height wrapper so it never shifts the canvas below. */}
+      <div className="sticky top-2 z-10 h-0 self-end overflow-visible pr-2">
         <DraftFrameToolbar />
+      </div>
+      {/* Height follows content (owner decision): no inner max-height or
+          scroll region — the email defines the frame's height and the frames
+          surface does all scrolling. */}
+      <div className="flex flex-col overflow-hidden rounded-lg border bg-background shadow-md ring-1 ring-black/5">
+        <EditorCanvas />
       </div>
     </div>
   );
@@ -191,7 +198,7 @@ function SiblingDraftFrame({
   return (
     <div
       ref={registerFrameRef}
-      className="flex h-full shrink-0 flex-col"
+      className="flex shrink-0 flex-col"
       style={{ width: PREVIEW_FRAME_WIDTH_PX }}
       data-testid="draft-frame"
       data-active="false"
@@ -213,7 +220,9 @@ function SiblingDraftFrame({
         }}
         aria-label={`Activate draft ${draft.name}`}
         className={cn(
-          "min-h-0 cursor-pointer overflow-y-auto rounded-lg text-left",
+          // Full scaled content, no inner scroller — consistent with the
+          // active frame's height-follows-content behavior.
+          "cursor-pointer overflow-hidden rounded-lg text-left",
           "ring-1 ring-black/5 transition-shadow hover:ring-2 hover:ring-ring/60",
           "focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none",
         )}
