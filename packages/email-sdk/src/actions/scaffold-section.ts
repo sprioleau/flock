@@ -253,7 +253,7 @@ export function resolveScaffoldSectionOperation({
 export const scaffoldSectionAction = defineEmailAction({
   name: "scaffoldSection",
   description:
-    "Add a complete, professionally structured section from the section catalog (header, hero, feature-columns, article, image-gallery, testimonial, stats, footer) in ONE step. Give the templateId, the content the user specified (all params have sensible defaults), and where to insert it. Prefer this over hand-assembling addSection/addBlock whenever a catalog template fits; the scaffolded section inherits the document's theme automatically.",
+    "Add a complete, professionally structured section from the section catalog in ONE step — headers, heroes, feature layouts, article, image gallery, call-to-action, product card, pricing, code sample, testimonials, stats, and footers (the catalog listing below the tools has every templateId). Give the templateId, the content the user specified (all params have sensible defaults), and where to insert it. Prefer this over hand-assembling addSection/addBlock whenever a catalog template fits; the scaffolded section inherits the document's theme automatically.",
   kind: "content",
   schema: scaffoldSectionInputSchema,
   readOnly: false,

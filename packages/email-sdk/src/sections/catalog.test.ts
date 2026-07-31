@@ -91,16 +91,26 @@ const THEME_OWNED_PROPERTY_KEYS = [
 ] as const;
 
 describe("the section catalog", () => {
-  it("ships the eight v1 templates, in composition order", () => {
+  it("ships the eighteen v2 templates, in composition order with variations beside their base", () => {
     expect(SECTION_TEMPLATE_IDS).toEqual([
       "header",
+      "header-centered",
       "hero",
+      "hero-split",
       "feature-columns",
+      "feature-list",
       "article",
       "image-gallery",
+      "cta",
+      "product",
+      "pricing",
+      "code-sample",
       "testimonial",
+      "testimonial-columns",
       "stats",
       "footer",
+      "footer-social",
+      "footer-detailed",
     ]);
   });
 
@@ -268,5 +278,143 @@ describe("template-specific structure", () => {
     });
     expect(JSON.stringify(built.children)).toContain("*|UNSUB|*");
     expect(built.children.some((block) => block.type === "divider")).toBe(true);
+  });
+
+  it("header-centered: logo-only when navLinks is empty; stacked centered leaves (no columns) otherwise", () => {
+    const headerCentered = getSectionTemplate("header-centered")!;
+    const logoOnly = headerCentered.build({
+      params: headerCentered.paramsSchema.parse({ navLinks: [] }),
+      random: createSeededRandom(),
+    });
+    expect(logoOnly.children).toHaveLength(1);
+    expect(logoOnly.children[0]!.type).toBe("image");
+
+    const withNav = headerCentered.build({
+      params: headerCentered.paramsSchema.parse({}),
+      random: createSeededRandom(),
+    });
+    expect(withNav.children.map((block) => block.type)).toEqual(["image", "text"]);
+    expect(
+      (withNav.children[0] as { properties: { align?: string } }).properties.align,
+    ).toBe("center");
+  });
+
+  it("hero-split: 55/45 middle-aligned split with the CTA left and the image right", () => {
+    const heroSplit = getSectionTemplate("hero-split")!;
+    const built = heroSplit.build({
+      params: heroSplit.paramsSchema.parse({}),
+      random: createSeededRandom(),
+    });
+    const columns = built.children.filter((block) => block.type === "column");
+    expect(columns.map((column) => column.properties.widthPercent)).toEqual([55, 45]);
+    expect(columns.every((column) => column.properties.verticalAlign === "middle")).toBe(true);
+    expect(built.children.some((block) => block.type === "button")).toBe(true);
+    expect(built.children.some((block) => block.type === "image")).toBe(true);
+  });
+
+  it("feature-list: features stack vertically with dividers between (not around) them", () => {
+    const featureList = getSectionTemplate("feature-list")!;
+    const built = featureList.build({
+      params: featureList.paramsSchema.parse({}),
+      random: createSeededRandom(),
+    });
+    // 3 default features → text, divider, text, divider, text.
+    expect(built.children.map((block) => block.type)).toEqual([
+      "text",
+      "divider",
+      "text",
+      "divider",
+      "text",
+    ]);
+  });
+
+  it("cta: centered text, a spacer for air, and exactly one button", () => {
+    const cta = getSectionTemplate("cta")!;
+    const built = cta.build({
+      params: cta.paramsSchema.parse({}),
+      random: createSeededRandom(),
+    });
+    expect(built.children.map((block) => block.type)).toEqual(["text", "spacer", "button"]);
+  });
+
+  it("product: 45/55 split with a bold display price and a buy button", () => {
+    const product = getSectionTemplate("product")!;
+    const built = product.build({
+      params: product.paramsSchema.parse({ price: "€39.90" }),
+      random: createSeededRandom(),
+    });
+    const columns = built.children.filter((block) => block.type === "column");
+    expect(columns.map((column) => column.properties.widthPercent)).toEqual([45, 55]);
+    expect(JSON.stringify(built.children)).toContain("€39.90");
+    expect(built.children.some((block) => block.type === "button")).toBe(true);
+  });
+
+  it("pricing: one ✓ line per feature and a signup button", () => {
+    const pricing = getSectionTemplate("pricing")!;
+    const built = pricing.build({
+      params: pricing.paramsSchema.parse({ features: ["Everything", "And more"] }),
+      random: createSeededRandom(),
+    });
+    const serialized = JSON.stringify(built.children);
+    expect(serialized).toContain("✓  Everything");
+    expect(serialized).toContain("✓  And more");
+    expect(built.children.some((block) => block.type === "button")).toBe(true);
+  });
+
+  it("code-sample: emits a code block with the chosen language and a standalone docs link", () => {
+    const codeSample = getSectionTemplate("code-sample")!;
+    const built = codeSample.build({
+      params: codeSample.paramsSchema.parse({ language: "python", code: "print('hi')" }),
+      random: createSeededRandom(),
+    });
+    const codeBlock = built.children.find((block) => block.type === "code");
+    expect(codeBlock).toBeDefined();
+    expect((codeBlock as { properties: { language: string } }).properties.language).toBe("python");
+    expect(built.children.some((block) => block.type === "link")).toBe(true);
+  });
+
+  it("testimonial-columns: one column per quote (2 and 3)", () => {
+    const testimonialColumns = getSectionTemplate("testimonial-columns")!;
+    for (const count of [2, 3]) {
+      const built = testimonialColumns.build({
+        params: testimonialColumns.paramsSchema.parse({
+          testimonials: Array.from({ length: count }, (_, i) => ({
+            quote: `Quote ${i + 1}`,
+            attribution: `Person ${i + 1}`,
+          })),
+        }),
+        random: createSeededRandom(),
+      });
+      expect(built.children.filter((block) => block.type === "column")).toHaveLength(count);
+    }
+  });
+
+  it("footer-social: social links plus a standalone centered unsubscribe link block", () => {
+    const footerSocial = getSectionTemplate("footer-social")!;
+    const built = footerSocial.build({
+      params: footerSocial.paramsSchema.parse({}),
+      random: createSeededRandom(),
+    });
+    const linkBlock = built.children.find((block) => block.type === "link");
+    expect(linkBlock).toBeDefined();
+    const linkProperties = (linkBlock as { properties: { text: string; href: string; align?: string } })
+      .properties;
+    expect(linkProperties.text).toBe("Unsubscribe");
+    expect(linkProperties.href).toBe("*|UNSUB|*");
+    expect(linkProperties.align).toBe("center");
+    expect(built.children.some((block) => block.type === "divider")).toBe(true);
+  });
+
+  it("footer-detailed: 60/40 columns and both unsubscribe + preferences merge tags", () => {
+    const footerDetailed = getSectionTemplate("footer-detailed")!;
+    const built = footerDetailed.build({
+      params: footerDetailed.paramsSchema.parse({}),
+      random: createSeededRandom(),
+    });
+    const columns = built.children.filter((block) => block.type === "column");
+    expect(columns.map((column) => column.properties.widthPercent)).toEqual([60, 40]);
+    const serialized = JSON.stringify(built.children);
+    expect(serialized).toContain("*|UNSUB|*");
+    expect(serialized).toContain("*|UPDATE_PROFILE|*");
   });
 });

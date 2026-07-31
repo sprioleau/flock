@@ -1,4 +1,5 @@
 import {
+  AlignCenterIcon,
   ChartColumnIcon,
   Columns2Icon,
   Columns3Icon,
@@ -9,27 +10,43 @@ import {
   LayoutGridIcon,
   LayoutTemplateIcon,
   LinkIcon,
+  ListChecksIcon,
+  MegaphoneIcon,
+  MessagesSquareIcon,
   MinusIcon,
   NewspaperIcon,
+  PanelBottomDashedIcon,
   PanelBottomIcon,
   PanelTopIcon,
   QuoteIcon,
+  Share2Icon,
+  ShoppingBagIcon,
   SquareDashedIcon,
   SquareMousePointerIcon,
+  SquareSplitHorizontalIcon,
+  TagIcon,
+  TerminalIcon,
   TypeIcon,
   UnfoldVerticalIcon,
   type LucideIcon,
 } from "lucide-react";
-import { SECTION_TEMPLATES, type BlockType, type LeafBlockType } from "@tandem/email-sdk";
+import {
+  SECTION_CATEGORIES,
+  SECTION_TEMPLATES,
+  type BlockType,
+  type LeafBlockType,
+  type SectionCategory,
+} from "@tandem/email-sdk";
 import type { LeafBlockVariant } from "../block-defaults";
 
 /**
  * The Blocks-tab palette catalog: every block a user can add by hand, grouped
- * the way the pane renders them (Content / Layout / Sections). Items are pure
- * descriptors — insertion goes through the shared block-defaults factories
- * (drop path: dnd/drop-target buildPaletteDropInsertion; click path:
- * click-to-add-placement), so palette adds can never drift from what the
- * agent-facing tools and the rest of the studio produce.
+ * the way the pane renders them (Content / Layout, then the categorized
+ * Sections gallery). Items are pure descriptors — insertion goes through the
+ * shared block-defaults factories (drop path: dnd/drop-target
+ * buildPaletteDropInsertion; click path: click-to-add-placement), so palette
+ * adds can never drift from what the agent-facing tools and the rest of the
+ * studio produce.
  */
 
 interface PaletteItemBase {
@@ -74,13 +91,23 @@ export function getPaletteDragBlockType(item: PaletteItem): BlockType | null {
 
 const TEMPLATE_ICONS: Record<string, LucideIcon> = {
   header: PanelTopIcon,
+  "header-centered": AlignCenterIcon,
   hero: LayoutTemplateIcon,
+  "hero-split": SquareSplitHorizontalIcon,
   "feature-columns": LayoutGridIcon,
+  "feature-list": ListChecksIcon,
   article: NewspaperIcon,
   "image-gallery": ImagesIcon,
+  cta: MegaphoneIcon,
+  product: ShoppingBagIcon,
+  pricing: TagIcon,
+  "code-sample": TerminalIcon,
   testimonial: QuoteIcon,
+  "testimonial-columns": MessagesSquareIcon,
   stats: ChartColumnIcon,
   footer: PanelBottomIcon,
+  "footer-social": Share2Icon,
+  "footer-detailed": PanelBottomDashedIcon,
 };
 
 export interface PaletteGroup {
@@ -180,26 +207,56 @@ export const PALETTE_GROUPS: readonly PaletteGroup[] = [
       },
     ],
   },
-  {
-    label: "Sections",
-    items: [
-      {
-        kind: "empty-section",
-        id: "empty-section",
-        label: "Empty",
-        description: "A blank full-width section.",
-        Icon: SquareDashedIcon,
-      },
-      ...SECTION_TEMPLATES.map(
-        (template): PaletteItem => ({
-          kind: "section-template",
-          id: `template-${template.id}`,
-          templateId: template.id,
-          label: template.name,
-          description: `A ready-made ${template.name.toLowerCase()} section. Click to add.`,
-          Icon: TEMPLATE_ICONS[template.id] ?? LayoutTemplateIcon,
-        }),
-      ),
-    ],
-  },
 ];
+
+// ---------------------------------------------------------------------------
+// The Sections gallery — the palette's third area, categorized (§10)
+// ---------------------------------------------------------------------------
+
+/** The blank starting point, rendered above the categorized gallery. */
+export const EMPTY_SECTION_ITEM: PaletteItem = {
+  kind: "empty-section",
+  id: "empty-section",
+  label: "Empty",
+  description: "A blank full-width section.",
+  Icon: SquareDashedIcon,
+};
+
+/** User-facing labels for the SDK's section-category axis. */
+const SECTION_CATEGORY_LABELS: Record<SectionCategory, string> = {
+  header: "Headers",
+  hero: "Heroes",
+  content: "Body",
+  "social-proof": "Social proof",
+  footer: "Footers",
+};
+
+export interface SectionGalleryCategory {
+  id: SectionCategory;
+  /** User-facing category sub-heading ("Headers", "Footers", …). */
+  label: string;
+  items: readonly PaletteItem[];
+}
+
+/**
+ * The section-template gallery, grouped by the SDK catalog's category axis in
+ * catalog (composition) order. Tile labels and tooltips are single-sourced
+ * from each template's name and useWhen sentence, so the gallery can never
+ * drift from what scaffoldSection actually builds.
+ */
+export const SECTION_GALLERY: readonly SectionGalleryCategory[] = SECTION_CATEGORIES.map(
+  (category) => ({
+    id: category,
+    label: SECTION_CATEGORY_LABELS[category],
+    items: SECTION_TEMPLATES.filter((template) => template.category === category).map(
+      (template): PaletteItem => ({
+        kind: "section-template",
+        id: `template-${template.id}`,
+        templateId: template.id,
+        label: template.name,
+        description: template.useWhen,
+        Icon: TEMPLATE_ICONS[template.id] ?? LayoutTemplateIcon,
+      }),
+    ),
+  }),
+).filter((categoryGroup) => categoryGroup.items.length > 0);

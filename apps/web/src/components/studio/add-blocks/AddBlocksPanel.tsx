@@ -1,16 +1,17 @@
 "use client";
 
-import { PALETTE_GROUPS } from "./palette-items";
+import { EMPTY_SECTION_ITEM, PALETTE_GROUPS, SECTION_GALLERY } from "./palette-items";
 import { PaletteTile } from "./PaletteTile";
 import { useClickToAdd } from "./use-click-to-add";
 
 /**
- * The Blocks tab of the right rail: the full add-blocks palette (Content /
- * Layout / Sections), each tile draggable onto the active draft (section
- * templates click-to-add only in v1) with click-to-add as the uniform
- * fallback. THE single add-blocks surface — the old per-section ghost
- * "+ Add block" menu is gone; only the doc-foot "Add section" pill remains
- * on the canvas.
+ * The Blocks tab of the right rail: the full add-blocks palette — Content and
+ * Layout block tiles, then the categorized Sections gallery (blank section
+ * first, then ready-made templates grouped Headers → Heroes → Body → Social
+ * proof → Footers). Block tiles drag onto the active draft (section templates
+ * click-to-add only in v1) with click-to-add as the uniform fallback. THE
+ * single add-blocks surface — the old per-section ghost "+ Add block" menu is
+ * gone; only the doc-foot "Add section" pill remains on the canvas.
  */
 export function AddBlocksPanel() {
   const addPaletteItem = useClickToAdd();
@@ -31,6 +32,26 @@ export function AddBlocksPanel() {
           </div>
         </section>
       ))}
+      <section className="flex flex-col gap-1.5" data-testid="section-gallery">
+        <h3 className="px-1 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">
+          Sections
+        </h3>
+        <div className="grid grid-cols-2 gap-1.5">
+          <PaletteTile item={EMPTY_SECTION_ITEM} onAdd={addPaletteItem} />
+        </div>
+        {SECTION_GALLERY.map((category) => (
+          <div key={category.id} className="flex flex-col gap-1.5">
+            <h4 className="px-1 pt-1.5 text-[11px] font-medium text-muted-foreground/80">
+              {category.label}
+            </h4>
+            <div className="grid grid-cols-2 gap-1.5">
+              {category.items.map((item) => (
+                <PaletteTile key={item.id} item={item} onAdd={addPaletteItem} />
+              ))}
+            </div>
+          </div>
+        ))}
+      </section>
     </div>
   );
 }

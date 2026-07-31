@@ -1,10 +1,14 @@
 import type {
   Block,
   ButtonBlock,
+  CodeBlock,
+  CodeBlockLanguage,
   DividerBlock,
   ImageBlock,
   LeafBlock,
+  LinkBlock,
   SectionBlock,
+  SpacerBlock,
   TextBlock,
 } from "../schema/blocks";
 import type { TextAlign } from "../schema/globals";
@@ -134,7 +138,17 @@ export type LeafSpec =
       href?: string;
       align?: TextAlign;
     }
-  | { kind: "divider" };
+  | { kind: "divider" }
+  | {
+      kind: "link";
+      text: string;
+      href: string;
+      align?: TextAlign;
+      /** Font size in px — structural small print (12 for footer meta), like textStyle fontSize marks. */
+      fontSize?: number;
+    }
+  | { kind: "code"; code: string; language: CodeBlockLanguage }
+  | { kind: "spacer"; height: number };
 
 export interface BuildLeafBlockInput {
   spec: LeafSpec;
@@ -196,6 +210,44 @@ export function buildLeafBlock({ spec, parentId, allocateId }: BuildLeafBlockInp
         parentId,
         childrenIds: [],
         properties: {},
+      };
+      return block;
+    }
+    case "link": {
+      const block: LinkBlock = {
+        id: allocateId("link"),
+        type: "link",
+        parentId,
+        childrenIds: [],
+        properties: {
+          text: spec.text,
+          href: spec.href,
+          ...(spec.align !== undefined ? { align: spec.align } : {}),
+          ...(spec.fontSize !== undefined ? { fontSize: spec.fontSize } : {}),
+        },
+      };
+      return block;
+    }
+    case "code": {
+      const block: CodeBlock = {
+        id: allocateId("code"),
+        type: "code",
+        parentId,
+        childrenIds: [],
+        properties: {
+          code: spec.code,
+          language: spec.language,
+        },
+      };
+      return block;
+    }
+    case "spacer": {
+      const block: SpacerBlock = {
+        id: allocateId("spacer"),
+        type: "spacer",
+        parentId,
+        childrenIds: [],
+        properties: { height: spec.height },
       };
       return block;
     }

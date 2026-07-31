@@ -91,6 +91,263 @@ exports[`template article > renders default-params HTML that matches its snapsho
 "
 `;
 
+exports[`template code-sample > renders default-params HTML that matches its snapshot 1`] = `
+"<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html dir="ltr" lang="en">
+  <head>
+    <meta content="text/html; charset=UTF-8" http-equiv="Content-Type" />
+    <meta name="x-apple-disable-message-reformatting" />
+  </head>
+  <body dir="ltr" lang="en" style="background-color:#f4f4f4;margin:0;padding:0">
+    <!--$--><!--html--><!--head--><!--body-->
+    <table
+      border="0"
+      width="100%"
+      cellpadding="0"
+      cellspacing="0"
+      role="presentation"
+      align="center">
+      <tbody>
+        <tr>
+          <td
+            dir="ltr"
+            lang="en"
+            style="background-color:#f4f4f4;margin:0;padding:0">
+            <table
+              align="center"
+              width="100%"
+              border="0"
+              cellpadding="0"
+              cellspacing="0"
+              role="presentation"
+              style="background-color:#f4f4f4">
+              <tbody>
+                <tr>
+                  <td>
+                    <table
+                      align="center"
+                      width="100%"
+                      border="0"
+                      cellpadding="0"
+                      cellspacing="0"
+                      role="presentation"
+                      style="max-width:600px;width:100%;background-color:#ffffff">
+                      <tbody>
+                        <tr style="width:100%">
+                          <td
+                            style="padding-top:24px;padding-bottom:0px;padding-left:24px;padding-right:24px">
+                            <table
+                              align="center"
+                              width="100%"
+                              border="0"
+                              cellpadding="0"
+                              cellspacing="0"
+                              role="presentation">
+                              <tbody style="width:100%">
+                                <tr style="width:100%">
+                                  <td
+                                    data-id="__react-email-column"
+                                    style="padding-top:0px;padding-bottom:24px;padding-left:0px;padding-right:0px">
+                                    <h2
+                                      style="font-family:Helvetica, Arial, sans-serif;color:#111111;text-align:left;word-wrap:break-word;word-break:break-word;font-size:24px;line-height:1.3;font-weight:bold;margin:0">
+                                      Get started in seconds
+                                    </h2>
+                                    <p
+                                      style="font-size:14px;line-height:24px;font-family:Helvetica, Arial, sans-serif;color:#333333;text-align:left;word-wrap:break-word;word-break:break-word;margin-top:0;margin-bottom:0">
+                                      Install the SDK and send your first email
+                                      with a few lines of code.
+                                    </p>
+                                  </td>
+                                </tr>
+                              </tbody>
+                            </table>
+                            <table
+                              align="center"
+                              width="100%"
+                              border="0"
+                              cellpadding="0"
+                              cellspacing="0"
+                              role="presentation">
+                              <tbody style="width:100%">
+                                <tr style="width:100%">
+                                  <td
+                                    data-id="__react-email-column"
+                                    style="padding-top:0px;padding-bottom:24px;padding-left:0px;padding-right:0px">
+                                    <pre
+                                      style='background:hsl(220, 13%, 18%);color:hsl(220, 14%, 71%);text-shadow:0 1px rgba(0, 0, 0, 0.3);font-family:"Fira Code", "Fira Mono", Menlo, Consolas, "DejaVu Sans Mono", monospace;direction:ltr;text-align:left;white-space:pre;word-spacing:normal;word-break:normal;line-height:1.5;-moz-tab-size:2;-o-tab-size:2;tab-size:2;-webkit-hyphens:none;-moz-hyphens:none;hyphens:none;padding:1em;margin:0;overflow:auto;border-radius:0.3em;width:100%'><code><span style="color:hsl(286, 60%, 67%)">import</span><span> ‍​</span><span style="color:hsl(220, 14%, 71%)">{</span><span> ‍​send ‍​</span><span style="color:hsl(220, 14%, 71%)">}</span><span> ‍​</span><span style="color:hsl(286, 60%, 67%)">from</span><span> ‍​</span><span style="color:hsl(95, 38%, 62%)">&quot;@acme/sdk&quot;</span><span style="color:hsl(220, 14%, 71%)">;</span><br/><span></span><br/><span style="color:hsl(286, 60%, 67%)">await</span><span> ‍​</span><span style="color:hsl(207, 82%, 66%)">send</span><span style="color:hsl(220, 14%, 71%)">(</span><span style="color:hsl(220, 14%, 71%)">{</span><br/><span> ‍​ ‍​to</span><span style="color:hsl(207, 82%, 66%)">:</span><span> ‍​</span><span style="color:hsl(95, 38%, 62%)">&quot;ada@example.com&quot;</span><span style="color:hsl(220, 14%, 71%)">,</span><br/><span> ‍​ ‍​subject</span><span style="color:hsl(207, 82%, 66%)">:</span><span> ‍​</span><span style="color:hsl(95, 38%, 62%)">&quot;Hello from Acme&quot;</span><span style="color:hsl(220, 14%, 71%)">,</span><br/><span style="color:hsl(220, 14%, 71%)">}</span><span style="color:hsl(220, 14%, 71%)">)</span><span style="color:hsl(220, 14%, 71%)">;</span><br/></code></pre>
+                                  </td>
+                                </tr>
+                              </tbody>
+                            </table>
+                            <table
+                              align="center"
+                              width="100%"
+                              border="0"
+                              cellpadding="0"
+                              cellspacing="0"
+                              role="presentation">
+                              <tbody style="width:100%">
+                                <tr style="width:100%">
+                                  <td
+                                    data-id="__react-email-column"
+                                    style="padding-top:0px;padding-bottom:24px;padding-left:0px;padding-right:0px;text-align:left">
+                                    <a
+                                      href="https://example.com/docs"
+                                      style="color:#067df7;text-decoration-line:none;font-family:Helvetica, Arial, sans-serif;font-size:14px;text-decoration:underline"
+                                      target="_blank"
+                                      >Read the docs</a
+                                    >
+                                  </td>
+                                </tr>
+                              </tbody>
+                            </table>
+                          </td>
+                        </tr>
+                      </tbody>
+                    </table>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </td>
+        </tr>
+      </tbody>
+    </table>
+    <!--/$-->
+  </body>
+</html>
+"
+`;
+
+exports[`template cta > renders default-params HTML that matches its snapshot 1`] = `
+"<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html dir="ltr" lang="en">
+  <head>
+    <meta content="text/html; charset=UTF-8" http-equiv="Content-Type" />
+    <meta name="x-apple-disable-message-reformatting" />
+  </head>
+  <body dir="ltr" lang="en" style="background-color:#f4f4f4;margin:0;padding:0">
+    <!--$--><!--html--><!--head--><!--body-->
+    <table
+      border="0"
+      width="100%"
+      cellpadding="0"
+      cellspacing="0"
+      role="presentation"
+      align="center">
+      <tbody>
+        <tr>
+          <td
+            dir="ltr"
+            lang="en"
+            style="background-color:#f4f4f4;margin:0;padding:0">
+            <table
+              align="center"
+              width="100%"
+              border="0"
+              cellpadding="0"
+              cellspacing="0"
+              role="presentation"
+              style="background-color:#f4f4f4">
+              <tbody>
+                <tr>
+                  <td>
+                    <table
+                      align="center"
+                      width="100%"
+                      border="0"
+                      cellpadding="0"
+                      cellspacing="0"
+                      role="presentation"
+                      style="max-width:600px;width:100%;background-color:#ffffff">
+                      <tbody>
+                        <tr style="width:100%">
+                          <td
+                            style="padding-top:24px;padding-bottom:0px;padding-left:24px;padding-right:24px">
+                            <table
+                              align="center"
+                              width="100%"
+                              border="0"
+                              cellpadding="0"
+                              cellspacing="0"
+                              role="presentation">
+                              <tbody style="width:100%">
+                                <tr style="width:100%">
+                                  <td
+                                    data-id="__react-email-column"
+                                    style="padding-top:0px;padding-bottom:24px;padding-left:0px;padding-right:0px">
+                                    <h2
+                                      style="font-family:Helvetica, Arial, sans-serif;color:#111111;text-align:center;word-wrap:break-word;word-break:break-word;font-size:24px;line-height:1.3;font-weight:bold;margin:0">
+                                      Ready when you are
+                                    </h2>
+                                  </td>
+                                </tr>
+                              </tbody>
+                            </table>
+                            <table
+                              align="center"
+                              width="100%"
+                              border="0"
+                              cellpadding="0"
+                              cellspacing="0"
+                              role="presentation">
+                              <tbody style="width:100%">
+                                <tr style="width:100%">
+                                  <td
+                                    data-id="__react-email-column"
+                                    style="height:8px;font-size:1px;line-height:8px">
+                                     
+                                  </td>
+                                </tr>
+                              </tbody>
+                            </table>
+                            <table
+                              align="center"
+                              width="100%"
+                              border="0"
+                              cellpadding="0"
+                              cellspacing="0"
+                              role="presentation">
+                              <tbody style="width:100%">
+                                <tr style="width:100%">
+                                  <td
+                                    data-id="__react-email-column"
+                                    style="padding-top:0px;padding-bottom:24px;padding-left:0px;padding-right:0px;text-align:center">
+                                    <a
+                                      href="https://example.com"
+                                      style="line-height:100%;text-decoration:none;display:inline-block;max-width:100%;mso-padding-alt:0px;background-color:#000000;color:#ffffff;border-radius:4px;padding:12px 24px;font-family:Helvetica, Arial, sans-serif;padding-top:12px;padding-right:24px;padding-bottom:12px;padding-left:24px"
+                                      target="_blank"
+                                      ><span
+                                        ><!--[if mso]><i style="mso-font-width:400%;mso-text-raise:18px" hidden>&#8202;&#8202;&#8202;</i><![endif]--></span
+                                      ><span
+                                        style="max-width:100%;display:inline-block;line-height:120%;mso-padding-alt:0px;mso-text-raise:9px"
+                                        >Start your free trial</span
+                                      ><span
+                                        ><!--[if mso]><i style="mso-font-width:400%" hidden>&#8202;&#8202;&#8202;&#8203;</i><![endif]--></span
+                                      ></a
+                                    >
+                                  </td>
+                                </tr>
+                              </tbody>
+                            </table>
+                          </td>
+                        </tr>
+                      </tbody>
+                    </table>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </td>
+        </tr>
+      </tbody>
+    </table>
+    <!--/$-->
+  </body>
+</html>
+"
+`;
+
 exports[`template feature-columns > renders default-params HTML that matches its snapshot 1`] = `
 "<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
 <html dir="ltr" lang="en">
@@ -253,6 +510,181 @@ exports[`template feature-columns > renders default-params HTML that matches its
 "
 `;
 
+exports[`template feature-list > renders default-params HTML that matches its snapshot 1`] = `
+"<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html dir="ltr" lang="en">
+  <head>
+    <meta content="text/html; charset=UTF-8" http-equiv="Content-Type" />
+    <meta name="x-apple-disable-message-reformatting" />
+  </head>
+  <body dir="ltr" lang="en" style="background-color:#f4f4f4;margin:0;padding:0">
+    <!--$--><!--html--><!--head--><!--body-->
+    <table
+      border="0"
+      width="100%"
+      cellpadding="0"
+      cellspacing="0"
+      role="presentation"
+      align="center">
+      <tbody>
+        <tr>
+          <td
+            dir="ltr"
+            lang="en"
+            style="background-color:#f4f4f4;margin:0;padding:0">
+            <table
+              align="center"
+              width="100%"
+              border="0"
+              cellpadding="0"
+              cellspacing="0"
+              role="presentation"
+              style="background-color:#f4f4f4">
+              <tbody>
+                <tr>
+                  <td>
+                    <table
+                      align="center"
+                      width="100%"
+                      border="0"
+                      cellpadding="0"
+                      cellspacing="0"
+                      role="presentation"
+                      style="max-width:600px;width:100%;background-color:#ffffff">
+                      <tbody>
+                        <tr style="width:100%">
+                          <td
+                            style="padding-top:24px;padding-bottom:0px;padding-left:24px;padding-right:24px">
+                            <table
+                              align="center"
+                              width="100%"
+                              border="0"
+                              cellpadding="0"
+                              cellspacing="0"
+                              role="presentation">
+                              <tbody style="width:100%">
+                                <tr style="width:100%">
+                                  <td
+                                    data-id="__react-email-column"
+                                    style="padding-top:0px;padding-bottom:24px;padding-left:0px;padding-right:0px">
+                                    <h3
+                                      style="font-family:Helvetica, Arial, sans-serif;color:#111111;text-align:left;word-wrap:break-word;word-break:break-word;font-size:20px;line-height:1.3;font-weight:bold;margin:0">
+                                      Drag, drop, done
+                                    </h3>
+                                    <p
+                                      style="font-size:14px;line-height:24px;font-family:Helvetica, Arial, sans-serif;color:#333333;text-align:left;word-wrap:break-word;word-break:break-word;margin-top:0;margin-bottom:0">
+                                      Compose from prebuilt sections and
+                                      rearrange them in seconds.
+                                    </p>
+                                  </td>
+                                </tr>
+                              </tbody>
+                            </table>
+                            <table
+                              align="center"
+                              width="100%"
+                              border="0"
+                              cellpadding="0"
+                              cellspacing="0"
+                              role="presentation">
+                              <tbody style="width:100%">
+                                <tr style="width:100%">
+                                  <td
+                                    data-id="__react-email-column"
+                                    style="padding-top:0px;padding-bottom:24px;padding-left:0px;padding-right:0px">
+                                    <hr
+                                      style="width:100%;border:none;border-color:transparent;border-top:1px solid #e6e6e6;margin:0" />
+                                  </td>
+                                </tr>
+                              </tbody>
+                            </table>
+                            <table
+                              align="center"
+                              width="100%"
+                              border="0"
+                              cellpadding="0"
+                              cellspacing="0"
+                              role="presentation">
+                              <tbody style="width:100%">
+                                <tr style="width:100%">
+                                  <td
+                                    data-id="__react-email-column"
+                                    style="padding-top:0px;padding-bottom:24px;padding-left:0px;padding-right:0px">
+                                    <h3
+                                      style="font-family:Helvetica, Arial, sans-serif;color:#111111;text-align:left;word-wrap:break-word;word-break:break-word;font-size:20px;line-height:1.3;font-weight:bold;margin:0">
+                                      Always on brand
+                                    </h3>
+                                    <p
+                                      style="font-size:14px;line-height:24px;font-family:Helvetica, Arial, sans-serif;color:#333333;text-align:left;word-wrap:break-word;word-break:break-word;margin-top:0;margin-bottom:0">
+                                      Every block inherits your theme — swap
+                                      palettes without touching a single
+                                      section.
+                                    </p>
+                                  </td>
+                                </tr>
+                              </tbody>
+                            </table>
+                            <table
+                              align="center"
+                              width="100%"
+                              border="0"
+                              cellpadding="0"
+                              cellspacing="0"
+                              role="presentation">
+                              <tbody style="width:100%">
+                                <tr style="width:100%">
+                                  <td
+                                    data-id="__react-email-column"
+                                    style="padding-top:0px;padding-bottom:24px;padding-left:0px;padding-right:0px">
+                                    <hr
+                                      style="width:100%;border:none;border-color:transparent;border-top:1px solid #e6e6e6;margin:0" />
+                                  </td>
+                                </tr>
+                              </tbody>
+                            </table>
+                            <table
+                              align="center"
+                              width="100%"
+                              border="0"
+                              cellpadding="0"
+                              cellspacing="0"
+                              role="presentation">
+                              <tbody style="width:100%">
+                                <tr style="width:100%">
+                                  <td
+                                    data-id="__react-email-column"
+                                    style="padding-top:0px;padding-bottom:24px;padding-left:0px;padding-right:0px">
+                                    <h3
+                                      style="font-family:Helvetica, Arial, sans-serif;color:#111111;text-align:left;word-wrap:break-word;word-break:break-word;font-size:20px;line-height:1.3;font-weight:bold;margin:0">
+                                      Preview everywhere
+                                    </h3>
+                                    <p
+                                      style="font-size:14px;line-height:24px;font-family:Helvetica, Arial, sans-serif;color:#333333;text-align:left;word-wrap:break-word;word-break:break-word;margin-top:0;margin-bottom:0">
+                                      See exactly what lands in the inbox, on
+                                      desktop and phone alike.
+                                    </p>
+                                  </td>
+                                </tr>
+                              </tbody>
+                            </table>
+                          </td>
+                        </tr>
+                      </tbody>
+                    </table>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </td>
+        </tr>
+      </tbody>
+    </table>
+    <!--/$-->
+  </body>
+</html>
+"
+`;
+
 exports[`template footer > renders default-params HTML that matches its snapshot 1`] = `
 "<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
 <html dir="ltr" lang="en">
@@ -365,6 +797,386 @@ exports[`template footer > renders default-params HTML that matches its snapshot
                                         ></span
                                       >
                                     </p>
+                                  </td>
+                                </tr>
+                              </tbody>
+                            </table>
+                          </td>
+                        </tr>
+                      </tbody>
+                    </table>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </td>
+        </tr>
+      </tbody>
+    </table>
+    <!--/$-->
+  </body>
+</html>
+"
+`;
+
+exports[`template footer-detailed > renders default-params HTML that matches its snapshot 1`] = `
+"<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html dir="ltr" lang="en">
+  <head>
+    <meta content="text/html; charset=UTF-8" http-equiv="Content-Type" />
+    <meta name="x-apple-disable-message-reformatting" />
+  </head>
+  <body dir="ltr" lang="en" style="background-color:#f4f4f4;margin:0;padding:0">
+    <!--$--><!--html--><!--head--><!--body-->
+    <table
+      border="0"
+      width="100%"
+      cellpadding="0"
+      cellspacing="0"
+      role="presentation"
+      align="center">
+      <tbody>
+        <tr>
+          <td
+            dir="ltr"
+            lang="en"
+            style="background-color:#f4f4f4;margin:0;padding:0">
+            <table
+              align="center"
+              width="100%"
+              border="0"
+              cellpadding="0"
+              cellspacing="0"
+              role="presentation"
+              style="background-color:#f4f4f4">
+              <tbody>
+                <tr>
+                  <td>
+                    <table
+                      align="center"
+                      width="100%"
+                      border="0"
+                      cellpadding="0"
+                      cellspacing="0"
+                      role="presentation"
+                      style="max-width:600px;width:100%;background-color:#ffffff">
+                      <tbody>
+                        <tr style="width:100%">
+                          <td
+                            style="padding-top:24px;padding-bottom:0px;padding-left:24px;padding-right:24px">
+                            <table
+                              align="center"
+                              width="100%"
+                              border="0"
+                              cellpadding="0"
+                              cellspacing="0"
+                              role="presentation">
+                              <tbody style="width:100%">
+                                <tr style="width:100%">
+                                  <td
+                                    data-id="__react-email-column"
+                                    style="padding-top:0px;padding-bottom:24px;padding-left:0px;padding-right:0px">
+                                    <hr
+                                      style="width:100%;border:none;border-color:transparent;border-top:1px solid #e6e6e6;margin:0" />
+                                  </td>
+                                </tr>
+                              </tbody>
+                            </table>
+                            <table
+                              align="center"
+                              width="100%"
+                              border="0"
+                              cellpadding="0"
+                              cellspacing="0"
+                              role="presentation">
+                              <tbody style="width:100%">
+                                <tr style="width:100%">
+                                  <td
+                                    data-id="__react-email-column"
+                                    style="width:60%;vertical-align:top;padding-top:0px;padding-bottom:0px;padding-left:0px;padding-right:0px">
+                                    <table
+                                      align="center"
+                                      width="100%"
+                                      border="0"
+                                      cellpadding="0"
+                                      cellspacing="0"
+                                      role="presentation">
+                                      <tbody style="width:100%">
+                                        <tr style="width:100%">
+                                          <td
+                                            data-id="__react-email-column"
+                                            style="padding-top:0px;padding-bottom:24px;padding-left:0px;padding-right:0px">
+                                            <p
+                                              style="font-size:14px;line-height:24px;font-family:Helvetica, Arial, sans-serif;color:#333333;text-align:left;word-wrap:break-word;word-break:break-word;margin-top:0;margin-bottom:0">
+                                              <span style="font-size:12px"
+                                                ><strong
+                                                  >Acme Inc.</strong
+                                                ></span
+                                              >
+                                            </p>
+                                            <p
+                                              style="font-size:14px;line-height:24px;font-family:Helvetica, Arial, sans-serif;color:#333333;text-align:left;word-wrap:break-word;word-break:break-word;margin-top:0;margin-bottom:0">
+                                              <span style="font-size:12px"
+                                                >123 Market Street, Suite 400,
+                                                San Francisco, CA</span
+                                              >
+                                            </p>
+                                          </td>
+                                        </tr>
+                                      </tbody>
+                                    </table>
+                                  </td>
+                                  <td
+                                    data-id="__react-email-column"
+                                    style="width:40%;vertical-align:top;padding-top:0px;padding-bottom:0px;padding-left:0px;padding-right:0px">
+                                    <table
+                                      align="center"
+                                      width="100%"
+                                      border="0"
+                                      cellpadding="0"
+                                      cellspacing="0"
+                                      role="presentation">
+                                      <tbody style="width:100%">
+                                        <tr style="width:100%">
+                                          <td
+                                            data-id="__react-email-column"
+                                            style="padding-top:0px;padding-bottom:24px;padding-left:0px;padding-right:0px">
+                                            <p
+                                              style="font-size:14px;line-height:24px;font-family:Helvetica, Arial, sans-serif;color:#333333;text-align:right;word-wrap:break-word;word-break:break-word;margin-top:0;margin-bottom:0">
+                                              <span style="font-size:12px"
+                                                ><a
+                                                  href="https://example.com/help"
+                                                  style="color:#067df7;text-decoration-line:none;text-decoration:underline"
+                                                  target="_blank"
+                                                  >Help Center</a
+                                                ></span
+                                              >
+                                            </p>
+                                            <p
+                                              style="font-size:14px;line-height:24px;font-family:Helvetica, Arial, sans-serif;color:#333333;text-align:right;word-wrap:break-word;word-break:break-word;margin-top:0;margin-bottom:0">
+                                              <span style="font-size:12px"
+                                                ><a
+                                                  href="https://example.com/blog"
+                                                  style="color:#067df7;text-decoration-line:none;text-decoration:underline"
+                                                  target="_blank"
+                                                  >Blog</a
+                                                ></span
+                                              >
+                                            </p>
+                                            <p
+                                              style="font-size:14px;line-height:24px;font-family:Helvetica, Arial, sans-serif;color:#333333;text-align:right;word-wrap:break-word;word-break:break-word;margin-top:0;margin-bottom:0">
+                                              <span style="font-size:12px"
+                                                ><a
+                                                  href="https://example.com/careers"
+                                                  style="color:#067df7;text-decoration-line:none;text-decoration:underline"
+                                                  target="_blank"
+                                                  >Careers</a
+                                                ></span
+                                              >
+                                            </p>
+                                            <p
+                                              style="font-size:14px;line-height:24px;font-family:Helvetica, Arial, sans-serif;color:#333333;text-align:right;word-wrap:break-word;word-break:break-word;margin-top:0;margin-bottom:0">
+                                              <span style="font-size:12px"
+                                                ><a
+                                                  href="https://example.com/privacy"
+                                                  style="color:#067df7;text-decoration-line:none;text-decoration:underline"
+                                                  target="_blank"
+                                                  >Privacy</a
+                                                ></span
+                                              >
+                                            </p>
+                                          </td>
+                                        </tr>
+                                      </tbody>
+                                    </table>
+                                  </td>
+                                </tr>
+                              </tbody>
+                            </table>
+                            <table
+                              align="center"
+                              width="100%"
+                              border="0"
+                              cellpadding="0"
+                              cellspacing="0"
+                              role="presentation">
+                              <tbody style="width:100%">
+                                <tr style="width:100%">
+                                  <td
+                                    data-id="__react-email-column"
+                                    style="padding-top:0px;padding-bottom:24px;padding-left:0px;padding-right:0px">
+                                    <p
+                                      style="font-size:14px;line-height:24px;font-family:Helvetica, Arial, sans-serif;color:#333333;text-align:center;word-wrap:break-word;word-break:break-word;margin-top:0;margin-bottom:0">
+                                      <span style="font-size:12px"
+                                        ><a
+                                          href="*|UNSUB|*"
+                                          style="color:#067df7;text-decoration-line:none;text-decoration:underline"
+                                          target="_blank"
+                                          >Unsubscribe</a
+                                        ></span
+                                      ><span style="font-size:12px"> · </span
+                                      ><span style="font-size:12px"
+                                        ><a
+                                          href="*|UPDATE_PROFILE|*"
+                                          style="color:#067df7;text-decoration-line:none;text-decoration:underline"
+                                          target="_blank"
+                                          >Manage preferences</a
+                                        ></span
+                                      >
+                                    </p>
+                                  </td>
+                                </tr>
+                              </tbody>
+                            </table>
+                          </td>
+                        </tr>
+                      </tbody>
+                    </table>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </td>
+        </tr>
+      </tbody>
+    </table>
+    <!--/$-->
+  </body>
+</html>
+"
+`;
+
+exports[`template footer-social > renders default-params HTML that matches its snapshot 1`] = `
+"<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html dir="ltr" lang="en">
+  <head>
+    <meta content="text/html; charset=UTF-8" http-equiv="Content-Type" />
+    <meta name="x-apple-disable-message-reformatting" />
+  </head>
+  <body dir="ltr" lang="en" style="background-color:#f4f4f4;margin:0;padding:0">
+    <!--$--><!--html--><!--head--><!--body-->
+    <table
+      border="0"
+      width="100%"
+      cellpadding="0"
+      cellspacing="0"
+      role="presentation"
+      align="center">
+      <tbody>
+        <tr>
+          <td
+            dir="ltr"
+            lang="en"
+            style="background-color:#f4f4f4;margin:0;padding:0">
+            <table
+              align="center"
+              width="100%"
+              border="0"
+              cellpadding="0"
+              cellspacing="0"
+              role="presentation"
+              style="background-color:#f4f4f4">
+              <tbody>
+                <tr>
+                  <td>
+                    <table
+                      align="center"
+                      width="100%"
+                      border="0"
+                      cellpadding="0"
+                      cellspacing="0"
+                      role="presentation"
+                      style="max-width:600px;width:100%;background-color:#ffffff">
+                      <tbody>
+                        <tr style="width:100%">
+                          <td
+                            style="padding-top:24px;padding-bottom:0px;padding-left:24px;padding-right:24px">
+                            <table
+                              align="center"
+                              width="100%"
+                              border="0"
+                              cellpadding="0"
+                              cellspacing="0"
+                              role="presentation">
+                              <tbody style="width:100%">
+                                <tr style="width:100%">
+                                  <td
+                                    data-id="__react-email-column"
+                                    style="padding-top:0px;padding-bottom:24px;padding-left:0px;padding-right:0px">
+                                    <hr
+                                      style="width:100%;border:none;border-color:transparent;border-top:1px solid #e6e6e6;margin:0" />
+                                  </td>
+                                </tr>
+                              </tbody>
+                            </table>
+                            <table
+                              align="center"
+                              width="100%"
+                              border="0"
+                              cellpadding="0"
+                              cellspacing="0"
+                              role="presentation">
+                              <tbody style="width:100%">
+                                <tr style="width:100%">
+                                  <td
+                                    data-id="__react-email-column"
+                                    style="padding-top:0px;padding-bottom:24px;padding-left:0px;padding-right:0px">
+                                    <p
+                                      style="font-size:14px;line-height:24px;font-family:Helvetica, Arial, sans-serif;color:#333333;text-align:center;word-wrap:break-word;word-break:break-word;margin-top:0;margin-bottom:0">
+                                      <span style="font-size:12px"
+                                        ><a
+                                          href="https://x.com/example"
+                                          style="color:#067df7;text-decoration-line:none;text-decoration:underline"
+                                          target="_blank"
+                                          >X</a
+                                        ></span
+                                      ><span style="font-size:12px"> · </span
+                                      ><span style="font-size:12px"
+                                        ><a
+                                          href="https://instagram.com/example"
+                                          style="color:#067df7;text-decoration-line:none;text-decoration:underline"
+                                          target="_blank"
+                                          >Instagram</a
+                                        ></span
+                                      ><span style="font-size:12px"> · </span
+                                      ><span style="font-size:12px"
+                                        ><a
+                                          href="https://youtube.com/@example"
+                                          style="color:#067df7;text-decoration-line:none;text-decoration:underline"
+                                          target="_blank"
+                                          >YouTube</a
+                                        ></span
+                                      >
+                                    </p>
+                                    <p
+                                      style="font-size:14px;line-height:24px;font-family:Helvetica, Arial, sans-serif;color:#333333;text-align:center;word-wrap:break-word;word-break:break-word;margin-top:0;margin-bottom:0">
+                                      <span style="font-size:12px"
+                                        >Acme Inc. · 123 Market Street, Suite
+                                        400, San Francisco, CA</span
+                                      >
+                                    </p>
+                                  </td>
+                                </tr>
+                              </tbody>
+                            </table>
+                            <table
+                              align="center"
+                              width="100%"
+                              border="0"
+                              cellpadding="0"
+                              cellspacing="0"
+                              role="presentation">
+                              <tbody style="width:100%">
+                                <tr style="width:100%">
+                                  <td
+                                    data-id="__react-email-column"
+                                    style="padding-top:0px;padding-bottom:24px;padding-left:0px;padding-right:0px;text-align:center">
+                                    <a
+                                      href="*|UNSUB|*"
+                                      style="color:#067df7;text-decoration-line:none;font-family:Helvetica, Arial, sans-serif;font-size:12px;text-decoration:underline"
+                                      target="_blank"
+                                      >Unsubscribe</a
+                                    >
                                   </td>
                                 </tr>
                               </tbody>
@@ -530,6 +1342,129 @@ exports[`template header > renders default-params HTML that matches its snapshot
 "
 `;
 
+exports[`template header-centered > renders default-params HTML that matches its snapshot 1`] = `
+"<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html dir="ltr" lang="en">
+  <head>
+    <meta content="text/html; charset=UTF-8" http-equiv="Content-Type" />
+    <meta name="x-apple-disable-message-reformatting" />
+  </head>
+  <body dir="ltr" lang="en" style="background-color:#f4f4f4;margin:0;padding:0">
+    <!--$--><!--html--><!--head--><!--body-->
+    <table
+      border="0"
+      width="100%"
+      cellpadding="0"
+      cellspacing="0"
+      role="presentation"
+      align="center">
+      <tbody>
+        <tr>
+          <td
+            dir="ltr"
+            lang="en"
+            style="background-color:#f4f4f4;margin:0;padding:0">
+            <table
+              align="center"
+              width="100%"
+              border="0"
+              cellpadding="0"
+              cellspacing="0"
+              role="presentation"
+              style="background-color:#f4f4f4">
+              <tbody>
+                <tr>
+                  <td>
+                    <table
+                      align="center"
+                      width="100%"
+                      border="0"
+                      cellpadding="0"
+                      cellspacing="0"
+                      role="presentation"
+                      style="max-width:600px;width:100%;background-color:#ffffff">
+                      <tbody>
+                        <tr style="width:100%">
+                          <td
+                            style="padding-top:24px;padding-bottom:0px;padding-left:24px;padding-right:24px">
+                            <table
+                              align="center"
+                              width="100%"
+                              border="0"
+                              cellpadding="0"
+                              cellspacing="0"
+                              role="presentation">
+                              <tbody style="width:100%">
+                                <tr style="width:100%">
+                                  <td
+                                    data-id="__react-email-column"
+                                    style="padding-top:0px;padding-bottom:24px;padding-left:0px;padding-right:0px">
+                                    <img
+                                      alt="Acme logo"
+                                      src="https://placehold.co/280x80.png"
+                                      style="display:block;outline:none;border:none;text-decoration:none;max-width:100%;height:auto;margin-left:auto;margin-right:auto"
+                                      width="140" />
+                                  </td>
+                                </tr>
+                              </tbody>
+                            </table>
+                            <table
+                              align="center"
+                              width="100%"
+                              border="0"
+                              cellpadding="0"
+                              cellspacing="0"
+                              role="presentation">
+                              <tbody style="width:100%">
+                                <tr style="width:100%">
+                                  <td
+                                    data-id="__react-email-column"
+                                    style="padding-top:0px;padding-bottom:24px;padding-left:0px;padding-right:0px">
+                                    <p
+                                      style="font-size:14px;line-height:24px;font-family:Helvetica, Arial, sans-serif;color:#333333;text-align:center;word-wrap:break-word;word-break:break-word;margin-top:0;margin-bottom:0">
+                                      <a
+                                        href="https://example.com/shop"
+                                        style="color:#067df7;text-decoration-line:none;text-decoration:underline"
+                                        target="_blank"
+                                        >Shop</a
+                                      >
+                                      ·
+                                      <a
+                                        href="https://example.com/about"
+                                        style="color:#067df7;text-decoration-line:none;text-decoration:underline"
+                                        target="_blank"
+                                        >About</a
+                                      >
+                                      ·
+                                      <a
+                                        href="https://example.com/contact"
+                                        style="color:#067df7;text-decoration-line:none;text-decoration:underline"
+                                        target="_blank"
+                                        >Contact</a
+                                      >
+                                    </p>
+                                  </td>
+                                </tr>
+                              </tbody>
+                            </table>
+                          </td>
+                        </tr>
+                      </tbody>
+                    </table>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </td>
+        </tr>
+      </tbody>
+    </table>
+    <!--/$-->
+  </body>
+</html>
+"
+`;
+
 exports[`template hero > renders default-params HTML that matches its snapshot 1`] = `
 "<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
 <html dir="ltr" lang="en">
@@ -646,6 +1581,165 @@ exports[`template hero > renders default-params HTML that matches its snapshot 1
                                         ><!--[if mso]><i style="mso-font-width:400%" hidden>&#8202;&#8202;&#8202;&#8203;</i><![endif]--></span
                                       ></a
                                     >
+                                  </td>
+                                </tr>
+                              </tbody>
+                            </table>
+                          </td>
+                        </tr>
+                      </tbody>
+                    </table>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </td>
+        </tr>
+      </tbody>
+    </table>
+    <!--/$-->
+  </body>
+</html>
+"
+`;
+
+exports[`template hero-split > renders default-params HTML that matches its snapshot 1`] = `
+"<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html dir="ltr" lang="en">
+  <head>
+    <meta content="text/html; charset=UTF-8" http-equiv="Content-Type" />
+    <meta name="x-apple-disable-message-reformatting" />
+  </head>
+  <body dir="ltr" lang="en" style="background-color:#f4f4f4;margin:0;padding:0">
+    <!--$--><!--html--><!--head--><!--body-->
+    <table
+      border="0"
+      width="100%"
+      cellpadding="0"
+      cellspacing="0"
+      role="presentation"
+      align="center">
+      <tbody>
+        <tr>
+          <td
+            dir="ltr"
+            lang="en"
+            style="background-color:#f4f4f4;margin:0;padding:0">
+            <table
+              align="center"
+              width="100%"
+              border="0"
+              cellpadding="0"
+              cellspacing="0"
+              role="presentation"
+              style="background-color:#f4f4f4">
+              <tbody>
+                <tr>
+                  <td>
+                    <table
+                      align="center"
+                      width="100%"
+                      border="0"
+                      cellpadding="0"
+                      cellspacing="0"
+                      role="presentation"
+                      style="max-width:600px;width:100%;background-color:#ffffff">
+                      <tbody>
+                        <tr style="width:100%">
+                          <td
+                            style="padding-top:24px;padding-bottom:0px;padding-left:24px;padding-right:24px">
+                            <table
+                              align="center"
+                              width="100%"
+                              border="0"
+                              cellpadding="0"
+                              cellspacing="0"
+                              role="presentation">
+                              <tbody style="width:100%">
+                                <tr style="width:100%">
+                                  <td
+                                    data-id="__react-email-column"
+                                    style="width:55%;vertical-align:middle;padding-top:0px;padding-bottom:0px;padding-left:0px;padding-right:0px">
+                                    <table
+                                      align="center"
+                                      width="100%"
+                                      border="0"
+                                      cellpadding="0"
+                                      cellspacing="0"
+                                      role="presentation">
+                                      <tbody style="width:100%">
+                                        <tr style="width:100%">
+                                          <td
+                                            data-id="__react-email-column"
+                                            style="padding-top:0px;padding-bottom:24px;padding-left:0px;padding-right:0px">
+                                            <h1
+                                              style="font-family:Helvetica, Arial, sans-serif;color:#111111;text-align:left;word-wrap:break-word;word-break:break-word;font-size:32px;line-height:1.3;font-weight:bold;margin:0">
+                                              Ship email your whole team loves
+                                            </h1>
+                                            <p
+                                              style="font-size:14px;line-height:24px;font-family:Helvetica, Arial, sans-serif;color:#333333;text-align:left;word-wrap:break-word;word-break:break-word;margin-top:0;margin-bottom:0">
+                                              Design once, stay on brand
+                                              everywhere: prebuilt sections,
+                                              live previews, and themes that
+                                              restyle everything in one click.
+                                            </p>
+                                          </td>
+                                        </tr>
+                                      </tbody>
+                                    </table>
+                                    <table
+                                      align="center"
+                                      width="100%"
+                                      border="0"
+                                      cellpadding="0"
+                                      cellspacing="0"
+                                      role="presentation">
+                                      <tbody style="width:100%">
+                                        <tr style="width:100%">
+                                          <td
+                                            data-id="__react-email-column"
+                                            style="padding-top:0px;padding-bottom:24px;padding-left:0px;padding-right:0px;text-align:left">
+                                            <a
+                                              href="https://example.com"
+                                              style="line-height:100%;text-decoration:none;display:inline-block;max-width:100%;mso-padding-alt:0px;background-color:#000000;color:#ffffff;border-radius:4px;padding:12px 24px;font-family:Helvetica, Arial, sans-serif;padding-top:12px;padding-right:24px;padding-bottom:12px;padding-left:24px"
+                                              target="_blank"
+                                              ><span
+                                                ><!--[if mso]><i style="mso-font-width:400%;mso-text-raise:18px" hidden>&#8202;&#8202;&#8202;</i><![endif]--></span
+                                              ><span
+                                                style="max-width:100%;display:inline-block;line-height:120%;mso-padding-alt:0px;mso-text-raise:9px"
+                                                >Get started</span
+                                              ><span
+                                                ><!--[if mso]><i style="mso-font-width:400%" hidden>&#8202;&#8202;&#8202;&#8203;</i><![endif]--></span
+                                              ></a
+                                            >
+                                          </td>
+                                        </tr>
+                                      </tbody>
+                                    </table>
+                                  </td>
+                                  <td
+                                    data-id="__react-email-column"
+                                    style="width:45%;vertical-align:middle;padding-top:0px;padding-bottom:0px;padding-left:0px;padding-right:0px">
+                                    <table
+                                      align="center"
+                                      width="100%"
+                                      border="0"
+                                      cellpadding="0"
+                                      cellspacing="0"
+                                      role="presentation">
+                                      <tbody style="width:100%">
+                                        <tr style="width:100%">
+                                          <td
+                                            data-id="__react-email-column"
+                                            style="padding-top:0px;padding-bottom:24px;padding-left:0px;padding-right:0px">
+                                            <img
+                                              alt="Product preview"
+                                              src="https://placehold.co/600x600.png"
+                                              style="display:block;outline:none;border:none;text-decoration:none;max-width:100%;height:auto;margin-left:auto;margin-right:auto" />
+                                          </td>
+                                        </tr>
+                                      </tbody>
+                                    </table>
                                   </td>
                                 </tr>
                               </tbody>
@@ -789,6 +1883,351 @@ exports[`template image-gallery > renders default-params HTML that matches its s
                                               alt="Finished email on a phone screen"
                                               src="https://placehold.co/600x400.png"
                                               style="display:block;outline:none;border:none;text-decoration:none;max-width:100%;height:auto;margin-left:auto;margin-right:auto" />
+                                          </td>
+                                        </tr>
+                                      </tbody>
+                                    </table>
+                                  </td>
+                                </tr>
+                              </tbody>
+                            </table>
+                          </td>
+                        </tr>
+                      </tbody>
+                    </table>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </td>
+        </tr>
+      </tbody>
+    </table>
+    <!--/$-->
+  </body>
+</html>
+"
+`;
+
+exports[`template pricing > renders default-params HTML that matches its snapshot 1`] = `
+"<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html dir="ltr" lang="en">
+  <head>
+    <meta content="text/html; charset=UTF-8" http-equiv="Content-Type" />
+    <meta name="x-apple-disable-message-reformatting" />
+  </head>
+  <body dir="ltr" lang="en" style="background-color:#f4f4f4;margin:0;padding:0">
+    <!--$--><!--html--><!--head--><!--body-->
+    <table
+      border="0"
+      width="100%"
+      cellpadding="0"
+      cellspacing="0"
+      role="presentation"
+      align="center">
+      <tbody>
+        <tr>
+          <td
+            dir="ltr"
+            lang="en"
+            style="background-color:#f4f4f4;margin:0;padding:0">
+            <table
+              align="center"
+              width="100%"
+              border="0"
+              cellpadding="0"
+              cellspacing="0"
+              role="presentation"
+              style="background-color:#f4f4f4">
+              <tbody>
+                <tr>
+                  <td>
+                    <table
+                      align="center"
+                      width="100%"
+                      border="0"
+                      cellpadding="0"
+                      cellspacing="0"
+                      role="presentation"
+                      style="max-width:600px;width:100%;background-color:#ffffff">
+                      <tbody>
+                        <tr style="width:100%">
+                          <td
+                            style="padding-top:24px;padding-bottom:0px;padding-left:24px;padding-right:24px">
+                            <table
+                              align="center"
+                              width="100%"
+                              border="0"
+                              cellpadding="0"
+                              cellspacing="0"
+                              role="presentation">
+                              <tbody style="width:100%">
+                                <tr style="width:100%">
+                                  <td
+                                    data-id="__react-email-column"
+                                    style="padding-top:0px;padding-bottom:24px;padding-left:0px;padding-right:0px">
+                                    <h3
+                                      style="font-family:Helvetica, Arial, sans-serif;color:#111111;text-align:center;word-wrap:break-word;word-break:break-word;font-size:20px;line-height:1.3;font-weight:bold;margin:0">
+                                      Pro
+                                    </h3>
+                                    <h1
+                                      style="font-family:Helvetica, Arial, sans-serif;color:#111111;text-align:center;word-wrap:break-word;word-break:break-word;font-size:32px;line-height:1.3;font-weight:bold;margin:0">
+                                      $29
+                                    </h1>
+                                    <p
+                                      style="font-size:14px;line-height:24px;font-family:Helvetica, Arial, sans-serif;color:#333333;text-align:center;word-wrap:break-word;word-break:break-word;margin-top:0;margin-bottom:0">
+                                      per month
+                                    </p>
+                                  </td>
+                                </tr>
+                              </tbody>
+                            </table>
+                            <table
+                              align="center"
+                              width="100%"
+                              border="0"
+                              cellpadding="0"
+                              cellspacing="0"
+                              role="presentation">
+                              <tbody style="width:100%">
+                                <tr style="width:100%">
+                                  <td
+                                    data-id="__react-email-column"
+                                    style="padding-top:0px;padding-bottom:24px;padding-left:0px;padding-right:0px">
+                                    <hr
+                                      style="width:100%;border:none;border-color:transparent;border-top:1px solid #e6e6e6;margin:0" />
+                                  </td>
+                                </tr>
+                              </tbody>
+                            </table>
+                            <table
+                              align="center"
+                              width="100%"
+                              border="0"
+                              cellpadding="0"
+                              cellspacing="0"
+                              role="presentation">
+                              <tbody style="width:100%">
+                                <tr style="width:100%">
+                                  <td
+                                    data-id="__react-email-column"
+                                    style="padding-top:0px;padding-bottom:24px;padding-left:0px;padding-right:0px">
+                                    <p
+                                      style="font-size:14px;line-height:24px;font-family:Helvetica, Arial, sans-serif;color:#333333;text-align:center;word-wrap:break-word;word-break:break-word;margin-top:0;margin-bottom:0">
+                                      ✓ Unlimited projects
+                                    </p>
+                                    <p
+                                      style="font-size:14px;line-height:24px;font-family:Helvetica, Arial, sans-serif;color:#333333;text-align:center;word-wrap:break-word;word-break:break-word;margin-top:0;margin-bottom:0">
+                                      ✓ Advanced analytics
+                                    </p>
+                                    <p
+                                      style="font-size:14px;line-height:24px;font-family:Helvetica, Arial, sans-serif;color:#333333;text-align:center;word-wrap:break-word;word-break:break-word;margin-top:0;margin-bottom:0">
+                                      ✓ Priority support
+                                    </p>
+                                  </td>
+                                </tr>
+                              </tbody>
+                            </table>
+                            <table
+                              align="center"
+                              width="100%"
+                              border="0"
+                              cellpadding="0"
+                              cellspacing="0"
+                              role="presentation">
+                              <tbody style="width:100%">
+                                <tr style="width:100%">
+                                  <td
+                                    data-id="__react-email-column"
+                                    style="height:8px;font-size:1px;line-height:8px">
+                                     
+                                  </td>
+                                </tr>
+                              </tbody>
+                            </table>
+                            <table
+                              align="center"
+                              width="100%"
+                              border="0"
+                              cellpadding="0"
+                              cellspacing="0"
+                              role="presentation">
+                              <tbody style="width:100%">
+                                <tr style="width:100%">
+                                  <td
+                                    data-id="__react-email-column"
+                                    style="padding-top:0px;padding-bottom:24px;padding-left:0px;padding-right:0px;text-align:center">
+                                    <a
+                                      href="https://example.com/pricing"
+                                      style="line-height:100%;text-decoration:none;display:inline-block;max-width:100%;mso-padding-alt:0px;background-color:#000000;color:#ffffff;border-radius:4px;padding:12px 24px;font-family:Helvetica, Arial, sans-serif;padding-top:12px;padding-right:24px;padding-bottom:12px;padding-left:24px"
+                                      target="_blank"
+                                      ><span
+                                        ><!--[if mso]><i style="mso-font-width:400%;mso-text-raise:18px" hidden>&#8202;&#8202;&#8202;</i><![endif]--></span
+                                      ><span
+                                        style="max-width:100%;display:inline-block;line-height:120%;mso-padding-alt:0px;mso-text-raise:9px"
+                                        >Start free trial</span
+                                      ><span
+                                        ><!--[if mso]><i style="mso-font-width:400%" hidden>&#8202;&#8202;&#8202;&#8203;</i><![endif]--></span
+                                      ></a
+                                    >
+                                  </td>
+                                </tr>
+                              </tbody>
+                            </table>
+                          </td>
+                        </tr>
+                      </tbody>
+                    </table>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </td>
+        </tr>
+      </tbody>
+    </table>
+    <!--/$-->
+  </body>
+</html>
+"
+`;
+
+exports[`template product > renders default-params HTML that matches its snapshot 1`] = `
+"<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html dir="ltr" lang="en">
+  <head>
+    <meta content="text/html; charset=UTF-8" http-equiv="Content-Type" />
+    <meta name="x-apple-disable-message-reformatting" />
+  </head>
+  <body dir="ltr" lang="en" style="background-color:#f4f4f4;margin:0;padding:0">
+    <!--$--><!--html--><!--head--><!--body-->
+    <table
+      border="0"
+      width="100%"
+      cellpadding="0"
+      cellspacing="0"
+      role="presentation"
+      align="center">
+      <tbody>
+        <tr>
+          <td
+            dir="ltr"
+            lang="en"
+            style="background-color:#f4f4f4;margin:0;padding:0">
+            <table
+              align="center"
+              width="100%"
+              border="0"
+              cellpadding="0"
+              cellspacing="0"
+              role="presentation"
+              style="background-color:#f4f4f4">
+              <tbody>
+                <tr>
+                  <td>
+                    <table
+                      align="center"
+                      width="100%"
+                      border="0"
+                      cellpadding="0"
+                      cellspacing="0"
+                      role="presentation"
+                      style="max-width:600px;width:100%;background-color:#ffffff">
+                      <tbody>
+                        <tr style="width:100%">
+                          <td
+                            style="padding-top:24px;padding-bottom:0px;padding-left:24px;padding-right:24px">
+                            <table
+                              align="center"
+                              width="100%"
+                              border="0"
+                              cellpadding="0"
+                              cellspacing="0"
+                              role="presentation">
+                              <tbody style="width:100%">
+                                <tr style="width:100%">
+                                  <td
+                                    data-id="__react-email-column"
+                                    style="width:45%;vertical-align:middle;padding-top:0px;padding-bottom:0px;padding-left:0px;padding-right:0px">
+                                    <table
+                                      align="center"
+                                      width="100%"
+                                      border="0"
+                                      cellpadding="0"
+                                      cellspacing="0"
+                                      role="presentation">
+                                      <tbody style="width:100%">
+                                        <tr style="width:100%">
+                                          <td
+                                            data-id="__react-email-column"
+                                            style="padding-top:0px;padding-bottom:24px;padding-left:0px;padding-right:0px">
+                                            <img
+                                              alt="Product photo"
+                                              src="https://placehold.co/600x600.png"
+                                              style="display:block;outline:none;border:none;text-decoration:none;max-width:100%;height:auto;margin-left:auto;margin-right:auto" />
+                                          </td>
+                                        </tr>
+                                      </tbody>
+                                    </table>
+                                  </td>
+                                  <td
+                                    data-id="__react-email-column"
+                                    style="width:55%;vertical-align:middle;padding-top:0px;padding-bottom:0px;padding-left:0px;padding-right:0px">
+                                    <table
+                                      align="center"
+                                      width="100%"
+                                      border="0"
+                                      cellpadding="0"
+                                      cellspacing="0"
+                                      role="presentation">
+                                      <tbody style="width:100%">
+                                        <tr style="width:100%">
+                                          <td
+                                            data-id="__react-email-column"
+                                            style="padding-top:0px;padding-bottom:24px;padding-left:0px;padding-right:0px">
+                                            <h2
+                                              style="font-family:Helvetica, Arial, sans-serif;color:#111111;text-align:left;word-wrap:break-word;word-break:break-word;font-size:24px;line-height:1.3;font-weight:bold;margin:0">
+                                              The Everyday Tote
+                                            </h2>
+                                            <p
+                                              style="font-size:14px;line-height:24px;font-family:Helvetica, Arial, sans-serif;color:#333333;text-align:left;word-wrap:break-word;word-break:break-word;margin-top:0;margin-bottom:0">
+                                              Water-resistant canvas, an
+                                              easy-access laptop sleeve, and
+                                              room for the whole day.
+                                            </p>
+                                            <p
+                                              style="font-size:14px;line-height:24px;font-family:Helvetica, Arial, sans-serif;color:#333333;text-align:left;word-wrap:break-word;word-break:break-word;margin-top:0;margin-bottom:0">
+                                              <strong>$48</strong>
+                                            </p>
+                                          </td>
+                                        </tr>
+                                      </tbody>
+                                    </table>
+                                    <table
+                                      align="center"
+                                      width="100%"
+                                      border="0"
+                                      cellpadding="0"
+                                      cellspacing="0"
+                                      role="presentation">
+                                      <tbody style="width:100%">
+                                        <tr style="width:100%">
+                                          <td
+                                            data-id="__react-email-column"
+                                            style="padding-top:0px;padding-bottom:24px;padding-left:0px;padding-right:0px;text-align:left">
+                                            <a
+                                              href="https://example.com/shop"
+                                              style="line-height:100%;text-decoration:none;display:inline-block;max-width:100%;mso-padding-alt:0px;background-color:#000000;color:#ffffff;border-radius:4px;padding:12px 24px;font-family:Helvetica, Arial, sans-serif;padding-top:12px;padding-right:24px;padding-bottom:12px;padding-left:24px"
+                                              target="_blank"
+                                              ><span
+                                                ><!--[if mso]><i style="mso-font-width:400%;mso-text-raise:18px" hidden>&#8202;&#8202;&#8202;</i><![endif]--></span
+                                              ><span
+                                                style="max-width:100%;display:inline-block;line-height:120%;mso-padding-alt:0px;mso-text-raise:9px"
+                                                >Shop now</span
+                                              ><span
+                                                ><!--[if mso]><i style="mso-font-width:400%" hidden>&#8202;&#8202;&#8202;&#8203;</i><![endif]--></span
+                                              ></a
+                                            >
                                           </td>
                                         </tr>
                                       </tbody>
@@ -1043,6 +2482,145 @@ exports[`template testimonial > renders default-params HTML that matches its sna
                                       style="font-size:14px;line-height:24px;font-family:Helvetica, Arial, sans-serif;color:#333333;text-align:center;word-wrap:break-word;word-break:break-word;margin-top:0;margin-bottom:0">
                                       <strong>Jordan Lee</strong>
                                     </p>
+                                  </td>
+                                </tr>
+                              </tbody>
+                            </table>
+                          </td>
+                        </tr>
+                      </tbody>
+                    </table>
+                  </td>
+                </tr>
+              </tbody>
+            </table>
+          </td>
+        </tr>
+      </tbody>
+    </table>
+    <!--/$-->
+  </body>
+</html>
+"
+`;
+
+exports[`template testimonial-columns > renders default-params HTML that matches its snapshot 1`] = `
+"<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Transitional//EN" "http://www.w3.org/TR/xhtml1/DTD/xhtml1-transitional.dtd">
+<html dir="ltr" lang="en">
+  <head>
+    <meta content="text/html; charset=UTF-8" http-equiv="Content-Type" />
+    <meta name="x-apple-disable-message-reformatting" />
+  </head>
+  <body dir="ltr" lang="en" style="background-color:#f4f4f4;margin:0;padding:0">
+    <!--$--><!--html--><!--head--><!--body-->
+    <table
+      border="0"
+      width="100%"
+      cellpadding="0"
+      cellspacing="0"
+      role="presentation"
+      align="center">
+      <tbody>
+        <tr>
+          <td
+            dir="ltr"
+            lang="en"
+            style="background-color:#f4f4f4;margin:0;padding:0">
+            <table
+              align="center"
+              width="100%"
+              border="0"
+              cellpadding="0"
+              cellspacing="0"
+              role="presentation"
+              style="background-color:#f4f4f4">
+              <tbody>
+                <tr>
+                  <td>
+                    <table
+                      align="center"
+                      width="100%"
+                      border="0"
+                      cellpadding="0"
+                      cellspacing="0"
+                      role="presentation"
+                      style="max-width:600px;width:100%;background-color:#ffffff">
+                      <tbody>
+                        <tr style="width:100%">
+                          <td
+                            style="padding-top:24px;padding-bottom:0px;padding-left:24px;padding-right:24px">
+                            <table
+                              align="center"
+                              width="100%"
+                              border="0"
+                              cellpadding="0"
+                              cellspacing="0"
+                              role="presentation">
+                              <tbody style="width:100%">
+                                <tr style="width:100%">
+                                  <td
+                                    data-id="__react-email-column"
+                                    style="width:50%;vertical-align:top;padding-top:0px;padding-bottom:0px;padding-left:0px;padding-right:0px">
+                                    <table
+                                      align="center"
+                                      width="100%"
+                                      border="0"
+                                      cellpadding="0"
+                                      cellspacing="0"
+                                      role="presentation">
+                                      <tbody style="width:100%">
+                                        <tr style="width:100%">
+                                          <td
+                                            data-id="__react-email-column"
+                                            style="padding-top:0px;padding-bottom:24px;padding-left:0px;padding-right:0px">
+                                            <p
+                                              style="font-size:14px;line-height:24px;font-family:Helvetica, Arial, sans-serif;color:#333333;text-align:center;word-wrap:break-word;word-break:break-word;margin-top:0;margin-bottom:0">
+                                              <em
+                                                >“Our whole newsletter now ships
+                                                in an afternoon.”</em
+                                              >
+                                            </p>
+                                            <p
+                                              style="font-size:14px;line-height:24px;font-family:Helvetica, Arial, sans-serif;color:#333333;text-align:center;word-wrap:break-word;word-break:break-word;margin-top:0;margin-bottom:0">
+                                              <strong>Priya Raman</strong> —
+                                              Growth, Fieldnotes
+                                            </p>
+                                          </td>
+                                        </tr>
+                                      </tbody>
+                                    </table>
+                                  </td>
+                                  <td
+                                    data-id="__react-email-column"
+                                    style="width:50%;vertical-align:top;padding-top:0px;padding-bottom:0px;padding-left:0px;padding-right:0px">
+                                    <table
+                                      align="center"
+                                      width="100%"
+                                      border="0"
+                                      cellpadding="0"
+                                      cellspacing="0"
+                                      role="presentation">
+                                      <tbody style="width:100%">
+                                        <tr style="width:100%">
+                                          <td
+                                            data-id="__react-email-column"
+                                            style="padding-top:0px;padding-bottom:24px;padding-left:0px;padding-right:0px">
+                                            <p
+                                              style="font-size:14px;line-height:24px;font-family:Helvetica, Arial, sans-serif;color:#333333;text-align:center;word-wrap:break-word;word-break:break-word;margin-top:0;margin-bottom:0">
+                                              <em
+                                                >“The first email tool our
+                                                designers actually like.”</em
+                                              >
+                                            </p>
+                                            <p
+                                              style="font-size:14px;line-height:24px;font-family:Helvetica, Arial, sans-serif;color:#333333;text-align:center;word-wrap:break-word;word-break:break-word;margin-top:0;margin-bottom:0">
+                                              <strong>Marcus Webb</strong> —
+                                              Brand Lead, Halide
+                                            </p>
+                                          </td>
+                                        </tr>
+                                      </tbody>
+                                    </table>
                                   </td>
                                 </tr>
                               </tbody>
