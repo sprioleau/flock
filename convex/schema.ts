@@ -256,8 +256,10 @@ export default defineSchema({
     sourceUrl: v.optional(v.string()),
     /** Email-safe CSS font stacks the kit was built around. */
     fonts: v.object({ heading: v.string(), body: v.string() }),
-    /** Brand logo URL (type-field only for now, mirrors the frontend BrandKit type). */
+    /** Brand logo: absolute URL or data:image/svg+xml URI (inline-SVG logos). */
     logoUrl: v.optional(v.string()),
+    /** og:image social-card URL — display-only kit metadata. */
+    socialImageUrl: v.optional(v.string()),
     /** ThemeVariation[]: complete `Required<GlobalStyles>` payloads (see guard note above). */
     variations: v.array(
       v.object({

@@ -18,9 +18,10 @@ import {
 } from "@/lib/brand-kit";
 import { normalizeCssColor } from "../color-utils";
 import { expandSemanticVariation, repairForegroundContrast } from "../expand-variations";
+import { cleanTitleToBrandName, extractSiteIdentity } from "../extract-site-identity";
 import { brandKitSchema } from "../generate-brand-kit";
 import { harvestBrandSignals } from "../harvest";
-import { isBlockedAddress, validateUrlSyntax } from "../url-guard";
+import { isBlockedAddress, normalizeWebsiteUrl, validateUrlSyntax } from "../url-guard";
 
 let testCount = 0;
 function check(label: string, assertion: () => void) {
@@ -76,6 +77,135 @@ check("allows public resolved addresses", () => {
   for (const ip of ["8.8.8.8", "151.101.1.140", "2606:4700::6810:84e5"]) {
     assert.equal(isBlockedAddress(ip), false, ip);
   }
+});
+
+// ---------------------------------------------------------------------------
+// 1b. Scheme-less URL normalization (https only — NEVER http)
+// ---------------------------------------------------------------------------
+
+console.log("normalizeWebsiteUrl");
+check("scheme-less input gets https:// (never http)", () => {
+  assert.equal(normalizeWebsiteUrl("cnn.com"), "https://cnn.com");
+  assert.equal(normalizeWebsiteUrl("  cnn.com/travel  "), "https://cnn.com/travel");
+  assert.equal(normalizeWebsiteUrl("//cdn.example.com"), "https://cdn.example.com");
+  assert.ok(!normalizeWebsiteUrl("cnn.com").startsWith("http://"), "must never force http://");
+});
+check("input with a scheme is left untouched", () => {
+  assert.equal(normalizeWebsiteUrl("https://cnn.com"), "https://cnn.com");
+  assert.equal(normalizeWebsiteUrl("http://example.com"), "http://example.com");
+  assert.equal(normalizeWebsiteUrl("ftp://example.com"), "ftp://example.com"); // guard rejects downstream
+});
+check("normalized scheme-less internal hosts are still SSRF-rejected", () => {
+  for (const raw of ["localhost", "intranet", "127.0.0.1", "192.168.1.1", "service.internal"]) {
+    assert.equal(validateUrlSyntax(normalizeWebsiteUrl(raw)).isAllowed, false, raw);
+  }
+  assert.equal(validateUrlSyntax(normalizeWebsiteUrl("cnn.com")).isAllowed, true);
+});
+
+// ---------------------------------------------------------------------------
+// 1c. Deterministic site identity (logo / name / social card ladder)
+// ---------------------------------------------------------------------------
+
+console.log("extract-site-identity");
+const BASE_URL = "https://acme.test/";
+
+check("og:logo wins the logo ladder; og:site_name wins the name ladder", () => {
+  const identity = extractSiteIdentity({
+    html: `<head>
+      <meta property="og:logo" content="/brand/og-logo.png" />
+      <meta property="og:site_name" content="Acme" />
+      <meta property="og:image" content="https://cdn.acme.test/card.png" />
+      <link rel="icon" type="image/svg+xml" href="/icon.svg" />
+      <title>Acme — Robots</title>
+    </head><header><img src="/nav-logo.png" class="logo" /></header>`,
+    baseUrl: BASE_URL,
+  });
+  assert.equal(identity.logoUrl, "https://acme.test/brand/og-logo.png");
+  assert.equal(identity.siteName, "Acme");
+  assert.equal(identity.socialImageUrl, "https://cdn.acme.test/card.png");
+});
+
+check("JSON-LD Organization supplies logo + name when og tags are absent", () => {
+  const identity = extractSiteIdentity({
+    html: `<script type="application/ld+json">
+      {"@context":"https://schema.org","@graph":[
+        {"@type":"WebSite","name":"ignored"},
+        {"@type":"NewsMediaOrganization","name":"Acme News","logo":{"@type":"ImageObject","url":"https://acme.test/jsonld-logo.png"}}
+      ]}
+    </script><link rel="icon" href="/favicon.ico" /><title>Acme News | Home</title>`,
+    baseUrl: BASE_URL,
+  });
+  assert.equal(identity.logoUrl, "https://acme.test/jsonld-logo.png");
+  assert.equal(identity.siteName, "Acme News");
+});
+
+check("icon ladder prefers SVG over apple-touch-icon over sized favicons", () => {
+  const svgFirst = extractSiteIdentity({
+    html: `<link rel="icon" sizes="48x48" href="/favicon-48.png" />
+      <link rel="apple-touch-icon" href="/apple-touch.png" />
+      <link rel="icon" type="image/svg+xml" href="/icon.svg" />`,
+    baseUrl: BASE_URL,
+  });
+  assert.equal(svgFirst.logoUrl, "https://acme.test/icon.svg");
+  const appleTouchNext = extractSiteIdentity({
+    html: `<link rel="icon" sizes="48x48" href="/favicon-48.png" />
+      <link rel="apple-touch-icon" href="/apple-touch.png" />`,
+    baseUrl: BASE_URL,
+  });
+  assert.equal(appleTouchNext.logoUrl, "https://acme.test/apple-touch.png");
+});
+
+check("masthead fallback: logo-hinted <img> when the head has no logo signals", () => {
+  const identity = extractSiteIdentity({
+    html: `<title>Acme</title>
+      <header><img src="/img/hero.jpg" alt="A friendly robot" /><img src="/img/acme-mark.png" class="site-logo" /></header>`,
+    baseUrl: BASE_URL,
+  });
+  assert.equal(identity.logoUrl, "https://acme.test/img/acme-mark.png");
+});
+
+check("masthead fallback: inline <svg> is serialized to a data: URI (xmlns injected)", () => {
+  const identity = extractSiteIdentity({
+    html: `<title>Acme</title>
+      <nav><a href="/"><svg class="acme-logo" viewBox="0 0 10 10"><path d="M0 0h10v10z"/></svg></a></nav>`,
+    baseUrl: BASE_URL,
+  });
+  assert.ok(identity.logoUrl?.startsWith("data:image/svg+xml;base64,"), identity.logoUrl ?? "(null)");
+  const decoded = Buffer.from(
+    (identity.logoUrl ?? "").replace("data:image/svg+xml;base64,", ""),
+    "base64",
+  ).toString("utf-8");
+  assert.ok(decoded.includes('xmlns="http://www.w3.org/2000/svg"'), "xmlns injected");
+  assert.ok(decoded.includes('class="acme-logo"'), "original markup preserved");
+});
+
+check("private-network logo URLs are dropped and the ladder falls through", () => {
+  const identity = extractSiteIdentity({
+    html: `<meta property="og:logo" content="http://192.168.1.10/logo.png" />
+      <link rel="apple-touch-icon" href="/apple-touch.png" />`,
+    baseUrl: BASE_URL,
+  });
+  assert.equal(identity.logoUrl, "https://acme.test/apple-touch.png");
+});
+
+check("title cleaning: brand segment before the first separator", () => {
+  assert.equal(cleanTitleToBrandName("CNN — Breaking News, Latest News and Videos"), "CNN");
+  assert.equal(cleanTitleToBrandName("Acme | Robots for everyone"), "Acme");
+  assert.equal(cleanTitleToBrandName("Acme · Home"), "Acme");
+  assert.equal(cleanTitleToBrandName("Stripe - Payments infrastructure"), "Stripe");
+  assert.equal(cleanTitleToBrandName("Just Acme"), "Just Acme");
+  assert.equal(cleanTitleToBrandName("   "), null);
+});
+
+check("identity on the saved fixture: head icons beat the masthead, name from og:site_name", () => {
+  const fixtureForIdentity = readFileSync(
+    path.join(process.cwd(), "src/lib/brand-kit-extraction/__tests__/fixtures/sample-site.html"),
+    "utf-8",
+  );
+  const identity = extractSiteIdentity({ html: fixtureForIdentity, baseUrl: BASE_URL });
+  assert.equal(identity.siteName, "Acme Robotics");
+  assert.equal(identity.logoUrl, "https://acme.test/icons/apple-touch-icon.png");
+  assert.equal(identity.socialImageUrl, "https://cdn.acme.test/social/og-card.png");
 });
 
 // ---------------------------------------------------------------------------

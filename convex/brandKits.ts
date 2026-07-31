@@ -32,6 +32,7 @@ export const brandKitValidator = v.object({
   sourceUrl: v.optional(v.string()),
   fonts: v.object({ heading: v.string(), body: v.string() }),
   logoUrl: v.optional(v.string()),
+  socialImageUrl: v.optional(v.string()),
   variations: v.array(
     v.object({
       id: v.string(),
@@ -103,6 +104,7 @@ export const getActiveBrandKit = query({
       ...(row.sourceUrl !== undefined ? { sourceUrl: row.sourceUrl } : {}),
       fonts: row.fonts,
       ...(row.logoUrl !== undefined ? { logoUrl: row.logoUrl } : {}),
+      ...(row.socialImageUrl !== undefined ? { socialImageUrl: row.socialImageUrl } : {}),
       variations: row.variations,
     };
   },

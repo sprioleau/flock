@@ -112,6 +112,9 @@ export function BrandKitPanel() {
           ...(previewKit.sourceUrl !== undefined ? { sourceUrl: previewKit.sourceUrl } : {}),
           fonts: previewKit.fonts,
           ...(previewKit.logoUrl !== undefined ? { logoUrl: previewKit.logoUrl } : {}),
+          ...(previewKit.socialImageUrl !== undefined
+            ? { socialImageUrl: previewKit.socialImageUrl }
+            : {}),
           variations: previewKit.variations,
         },
       });
@@ -202,10 +205,16 @@ export function BrandKitPanel() {
                 void generateFromUrl();
               }}
             >
+              {/* type=text on purpose: scheme-less addresses ("cnn.com") are
+                  welcome — the backend normalizes them to https://. Native
+                  type=url validation would reject exactly those. */}
               <Input
                 id="brand-kit-url"
-                type="url"
-                placeholder="https://your-brand.com"
+                type="text"
+                inputMode="url"
+                autoComplete="off"
+                spellCheck={false}
+                placeholder="your-brand.com"
                 value={websiteUrl}
                 onChange={(event) => setWebsiteUrl(event.target.value)}
                 disabled={isGenerating}
@@ -290,6 +299,17 @@ function BrandKitSummary({
   return (
     <div className="flex flex-col gap-3 rounded-lg border p-3">
       <div className="flex min-w-0 items-center gap-2">
+        {brandKit.logoUrl !== undefined && (
+          // Plain <img> on purpose: the source is an arbitrary external host
+          // (or a data:image/svg+xml URI) — next/image can't optimize either.
+          // eslint-disable-next-line @next/next/no-img-element
+          <img
+            src={brandKit.logoUrl}
+            alt=""
+            className="size-6 shrink-0 rounded border bg-white object-contain p-0.5"
+            data-testid="brand-kit-logo"
+          />
+        )}
         <span className="min-w-0 truncate text-sm font-medium" data-testid="brand-kit-name">
           {brandKit.name}
         </span>
@@ -323,6 +343,16 @@ function BrandKitSummary({
           </dd>
         </div>
       </dl>
+      {brandKit.socialImageUrl !== undefined && (
+        // Subtle social-card peek — metadata display only, kept small.
+        // eslint-disable-next-line @next/next/no-img-element
+        <img
+          src={brandKit.socialImageUrl}
+          alt=""
+          className="h-14 w-auto max-w-full self-start rounded border object-cover opacity-90"
+          data-testid="brand-kit-social-image"
+        />
+      )}
       <ul className="flex flex-col gap-1.5">
         {brandKit.variations.map((variation) => (
           <li

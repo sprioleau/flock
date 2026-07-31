@@ -59,8 +59,14 @@ export interface BrandKit {
   name: string;
   /** Font stacks extracted for the brand. */
   fonts: BrandKitFonts;
-  /** Brand logo (Convex storage URL once uploads land). Type-field only for now. */
+  /**
+   * Brand logo: an absolute URL from the site's head metadata / masthead, or
+   * a `data:image/svg+xml` URI when the logo was an inline SVG. (Uploading
+   * the binary to Convex storage is a separate backlog item.)
+   */
   logoUrl?: string;
+  /** The site's og:image social-card URL — display-only kit metadata. */
+  socialImageUrl?: string;
   /** 3–4 agent-generated color variations; the theme dropdown's content. */
   variations: ThemeVariation[];
 }

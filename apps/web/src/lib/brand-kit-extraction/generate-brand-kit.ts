@@ -11,6 +11,12 @@
  * fonts and logo URLs that were literally harvested from the page. The logo
  * URL is re-checked against the candidate list after the call (never
  * invented), and unreadable pages fail honestly upstream of any model call.
+ *
+ * Site identity (name / logo / social card) is extracted DETERMINISTICALLY
+ * head-first (extract-site-identity.ts) and takes precedence over the model's
+ * picks — the head metadata is authoritative; the model only fills gaps.
+ * User input is normalized first: scheme-less "cnn.com" becomes https://
+ * (never http) before the SSRF guard judges it.
  */
 
 import { google } from "@ai-sdk/google";
@@ -20,8 +26,10 @@ import { z } from "zod";
 import type { BrandKit, BrandKitFonts } from "@/lib/brand-kit";
 import { EMAIL_SAFE_FONT_OPTIONS } from "@/components/studio/text-editor/email-safe-fonts";
 import { expandSemanticVariation, BUTTON_SHAPE_RADII, type ButtonShape } from "./expand-variations";
+import { extractSiteIdentity } from "./extract-site-identity";
 import { fetchPage, fetchTextResource } from "./fetch-page";
 import { harvestBrandSignals, type BrandSignals } from "./harvest";
+import { normalizeWebsiteUrl } from "./url-guard";
 
 export type BrandKitGenerationResult =
   | { isOk: true; brandKit: BrandKit }
@@ -108,6 +116,7 @@ export const brandKitSchema = z.object({
   name: z.string().min(1),
   fonts: z.object({ heading: z.string().min(1), body: z.string().min(1) }),
   logoUrl: z.string().optional(),
+  socialImageUrl: z.string().optional(),
   variations: z
     .array(z.object({ id: z.string().min(1), name: z.string().min(1), globals: requiredGlobalsSchema }))
     .min(MIN_VARIATIONS)
@@ -189,11 +198,16 @@ export async function generateBrandKit({ url }: { url: string }): Promise<BrandK
     };
   }
 
-  // 1. Fetch (guarded, honest failures).
-  const page = await fetchPage(url);
+  // 1. Fetch (guarded, honest failures). Scheme-less input gets https://
+  //    first — the guard then judges the normalized URL.
+  const page = await fetchPage(normalizeWebsiteUrl(url));
   if (!page.isOk) {
     return { isOk: false, statusCode: 422, message: page.message };
   }
+
+  // 1b. Deterministic head-first identity: name, logo, social card. The
+  //     head metadata is authoritative — these override the model's picks.
+  const identity = extractSiteIdentity({ html: page.html, baseUrl: page.finalUrl });
 
   // 2. Deterministic signal harvest (bounded stylesheet fetches, same guard).
   const signals = await harvestBrandSignals({
@@ -254,15 +268,20 @@ export async function generateBrandKit({ url }: { url: string }): Promise<BrandK
     return { isOk: false, statusCode: 502, message: FRIENDLY_GENERATION_FAILURE };
   }
 
-  // Logo: only a verbatim harvested candidate survives (never invented).
+  // Logo: the deterministic head-first extraction wins; the model's pick is
+  // only a fallback, and even then only a verbatim harvested candidate
+  // survives (never invented).
   const candidateUrls = new Set(signals.logoCandidates.map((candidate) => candidate.url));
-  const logoUrl = candidateUrls.has(modelOutput.logoUrl) ? modelOutput.logoUrl : undefined;
+  const logoUrl =
+    identity.logoUrl ?? (candidateUrls.has(modelOutput.logoUrl) ? modelOutput.logoUrl : undefined);
 
   const brandKit: BrandKit = {
     sourceUrl: page.finalUrl,
-    name: modelOutput.brandName,
+    // Deterministically extracted company name takes precedence.
+    name: identity.siteName ?? modelOutput.brandName,
     fonts,
-    ...(logoUrl === undefined ? {} : { logoUrl }),
+    ...(logoUrl === undefined || logoUrl === null ? {} : { logoUrl }),
+    ...(identity.socialImageUrl === null ? {} : { socialImageUrl: identity.socialImageUrl }),
     variations: dedupeVariationIds(expandedVariations),
   };
 

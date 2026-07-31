@@ -17,6 +17,7 @@
  */
 
 import { getChroma, isNearBlack, isNearWhite, normalizeCssColor } from "./color-utils";
+import { findMetaContent, findPageTitle, findTags, getAttribute, resolveUrl } from "./html-utils";
 
 export interface LogoCandidate {
   /** Absolute URL. */
@@ -63,70 +64,8 @@ const MAX_LOGO_CANDIDATES = 8;
 /** Injectable stylesheet fetcher so fixture tests never hit the network. */
 export type CssFetcher = (url: string) => Promise<string | null>;
 
-function decodeBasicEntities(text: string): string {
-  return text
-    .replace(/&#x([0-9a-f]+);/gi, (_, hex: string) => String.fromCodePoint(Number.parseInt(hex, 16)))
-    .replace(/&#(\d+);/g, (_, dec: string) => String.fromCodePoint(Number(dec)))
-    .replace(/&lt;/g, "<")
-    .replace(/&gt;/g, ">")
-    .replace(/&quot;/g, '"')
-    .replace(/&apos;/g, "'")
-    .replace(/&amp;/g, "&")
-    .replace(/\s+/g, " ")
-    .trim();
-}
-
-/** All <tag …> matches for a tag name (self-closing or not), as raw strings. */
-function findTags({ html, tagName }: { html: string; tagName: string }): string[] {
-  const pattern = new RegExp(`<${tagName}\\b[^>]*>`, "gi");
-  return html.match(pattern) ?? [];
-}
-
-/** Read one attribute value from a raw tag string. */
-function getAttribute({ tag, name }: { tag: string; name: string }): string | null {
-  const pattern = new RegExp(`\\b${name}\\s*=\\s*("([^"]*)"|'([^']*)'|([^\\s>]+))`, "i");
-  const match = tag.match(pattern);
-  if (match === null) {
-    return null;
-  }
-  return decodeBasicEntities(match[2] ?? match[3] ?? match[4] ?? "");
-}
-
-function resolveUrl({ raw, baseUrl }: { raw: string; baseUrl: string }): string | null {
-  if (raw.startsWith("data:")) {
-    return null;
-  }
-  try {
-    const resolved = new URL(raw, baseUrl);
-    return resolved.protocol === "http:" || resolved.protocol === "https:"
-      ? resolved.toString()
-      : null;
-  } catch {
-    return null;
-  }
-}
-
-// ---------------------------------------------------------------------------
-// Meta / identity
-// ---------------------------------------------------------------------------
-
-function findMetaContent({ html, key }: { html: string; key: string }): string | null {
-  for (const tag of findTags({ html, tagName: "meta" })) {
-    const name = getAttribute({ tag, name: "name" }) ?? getAttribute({ tag, name: "property" });
-    if (name?.toLowerCase() === key) {
-      const content = getAttribute({ tag, name: "content" });
-      if (content !== null && content.length > 0) {
-        return content;
-      }
-    }
-  }
-  return null;
-}
-
-function findPageTitle(html: string): string | null {
-  const match = html.match(/<title[^>]*>([\s\S]{0,300}?)<\/title>/i);
-  return match === null ? null : decodeBasicEntities(match[1]) || null;
-}
+// HTML scanning helpers (findTags/getAttribute/findMetaContent/…) live in
+// html-utils.ts — shared with the deterministic site-identity extractor.
 
 // ---------------------------------------------------------------------------
 // Fonts

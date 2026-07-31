@@ -17,6 +17,22 @@ import { isIP } from "node:net";
 
 export const MAX_URL_LENGTH = 2048;
 
+/**
+ * Normalize a user-typed website address BEFORE validation: scheme-less
+ * input ("cnn.com") gets **https:// only** — NEVER an http:// fallback
+ * (owner decision), and protocol-relative "//host" resolves to https too.
+ * Anything already carrying a scheme is left untouched so the guard can
+ * judge it as typed. Purely syntactic — the full SSRF guard still runs on
+ * the normalized URL.
+ */
+export function normalizeWebsiteUrl(rawUrl: string): string {
+  const trimmed = rawUrl.trim();
+  if (trimmed.length === 0 || /^[a-zA-Z][a-zA-Z0-9+.-]*:/.test(trimmed)) {
+    return trimmed;
+  }
+  return trimmed.startsWith("//") ? `https:${trimmed}` : `https://${trimmed}`;
+}
+
 export type UrlGuardResult =
   | { isAllowed: true; url: URL }
   | { isAllowed: false; reason: string };

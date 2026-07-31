@@ -57,7 +57,7 @@ export async function POST(request: Request) {
   if (!parsedBody.success) {
     return failureResponse({
       status: 400,
-      message: "Please provide a website address (like https://example.com).",
+      message: "Please provide a website address (like your-brand.com).",
     });
   }
 
