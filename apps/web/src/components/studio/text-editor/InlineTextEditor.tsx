@@ -24,6 +24,7 @@ import { api } from "@convex/_generated/api";
 import { useEditorStore } from "@/lib/editor-store";
 import { useBroadcastPresence, usePresenceRoster } from "@/lib/presence";
 import { createAgentPulseExtension } from "./agent-pulse-extension";
+import { AlignmentControls } from "./alignment-controls";
 import { getCollabSelectionVersion } from "./collab-sync-state";
 import { isTextDocEqual, normalizeEditorDoc } from "./normalize-editor-doc";
 import {
@@ -462,6 +463,11 @@ function SyncedTextEditor({
             <FontSizeSelector />
             <TextColorSelector />
             <HighlightSelector />
+          </BubbleMenu.ItemGroup>
+          {/* Per-paragraph alignment: node attrs via the TextAlign extension
+              (content-level, rides the sync pipeline — NOT a block op). */}
+          <BubbleMenu.ItemGroup>
+            <AlignmentControls />
           </BubbleMenu.ItemGroup>
           <BubbleMenu.LinkSelector />
         </BubbleMenu.Root>

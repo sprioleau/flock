@@ -1,6 +1,7 @@
 import { Fragment, type ReactNode } from "react";
 import { Column, Heading, Link, Row, Text } from "react-email";
 import type { TextBlock } from "../../schema/blocks";
+import type { TextAlign } from "../../schema/globals";
 import type { InlineNode, TextMark, TextNode } from "../../schema/text";
 import type { ResolvedTextNodeStyles, ResolvedTextStyles } from "../styles";
 import { blockPaddingStyle } from "./shared";
@@ -88,10 +89,12 @@ function renderInlineNodes(
  * spacing is block-level, the doc is content-only).
  */
 export function TextBlockView({ block, resolvedStyles }: TextBlockViewProps) {
-  const nodeStyle = (styles: ResolvedTextNodeStyles) => ({
+  // Per-node alignment: a node's own attrs.textAlign (the only node-level
+  // style attribute) beats the resolved block/global alignment.
+  const nodeStyle = (styles: ResolvedTextNodeStyles, nodeTextAlign?: TextAlign) => ({
     fontFamily: styles.fontFamily,
     color: styles.textColor,
-    textAlign: styles.textAlign,
+    textAlign: nodeTextAlign ?? styles.textAlign,
     // Unbroken runs (long words, pasted tokens) must wrap inside the block
     // instead of overflowing its edges. `wordWrap` is the email-safe classic
     // (browsers alias it to overflow-wrap, so the canvas is covered too);
@@ -111,7 +114,7 @@ export function TextBlockView({ block, resolvedStyles }: TextBlockViewProps) {
                 key={index}
                 as={`h${level}`}
                 style={{
-                  ...nodeStyle(resolvedStyles[`heading${level}`]),
+                  ...nodeStyle(resolvedStyles[`heading${level}`], node.attrs.textAlign),
                   fontSize: HEADING_FONT_SIZES[level],
                   lineHeight: "1.3",
                   fontWeight: "bold",
@@ -125,7 +128,11 @@ export function TextBlockView({ block, resolvedStyles }: TextBlockViewProps) {
           return (
             <Text
               key={index}
-              style={{ ...nodeStyle(resolvedStyles.paragraph), marginTop: 0, marginBottom: 0 }}
+              style={{
+                ...nodeStyle(resolvedStyles.paragraph, node.attrs?.textAlign),
+                marginTop: 0,
+                marginBottom: 0,
+              }}
             >
               {renderInlineNodes(node.content, resolvedStyles.linkTextColor)}
             </Text>

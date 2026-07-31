@@ -29,6 +29,29 @@ describe("textDocSchema — happy paths", () => {
     expect(textDocSchema.safeParse(doc).success).toBe(true);
   });
 
+  it("accepts a per-node textAlign attr on paragraphs and headings", () => {
+    const doc = {
+      type: "doc",
+      content: [
+        {
+          type: "heading",
+          attrs: { level: 1, textAlign: "center" },
+          content: [{ type: "text", text: "Centered heading" }],
+        },
+        {
+          type: "paragraph",
+          attrs: { textAlign: "right" },
+          content: [{ type: "text", text: "Right paragraph" }],
+        },
+        // Explicit left is meaningful (overrides a centered block default).
+        { type: "paragraph", attrs: { textAlign: "left" } },
+        // Missing attrs = inherit the block's alignment (the pre-attr shape).
+        { type: "paragraph", content: [{ type: "text", text: "Inherits" }] },
+      ],
+    };
+    expect(textDocSchema.safeParse(doc).success).toBe(true);
+  });
+
   it("accepts every supported mark", () => {
     const doc = paragraphWith([
       { type: "text", text: "b", marks: [{ type: "bold" }] },
@@ -196,6 +219,26 @@ describe("textDocSchema — email-safety rejections", () => {
       type: "doc",
       content: [{ type: "paragraph", attrs: { preventHardLineBreaks: true }, content: [] }],
     };
+    expect(textDocSchema.safeParse(doc).success).toBe(false);
+  });
+
+  it("rejects textAlign values outside the SDK vocabulary (justify, null)", () => {
+    const justified = {
+      type: "doc",
+      content: [{ type: "paragraph", attrs: { textAlign: "justify" } }],
+    };
+    expect(textDocSchema.safeParse(justified).success).toBe(false);
+    // Tiptap's "unaligned" spelling is attr null — normalize strips it to a
+    // missing attr before validation; the schema itself never accepts null.
+    const nullAligned = {
+      type: "doc",
+      content: [{ type: "paragraph", attrs: { textAlign: null } }],
+    };
+    expect(textDocSchema.safeParse(nullAligned).success).toBe(false);
+  });
+
+  it("rejects an empty paragraph attrs object (attrs require textAlign)", () => {
+    const doc = { type: "doc", content: [{ type: "paragraph", attrs: {} }] };
     expect(textDocSchema.safeParse(doc).success).toBe(false);
   });
 

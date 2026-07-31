@@ -3,6 +3,7 @@ import type {
   HeadingNode,
   InlineNode,
   ParagraphNode,
+  TextAlign,
   TextBlockNode,
   TextDoc,
   TextMark,
@@ -30,9 +31,13 @@ import type {
  *   an explicit background-color.
  * - hardBreak: may carry marks in Tiptap JSON (a break inside a bold run);
  *   the SDK hardBreak is bare.
- * - heading attrs: only `level` (1-3) survives; any other level demotes the
- *   node to a paragraph (cannot occur with Heading configured to [1,2,3],
- *   but the boundary is defensive).
+ * - heading attrs: only `level` (1-3) and a valid `textAlign` survive; any
+ *   other level demotes the node to a paragraph (cannot occur with Heading
+ *   configured to [1,2,3], but the boundary is defensive).
+ * - paragraph/heading `textAlign` attr (the TextAlign extension's per-node
+ *   override): only "left" | "center" | "right" survives — Tiptap emits
+ *   `textAlign: null` for unaligned nodes (the extension default), which is
+ *   normalized away (missing attr = inherit the block's alignment).
  * - empty text runs and unknown nodes/marks are dropped; an emptied doc
  *   becomes one empty paragraph (textDocSchema requires ≥1 block node).
  *
@@ -53,7 +58,11 @@ function normalizeBlockNode(node: JSONContent): TextBlockNode | null {
   if (node.type === "heading") {
     const level = node.attrs?.level;
     if (level === 1 || level === 2 || level === 3) {
-      const heading: HeadingNode = { type: "heading", attrs: { level } };
+      const textAlign = normalizeTextAlign(node.attrs?.textAlign);
+      const heading: HeadingNode = {
+        type: "heading",
+        attrs: { level, ...(textAlign !== undefined ? { textAlign } : {}) },
+      };
       const inline = normalizeInlineNodes(node.content);
       return inline.length > 0 ? { ...heading, content: inline } : heading;
     }
@@ -66,11 +75,18 @@ function normalizeBlockNode(node: JSONContent): TextBlockNode | null {
   return null;
 }
 
+/** Only the SDK's alignment vocabulary survives; null/unknown → inherit. */
+function normalizeTextAlign(value: unknown): TextAlign | undefined {
+  return value === "left" || value === "center" || value === "right" ? value : undefined;
+}
+
 function normalizeParagraph(node: JSONContent): ParagraphNode {
+  const textAlign = normalizeTextAlign(node.attrs?.textAlign);
+  const attrs = textAlign !== undefined ? { attrs: { textAlign } } : {};
   const inline = normalizeInlineNodes(node.content);
   return inline.length > 0
-    ? { type: "paragraph", content: inline }
-    : { type: "paragraph" };
+    ? { type: "paragraph", ...attrs, content: inline }
+    : { type: "paragraph", ...attrs };
 }
 
 function normalizeInlineNodes(nodes: JSONContent[] | undefined): InlineNode[] {

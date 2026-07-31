@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { textAlignSchema } from "./globals";
 
 /**
  * Rich-text content schema — a typed, deliberately PERMISSIVE-IN-SHAPE but
@@ -7,8 +8,10 @@ import { z } from "zod";
  * Per docs/decisions/text-block-model.md:
  * - One text block's doc may mix headings AND paragraphs (a heading is not
  *   its own flat-map block).
- * - The doc holds ONLY text content and inline marks. Block-level styling
- *   (alignment, colors, spacing) lives on the flat-map block's properties.
+ * - The doc holds text content and inline marks. Block-level styling
+ *   (alignment, colors, spacing) lives on the flat-map block's properties;
+ *   the ONE node-level exception is the optional per-paragraph/heading
+ *   `attrs.textAlign` override (see nodeTextAlign below).
  *
  * Email-safety: every object is strict — unknown node types, unknown mark
  * types, and unknown/extra attributes FAIL validation. This is intentional:
@@ -176,17 +179,39 @@ export const inlineNodeSchema = z
 
 export type InlineNode = z.infer<typeof inlineNodeSchema>;
 
+/**
+ * Per-node alignment override — the ONLY node-level style attribute
+ * (an amendment to text-block-model §2: the flat-map block still owns the
+ * block-level default; a node carrying this attr overrides it for that
+ * paragraph/heading alone). Optional and defaulted by omission: a node
+ * without it inherits the block's alignment — pre-existing docs never
+ * carry it and need no migration. Mirrors Tiptap's TextAlign extension
+ * (attr name `textAlign` on paragraph/heading nodes) 1:1.
+ */
+const nodeTextAlign = textAlignSchema
+  .describe(
+    'Alignment override for THIS node only: "left", "center", or "right". Omit to inherit the text block\'s alignment.',
+  );
+
 /** A paragraph of inline content. */
 export const paragraphNodeSchema = z
   .strictObject({
     type: z.literal("paragraph").describe("A paragraph."),
+    attrs: z
+      .strictObject({
+        textAlign: nodeTextAlign,
+      })
+      .optional()
+      .describe(
+        "Paragraph attributes. Only textAlign is allowed; omit attrs entirely for an unaligned paragraph.",
+      ),
     content: z
       .array(inlineNodeSchema)
       .optional()
       .describe("Inline content in reading order. Omit for an empty paragraph."),
   })
   .describe(
-    "A paragraph. Styled at render time from globals.paragraph* plus the owning text block's overrides.",
+    "A paragraph. Styled at render time from globals.paragraph* plus the owning text block's overrides; attrs.textAlign overrides alignment for this paragraph only.",
   );
 
 export type ParagraphNode = z.infer<typeof paragraphNodeSchema>;
@@ -200,8 +225,9 @@ export const headingNodeSchema = z
         level: z
           .union([z.literal(1), z.literal(2), z.literal(3)])
           .describe("Heading level: 1, 2, or 3. Levels 4+ are not supported."),
+        textAlign: nodeTextAlign.optional(),
       })
-      .describe("Heading attributes. Only level is allowed."),
+      .describe("Heading attributes: level (required) and textAlign (optional override)."),
     content: z
       .array(inlineNodeSchema)
       .optional()
@@ -235,7 +261,7 @@ export const textDocSchema = z
       ),
   })
   .describe(
-    "A Tiptap/ProseMirror rich-text document. Holds ONLY text content and inline marks — block-level styling (alignment, color, padding) lives on the flat-map text block.",
+    "A Tiptap/ProseMirror rich-text document. Holds text content and inline marks; block-level styling (alignment, color, padding) lives on the flat-map text block, with per-node attrs.textAlign as the only node-level override.",
   );
 
 export type TextDoc = z.infer<typeof textDocSchema>;

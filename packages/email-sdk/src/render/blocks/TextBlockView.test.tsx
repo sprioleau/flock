@@ -41,6 +41,46 @@ describe("TextBlockView", () => {
     expect(html).toMatch(/<h2[^>]*color:#22aa22/);
   });
 
+  it("applies a node's textAlign attr as inline text-align, over the block default", async () => {
+    // The owner scenario: one text block with a centered heading above a
+    // paragraph that keeps the block's (left) alignment.
+    const html = await renderDoc({
+      type: "doc",
+      content: [
+        {
+          type: "heading",
+          attrs: { level: 2, textAlign: "center" },
+          content: [{ type: "text", text: "Centered heading" }],
+        },
+        { type: "paragraph", content: [{ type: "text", text: "Left body" }] },
+      ],
+    });
+    expect(html).toMatch(/<h2[^>]*text-align:center/);
+    expect(html).toMatch(/<p[^>]*text-align:left/);
+  });
+
+  it("lets an explicit textAlign:left beat a centered block-level default", async () => {
+    const block: TextBlock = {
+      ...textBlockWithDoc({
+        type: "doc",
+        content: [
+          {
+            type: "paragraph",
+            attrs: { textAlign: "left" },
+            content: [{ type: "text", text: "Explicit left" }],
+          },
+          { type: "paragraph", content: [{ type: "text", text: "Inherits center" }] },
+        ],
+      }),
+    };
+    block.properties.textAlign = "center";
+    const html = await render(
+      <TextBlockView block={block} resolvedStyles={resolveBlockStyles(undefined, block)} />,
+    );
+    expect(html).toMatch(/<p[^>]*text-align:left[^>]*>Explicit left/);
+    expect(html).toMatch(/<p[^>]*text-align:center[^>]*>Inherits center/);
+  });
+
   it("renders paragraph nodes as <p> via React Email Text", async () => {
     const html = await renderDoc({
       type: "doc",

@@ -1,6 +1,7 @@
 import { StarterKit } from "@react-email/editor/extensions";
 import type { Extensions } from "@tiptap/core";
 import { Highlight } from "@tiptap/extension-highlight";
+import { TextAlign } from "@tiptap/extension-text-align";
 import { Color, FontFamily, FontSize, TextStyle } from "@tiptap/extension-text-style";
 
 /**
@@ -33,6 +34,20 @@ export function createTextBlockExtensions(): Extensions {
     // Renders <mark data-color style="background-color:…">; multicolor so the
     // color is explicit (the SDK schema requires it — no UA-default yellow).
     Highlight.configure({ multicolor: true }),
+    // Per-node alignment override (text-block-model §2 amendment): the
+    // official TextAlign extension stores a `textAlign` attr on paragraph and
+    // heading nodes — the SAME attr name the SDK's textDocSchema accepts, so
+    // TextDoc JSON feeds nodeFromJSON at every server boundary (ensureBlockDoc
+    // seeding, agent merge transforms) with no renaming step. Default stays
+    // null (v3 defaultAlignment) = "inherit the block's flat-map alignment";
+    // alignments are the SDK vocabulary (no justify). The block-level
+    // properties.textAlign remains the default this attr overrides. Resend's
+    // own AlignmentAttribute (attr `alignment`) stays disabled below — its
+    // renderHTML drops explicit "left", breaking left-in-centered-block.
+    TextAlign.configure({
+      types: ["heading", "paragraph"],
+      alignments: ["left", "center", "right"],
+    }),
     StarterKit.configure({
       // Structural / email chrome — the flat map owns structure; the editor
       // never sees it (canvas-architecture decision).
@@ -64,8 +79,10 @@ export function createTextBlockExtensions(): Extensions {
       Sup: false,
       Uppercase: false,
       PreservedStyle: false,
-      // Block-level styling lives on the flat-map block, never as node
-      // attrs inside the doc (text-block-model decision §2).
+      // Block-level styling lives on the flat-map block (text-block-model
+      // decision §2); the ONE node-attr exception is per-node textAlign,
+      // carried by the official TextAlign extension above — Resend's
+      // alignment attr stays off (see the TextAlign comment).
       AlignmentAttribute: false,
       StyleAttribute: false,
       ClassAttribute: false,
