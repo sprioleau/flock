@@ -126,6 +126,64 @@ interface PendingOp {
   confirmedVersion: number | null;
 }
 
+/**
+ * Route ONE settled operation to the correct Convex mutation — THE wire-out
+ * seam shared by the store's own outbound overlay (sendPendingOp) and the
+ * chat panel's mid-turn-draft-switch path (use-tandem-chat.ts, which must
+ * land a turn's ops in the document the turn STARTED in even when that
+ * document is no longer the connected one).
+ *
+ * Phase 5.3 routing: agent `updateText` ops go through
+ * agentText.applyAgentTextEdit, which records the SAME standard op row
+ * (author/batchId provenance intact) AND merges the edit into the block's
+ * live ProseMirror sync doc via the component's server-side transform — so
+ * an agent rewrite lands as a minimal targeted change that rebases against
+ * concurrent human keystrokes instead of clobbering them. Agent
+ * `styleTextSpan` intents route through the sibling
+ * agentText.applyAgentStyleTextSpan, which re-runs the same deterministic
+ * find→marks translation against the AUTHORITATIVE document before recording
+ * the one resulting updateText op the same way. All mutations return the
+ * same result shape, so callers share their ack/failure handling. User
+ * `updateText` session ops keep using applyOperations: their content ALREADY
+ * came from the sync doc, so transforming it again would be circular.
+ */
+export function submitOperationToConvex({
+  convexClient,
+  documentId,
+  op,
+  styleTextSpanIntent,
+  context,
+}: {
+  convexClient: ConvexReactClient;
+  documentId: Id<"documents">;
+  /** The RESOLVED operation (styleTextSpan intents resolve to updateText). */
+  op: Operation;
+  /** The raw styleTextSpan intent when `op` came from one (null otherwise). */
+  styleTextSpanIntent: StyleTextSpanInput | null;
+  context: ActionContext;
+}) {
+  const isAgentAuthored = context.author === "agent";
+  const isAgentSpanStyle = isAgentAuthored && styleTextSpanIntent !== null;
+  const isAgentTextEdit = isAgentAuthored && !isAgentSpanStyle && op.name === "updateText";
+  return isAgentSpanStyle
+    ? convexClient.mutation(api.agentText.applyAgentStyleTextSpan, {
+        documentId,
+        input: styleTextSpanIntent,
+        context,
+      })
+    : isAgentTextEdit
+      ? convexClient.mutation(api.agentText.applyAgentTextEdit, {
+          documentId,
+          op,
+          context,
+        })
+      : convexClient.mutation(api.documents.applyOperations, {
+          documentId,
+          ops: [op],
+          context,
+        });
+}
+
 /** Replay the still-pending overlay onto a server doc (dropping covered/conflicting ops). */
 function rebasePendingOps({
   serverDoc,
@@ -324,40 +382,15 @@ export const useEditorStore = create<EditorState>()((set, get) => {
         ),
       }));
     }
-    // Phase 5.3: agent `updateText` ops route through agentText.applyAgentTextEdit,
-    // which records the SAME standard op row (author/batchId provenance intact)
-    // AND merges the edit into the block's live ProseMirror sync doc via the
-    // component's server-side transform — so an agent rewrite lands as a minimal
-    // targeted change that rebases against concurrent human keystrokes instead
-    // of clobbering them. Agent `styleTextSpan` intents route through the
-    // sibling agentText.applyAgentStyleTextSpan, which re-runs the same
-    // deterministic find→marks translation against the AUTHORITATIVE document
-    // before recording the one resulting updateText op the same way. All
-    // mutations return the same result shape, so the ack/failure handling
-    // below is shared. User `updateText` session ops keep using
-    // applyOperations: their content ALREADY came from the sync doc, so
-    // transforming it again would be circular.
-    const isAgentAuthored = pending.context.author === "agent";
-    const isAgentSpanStyle = isAgentAuthored && pending.styleTextSpanIntent !== null;
-    const isAgentTextEdit =
-      isAgentAuthored && !isAgentSpanStyle && pending.op.name === "updateText";
-    const mutationPromise = isAgentSpanStyle
-      ? convexClient.mutation(api.agentText.applyAgentStyleTextSpan, {
-          documentId,
-          input: pending.styleTextSpanIntent,
-          context: pending.context,
-        })
-      : isAgentTextEdit
-        ? convexClient.mutation(api.agentText.applyAgentTextEdit, {
-            documentId,
-            op: pending.op,
-            context: pending.context,
-          })
-        : convexClient.mutation(api.documents.applyOperations, {
-            documentId,
-            ops: [pending.op],
-            context: pending.context,
-          });
+    // Routing (agentText vs applyOperations) lives in submitOperationToConvex,
+    // shared with the chat panel's mid-turn-draft-switch path.
+    const mutationPromise = submitOperationToConvex({
+      convexClient,
+      documentId,
+      op: pending.op,
+      styleTextSpanIntent: pending.styleTextSpanIntent,
+      context: pending.context,
+    });
     mutationPromise
       .then((result) => {
         if (!result.isOk) {
