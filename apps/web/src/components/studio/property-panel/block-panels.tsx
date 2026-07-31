@@ -195,6 +195,16 @@ export function ImagePanel({ block }: { block: ImageBlock }) {
         helpText={helpFor("align")}
         onCommit={(value) => commit({ align: value })}
       />
+      <ColorField
+        label="Background"
+        value={properties.backgroundColor}
+        // Unset image backgrounds are transparent — the content background
+        // shows through, so it is the value the user actually sees.
+        fallbackColor={globals.contentBackgroundColor}
+        isClearable
+        helpText={helpFor("backgroundColor")}
+        onCommit={(value) => commit({ backgroundColor: value })}
+      />
       <TextField
         label="Link (href)"
         value={properties.href}

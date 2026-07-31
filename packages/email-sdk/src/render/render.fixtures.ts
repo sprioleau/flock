@@ -267,7 +267,12 @@ export function createBlockOverridesOnlyFixture(): EmailDocument {
       align: "right",
       paddingBottom: 4,
     },
-    imageProperties: { width: 480, href: "https://example.com/gallery", align: "left" },
+    imageProperties: {
+      width: 480,
+      href: "https://example.com/gallery",
+      align: "left",
+      backgroundColor: "#dbeafe",
+    },
     dividerProperties: { color: "#c9ada7", thickness: 4, paddingTop: 12, paddingBottom: 12 },
   });
 }

@@ -109,6 +109,8 @@ export interface ResolvedButtonStyles extends ResolvedPadding {
 
 export interface ResolvedImageStyles extends ResolvedPadding {
   align: TextAlign;
+  /** Undefined means transparent (the container background shows through). */
+  backgroundColor: string | undefined;
 }
 
 export interface ResolvedDividerStyles extends ResolvedPadding {
@@ -270,6 +272,7 @@ function resolveButtonStyles(
 function resolveImageStyles(globals: Required<GlobalStyles>, block: ImageBlock): ResolvedImageStyles {
   return {
     align: block.properties.align ?? "center",
+    backgroundColor: block.properties.backgroundColor,
     ...resolvePadding(block.properties, leafPaddingDefaults(globals.baseSpacing)),
   };
 }

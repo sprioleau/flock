@@ -227,6 +227,11 @@ describe("resolveBlockStyles precedence (defaults → globals → block override
   it("images: align defaults to center; columns: verticalAlign defaults to top", () => {
     expect(resolveBlockStyles(undefined, imageBlock()).align).toBe("center");
     expect(resolveBlockStyles(undefined, imageBlock({ align: "left" })).align).toBe("left");
+    // Image backgrounds are transparent unless the block sets one.
+    expect(resolveBlockStyles(undefined, imageBlock()).backgroundColor).toBeUndefined();
+    expect(
+      resolveBlockStyles(undefined, imageBlock({ backgroundColor: "#0ea5e9" })).backgroundColor,
+    ).toBe("#0ea5e9");
     const column = resolveBlockStyles(undefined, columnBlock());
     expect(column.verticalAlign).toBe("top");
     expect(column.widthPercent).toBeUndefined();

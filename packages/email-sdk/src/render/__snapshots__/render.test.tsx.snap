@@ -109,7 +109,7 @@ exports[`golden fixtures (plan §1.4: globals-only, overrides-only, mixed) > blo
                                 <tr style="width:100%">
                                   <td
                                     data-id="__react-email-column"
-                                    style="padding-top:0px;padding-bottom:24px;padding-left:0px;padding-right:0px">
+                                    style="background-color:#dbeafe;padding-top:0px;padding-bottom:24px;padding-left:0px;padding-right:0px">
                                     <a
                                       href="https://example.com/gallery"
                                       style="color:#067df7;text-decoration-line:none"

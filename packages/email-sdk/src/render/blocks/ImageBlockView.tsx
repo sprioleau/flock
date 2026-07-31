@@ -18,7 +18,10 @@ const ALIGN_MARGINS: Record<ResolvedImageStyles["align"], CSSProperties> = {
 
 /**
  * image → React Email <Img>, wrapped in <Link> when href is set. Width caps
- * at the available width; height always tracks the aspect ratio.
+ * at the available width; height always tracks the aspect ratio. The block
+ * background goes on the wrapping <Column> (a td, email-safe like the column
+ * block's background) so it fills the block's bounds — through the padding
+ * and around an image narrower than the block.
  */
 export function ImageBlockView({ block, resolvedStyles }: ImageBlockViewProps) {
   const { src, alt, width, href } = block.properties;
@@ -36,7 +39,14 @@ export function ImageBlockView({ block, resolvedStyles }: ImageBlockViewProps) {
   );
   return (
     <Row>
-      <Column style={blockPaddingStyle(resolvedStyles)}>
+      <Column
+        style={{
+          ...(resolvedStyles.backgroundColor !== undefined
+            ? { backgroundColor: resolvedStyles.backgroundColor }
+            : {}),
+          ...blockPaddingStyle(resolvedStyles),
+        }}
+      >
         {href !== undefined ? <Link href={href}>{image}</Link> : image}
       </Column>
     </Row>

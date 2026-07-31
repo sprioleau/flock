@@ -334,6 +334,13 @@ export const imageBlockSchema = z
           .describe(
             'Horizontal placement of the image within its container: "left", "center", or "right". Renderer default: "center".',
           ),
+        backgroundColor: z
+          .string()
+          .min(1)
+          .optional()
+          .describe(
+            "Background color filling this image block's bounds around the image — visible through the block padding and wherever the image is narrower than the block. Omit for transparent (the container background shows through).",
+          ),
         ...blockPaddingFields("image block"),
       })
       .describe("Image properties. src is required; alt is required (may be empty for decorative images)."),

@@ -283,6 +283,22 @@ describe("imageBlockSchema", () => {
     const image = { ...validImage, properties: { ...validImage.properties, align: "top" } };
     expect(imageBlockSchema.safeParse(image).success).toBe(false);
   });
+
+  it("accepts a backgroundColor override", () => {
+    const image = {
+      ...validImage,
+      properties: { ...validImage.properties, backgroundColor: "#0ea5e9" },
+    };
+    expect(imageBlockSchema.safeParse(image).success).toBe(true);
+  });
+
+  it("rejects an empty-string backgroundColor", () => {
+    const image = {
+      ...validImage,
+      properties: { ...validImage.properties, backgroundColor: "" },
+    };
+    expect(imageBlockSchema.safeParse(image).success).toBe(false);
+  });
 });
 
 describe("dividerBlockSchema", () => {

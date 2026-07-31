@@ -51,6 +51,7 @@ describe("renderToHTML style resolution end to end", () => {
     expect(html).toContain("border-top:4px solid #c9ada7"); // divider overrides
     expect(html).toContain("text-align:right"); // button align override
     expect(html).toContain('href="https://example.com/gallery"'); // linked image
+    expect(html).toContain("background-color:#dbeafe"); // image block backgroundColor override
   });
 
   it("mixed: block overrides beat globals, untouched fields keep globals", async () => {

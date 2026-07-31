@@ -143,6 +143,15 @@ describe("depth option", () => {
     expect(outline).not.toContain("https://placehold.co");
   });
 
+  it('"full" surfaces a set image backgroundColor in the extras', () => {
+    const doc = createSampleDocument();
+    const image = doc["img_g7h8"];
+    if (image?.type !== "image") throw new Error("sample image block missing");
+    image.properties.backgroundColor = "#0ea5e9";
+    const outline = generateDocumentOutline({ doc, options: { depth: "full" } });
+    expect(outline).toMatch(/img_g7h8 image [^\n]*backgroundColor=#0ea5e9/);
+  });
+
   it('"blocks" (default) omits the full-depth extras', () => {
     const outline = generateDocumentOutline({ doc: sampleDoc });
     expect(outline).not.toContain("paddingTop");
