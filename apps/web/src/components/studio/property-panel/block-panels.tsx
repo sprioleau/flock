@@ -9,7 +9,14 @@ import type {
   SectionBlock,
   TextBlock,
 } from "@tandem/email-sdk";
-import { AlignField, ColorField, NumberField, SelectField, TextField } from "./fields";
+import {
+  AlignField,
+  ColorField,
+  NumberField,
+  PercentSliderField,
+  SelectField,
+  TextField,
+} from "./fields";
 import { ImageSourceField } from "./ImageSourceField";
 import { PaddingFields } from "./PaddingFields";
 import { getBlockPropertyHelp, type DescribableBlockType } from "./schema-help";
@@ -153,19 +160,33 @@ export function ImagePanel({ block }: { block: ImageBlock }) {
         helpText={helpFor("alt")}
         onCommit={(value) => commit({ alt: value ?? "" })}
       />
-      <NumberField
-        label="Width (px)"
-        value={properties.width}
-        isClearable
-        min={1}
-        // Beyond the content width the renderer clamps anyway, so larger
-        // numbers are meaningless — cap at the RESOLVED contentWidth
-        // (document value, or the SDK default). Clamped both by the HTML max
-        // attribute and in the commit path (typed/pasted values).
-        max={globals.contentWidth}
-        placeholder="natural"
+      {/* Width as a SCALE slider: the stored property stays pixels (the
+          schema's `width`), but the control reads/writes it as a percent of
+          the RESOLVED contentWidth — the same mapping new images use (85% at
+          creation). Every movement commits instantly (never debounced); the
+          exact px value stays visible in the readout, and clearing restores
+          "natural" via the replaceBlockProperties clear path. */}
+      <PercentSliderField
+        label="Width"
+        valuePercent={
+          properties.width !== undefined
+            ? Math.round(
+                (Math.min(properties.width, globals.contentWidth) / globals.contentWidth) * 100,
+              )
+            : undefined
+        }
+        min={10}
+        max={100}
+        step={1}
+        detailText={
+          properties.width !== undefined
+            ? `${Math.min(properties.width, globals.contentWidth)}px`
+            : undefined
+        }
+        clearedLabel="natural"
         helpText={helpFor("width")}
-        onCommit={(value) => commit({ width: value })}
+        onCommit={(percent) => commit({ width: Math.round((percent / 100) * globals.contentWidth) })}
+        onClear={() => commit({ width: undefined })}
       />
       <AlignField
         label="Alignment"

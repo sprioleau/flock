@@ -6,6 +6,7 @@ import type { TextAlign } from "@tandem/email-sdk";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Slider } from "@/components/ui/slider";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { cn } from "@/lib/utils";
 import { useEndCoalescing } from "./usePanelDispatch";
@@ -175,6 +176,89 @@ export function NumberField({
         onFocus={handleFocus}
         onBlur={handleBlur}
       />
+    </FieldShell>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Percent slider
+// ---------------------------------------------------------------------------
+
+export interface PercentSliderFieldProps {
+  label: string;
+  /** Current percent, or undefined when the property is cleared (e.g. "natural"). */
+  valuePercent: number | undefined;
+  min: number;
+  max: number;
+  step: number;
+  /** Exact-value readout beside the percent (e.g. "510px"). */
+  detailText?: string;
+  /** Readout shown when valuePercent is undefined (e.g. "natural"). */
+  clearedLabel?: string;
+  /** Renders a clear affordance restoring the undefined state. */
+  onClear?: () => void;
+  helpText?: string;
+  onCommit: (percent: number) => void;
+}
+
+/**
+ * A percentage slider following the panel's instant-apply law: EVERY slider
+ * movement commits an op immediately (`onValueChange` — the canvas tracks the
+ * drag in real time, never debounced); releasing the thumb ends the store's
+ * coalescing gesture (`onValueCommitted`), so one drag = one undo step. The
+ * readout keeps the exact number visible next to the human-facing percent.
+ */
+export function PercentSliderField({
+  label,
+  valuePercent,
+  min,
+  max,
+  step,
+  detailText,
+  clearedLabel = "unset",
+  onClear,
+  helpText,
+  onCommit,
+}: PercentSliderFieldProps) {
+  const endCoalescing = useEndCoalescing();
+  const sliderPercent = clampNumber({ value: valuePercent ?? max, min, max });
+
+  return (
+    <FieldShell label={label} helpText={helpText}>
+      <div className="flex items-center gap-2">
+        <Slider
+          value={sliderPercent}
+          min={min}
+          max={max}
+          step={step}
+          aria-label={label}
+          onValueChange={(next) => onCommit(next as number)}
+          onValueCommitted={() => endCoalescing()}
+        />
+        <span
+          className="w-16 shrink-0 text-right font-mono text-[11px] text-muted-foreground tabular-nums"
+          data-slot="slider-readout"
+        >
+          {valuePercent === undefined ? clearedLabel : `${valuePercent}%`}
+          {valuePercent !== undefined && detailText !== undefined && (
+            <span className="block text-[9px] text-muted-foreground/70">{detailText}</span>
+          )}
+        </span>
+        {onClear !== undefined && valuePercent !== undefined && (
+          <Button
+            variant="ghost"
+            size="icon-xs"
+            aria-label={`Clear ${label.toLowerCase()}`}
+            title={`Reset to ${clearedLabel}`}
+            onClick={() => {
+              onClear();
+              endCoalescing();
+            }}
+          >
+            <X />
+          </Button>
+        )}
+      </div>
     </FieldShell>
   );
 }

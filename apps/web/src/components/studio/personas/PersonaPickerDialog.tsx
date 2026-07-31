@@ -14,6 +14,7 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Slider } from "@/components/ui/slider";
 import { Textarea } from "@/components/ui/textarea";
 import {
   replaceEnabledPersonaSlug,
@@ -293,7 +294,8 @@ function PersonaDefinitionView({
         </div>
       ))}
       <p className="text-[10px] text-muted-foreground/70">
-        Reviews at most once every {persona.cooldownSeconds}s.
+        {getEagernessLabel(persona.cooldownSeconds)} reviewer — checks in about every{" "}
+        {persona.cooldownSeconds}s.
       </p>
     </div>
   );
@@ -309,13 +311,41 @@ const PERSONA_COLOR_PALETTE = [
   "#475569", // slate
 ];
 
-/** Cooldown presets for the dropdown (seconds → label). */
-const COOLDOWN_PRESETS: ReadonlyArray<{ seconds: number; label: string }> = [
-  { seconds: 30, label: "30 seconds" },
-  { seconds: 45, label: "45 seconds" },
-  { seconds: 60, label: "1 minute" },
-  { seconds: 120, label: "2 minutes" },
-];
+/**
+ * Eagerness ⟷ cooldown mapping. The user-facing control is an EAGERNESS
+ * slider (more eager = reviews more often); what persists is still
+ * `cooldownSeconds` (the Gemini budget guard), so the mapping is INVERSE and
+ * floors at 20s. Stops run left (most relaxed, 180s) → right (most eager,
+ * 20s). Values that aren't a stop (hand-edited frontmatter) display at the
+ * nearest stop and are only rewritten when the user actually moves the
+ * slider — an untouched form stays byte-stable on save.
+ */
+const EAGERNESS_COOLDOWN_STOPS_SECONDS: readonly number[] = [180, 120, 90, 60, 45, 30, 20];
+
+/** Slider position (0 = most relaxed) for a cooldown — nearest stop wins. */
+function getEagernessPosition(cooldownSeconds: number): number {
+  let nearestIndex = 0;
+  let nearestDistance = Number.POSITIVE_INFINITY;
+  EAGERNESS_COOLDOWN_STOPS_SECONDS.forEach((stopSeconds, index) => {
+    const distance = Math.abs(stopSeconds - cooldownSeconds);
+    if (distance < nearestDistance) {
+      nearestDistance = distance;
+      nearestIndex = index;
+    }
+  });
+  return nearestIndex;
+}
+
+/** Human eagerness word for the read view (mirrors the slider's framing). */
+function getEagernessLabel(cooldownSeconds: number): string {
+  if (cooldownSeconds <= 30) {
+    return "Eager";
+  }
+  if (cooldownSeconds <= 60) {
+    return "Balanced";
+  }
+  return "Relaxed";
+}
 
 interface PersonaEditFormProps {
   persona: PersonaPayload;
@@ -359,14 +389,6 @@ function PersonaEditForm({
   const swatchColors = PERSONA_COLOR_PALETTE.includes(effectiveColor)
     ? PERSONA_COLOR_PALETTE
     : [effectiveColor, ...PERSONA_COLOR_PALETTE];
-  const cooldownOptions = COOLDOWN_PRESETS.some(
-    (preset) => preset.seconds === effectiveCooldownSeconds,
-  )
-    ? COOLDOWN_PRESETS
-    : [
-        { seconds: effectiveCooldownSeconds, label: `${effectiveCooldownSeconds} seconds` },
-        ...COOLDOWN_PRESETS,
-      ];
 
   const fieldIdBase = `persona-form-${persona.slug.replaceAll("/", "-")}`;
 
@@ -446,24 +468,29 @@ function PersonaEditForm({
               />
             </div>
             <div className="space-y-1">
-              <Label htmlFor={`${fieldIdBase}-cooldown`} className="text-xs">
-                Review cooldown
-              </Label>
-              <select
-                id={`${fieldIdBase}-cooldown`}
-                value={effectiveCooldownSeconds}
-                onChange={(event) =>
-                  patchModel({ cooldownSeconds: Number.parseInt(event.target.value, 10) })
-                }
-                className="flex h-8 w-full cursor-pointer rounded-lg border border-input bg-transparent px-2.5 text-xs transition-colors outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
-                data-testid={`persona-form-cooldown-${persona.slug}`}
-              >
-                {cooldownOptions.map((option) => (
-                  <option key={option.seconds} value={option.seconds}>
-                    {option.label}
-                  </option>
-                ))}
-              </select>
+              <Label className="text-xs">Eagerness</Label>
+              <div className="flex h-8 items-center gap-2">
+                <span className="text-[10px] text-muted-foreground select-none">Relaxed</span>
+                <Slider
+                  value={getEagernessPosition(effectiveCooldownSeconds)}
+                  onValueChange={(position) =>
+                    patchModel({
+                      cooldownSeconds:
+                        EAGERNESS_COOLDOWN_STOPS_SECONDS[position as number] ??
+                        effectiveCooldownSeconds,
+                    })
+                  }
+                  min={0}
+                  max={EAGERNESS_COOLDOWN_STOPS_SECONDS.length - 1}
+                  step={1}
+                  aria-label="Eagerness"
+                  data-testid={`persona-form-eagerness-${persona.slug}`}
+                />
+                <span className="text-[10px] text-muted-foreground select-none">Eager</span>
+              </div>
+              <p className="text-[10px] text-muted-foreground/70">
+                checks every ~{effectiveCooldownSeconds}s
+              </p>
             </div>
           </div>
           <div className="space-y-1">
