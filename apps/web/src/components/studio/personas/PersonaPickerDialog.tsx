@@ -1,9 +1,10 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery } from "convex/react";
 import { ChevronDownIcon } from "lucide-react";
 import { api } from "@convex/_generated/api";
+import { Button } from "@/components/ui/button";
 import {
   Dialog,
   DialogContent,
@@ -11,20 +12,41 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
-import { setPersonaEnabled, useEnabledPersonaSlugs } from "@/lib/personas/enabled-personas";
-import { parsePersonaMarkdown } from "@/lib/personas/parse-persona-markdown";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import {
+  replaceEnabledPersonaSlug,
+  setPersonaEnabled,
+  useEnabledPersonaSlugs,
+} from "@/lib/personas/enabled-personas";
+import {
+  MAX_PERSONA_MARKDOWN_LENGTH,
+  parsePersonaMarkdown,
+  parsePersonaMarkdownToForm,
+  serializePersonaForm,
+  validatePersonaMarkdown,
+  type PersonaFormModel,
+} from "@/lib/personas/parse-persona-markdown";
+import { getOrCreateSessionId } from "@/lib/session";
 import { cn } from "@/lib/utils";
 
 /**
- * Multi-agent canvas v0 — the persona picker: a dialog (opened from the
+ * Multi-agent canvas — the persona picker: a dialog (opened from the
  * settings FAB's "Agents" entry) listing every registry persona with an
  * enable toggle. Enablement is browser-session-scoped localStorage
  * (enabled-personas.ts); enabled personas join the open document's facepile
  * and review settled edits (use-persona-advisors.ts).
  *
- * The persona's markdown renders READ-ONLY behind a disclosure — in-app
- * markdown editing (reshaping a persona's behavior, or copying a built-in
- * into a custom persona) is the v1 step (proposal §6 item 9).
+ * v1 (proposal §6 item 9, owner-directed shape): personas are edited through
+ * a STRUCTURED FORM — labeled fields over the markdown, never raw markdown
+ * in the UI. parse-persona-markdown.ts owns the lossless markdown ⇄ form
+ * mapping; markdown stays the storage/interchange format. Built-ins are
+ * copy-on-edit — saving forks a session copy (`user/<sessionId>/<base>`)
+ * that shadows the built-in in this session's picker; "Reset to default"
+ * deletes the copy. Either way the enabled slug follows the row that defines
+ * the persona (replaceEnabledPersonaSlug), so the runner's next turn reads
+ * the saved markdown straight from the registry.
  */
 
 export interface PersonaPickerDialogProps {
@@ -33,7 +55,15 @@ export interface PersonaPickerDialogProps {
 }
 
 export function PersonaPickerDialog({ isOpen, onOpenChange }: PersonaPickerDialogProps) {
-  const personas = useQuery(api.personas.listPersonas, isOpen ? {} : "skip");
+  // Anonymous session id (localStorage). Read only while the dialog is open
+  // — opening is a user gesture, so this never runs during SSR/hydration
+  // (window is always live here; the presence provider's pattern).
+  const sessionId = isOpen ? getOrCreateSessionId() : null;
+
+  const personas = useQuery(
+    api.personas.listPersonas,
+    isOpen && sessionId !== null ? { sessionId } : "skip",
+  );
   const seedBuiltInPersonas = useMutation(api.personas.seedBuiltInPersonas);
   const enabledSlugs = useEnabledPersonaSlugs();
 
@@ -57,7 +87,7 @@ export function PersonaPickerDialog({ isOpen, onOpenChange }: PersonaPickerDialo
           </DialogDescription>
         </DialogHeader>
         <div className="flex max-h-[60vh] flex-col gap-2 overflow-y-auto">
-          {personas === undefined ? (
+          {personas === undefined || sessionId === null ? (
             <p className="py-4 text-center text-xs text-muted-foreground">Loading agents…</p>
           ) : personas.length === 0 ? (
             <p className="py-4 text-center text-xs text-muted-foreground">No agents yet.</p>
@@ -67,6 +97,7 @@ export function PersonaPickerDialog({ isOpen, onOpenChange }: PersonaPickerDialo
                 key={persona.slug}
                 persona={persona}
                 isEnabled={enabledSlugs.includes(persona.slug)}
+                sessionId={sessionId}
               />
             ))
           )}
@@ -76,21 +107,27 @@ export function PersonaPickerDialog({ isOpen, onOpenChange }: PersonaPickerDialo
   );
 }
 
-interface PersonaRowProps {
-  persona: {
-    slug: string;
-    name: string;
-    color: string;
-    capabilityMode: "advisory";
-    personaMarkdown: string;
-    cooldownSeconds: number;
-  };
-  isEnabled: boolean;
+interface PersonaPayload {
+  slug: string;
+  name: string;
+  color: string;
+  capabilityMode: "advisory";
+  personaMarkdown: string;
+  cooldownSeconds: number;
+  /** Optional in the payload (see convex/personas.ts); undefined ⇒ built-in. */
+  isBuiltIn?: boolean;
 }
 
-function PersonaRow({ persona, isEnabled }: PersonaRowProps) {
+interface PersonaRowProps {
+  persona: PersonaPayload;
+  isEnabled: boolean;
+  sessionId: string;
+}
+
+function PersonaRow({ persona, isEnabled, sessionId }: PersonaRowProps) {
   const [isMarkdownExpanded, setIsMarkdownExpanded] = useState(false);
   const parsed = parsePersonaMarkdown(persona.personaMarkdown);
+  const isCustomized = persona.isBuiltIn === false;
 
   return (
     <div className="rounded-lg border px-3 py-2.5" data-testid={`persona-row-${persona.slug}`}>
@@ -106,6 +143,14 @@ function PersonaRow({ persona, isEnabled }: PersonaRowProps) {
             <span className="rounded-full border px-1.5 py-px text-[10px] text-muted-foreground">
               {persona.capabilityMode}
             </span>
+            {isCustomized && (
+              <span
+                className="rounded-full border border-primary/30 bg-primary/10 px-1.5 py-px text-[10px] text-primary"
+                data-testid={`persona-customized-badge-${persona.slug}`}
+              >
+                customized
+              </span>
+            )}
           </div>
           {parsed.description !== null && (
             <p className="mt-0.5 text-xs text-muted-foreground">{parsed.description}</p>
@@ -126,9 +171,462 @@ function PersonaRow({ persona, isEnabled }: PersonaRowProps) {
         {isMarkdownExpanded ? "Hide definition" : "View definition"}
       </button>
       {isMarkdownExpanded && (
-        <pre className="mt-1.5 max-h-48 overflow-y-auto rounded-md bg-muted/50 p-2 text-[11px] leading-relaxed whitespace-pre-wrap text-muted-foreground">
-          {persona.personaMarkdown}
-        </pre>
+        <PersonaDefinition persona={persona} isCustomized={isCustomized} sessionId={sessionId} />
+      )}
+    </div>
+  );
+}
+
+interface PersonaDefinitionProps {
+  persona: PersonaPayload;
+  isCustomized: boolean;
+  sessionId: string;
+}
+
+/**
+ * The expanded definition. Read mode renders the parsed behavior text as
+ * labeled prose (no frontmatter or fences on screen); edit mode is the
+ * structured form. Reset to default (copies only) deletes the session copy
+ * and swaps enablement back to the pristine built-in.
+ */
+function PersonaDefinition({ persona, isCustomized, sessionId }: PersonaDefinitionProps) {
+  const resetPersonaToBuiltIn = useMutation(api.personas.resetPersonaToBuiltIn);
+  const [isEditing, setIsEditing] = useState(false);
+  const [isResetting, setIsResetting] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+
+  const formModel = useMemo(
+    () => parsePersonaMarkdownToForm(persona.personaMarkdown),
+    [persona.personaMarkdown],
+  );
+
+  const handleReset = async () => {
+    setIsResetting(true);
+    setErrorMessage(null);
+    try {
+      const { builtInSlug } = await resetPersonaToBuiltIn({ slug: persona.slug, sessionId });
+      replaceEnabledPersonaSlug({ fromSlug: persona.slug, toSlug: builtInSlug });
+    } catch (error: unknown) {
+      console.error("[personas] reset to default failed:", error);
+      setErrorMessage("Could not reset this persona. Please try again.");
+      setIsResetting(false);
+    }
+    // On success this row unmounts (the built-in un-shadows) — no state to restore.
+  };
+
+  if (isEditing) {
+    return (
+      <PersonaEditForm
+        persona={persona}
+        initialModel={formModel}
+        isCustomized={isCustomized}
+        sessionId={sessionId}
+        onClose={() => setIsEditing(false)}
+      />
+    );
+  }
+
+  return (
+    <div className="mt-1.5">
+      <PersonaDefinitionView persona={persona} model={formModel} />
+      <div className="mt-1.5 flex items-center gap-1.5">
+        <Button
+          type="button"
+          variant="outline"
+          size="xs"
+          onClick={() => {
+            setErrorMessage(null);
+            setIsEditing(true);
+          }}
+          data-testid={`persona-edit-${persona.slug}`}
+        >
+          Edit
+        </Button>
+        {isCustomized && (
+          <Button
+            type="button"
+            variant="ghost"
+            size="xs"
+            disabled={isResetting}
+            onClick={() => void handleReset()}
+            data-testid={`persona-reset-${persona.slug}`}
+          >
+            Reset to default
+          </Button>
+        )}
+        {errorMessage !== null && <p className="text-[11px] text-destructive">{errorMessage}</p>}
+      </div>
+    </div>
+  );
+}
+
+/** Read mode: the behavior text as labeled prose — never raw markdown. */
+function PersonaDefinitionView({
+  persona,
+  model,
+}: {
+  persona: PersonaPayload;
+  model: PersonaFormModel;
+}) {
+  if (!model.isStructured) {
+    // Structurally unparseable (hand-authored exotic content): the raw text
+    // is the only faithful rendering.
+    return (
+      <pre className="max-h-48 overflow-y-auto rounded-md bg-muted/50 p-2 text-[11px] leading-relaxed whitespace-pre-wrap text-muted-foreground">
+        {persona.personaMarkdown}
+      </pre>
+    );
+  }
+  return (
+    <div className="max-h-48 space-y-2 overflow-y-auto rounded-md bg-muted/50 p-2.5">
+      {model.intro.length > 0 && (
+        <p className="text-[11px] leading-relaxed whitespace-pre-wrap text-muted-foreground">
+          {model.intro}
+        </p>
+      )}
+      {model.sections.map((section) => (
+        <div key={section.heading}>
+          <p className="text-[11px] font-medium text-foreground/80">{section.heading}</p>
+          <p className="mt-0.5 text-[11px] leading-relaxed whitespace-pre-wrap text-muted-foreground">
+            {section.content}
+          </p>
+        </div>
+      ))}
+      <p className="text-[10px] text-muted-foreground/70">
+        Reviews at most once every {persona.cooldownSeconds}s.
+      </p>
+    </div>
+  );
+}
+
+/** Accent colors offered by the swatch picker (distinct from the human hue wheel). */
+const PERSONA_COLOR_PALETTE = [
+  "#e11d48", // rose (Tone Police default)
+  "#0d9488", // teal (Styling Recommender default)
+  "#d97706", // amber
+  "#16a34a", // green
+  "#c026d3", // fuchsia
+  "#475569", // slate
+];
+
+/** Cooldown presets for the dropdown (seconds → label). */
+const COOLDOWN_PRESETS: ReadonlyArray<{ seconds: number; label: string }> = [
+  { seconds: 30, label: "30 seconds" },
+  { seconds: 45, label: "45 seconds" },
+  { seconds: 60, label: "1 minute" },
+  { seconds: 120, label: "2 minutes" },
+];
+
+interface PersonaEditFormProps {
+  persona: PersonaPayload;
+  initialModel: PersonaFormModel;
+  isCustomized: boolean;
+  sessionId: string;
+  onClose: () => void;
+}
+
+/**
+ * The structured editor: labeled form fields over the markdown. On save the
+ * model serializes deterministically back to canonical markdown
+ * (serializePersonaForm — byte-stable when nothing changed), passes the
+ * existing validation, and lands via updatePersonaMarkdown, which also syncs
+ * the row's typed name/color/cooldown fields.
+ */
+function PersonaEditForm({
+  persona,
+  initialModel,
+  isCustomized,
+  sessionId,
+  onClose,
+}: PersonaEditFormProps) {
+  const updatePersonaMarkdown = useMutation(api.personas.updatePersonaMarkdown);
+  const [model, setModel] = useState<PersonaFormModel>(initialModel);
+  const [isSaving, setIsSaving] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+
+  const patchModel = (patch: Partial<PersonaFormModel>) => {
+    setModel((current) => ({ ...current, ...patch }));
+  };
+
+  const serialized = useMemo(() => serializePersonaForm(model), [model]);
+
+  // Effective values: form fields fall back to the row's typed fields when
+  // the markdown carries no frontmatter value of its own.
+  const effectiveName = model.name ?? persona.name;
+  const effectiveColor = model.color ?? persona.color;
+  const effectiveCooldownSeconds = model.cooldownSeconds ?? persona.cooldownSeconds;
+
+  const swatchColors = PERSONA_COLOR_PALETTE.includes(effectiveColor)
+    ? PERSONA_COLOR_PALETTE
+    : [effectiveColor, ...PERSONA_COLOR_PALETTE];
+  const cooldownOptions = COOLDOWN_PRESETS.some(
+    (preset) => preset.seconds === effectiveCooldownSeconds,
+  )
+    ? COOLDOWN_PRESETS
+    : [
+        { seconds: effectiveCooldownSeconds, label: `${effectiveCooldownSeconds} seconds` },
+        ...COOLDOWN_PRESETS,
+      ];
+
+  const fieldIdBase = `persona-form-${persona.slug.replaceAll("/", "-")}`;
+
+  const handleSave = async () => {
+    if (effectiveName.trim().length === 0) {
+      setErrorMessage("Give the persona a display name.");
+      return;
+    }
+    // Headings alone serialize to non-empty text, so require actual behavior
+    // prose here — validatePersonaMarkdown can only see the serialized bytes.
+    const hasBehaviorText = model.isStructured
+      ? model.intro.trim().length > 0 ||
+        model.sections.some((section) => section.content.trim().length > 0)
+      : model.rawMarkdown.trim().length > 0;
+    if (!hasBehaviorText) {
+      setErrorMessage("Add behavior text — it's what shapes how this persona reviews.");
+      return;
+    }
+    const validationError = validatePersonaMarkdown(serialized);
+    if (validationError !== null) {
+      setErrorMessage(validationError);
+      return;
+    }
+    const hasNameChange = effectiveName.trim() !== persona.name;
+    const hasColorChange = effectiveColor !== persona.color;
+    const hasCooldownChange = effectiveCooldownSeconds !== persona.cooldownSeconds;
+    if (
+      serialized === persona.personaMarkdown &&
+      !hasNameChange &&
+      !hasColorChange &&
+      !hasCooldownChange
+    ) {
+      // Byte-identical round trip and no typed-field changes: nothing to save.
+      onClose();
+      return;
+    }
+    setIsSaving(true);
+    setErrorMessage(null);
+    try {
+      const { savedSlug } = await updatePersonaMarkdown({
+        slug: persona.slug,
+        personaMarkdown: serialized,
+        sessionId,
+        ...(hasNameChange ? { name: effectiveName.trim() } : {}),
+        ...(hasColorChange ? { color: effectiveColor } : {}),
+        ...(hasCooldownChange ? { cooldownSeconds: effectiveCooldownSeconds } : {}),
+      });
+      // Copy-on-edit: a built-in's save lands on the session copy — move the
+      // enablement with it so the next persona run uses the new definition.
+      if (savedSlug !== persona.slug) {
+        replaceEnabledPersonaSlug({ fromSlug: persona.slug, toSlug: savedSlug });
+      }
+      onClose();
+    } catch (error: unknown) {
+      console.error("[personas] persona save failed:", error);
+      setErrorMessage("Could not save this persona. Please try again.");
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  return (
+    <div className="mt-2 space-y-2.5 rounded-md border bg-muted/30 p-2.5">
+      {model.isStructured ? (
+        <>
+          <div className="grid grid-cols-2 gap-2.5">
+            <div className="space-y-1">
+              <Label htmlFor={`${fieldIdBase}-name`} className="text-xs">
+                Name
+              </Label>
+              <Input
+                id={`${fieldIdBase}-name`}
+                value={effectiveName}
+                onChange={(event) => patchModel({ name: event.target.value })}
+                className="h-8 text-xs md:text-xs"
+                data-testid={`persona-form-name-${persona.slug}`}
+              />
+            </div>
+            <div className="space-y-1">
+              <Label htmlFor={`${fieldIdBase}-cooldown`} className="text-xs">
+                Review cooldown
+              </Label>
+              <select
+                id={`${fieldIdBase}-cooldown`}
+                value={effectiveCooldownSeconds}
+                onChange={(event) =>
+                  patchModel({ cooldownSeconds: Number.parseInt(event.target.value, 10) })
+                }
+                className="flex h-8 w-full cursor-pointer rounded-lg border border-input bg-transparent px-2.5 text-xs transition-colors outline-none focus-visible:border-ring focus-visible:ring-3 focus-visible:ring-ring/50"
+                data-testid={`persona-form-cooldown-${persona.slug}`}
+              >
+                {cooldownOptions.map((option) => (
+                  <option key={option.seconds} value={option.seconds}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+          <div className="space-y-1">
+            <Label htmlFor={`${fieldIdBase}-description`} className="text-xs">
+              Description
+            </Label>
+            <Input
+              id={`${fieldIdBase}-description`}
+              value={model.description ?? ""}
+              placeholder="One line shown in this list"
+              onChange={(event) =>
+                patchModel({
+                  description: event.target.value.length > 0 ? event.target.value : null,
+                })
+              }
+              className="h-8 text-xs md:text-xs"
+              data-testid={`persona-form-description-${persona.slug}`}
+            />
+          </div>
+          <div className="space-y-1">
+            <Label className="text-xs">Color</Label>
+            <div className="flex items-center gap-1.5" role="radiogroup" aria-label="Accent color">
+              {swatchColors.map((swatchColor) => (
+                <button
+                  key={swatchColor}
+                  type="button"
+                  role="radio"
+                  aria-checked={swatchColor === effectiveColor}
+                  aria-label={`Color ${swatchColor}`}
+                  onClick={() => patchModel({ color: swatchColor })}
+                  className={cn(
+                    "size-5 cursor-pointer rounded-full transition-shadow",
+                    swatchColor === effectiveColor &&
+                      "ring-2 ring-ring ring-offset-2 ring-offset-background",
+                  )}
+                  style={{ backgroundColor: swatchColor }}
+                  data-testid={`persona-form-color-${persona.slug}-${swatchColor.slice(1)}`}
+                />
+              ))}
+            </div>
+          </div>
+          <div className="space-y-1">
+            <Label htmlFor={`${fieldIdBase}-intro`} className="text-xs">
+              Behavior guidelines
+            </Label>
+            <Textarea
+              id={`${fieldIdBase}-intro`}
+              value={model.intro}
+              onChange={(event) => patchModel({ intro: event.target.value })}
+              rows={3}
+              spellCheck={false}
+              className="min-h-16 text-xs leading-relaxed md:text-xs"
+              data-testid={`persona-form-intro-${persona.slug}`}
+            />
+          </div>
+          {model.sections.map((section, sectionIndex) => (
+            <div key={section.heading} className="space-y-1">
+              <Label htmlFor={`${fieldIdBase}-section-${sectionIndex}`} className="text-xs">
+                {section.heading}
+              </Label>
+              <Textarea
+                id={`${fieldIdBase}-section-${sectionIndex}`}
+                value={section.content}
+                onChange={(event) => {
+                  const nextSections = model.sections.map((existing, index) =>
+                    index === sectionIndex
+                      ? { ...existing, content: event.target.value }
+                      : existing,
+                  );
+                  patchModel({ sections: nextSections });
+                }}
+                rows={5}
+                spellCheck={false}
+                className="min-h-24 text-xs leading-relaxed md:text-xs"
+                data-testid={`persona-form-section-${persona.slug}-${sectionIndex}`}
+              />
+            </div>
+          ))}
+          {model.unmappedFrontmatterLines.length > 0 && (
+            <div className="space-y-1">
+              <Label htmlFor={`${fieldIdBase}-advanced`} className="text-xs">
+                Advanced (unmapped settings)
+              </Label>
+              <Textarea
+                id={`${fieldIdBase}-advanced`}
+                value={model.unmappedFrontmatterLines.join("\n")}
+                onChange={(event) =>
+                  patchModel({
+                    unmappedFrontmatterLines: event.target.value
+                      .split("\n")
+                      .filter((line) => line.trim().length > 0),
+                  })
+                }
+                rows={2}
+                spellCheck={false}
+                className="min-h-12 font-mono text-[11px] leading-relaxed md:text-[11px]"
+                data-testid={`persona-form-advanced-${persona.slug}`}
+              />
+            </div>
+          )}
+        </>
+      ) : (
+        <div className="space-y-1">
+          <Label htmlFor={`${fieldIdBase}-raw`} className="text-xs">
+            Advanced
+          </Label>
+          <p className="text-[10px] text-muted-foreground">
+            This definition has a custom format the form can&apos;t display — edit it directly.
+          </p>
+          <Textarea
+            id={`${fieldIdBase}-raw`}
+            value={model.rawMarkdown}
+            onChange={(event) => patchModel({ rawMarkdown: event.target.value })}
+            rows={10}
+            spellCheck={false}
+            className="max-h-64 min-h-40 font-mono text-[11px] leading-relaxed md:text-[11px]"
+            data-testid={`persona-form-raw-${persona.slug}`}
+          />
+        </div>
+      )}
+      <p
+        className={cn(
+          "text-right text-[10px] tabular-nums",
+          serialized.length > MAX_PERSONA_MARKDOWN_LENGTH
+            ? "text-destructive"
+            : "text-muted-foreground",
+        )}
+      >
+        {serialized.length.toLocaleString()} / {MAX_PERSONA_MARKDOWN_LENGTH.toLocaleString()}
+      </p>
+      <div className="flex items-center gap-1.5">
+        <Button
+          type="button"
+          size="xs"
+          disabled={isSaving}
+          onClick={() => void handleSave()}
+          data-testid={`persona-editor-save-${persona.slug}`}
+        >
+          {isSaving ? "Saving…" : isCustomized ? "Save" : "Save as copy"}
+        </Button>
+        <Button
+          type="button"
+          variant="ghost"
+          size="xs"
+          disabled={isSaving}
+          onClick={onClose}
+          data-testid={`persona-editor-cancel-${persona.slug}`}
+        >
+          Cancel
+        </Button>
+      </div>
+      {errorMessage !== null && (
+        <p
+          className="text-[11px] text-destructive"
+          data-testid={`persona-editor-error-${persona.slug}`}
+        >
+          {errorMessage}
+        </p>
+      )}
+      {!isCustomized && (
+        <p className="text-[10px] text-muted-foreground">
+          Built-in agents stay pristine — saving creates your own copy that replaces it here.
+        </p>
       )}
     </div>
   );

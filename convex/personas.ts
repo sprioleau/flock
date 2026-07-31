@@ -139,9 +139,9 @@ How you respond:
 
 /**
  * Idempotent seed: insert any missing built-in persona rows (matched by
- * slug). Existing rows are NEVER overwritten — a future in-app markdown
- * editor (v1) must not have its edits clobbered by a reload. Called by the
- * persona picker on open; safe to call any number of times.
+ * slug). Existing rows are NEVER overwritten — user edits live on session
+ * copies, and even a built-in row is left untouched once seeded. Called by
+ * the persona picker on open; safe to call any number of times.
  */
 export const seedBuiltInPersonas = mutation({
   args: {},
@@ -159,6 +159,7 @@ export const seedBuiltInPersonas = mutation({
       await ctx.db.insert("agents", {
         ...builtIn,
         capabilityMode: "advisory",
+        isBuiltIn: true,
         createdAtMs: nowMs,
         updatedAtMs: nowMs,
       });
@@ -167,6 +168,211 @@ export const seedBuiltInPersonas = mutation({
   },
 });
 
+// ---------------------------------------------------------------------------
+// In-app persona markdown editing (proposal §6 item 9 — copy-on-edit)
+// ---------------------------------------------------------------------------
+
+/**
+ * Size cap on a persona's markdown (~8 KB). Untrusted prompt text injected
+ * into a privileged position (§5.8) — the cap is one of the structural
+ * mitigations (alongside server-enforced capabilityMode) and keeps the
+ * batched runner's persona layer bounded (§4.2).
+ */
+const MAX_PERSONA_MARKDOWN_LENGTH = 8192;
+
+/**
+ * Server-side validation of user-submitted persona markdown. Mirrors the
+ * client's parse-persona-markdown.ts checks (the client validates first for
+ * a friendly inline message; this is the trust boundary). Returns an error
+ * message, or null when the markdown is acceptable.
+ */
+function validatePersonaMarkdown(personaMarkdown: string): string | null {
+  const trimmed = personaMarkdown.trim();
+  if (trimmed.length === 0) {
+    return "The persona definition cannot be empty.";
+  }
+  if (personaMarkdown.length > MAX_PERSONA_MARKDOWN_LENGTH) {
+    return `The persona definition is too long (${personaMarkdown.length} characters; the limit is ${MAX_PERSONA_MARKDOWN_LENGTH}).`;
+  }
+  if (trimmed.startsWith("---")) {
+    const closeIndex = trimmed.indexOf("\n---", 3);
+    if (closeIndex === -1) {
+      return "The frontmatter block starts with --- but is never closed with a matching --- line.";
+    }
+    const body = trimmed.slice(closeIndex + "\n---".length).trim();
+    if (body.length === 0) {
+      return "Add behavior text below the frontmatter — the body is what shapes the persona.";
+    }
+  }
+  return null;
+}
+
+/**
+ * THE copy-slug convention (single source of truth): a session's copy of
+ * `builtin/<base>` is `user/<sessionId>/<base>`. Deterministic, namespaced
+ * (§4.6 invariant 2), and slug-unique per (session, built-in) — so editing
+ * a built-in twice updates the same copy instead of forking again.
+ */
+function buildSessionCopySlug({
+  sessionId,
+  builtInSlug,
+}: {
+  sessionId: string;
+  builtInSlug: string;
+}): string {
+  const baseName = builtInSlug.slice(builtInSlug.indexOf("/") + 1);
+  return `user/${sessionId}/${baseName}`;
+}
+
+/**
+ * The built-in slug a session copy shadows (inverse of buildSessionCopySlug),
+ * or null when the row is not a copy of a built-in. Pure namespace mechanics
+ * — no behavior ever branches on a SPECIFIC slug (§4.6 invariant 1).
+ */
+function getShadowedBuiltInSlug(row: Doc<"agents">): string | null {
+  if (row.isBuiltIn !== false || row.createdBySessionId === undefined) {
+    return null;
+  }
+  const copyPrefix = `user/${row.createdBySessionId}/`;
+  if (!row.slug.startsWith(copyPrefix)) {
+    return null;
+  }
+  return `builtin/${row.slug.slice(copyPrefix.length)}`;
+}
+
+/** Bounds on the form-editable cooldown (budget guard stays meaningful). */
+const MIN_COOLDOWN_SECONDS = 10;
+const MAX_COOLDOWN_SECONDS = 600;
+
+/**
+ * Save edited persona markdown. Built-ins are NEVER patched: saving an edit
+ * to a built-in forks (or updates) the session's copy, which shadows the
+ * built-in in that session's picker (listPersonas). A session may only edit
+ * its own copies. Returns the slug of the row that now carries the edit —
+ * the client swaps its localStorage enablement to it, so the next runner
+ * turn reads the new markdown from this row.
+ *
+ * The row's typed fields (name/color/cooldownSeconds) stay the runtime
+ * source of truth. The structured editor serializes the SAME values into the
+ * frontmatter (interchange face) and passes them here as typed args, so row
+ * and markdown never drift; frontmatter is still never parsed inside
+ * mutations (§4.5). Omitted typed args leave the source row's values.
+ */
+export const updatePersonaMarkdown = mutation({
+  args: {
+    slug: v.string(),
+    personaMarkdown: v.string(),
+    sessionId: v.string(),
+    name: v.optional(v.string()),
+    color: v.optional(v.string()),
+    cooldownSeconds: v.optional(v.number()),
+  },
+  returns: v.object({ savedSlug: v.string() }),
+  handler: async (ctx, args) => {
+    const validationError = validatePersonaMarkdown(args.personaMarkdown);
+    if (validationError !== null) {
+      throw new Error(validationError);
+    }
+    if (args.name !== undefined && args.name.trim().length === 0) {
+      throw new Error("The persona needs a display name.");
+    }
+    if (args.color !== undefined && !/^#[0-9a-fA-F]{6}$/.test(args.color)) {
+      throw new Error("The color must be a 6-digit hex value like #e11d48.");
+    }
+    if (
+      args.cooldownSeconds !== undefined &&
+      (args.cooldownSeconds < MIN_COOLDOWN_SECONDS || args.cooldownSeconds > MAX_COOLDOWN_SECONDS)
+    ) {
+      throw new Error(
+        `The cooldown must be between ${MIN_COOLDOWN_SECONDS} and ${MAX_COOLDOWN_SECONDS} seconds.`,
+      );
+    }
+    const row = await findPersonaBySlug(ctx, args.slug);
+    if (row === null) {
+      throw new Error(`No persona is registered under "${args.slug}".`);
+    }
+    const nowMs = Date.now();
+    // NEVER spread possibly-undefined values into a patch (the serializer
+    // silently drops undefined fields — build the object conditionally).
+    const typedFieldChanges = {
+      ...(args.name !== undefined ? { name: args.name.trim() } : {}),
+      ...(args.color !== undefined ? { color: args.color } : {}),
+      ...(args.cooldownSeconds !== undefined ? { cooldownSeconds: args.cooldownSeconds } : {}),
+    };
+
+    // A user copy: edit in place (owner only).
+    if (row.isBuiltIn === false) {
+      if (row.createdBySessionId !== args.sessionId) {
+        throw new Error("This persona belongs to a different session.");
+      }
+      await ctx.db.patch(row._id, {
+        personaMarkdown: args.personaMarkdown,
+        ...typedFieldChanges,
+        updatedAtMs: nowMs,
+      });
+      return { savedSlug: row.slug };
+    }
+
+    // A built-in: fork (or update) the session's shadowing copy.
+    const copySlug = buildSessionCopySlug({
+      sessionId: args.sessionId,
+      builtInSlug: row.slug,
+    });
+    const existingCopy = await findPersonaBySlug(ctx, copySlug);
+    if (existingCopy !== null) {
+      await ctx.db.patch(existingCopy._id, {
+        personaMarkdown: args.personaMarkdown,
+        ...typedFieldChanges,
+        updatedAtMs: nowMs,
+      });
+      return { savedSlug: copySlug };
+    }
+    await ctx.db.insert("agents", {
+      slug: copySlug,
+      name: row.name,
+      color: row.color,
+      capabilityMode: row.capabilityMode,
+      personaMarkdown: args.personaMarkdown,
+      cooldownSeconds: row.cooldownSeconds,
+      ...typedFieldChanges,
+      isBuiltIn: false,
+      createdBySessionId: args.sessionId,
+      createdAtMs: nowMs,
+      updatedAtMs: nowMs,
+    });
+    return { savedSlug: copySlug };
+  },
+});
+
+/**
+ * Discard a session's copy, un-shadowing the pristine built-in ("reset to
+ * default"). Returns the built-in's slug so the client can swap enablement
+ * back. Owner-only, copies only — built-ins cannot be deleted.
+ */
+export const resetPersonaToBuiltIn = mutation({
+  args: { slug: v.string(), sessionId: v.string() },
+  returns: v.object({ builtInSlug: v.string() }),
+  handler: async (ctx, args) => {
+    const row = await findPersonaBySlug(ctx, args.slug);
+    if (row === null) {
+      throw new Error(`No persona is registered under "${args.slug}".`);
+    }
+    if (row.isBuiltIn !== false || row.createdBySessionId !== args.sessionId) {
+      throw new Error("Only this session's customized personas can be reset.");
+    }
+    const builtInSlug = getShadowedBuiltInSlug(row);
+    if (builtInSlug === null) {
+      throw new Error("This persona is not a copy of a built-in.");
+    }
+    await ctx.db.delete(row._id);
+    return { builtInSlug };
+  },
+});
+
+// `isBuiltIn` is OPTIONAL in the payload on purpose: /api/personas narrows
+// this payload with a `persona is PersonaRow` type predicate against its own
+// (narrower) row type — a required extra field would break that assignability.
+// toPersonaPayload always populates it; treat undefined as built-in.
 const personaPayloadValidator = v.object({
   slug: v.string(),
   name: v.string(),
@@ -174,9 +380,21 @@ const personaPayloadValidator = v.object({
   capabilityMode: v.literal("advisory"),
   personaMarkdown: v.string(),
   cooldownSeconds: v.number(),
+  isBuiltIn: v.optional(v.boolean()),
 });
 
-function toPersonaPayload(row: Doc<"agents">) {
+interface PersonaPayload {
+  slug: string;
+  name: string;
+  color: string;
+  capabilityMode: "advisory";
+  personaMarkdown: string;
+  cooldownSeconds: number;
+  /** Optional in the TYPE (not the data) — see the validator note above. */
+  isBuiltIn?: boolean;
+}
+
+function toPersonaPayload(row: Doc<"agents">): PersonaPayload {
   return {
     slug: row.slug,
     name: row.name,
@@ -184,22 +402,51 @@ function toPersonaPayload(row: Doc<"agents">) {
     capabilityMode: row.capabilityMode,
     personaMarkdown: row.personaMarkdown,
     cooldownSeconds: row.cooldownSeconds,
+    isBuiltIn: row.isBuiltIn !== false,
   };
 }
 
 /** Upper bound on picker rows (v0: two built-ins; marketplace pages later). */
 const MAX_LISTED_PERSONAS = 64;
 
-/** All registered personas, ordered by slug (deterministic picker order). */
+/**
+ * The personas the given session's picker shows: every built-in EXCEPT those
+ * shadowed by one of the session's copies, plus the session's copies. A copy
+ * sorts where its built-in would (same picker position, deterministic).
+ * Without a sessionId (or for sessions with no copies) this is simply the
+ * built-ins, ordered by slug.
+ */
 export const listPersonas = query({
-  args: {},
+  args: { sessionId: v.optional(v.string()) },
   returns: v.array(personaPayloadValidator),
-  handler: async (ctx) => {
-    const rows = await ctx.db
+  handler: async (ctx, args) => {
+    const allRows = await ctx.db
       .query("agents")
       .withIndex("by_slug")
       .take(MAX_LISTED_PERSONAS);
-    return rows.sort((a, b) => (a.slug < b.slug ? -1 : 1)).map(toPersonaPayload);
+    const builtIns = allRows.filter((row) => row.isBuiltIn !== false);
+    const sessionCopies =
+      args.sessionId === undefined
+        ? []
+        : await ctx.db
+            .query("agents")
+            .withIndex("by_createdBySessionId", (q) =>
+              q.eq("createdBySessionId", args.sessionId),
+            )
+            .take(MAX_LISTED_PERSONAS);
+    const shadowedSlugs = new Set(
+      sessionCopies
+        .map(getShadowedBuiltInSlug)
+        .filter((slug): slug is string => slug !== null),
+    );
+    const visibleRows = [
+      ...builtIns.filter((row) => !shadowedSlugs.has(row.slug)),
+      ...sessionCopies,
+    ];
+    return visibleRows
+      .map((row) => ({ row, sortKey: getShadowedBuiltInSlug(row) ?? row.slug }))
+      .sort((a, b) => (a.sortKey < b.sortKey ? -1 : 1))
+      .map((entry) => toPersonaPayload(entry.row));
   },
 });
 

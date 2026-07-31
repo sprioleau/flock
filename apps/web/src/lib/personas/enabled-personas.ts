@@ -78,6 +78,37 @@ export function useEnabledPersonaSlugs(): readonly string[] {
   return useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot);
 }
 
+/**
+ * Swap one enabled slug for another, preserving enablement (copy-on-edit
+ * plumbing): when saving a built-in's edit forks a session copy — or a reset
+ * deletes one — the ENABLED slug must follow the row that now defines the
+ * persona, so the advisors hook/runner reads the right markdown on its next
+ * turn. No-op when `fromSlug` isn't enabled or the slugs match.
+ */
+export function replaceEnabledPersonaSlug({
+  fromSlug,
+  toSlug,
+}: {
+  fromSlug: string;
+  toSlug: string;
+}): void {
+  const current = getSnapshot();
+  if (fromSlug === toSlug || !current.includes(fromSlug)) {
+    return;
+  }
+  const next = [
+    ...current.filter((slug) => slug !== fromSlug && slug !== toSlug),
+    toSlug,
+  ];
+  cachedSlugs = next;
+  try {
+    window.localStorage.setItem(ENABLED_PERSONAS_STORAGE_KEY, JSON.stringify(next));
+  } catch {
+    // In-memory enablement still applies for this tab.
+  }
+  notifyListeners();
+}
+
 /** Enable or disable one persona for this browser session (best-effort persistence). */
 export function setPersonaEnabled({
   slug,
