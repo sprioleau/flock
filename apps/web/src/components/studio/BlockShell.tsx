@@ -56,7 +56,9 @@ export function BlockShell({ block, children, className }: BlockShellProps) {
       state.dropTarget.parentId === block.id,
   );
 
-  const isTextBlock = block.type === "text";
+  // Blocks with an in-place content editor: text (rich-text Tiptap session)
+  // and button (single-line label editor). Same gesture for both.
+  const isInlineEditableBlock = block.type === "text" || block.type === "button";
 
   const handleClick = (event: MouseEvent) => {
     // Never let clicks bubble to the canvas (which clears the selection) —
@@ -67,7 +69,7 @@ export function BlockShell({ block, children, className }: BlockShellProps) {
     }
     // Canvas clicks select; they never follow block links (button/image href).
     event.preventDefault();
-    if (isTextBlock && isSelected) {
+    if (isInlineEditableBlock && isSelected) {
       // Click-when-already-selected opens the inline editor (this also makes
       // the second click of a double-click start the editing session).
       startTextEditing(block.id);
@@ -77,7 +79,7 @@ export function BlockShell({ block, children, className }: BlockShellProps) {
   };
 
   const handleDoubleClick = (event: MouseEvent) => {
-    if (!isTextBlock || isEditingText) {
+    if (!isInlineEditableBlock || isEditingText) {
       return;
     }
     event.preventDefault();
@@ -96,15 +98,25 @@ export function BlockShell({ block, children, className }: BlockShellProps) {
       onClick={handleClick}
       onDoubleClick={handleDoubleClick}
       className={cn(
-        "relative transition-shadow",
+        "relative",
         isEditingText ? "cursor-auto" : "cursor-pointer",
+        // Selection/hover indicator as an INSIDE-the-bounds ::after overlay
+        // (item 25): the active draft frame clips its content
+        // (overflow-hidden for the rounded email corners), so an OUTSIDE
+        // ring vanished wherever a block touched the email's edges —
+        // full-width sections lost their left/right/bottom borders. An inset
+        // box-shadow doesn't work either (it paints beneath the block's own
+        // opaque background). The pseudo-element draws the border within the
+        // block bounds, ABOVE the content, unclippable — all four sides
+        // visible for every block type, zero layout shift.
+        "after:pointer-events-none after:absolute after:inset-0 after:z-20 after:transition-colors",
         isSelected
-          ? "z-10 ring-2 ring-sky-500"
-          : "hover:ring-1 hover:ring-sky-300",
+          ? "z-10 after:border-2 after:border-sky-500"
+          : "after:border-sky-300 hover:after:border",
         // The source block ghosts while its lifted copy rides the overlay.
         isDragging && "opacity-40",
         // Subtle highlight on the container a valid drop would land in.
-        isValidDropContainer && "bg-sky-400/10 ring-2 ring-sky-300",
+        isValidDropContainer && "bg-sky-400/10 after:border-2 after:border-sky-300",
         className,
       )}
     >

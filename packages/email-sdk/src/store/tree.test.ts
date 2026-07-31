@@ -9,7 +9,7 @@ describe("inflate", () => {
   it("builds the tree in childrenIds order", () => {
     const tree = inflate(createSampleDocument());
     expect(tree.block.id).toBe("root");
-    expect(tree.children.map((child) => child.block.id)).toEqual(["sec_a1b2", "sec_c3d4"]);
+    expect(tree.children.map((child) => child.block.id)).toEqual(["sec_a1b2", "sec_c3d4", "sec_e5f6"]);
 
     const hero = tree.children[0]!;
     expect(hero.children.map((child) => child.block.id)).toEqual(["txt_e5f6", "img_g7h8", "div_i9j0"]);
@@ -83,7 +83,7 @@ describe("deflate", () => {
     // Manually reorder the root's sections without touching childrenIds.
     tree.children.reverse();
     const document = deflate(tree);
-    expect(document.root!.childrenIds).toEqual(["sec_c3d4", "sec_a1b2"]);
+    expect(document.root!.childrenIds).toEqual(["sec_e5f6", "sec_c3d4", "sec_a1b2"]);
   });
 
   it("rewrites stale parentId/childrenIds embedded in tree blocks", () => {

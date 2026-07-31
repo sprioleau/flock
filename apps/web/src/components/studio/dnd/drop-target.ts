@@ -362,6 +362,7 @@ export function buildPaletteDropInsertion(args: {
           name: "addBlock",
           block: createDefaultLeafBlock({
             type: item.blockType,
+            variant: item.variant,
             id,
             parentId: dropTarget.parentId,
             doc,

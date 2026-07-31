@@ -13,6 +13,9 @@ import { TextBlockView } from "./blocks/TextBlockView";
 import { ButtonBlockView } from "./blocks/ButtonBlockView";
 import { ImageBlockView } from "./blocks/ImageBlockView";
 import { DividerBlockView } from "./blocks/DividerBlockView";
+import { LinkBlockView } from "./blocks/LinkBlockView";
+import { CodeBlockView } from "./blocks/CodeBlockView";
+import { SpacerBlockView } from "./blocks/SpacerBlockView";
 
 /**
  * Recursive traversal of the inflated tree: each block type renders through
@@ -69,6 +72,18 @@ function renderTreeNode(node: EmailTreeNode, globals: GlobalStyles | undefined):
     case "divider":
       return (
         <DividerBlockView key={block.id} block={block} resolvedStyles={resolveBlockStyles(globals, block)} />
+      );
+    case "link":
+      return (
+        <LinkBlockView key={block.id} block={block} resolvedStyles={resolveBlockStyles(globals, block)} />
+      );
+    case "code":
+      return (
+        <CodeBlockView key={block.id} block={block} resolvedStyles={resolveBlockStyles(globals, block)} />
+      );
+    case "spacer":
+      return (
+        <SpacerBlockView key={block.id} block={block} resolvedStyles={resolveBlockStyles(globals, block)} />
       );
     case "root":
       throw new Error(

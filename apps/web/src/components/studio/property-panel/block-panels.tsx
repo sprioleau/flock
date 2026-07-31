@@ -1,17 +1,25 @@
 "use client";
 
-import type {
-  ButtonBlock,
-  ColumnBlock,
-  DividerBlock,
-  ImageBlock,
-  RowBlock,
-  SectionBlock,
-  TextBlock,
+import {
+  CODE_BLOCK_LANGUAGES,
+  resolveBlockStyles,
+  type ButtonBlock,
+  type CodeBlock,
+  type CodeBlockLanguage,
+  type CodeBlockTheme,
+  type ColumnBlock,
+  type DividerBlock,
+  type ImageBlock,
+  type LinkBlock,
+  type RowBlock,
+  type SectionBlock,
+  type SpacerBlock,
+  type TextBlock,
 } from "@tandem/email-sdk";
 import {
   AlignField,
   ColorField,
+  DropdownField,
   NumberField,
   PercentSliderField,
   SelectField,
@@ -20,6 +28,7 @@ import {
 import { GenerateImageField } from "./GenerateImageField";
 import { ImageSourceField } from "./ImageSourceField";
 import { PaddingFields } from "./PaddingFields";
+import { TextareaField } from "./TextareaField";
 import { getBlockPropertyHelp, type DescribableBlockType } from "./schema-help";
 import { useCommitBlockProperties, useResolvedGlobals } from "./usePanelDispatch";
 
@@ -47,6 +56,7 @@ export function ButtonPanel({ block }: { block: ButtonBlock }) {
   const globals = useResolvedGlobals();
   const { properties } = block;
   const helpFor = help("button");
+  const resolved = resolveBlockStyles(globals, block);
 
   return (
     <div className="space-y-4 p-4">
@@ -131,7 +141,7 @@ export function ButtonPanel({ block }: { block: ButtonBlock }) {
           onCommit={(value) => commit({ verticalPadding: value })}
         />
       </div>
-      <PaddingFields blockType="button" properties={properties} onCommitPadding={commit} />
+      <PaddingFields blockType="button" properties={properties} resolvedPadding={resolved} onCommitPadding={commit} />
     </div>
   );
 }
@@ -145,6 +155,7 @@ export function ImagePanel({ block }: { block: ImageBlock }) {
   const globals = useResolvedGlobals();
   const { properties } = block;
   const helpFor = help("image");
+  const resolved = resolveBlockStyles(globals, block);
 
   return (
     <div className="space-y-4 p-4">
@@ -164,7 +175,7 @@ export function ImagePanel({ block }: { block: ImageBlock }) {
       />
       {/* Width as a SCALE slider: the stored property stays pixels (the
           schema's `width`), but the control reads/writes it as a percent of
-          the RESOLVED contentWidth — the same mapping new images use (85% at
+          the RESOLVED contentWidth — the same mapping new images use (60% at
           creation). Every movement commits instantly (never debounced); the
           exact px value stays visible in the readout, and clearing restores
           "natural" via the replaceBlockProperties clear path. */}
@@ -215,7 +226,7 @@ export function ImagePanel({ block }: { block: ImageBlock }) {
         helpText={helpFor("href")}
         onCommit={(value) => commit({ href: value })}
       />
-      <PaddingFields blockType="image" properties={properties} onCommitPadding={commit} />
+      <PaddingFields blockType="image" properties={properties} resolvedPadding={resolved} onCommitPadding={commit} />
     </div>
   );
 }
@@ -229,6 +240,7 @@ export function SectionPanel({ block }: { block: SectionBlock }) {
   const globals = useResolvedGlobals();
   const { properties } = block;
   const helpFor = help("section");
+  const resolved = resolveBlockStyles(globals, block);
 
   return (
     <div className="space-y-4 p-4">
@@ -248,7 +260,7 @@ export function SectionPanel({ block }: { block: SectionBlock }) {
         helpText={helpFor("outerBackgroundColor")}
         onCommit={(value) => commit({ outerBackgroundColor: value })}
       />
-      <PaddingFields blockType="section" properties={properties} onCommitPadding={commit} />
+      <PaddingFields blockType="section" properties={properties} resolvedPadding={resolved} onCommitPadding={commit} />
     </div>
   );
 }
@@ -259,8 +271,10 @@ export function SectionPanel({ block }: { block: SectionBlock }) {
 
 export function RowPanel({ block }: { block: RowBlock }) {
   const commit = useCommitBlockProperties(block.id);
+  const globals = useResolvedGlobals();
   const { properties } = block;
   const helpFor = help("row");
+  const resolved = resolveBlockStyles(globals, block);
 
   return (
     <div className="space-y-4 p-4">
@@ -270,7 +284,7 @@ export function RowPanel({ block }: { block: RowBlock }) {
           value={properties.paddingTop}
           isClearable
           min={0}
-          placeholder="auto"
+          placeholder={String(resolved.paddingTop)}
           helpText={helpFor("paddingTop")}
           onCommit={(value) => commit({ paddingTop: value })}
         />
@@ -279,7 +293,7 @@ export function RowPanel({ block }: { block: RowBlock }) {
           value={properties.paddingBottom}
           isClearable
           min={0}
-          placeholder="auto"
+          placeholder={String(resolved.paddingBottom)}
           helpText={helpFor("paddingBottom")}
           onCommit={(value) => commit({ paddingBottom: value })}
         />
@@ -305,6 +319,7 @@ export function ColumnPanel({ block }: { block: ColumnBlock }) {
   const globals = useResolvedGlobals();
   const { properties } = block;
   const helpFor = help("column");
+  const resolved = resolveBlockStyles(globals, block);
 
   return (
     <div className="space-y-4 p-4">
@@ -336,7 +351,7 @@ export function ColumnPanel({ block }: { block: ColumnBlock }) {
         helpText={helpFor("backgroundColor")}
         onCommit={(value) => commit({ backgroundColor: value })}
       />
-      <PaddingFields blockType="column" properties={properties} onCommitPadding={commit} />
+      <PaddingFields blockType="column" properties={properties} resolvedPadding={resolved} onCommitPadding={commit} />
     </div>
   );
 }
@@ -350,6 +365,7 @@ export function DividerPanel({ block }: { block: DividerBlock }) {
   const globals = useResolvedGlobals();
   const { properties } = block;
   const helpFor = help("divider");
+  const resolved = resolveBlockStyles(globals, block);
 
   return (
     <div className="space-y-4 p-4">
@@ -370,7 +386,7 @@ export function DividerPanel({ block }: { block: DividerBlock }) {
         helpText={helpFor("thickness")}
         onCommit={(value) => commit({ thickness: value })}
       />
-      <PaddingFields blockType="divider" properties={properties} onCommitPadding={commit} />
+      <PaddingFields blockType="divider" properties={properties} resolvedPadding={resolved} onCommitPadding={commit} />
     </div>
   );
 }
@@ -384,6 +400,7 @@ export function TextPanel({ block }: { block: TextBlock }) {
   const globals = useResolvedGlobals();
   const { properties } = block;
   const helpFor = help("text");
+  const resolved = resolveBlockStyles(globals, block);
 
   return (
     <div className="space-y-4 p-4">
@@ -405,10 +422,176 @@ export function TextPanel({ block }: { block: TextBlock }) {
         helpText={helpFor("textAlign")}
         onCommit={(value) => commit({ textAlign: value })}
       />
-      <PaddingFields blockType="text" properties={properties} onCommitPadding={commit} />
+      <PaddingFields blockType="text" properties={properties} resolvedPadding={resolved} onCommitPadding={commit} />
       <p className="text-xs text-muted-foreground">
         Edit the text content directly on the canvas.
       </p>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Link
+// ---------------------------------------------------------------------------
+
+const LINK_UNDERLINE_OPTIONS: ReadonlyArray<{ value: "underlined" | "plain"; label: string }> = [
+  { value: "underlined", label: "Underlined" },
+  { value: "plain", label: "Plain" },
+];
+
+export function LinkPanel({ block }: { block: LinkBlock }) {
+  const commit = useCommitBlockProperties(block.id);
+  const globals = useResolvedGlobals();
+  const { properties } = block;
+  const helpFor = help("link");
+  const isUnderlined = properties.isUnderlined ?? true;
+  const resolved = resolveBlockStyles(globals, block);
+
+  return (
+    <div className="space-y-4 p-4">
+      <TextField
+        label="Text"
+        value={properties.text}
+        helpText={helpFor("text")}
+        onCommit={(value) => commit({ text: value })}
+      />
+      <TextField
+        label="Link (href)"
+        value={properties.href}
+        helpText={helpFor("href")}
+        onCommit={(value) => commit({ href: value })}
+      />
+      <ColorField
+        label="Text color"
+        value={properties.textColor}
+        fallbackColor={globals.linkTextColor}
+        isClearable
+        helpText={helpFor("textColor")}
+        onCommit={(value) => commit({ textColor: value })}
+      />
+      <SelectField
+        label="Underline"
+        value={isUnderlined ? "underlined" : "plain"}
+        options={LINK_UNDERLINE_OPTIONS}
+        helpText={helpFor("isUnderlined")}
+        onCommit={(value) => {
+          if (value !== undefined) {
+            commit({ isUnderlined: value === "underlined" });
+          }
+        }}
+      />
+      <NumberField
+        label="Font size (px)"
+        value={properties.fontSize}
+        isClearable
+        min={1}
+        placeholder="14"
+        helpText={helpFor("fontSize")}
+        onCommit={(value) => commit({ fontSize: value })}
+      />
+      <AlignField
+        label="Alignment"
+        value={properties.align}
+        isClearable
+        helpText={helpFor("align")}
+        onCommit={(value) => commit({ align: value })}
+      />
+      <PaddingFields blockType="link" properties={properties} resolvedPadding={resolved} onCommitPadding={commit} />
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Code
+// ---------------------------------------------------------------------------
+
+const CODE_LANGUAGE_OPTIONS: ReadonlyArray<{ value: CodeBlockLanguage; label: string }> =
+  CODE_BLOCK_LANGUAGES.map((language) => ({ value: language, label: language }));
+
+const CODE_THEME_OPTIONS: ReadonlyArray<{ value: CodeBlockTheme; label: string }> = [
+  { value: "light", label: "Light" },
+  { value: "dark", label: "Dark" },
+];
+
+const LINE_NUMBER_OPTIONS: ReadonlyArray<{ value: "shown" | "hidden"; label: string }> = [
+  { value: "shown", label: "Shown" },
+  { value: "hidden", label: "Hidden" },
+];
+
+export function CodePanel({ block }: { block: CodeBlock }) {
+  const commit = useCommitBlockProperties(block.id);
+  const globals = useResolvedGlobals();
+  const { properties } = block;
+  const helpFor = help("code");
+  const shouldShowLineNumbers = properties.shouldShowLineNumbers ?? false;
+  const resolved = resolveBlockStyles(globals, block);
+
+  return (
+    <div className="space-y-4 p-4">
+      <TextareaField
+        label="Code"
+        value={properties.code}
+        textareaClassName="font-mono text-xs"
+        helpText={helpFor("code")}
+        onCommit={(value) => commit({ code: value })}
+      />
+      <DropdownField
+        label="Language"
+        value={properties.language}
+        options={CODE_LANGUAGE_OPTIONS}
+        helpText={helpFor("language")}
+        onCommit={(value) => commit({ language: value as CodeBlockLanguage })}
+      />
+      <SelectField
+        label="Theme"
+        value={properties.theme ?? "dark"}
+        options={CODE_THEME_OPTIONS}
+        helpText={helpFor("theme")}
+        onCommit={(value) => {
+          if (value !== undefined) {
+            commit({ theme: value });
+          }
+        }}
+      />
+      <SelectField
+        label="Line numbers"
+        value={shouldShowLineNumbers ? "shown" : "hidden"}
+        options={LINE_NUMBER_OPTIONS}
+        helpText={helpFor("shouldShowLineNumbers")}
+        onCommit={(value) => {
+          if (value !== undefined) {
+            commit({ shouldShowLineNumbers: value === "shown" });
+          }
+        }}
+      />
+      <PaddingFields blockType="code" properties={properties} resolvedPadding={resolved} onCommitPadding={commit} />
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Spacer
+// ---------------------------------------------------------------------------
+
+export function SpacerPanel({ block }: { block: SpacerBlock }) {
+  const commit = useCommitBlockProperties(block.id);
+  const { properties } = block;
+  const helpFor = help("spacer");
+
+  return (
+    <div className="space-y-4 p-4">
+      <NumberField
+        label="Height (px)"
+        value={properties.height}
+        min={1}
+        placeholder="24"
+        helpText={helpFor("height")}
+        onCommit={(value) => {
+          if (value !== undefined) {
+            commit({ height: value });
+          }
+        }}
+      />
     </div>
   );
 }

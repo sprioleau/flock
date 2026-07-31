@@ -15,6 +15,9 @@ const BLOCK_TYPE_LABELS: Record<BlockType, string> = {
   button: "Button",
   image: "Image",
   divider: "Divider",
+  link: "Link",
+  code: "Code",
+  spacer: "Spacer",
 };
 
 export interface BlockBreadcrumbProps {

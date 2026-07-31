@@ -1,16 +1,19 @@
 "use client";
 
 import {
-  ButtonBlockView,
+  CodeBlockView,
   ColumnBlockView,
   DividerBlockView,
+  LinkBlockView,
   resolveBlockStyles,
   RowBlockView,
   SectionBlockView,
+  SpacerBlockView,
   type EmailTreeNode,
   type GlobalStyles,
 } from "@tandem/email-sdk";
 import { BlockShell } from "./BlockShell";
+import { ButtonBlockCanvasSlot } from "./button-editor/ButtonBlockCanvasSlot";
 import { ImageBlockCanvasSlot } from "./ImageBlockCanvasSlot";
 import { TextBlockCanvasSlot } from "./text-editor/TextBlockCanvasSlot";
 
@@ -71,9 +74,11 @@ export function CanvasNode({ node, globals }: CanvasNodeProps) {
         </BlockShell>
       );
     case "button":
+      // The canvas slot swaps in the single-line label editor while this
+      // button's inline editing session is open.
       return (
         <BlockShell block={block}>
-          <ButtonBlockView block={block} resolvedStyles={resolveBlockStyles(globals, block)} />
+          <ButtonBlockCanvasSlot block={block} resolvedStyles={resolveBlockStyles(globals, block)} />
         </BlockShell>
       );
     case "image":
@@ -88,6 +93,24 @@ export function CanvasNode({ node, globals }: CanvasNodeProps) {
       return (
         <BlockShell block={block}>
           <DividerBlockView block={block} resolvedStyles={resolveBlockStyles(globals, block)} />
+        </BlockShell>
+      );
+    case "link":
+      return (
+        <BlockShell block={block}>
+          <LinkBlockView block={block} resolvedStyles={resolveBlockStyles(globals, block)} />
+        </BlockShell>
+      );
+    case "code":
+      return (
+        <BlockShell block={block}>
+          <CodeBlockView block={block} resolvedStyles={resolveBlockStyles(globals, block)} />
+        </BlockShell>
+      );
+    case "spacer":
+      return (
+        <BlockShell block={block}>
+          <SpacerBlockView block={block} resolvedStyles={resolveBlockStyles(globals, block)} />
         </BlockShell>
       );
     case "root":

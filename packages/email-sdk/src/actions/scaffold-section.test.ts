@@ -33,7 +33,7 @@ const agentContext: ActionContext = {
 };
 
 // The sample document's top-level sections, top to bottom.
-const SAMPLE_SECTION_IDS = ["sec_a1b2", "sec_c3d4"];
+const SAMPLE_SECTION_IDS = ["sec_a1b2", "sec_c3d4", "sec_e5f6"];
 
 describe("scaffoldSectionInputSchema", () => {
   it("accepts every catalog templateId with omitted position and params", () => {
@@ -82,11 +82,12 @@ describe("resolveScaffoldSectionOperation", () => {
   const doc = createSampleDocument();
 
   it.each([
-    [undefined, 2],
-    ["bottom" as const, 2],
+    [undefined, 3],
+    ["bottom" as const, 3],
     ["top" as const, 0],
     [{ beforeSectionId: "sec_c3d4" }, 1],
     [{ afterSectionId: "sec_c3d4" }, 2],
+    [{ afterSectionId: "sec_e5f6" }, 3],
     [{ beforeSectionId: "sec_a1b2" }, 0],
     [{ afterSectionId: "sec_a1b2" }, 1],
   ])("resolves position %j to insertion index %i", (position, expectedIndex) => {
@@ -231,7 +232,7 @@ describe("scaffoldSection dispatch (registry end to end)", () => {
     expect(result.logEntry.batchId).toBe("batch_1");
     expect(checkDocumentIntegrity(result.doc).errors).toEqual([]);
     const root = result.doc.root!;
-    expect(root.childrenIds).toHaveLength(3);
+    expect(root.childrenIds).toHaveLength(4);
     expect(JSON.stringify(result.doc)).toContain("Launch day");
 
     // One undo step: the standard removeBlock inverse restores the doc exactly.

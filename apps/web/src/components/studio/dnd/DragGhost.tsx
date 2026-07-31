@@ -2,9 +2,12 @@
 
 import {
   ButtonBlockView,
+  CodeBlockView,
   DividerBlockView,
   ImageBlockView,
+  LinkBlockView,
   resolveBlockStyles,
+  SpacerBlockView,
   TextBlockView,
   type BlockId,
   type EmailDocument,
@@ -37,6 +40,12 @@ export function DragGhost({ blockId, doc, globals }: DragGhostProps) {
       return <ImageBlockView block={block} resolvedStyles={resolveBlockStyles(globals, block)} />;
     case "divider":
       return <DividerBlockView block={block} resolvedStyles={resolveBlockStyles(globals, block)} />;
+    case "link":
+      return <LinkBlockView block={block} resolvedStyles={resolveBlockStyles(globals, block)} />;
+    case "code":
+      return <CodeBlockView block={block} resolvedStyles={resolveBlockStyles(globals, block)} />;
+    case "spacer":
+      return <SpacerBlockView block={block} resolvedStyles={resolveBlockStyles(globals, block)} />;
     default:
       return null;
   }

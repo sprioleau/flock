@@ -1,13 +1,16 @@
 import { z } from "zod";
 import {
   buttonBlockIdSchema,
+  codeBlockIdSchema,
   columnBlockIdSchema,
   dividerBlockIdSchema,
   imageBlockIdSchema,
   leafBlockIdSchema,
+  linkBlockIdSchema,
   rootBlockIdSchema,
   rowBlockIdSchema,
   sectionBlockIdSchema,
+  spacerBlockIdSchema,
   textBlockIdSchema,
 } from "./ids";
 import { globalStylesSchema, textAlignSchema } from "./globals";
@@ -23,7 +26,8 @@ import { textDocSchema } from "./text";
  * Block vocabulary maps to React Email components:
  *   root → Container semantics · section → Section · row → Row ·
  *   column → Column · text → Heading/Text · button → Button ·
- *   image → Img · divider → Hr
+ *   image → Img · divider → Hr · link → Link · code → CodeBlock ·
+ *   spacer → an email-safe fixed-height cell (no RE primitive)
  *
  * Nesting (also enforced structurally by the integrity checker):
  *   root > section > (row | leaf) · row > column > leaf
@@ -92,7 +96,7 @@ export const sectionBlockSchema = z
     childrenIds: z
       .array(z.union([rowBlockIdSchema, leafBlockIdSchema]))
       .describe(
-        "Ordered ids of this section's children: rows (for multi-column layout) and/or leaf blocks (text, button, image, divider), top to bottom.",
+        "Ordered ids of this section's children: rows (for multi-column layout) and/or leaf blocks (text, button, image, divider, link, code, spacer), top to bottom.",
       ),
     properties: z
       .strictObject({
@@ -151,7 +155,7 @@ export const columnBlockSchema = z
     childrenIds: z
       .array(leafBlockIdSchema)
       .describe(
-        "Ordered ids of this column's leaf blocks (text, button, image, divider), top to bottom. Columns may not contain rows or sections.",
+        "Ordered ids of this column's leaf blocks (text, button, image, divider, link, code, spacer), top to bottom. Columns may not contain rows or sections.",
       ),
     properties: z
       .strictObject({
@@ -378,6 +382,159 @@ export const dividerBlockSchema = z
 
 export type DividerBlock = z.infer<typeof dividerBlockSchema>;
 
+/**
+ * Languages the code block can highlight — a curated, developer-recognizable
+ * subset of React Email's Prism languages, kept small so agent-facing tool
+ * schemas stay readable.
+ */
+export const CODE_BLOCK_LANGUAGES = [
+  "bash",
+  "c",
+  "cpp",
+  "csharp",
+  "css",
+  "diff",
+  "go",
+  "graphql",
+  "html",
+  "java",
+  "javascript",
+  "json",
+  "jsx",
+  "kotlin",
+  "markdown",
+  "php",
+  "python",
+  "ruby",
+  "rust",
+  "sql",
+  "swift",
+  "tsx",
+  "typescript",
+  "yaml",
+] as const;
+
+export type CodeBlockLanguage = (typeof CODE_BLOCK_LANGUAGES)[number];
+
+/** Color scheme names for the code block, mapped to Prism themes by the renderer. */
+export const CODE_BLOCK_THEMES = ["light", "dark"] as const;
+
+export type CodeBlockTheme = (typeof CODE_BLOCK_THEMES)[number];
+
+/** A standalone styled hyperlink. Maps to React Email Link. */
+export const linkBlockSchema = z
+  .strictObject({
+    id: linkBlockIdSchema,
+    type: z.literal("link").describe("Block type discriminator."),
+    parentId: z
+      .union([sectionBlockIdSchema, columnBlockIdSchema])
+      .describe("Id of the section or column containing this link."),
+    childrenIds: emptyChildrenIds("link"),
+    properties: z
+      .strictObject({
+        text: z.string().min(1).describe("The visible link text. Plain text only."),
+        href: z
+          .string()
+          .min(1)
+          .describe("Destination when the link is clicked: an absolute URL, mailto: address, or merge tag."),
+        textColor: z
+          .string()
+          .min(1)
+          .optional()
+          .describe("Overrides globals.linkTextColor for this link only."),
+        fontFamily: z
+          .string()
+          .min(1)
+          .optional()
+          .describe("Overrides globals.paragraphFontFamily for this link only."),
+        fontSize: z
+          .number()
+          .positive()
+          .optional()
+          .describe("Font size in pixels. Renderer default: 14."),
+        isUnderlined: z
+          .boolean()
+          .optional()
+          .describe("Whether the link text is underlined. Renderer default: true."),
+        align: textAlignSchema
+          .optional()
+          .describe(
+            'Horizontal placement of the link within its container: "left", "center", or "right". Renderer default: "left".',
+          ),
+        ...blockPaddingFields("link block"),
+      })
+      .describe(
+        "Link properties. text and href are required; style fields override the link/paragraph globals for this link only.",
+      ),
+  })
+  .describe(
+    "A standalone styled hyperlink on its own line (e.g. \"View in browser\", \"Unsubscribe\"). Maps to React Email's Link. For a link inside flowing prose, use a link mark in a text block; for a prominent call to action, use a button.",
+  );
+
+export type LinkBlock = z.infer<typeof linkBlockSchema>;
+
+/** A syntax-highlighted code snippet. Maps to React Email CodeBlock. */
+export const codeBlockSchema = z
+  .strictObject({
+    id: codeBlockIdSchema,
+    type: z.literal("code").describe("Block type discriminator."),
+    parentId: z
+      .union([sectionBlockIdSchema, columnBlockIdSchema])
+      .describe("Id of the section or column containing this code block."),
+    childrenIds: emptyChildrenIds("code"),
+    properties: z
+      .strictObject({
+        code: z
+          .string()
+          .min(1)
+          .describe("The source code to display, verbatim (newlines preserved)."),
+        language: z
+          .enum(CODE_BLOCK_LANGUAGES)
+          .describe("Language for syntax highlighting."),
+        theme: z
+          .enum(CODE_BLOCK_THEMES)
+          .optional()
+          .describe(
+            'Color scheme of the snippet: "light" or "dark". The renderer maps each to a matching Prism theme with inline, email-safe styles. Renderer default: "dark".',
+          ),
+        shouldShowLineNumbers: z
+          .boolean()
+          .optional()
+          .describe("Whether to show line numbers in the gutter. Renderer default: false."),
+        ...blockPaddingFields("code block"),
+      })
+      .describe("Code block properties. code and language are required."),
+  })
+  .describe(
+    "A syntax-highlighted code snippet rendered with inline, email-safe styles. Maps to React Email's CodeBlock.",
+  );
+
+export type CodeBlock = z.infer<typeof codeBlockSchema>;
+
+/** Fixed vertical whitespace. Rendered as an email-safe fixed-height cell. */
+export const spacerBlockSchema = z
+  .strictObject({
+    id: spacerBlockIdSchema,
+    type: z.literal("spacer").describe("Block type discriminator."),
+    parentId: z
+      .union([sectionBlockIdSchema, columnBlockIdSchema])
+      .describe("Id of the section or column containing this spacer."),
+    childrenIds: emptyChildrenIds("spacer"),
+    properties: z
+      .strictObject({
+        height: z
+          .number()
+          .positive()
+          .describe("Height of the gap in pixels."),
+      })
+      .describe("Spacer properties: just the gap height. Spacers are transparent — the container background shows through."),
+  })
+  .describe(
+    "Fixed vertical whitespace between blocks. React Email has no Spacer primitive, so this renders as the email-safe idiom: a fixed-height table cell. Use it for explicit vertical rhythm beyond the padding-based defaults.",
+  );
+
+export type SpacerBlock = z.infer<typeof spacerBlockSchema>;
+
 // ---------------------------------------------------------------------------
 // Union
 // ---------------------------------------------------------------------------
@@ -393,6 +550,9 @@ export const blockSchema = z
     buttonBlockSchema,
     imageBlockSchema,
     dividerBlockSchema,
+    linkBlockSchema,
+    codeBlockSchema,
+    spacerBlockSchema,
   ])
   .describe("Any block in the email document, discriminated by its type field.");
 
@@ -402,4 +562,11 @@ export type Block = z.infer<typeof blockSchema>;
 export type ContainerBlock = RootBlock | SectionBlock | RowBlock | ColumnBlock;
 
 /** Any leaf block (never has children). */
-export type LeafBlock = TextBlock | ButtonBlock | ImageBlock | DividerBlock;
+export type LeafBlock =
+  | TextBlock
+  | ButtonBlock
+  | ImageBlock
+  | DividerBlock
+  | LinkBlock
+  | CodeBlock
+  | SpacerBlock;

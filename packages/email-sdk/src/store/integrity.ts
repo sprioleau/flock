@@ -77,6 +77,9 @@ export const ALLOWED_CHILD_TYPES: Record<BlockType, readonly BlockType[]> = {
   button: [],
   image: [],
   divider: [],
+  link: [],
+  code: [],
+  spacer: [],
 };
 
 function isLeafType(type: BlockType): type is LeafBlockType {

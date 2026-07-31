@@ -19,7 +19,12 @@ describe("generateDocumentOutline (default depth: blocks)", () => {
           col_m3n4 column 60%
             txt_r7s8 text p "Ready to ride? Grab a seat on the right." +italic
           col_p5q6 column 40%
-            btn_t9u0 button "Get started" href=https://example.com/start"
+            btn_t9u0 button "Get started" href=https://example.com/start
+      sec_e5f6 section
+        txt_v1w2 text h2 "For developers"
+        cod_x3y4 code bash "npm install @tandem/email-sdk"
+        spc_z5a6 spacer h=16
+        lnk_b7c8 link "Read the changelog" href=https://example.com/changelog"
     `);
   });
 
@@ -93,7 +98,7 @@ describe("generateDocumentOutline (default depth: blocks)", () => {
   it("stays terse — a few hundred tokens on the sample doc", () => {
     // ~4 chars/token heuristic: keep the whole outline well under ~300 tokens.
     expect(outline.length).toBeLessThan(1200);
-    expect(outline.split("\n").length).toBe(11); // globals + 10 blocks
+    expect(outline.split("\n").length).toBe(16); // globals + 15 blocks
   });
 });
 
@@ -125,7 +130,8 @@ describe("depth option", () => {
     expect(outline).toMatchInlineSnapshot(`
       "globals: buttonBackgroundColor=#1a1a2e, heading1TextAlign=center
       sec_a1b2 section (3 children)
-      sec_c3d4 section (1 children)"
+      sec_c3d4 section (1 children)
+      sec_e5f6 section (4 children)"
     `);
     expect(outline).not.toContain("txt_");
     expect(outline).not.toContain("btn_");

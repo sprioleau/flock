@@ -343,7 +343,7 @@ describe("applyOperation — applyTheme", () => {
     const document = createSampleDocument();
     delete document.sec_c3d4; // drop the override-carrying section (and its subtree refs)
     const root = document.root!;
-    document.root = { ...root, childrenIds: ["sec_a1b2"] } as typeof root;
+    document.root = { ...root, childrenIds: ["sec_a1b2", "sec_e5f6"] } as typeof root;
     for (const blockId of ["row_k1l2", "col_m3n4", "txt_r7s8", "col_p5q6", "btn_t9u0"] as const) {
       delete document[blockId];
     }
@@ -531,7 +531,7 @@ describe("applyOperation — addSection", () => {
       section: createNewSection(),
       index: 1,
     });
-    expect(result.doc.root!.childrenIds).toEqual(["sec_a1b2", "sec_zz02", "sec_c3d4"]);
+    expect(result.doc.root!.childrenIds).toEqual(["sec_a1b2", "sec_zz02", "sec_c3d4", "sec_e5f6"]);
   });
 
   it("is pure and round-trips (bare section)", () => {
@@ -551,7 +551,7 @@ describe("applyOperation — addSection", () => {
       index: 0,
       children: [createNewSectionText()],
     });
-    expect(applied.doc.root!.childrenIds).toEqual(["sec_zz02", "sec_a1b2", "sec_c3d4"]);
+    expect(applied.doc.root!.childrenIds).toEqual(["sec_zz02", "sec_a1b2", "sec_c3d4", "sec_e5f6"]);
     expect(applied.doc.txt_zz03!.parentId).toBe("sec_zz02");
   });
 
@@ -586,7 +586,7 @@ describe("applyOperation — addSection", () => {
   it("rejects an out-of-range index", () => {
     expectErrorCode({
       document: createSampleDocument(),
-      operation: { name: "addSection", section: createNewSection(), index: 3 },
+      operation: { name: "addSection", section: createNewSection(), index: 4 },
       code: "index_out_of_range",
     });
   });
@@ -610,7 +610,7 @@ describe("applyOperation — removeBlock", () => {
     for (const removedId of ["sec_c3d4", "row_k1l2", "col_m3n4", "txt_r7s8", "col_p5q6", "btn_t9u0"]) {
       expect(result.doc[removedId]).toBeUndefined();
     }
-    expect(result.doc.root!.childrenIds).toEqual(["sec_a1b2"]);
+    expect(result.doc.root!.childrenIds).toEqual(["sec_a1b2", "sec_e5f6"]);
     expect(Object.keys(result.doc)).toHaveLength(Object.keys(document).length - 6);
   });
 
@@ -742,7 +742,7 @@ describe("applyOperation — moveBlock", () => {
       newParentId: "root",
       index: 0,
     });
-    expect(applied.doc.root!.childrenIds).toEqual(["sec_c3d4", "sec_a1b2"]);
+    expect(applied.doc.root!.childrenIds).toEqual(["sec_c3d4", "sec_a1b2", "sec_e5f6"]);
     expect(applied.doc.txt_r7s8!.parentId).toBe("col_m3n4");
   });
 

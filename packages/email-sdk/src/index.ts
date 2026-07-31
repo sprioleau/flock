@@ -28,6 +28,9 @@ export {
   buttonBlockIdSchema,
   imageBlockIdSchema,
   dividerBlockIdSchema,
+  linkBlockIdSchema,
+  codeBlockIdSchema,
+  spacerBlockIdSchema,
   leafBlockIdSchema,
 } from "./schema/ids";
 export type {
@@ -85,6 +88,11 @@ export {
   buttonBlockSchema,
   imageBlockSchema,
   dividerBlockSchema,
+  linkBlockSchema,
+  codeBlockSchema,
+  spacerBlockSchema,
+  CODE_BLOCK_LANGUAGES,
+  CODE_BLOCK_THEMES,
 } from "./schema/blocks";
 export type {
   Block,
@@ -96,6 +104,11 @@ export type {
   ButtonBlock,
   ImageBlock,
   DividerBlock,
+  LinkBlock,
+  CodeBlock,
+  SpacerBlock,
+  CodeBlockLanguage,
+  CodeBlockTheme,
   ContainerBlock,
   LeafBlock,
 } from "./schema/blocks";
@@ -138,6 +151,9 @@ export type {
   ResolvedButtonStyles,
   ResolvedImageStyles,
   ResolvedDividerStyles,
+  ResolvedLinkStyles,
+  ResolvedCodeStyles,
+  ResolvedSpacerStyles,
   ResolvedStylesByBlockType,
   ResolvedBlockStyles,
 } from "./render/styles";
@@ -163,6 +179,12 @@ export { ImageBlockView } from "./render/blocks/ImageBlockView";
 export type { ImageBlockViewProps } from "./render/blocks/ImageBlockView";
 export { DividerBlockView } from "./render/blocks/DividerBlockView";
 export type { DividerBlockViewProps } from "./render/blocks/DividerBlockView";
+export { LinkBlockView } from "./render/blocks/LinkBlockView";
+export type { LinkBlockViewProps } from "./render/blocks/LinkBlockView";
+export { CodeBlockView } from "./render/blocks/CodeBlockView";
+export type { CodeBlockViewProps } from "./render/blocks/CodeBlockView";
+export { SpacerBlockView } from "./render/blocks/SpacerBlockView";
+export type { SpacerBlockViewProps } from "./render/blocks/SpacerBlockView";
 
 // --- Operations (operations/ops) --------------------------------------------------------
 export {

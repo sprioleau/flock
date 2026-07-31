@@ -54,6 +54,28 @@ describe("renderToHTML style resolution end to end", () => {
     expect(html).toContain("background-color:#dbeafe"); // image block backgroundColor override
   });
 
+  it("renders the new leaf blocks (link, code, spacer) from globals", async () => {
+    const html = await renderToHTML(createGlobalsOnlyFixture());
+    // link: linkTextColor global, underlined by default, paragraph font.
+    expect(html).toContain('href="https://example.com/newsletter/view"');
+    expect(html).toContain("View in browser");
+    // code: Prism-highlighted with inline styles, dark theme by default.
+    expect(html).toContain("@react-email/render");
+    expect(html).toContain("<pre");
+    // spacer: fixed-height cell idiom.
+    expect(html).toContain("height:24px");
+    expect(html).toContain("line-height:24px");
+    expect(html).toContain("font-size:1px");
+  });
+
+  it("applies the new leaf blocks' overrides (link/code/spacer)", async () => {
+    const html = await renderToHTML(createBlockOverridesOnlyFixture());
+    expect(html).toContain("color:#8d0801"); // link textColor override
+    expect(html).toContain("font-size:18px"); // link fontSize override
+    expect(html).toContain("text-decoration:none"); // link isUnderlined: false
+    expect(html).toContain("height:48px"); // spacer height
+  });
+
   it("mixed: block overrides beat globals, untouched fields keep globals", async () => {
     const html = await renderToHTML(createMixedFixture());
     expect(html).toContain("background-color:#ffd500"); // button bg override wins

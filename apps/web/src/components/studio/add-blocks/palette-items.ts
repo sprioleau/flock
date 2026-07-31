@@ -2,10 +2,13 @@ import {
   ChartColumnIcon,
   Columns2Icon,
   Columns3Icon,
+  CodeIcon,
+  HeadingIcon,
   ImageIcon,
   ImagesIcon,
   LayoutGridIcon,
   LayoutTemplateIcon,
+  LinkIcon,
   MinusIcon,
   NewspaperIcon,
   PanelBottomIcon,
@@ -14,9 +17,11 @@ import {
   SquareDashedIcon,
   SquareMousePointerIcon,
   TypeIcon,
+  UnfoldVerticalIcon,
   type LucideIcon,
 } from "lucide-react";
 import { SECTION_TEMPLATES, type BlockType, type LeafBlockType } from "@tandem/email-sdk";
+import type { LeafBlockVariant } from "../block-defaults";
 
 /**
  * The Blocks-tab palette catalog: every block a user can add by hand, grouped
@@ -38,7 +43,13 @@ interface PaletteItemBase {
 }
 
 export type PaletteItem =
-  | (PaletteItemBase & { kind: "leaf"; blockType: LeafBlockType })
+  | (PaletteItemBase & {
+      kind: "leaf";
+      blockType: LeafBlockType;
+      /** Optional content preset the block-defaults factory applies (e.g. the
+       * Heading tile: a text block whose doc is a single heading node). */
+      variant?: LeafBlockVariant;
+    })
   | (PaletteItemBase & { kind: "columns"; columnCount: 2 | 3 })
   | (PaletteItemBase & { kind: "empty-section" })
   | (PaletteItemBase & { kind: "section-template"; templateId: string });
@@ -91,6 +102,15 @@ export const PALETTE_GROUPS: readonly PaletteGroup[] = [
       },
       {
         kind: "leaf",
+        id: "heading",
+        blockType: "text",
+        variant: "heading",
+        label: "Heading",
+        description: "A text block starting as a heading.",
+        Icon: HeadingIcon,
+      },
+      {
+        kind: "leaf",
         id: "button",
         blockType: "button",
         label: "Button",
@@ -112,6 +132,30 @@ export const PALETTE_GROUPS: readonly PaletteGroup[] = [
         label: "Divider",
         description: "A horizontal separator line.",
         Icon: MinusIcon,
+      },
+      {
+        kind: "leaf",
+        id: "link",
+        blockType: "link",
+        label: "Link",
+        description: "A standalone hyperlink on its own line.",
+        Icon: LinkIcon,
+      },
+      {
+        kind: "leaf",
+        id: "code",
+        blockType: "code",
+        label: "Code",
+        description: "A syntax-highlighted code snippet.",
+        Icon: CodeIcon,
+      },
+      {
+        kind: "leaf",
+        id: "spacer",
+        blockType: "spacer",
+        label: "Spacer",
+        description: "Fixed vertical space between blocks.",
+        Icon: UnfoldVerticalIcon,
       },
     ],
   },

@@ -23,6 +23,9 @@ export const BLOCK_TYPES = [
   "button",
   "image",
   "divider",
+  "link",
+  "code",
+  "spacer",
 ] as const;
 
 export type BlockType = (typeof BLOCK_TYPES)[number];
@@ -33,7 +36,15 @@ export const CONTAINER_BLOCK_TYPES = ["root", "section", "row", "column"] as con
 export type ContainerBlockType = (typeof CONTAINER_BLOCK_TYPES)[number];
 
 /** Leaf block types — blocks that never have children. */
-export const LEAF_BLOCK_TYPES = ["text", "button", "image", "divider"] as const;
+export const LEAF_BLOCK_TYPES = [
+  "text",
+  "button",
+  "image",
+  "divider",
+  "link",
+  "code",
+  "spacer",
+] as const;
 
 export type LeafBlockType = (typeof LEAF_BLOCK_TYPES)[number];
 
@@ -50,6 +61,9 @@ export const BLOCK_ID_PREFIXES = {
   button: "btn",
   image: "img",
   divider: "div",
+  link: "lnk",
+  code: "cod",
+  spacer: "spc",
 } as const satisfies Record<BlockType, string>;
 
 /** Number of random characters after the prefix and underscore. */
@@ -187,22 +201,41 @@ export const imageBlockIdSchema = createTypedBlockIdSchema("image", "image block
 /** Matches divider block ids, e.g. "div_a1b2". */
 export const dividerBlockIdSchema = createTypedBlockIdSchema("divider", "divider block");
 
-/** Matches the id of any leaf block (text, button, image, divider). */
+/** Matches link block ids, e.g. "lnk_a1b2". */
+export const linkBlockIdSchema = createTypedBlockIdSchema("link", "link block");
+
+/** Matches code block ids, e.g. "cod_a1b2". */
+export const codeBlockIdSchema = createTypedBlockIdSchema("code", "code block");
+
+/** Matches spacer block ids, e.g. "spc_a1b2". */
+export const spacerBlockIdSchema = createTypedBlockIdSchema("spacer", "spacer block");
+
+/** Matches the id of any leaf block (text, button, image, divider, link, code, spacer). */
 export const leafBlockIdSchema = z
-  .union([textBlockIdSchema, buttonBlockIdSchema, imageBlockIdSchema, dividerBlockIdSchema])
-  .describe("Id of a leaf block: text (txt_), button (btn_), image (img_), or divider (div_).");
+  .union([
+    textBlockIdSchema,
+    buttonBlockIdSchema,
+    imageBlockIdSchema,
+    dividerBlockIdSchema,
+    linkBlockIdSchema,
+    codeBlockIdSchema,
+    spacerBlockIdSchema,
+  ])
+  .describe(
+    "Id of a leaf block: text (txt_), button (btn_), image (img_), divider (div_), link (lnk_), code (cod_), or spacer (spc_).",
+  );
 
 /** Matches any valid block id, of any block type. */
 export const blockIdSchema = z
   .string()
   .regex(
     new RegExp(
-      `^(${ROOT_BLOCK_ID}|(sec|row|col|txt|btn|img|div)_[a-z0-9]{${BLOCK_ID_SUFFIX_LENGTH}})$`,
+      `^(${ROOT_BLOCK_ID}|(sec|row|col|txt|btn|img|div|lnk|cod|spc)_[a-z0-9]{${BLOCK_ID_SUFFIX_LENGTH}})$`,
     ),
-    'Expected "root" or "<prefix>_xxxx" where prefix is one of sec|row|col|txt|btn|img|div',
+    'Expected "root" or "<prefix>_xxxx" where prefix is one of sec|row|col|txt|btn|img|div|lnk|cod|spc',
   )
   .describe(
-    'Id of any block: the literal "root", or a type prefix (sec, row, col, txt, btn, img, div) followed by an underscore and 4 lowercase alphanumeric characters.',
+    'Id of any block: the literal "root", or a type prefix (sec, row, col, txt, btn, img, div, lnk, cod, spc) followed by an underscore and 4 lowercase alphanumeric characters.',
   );
 
 /** Per-type id schema lookup, mirroring BLOCK_ID_PREFIXES. */
@@ -215,6 +248,9 @@ export const blockIdSchemasByType = {
   button: buttonBlockIdSchema,
   image: imageBlockIdSchema,
   divider: dividerBlockIdSchema,
+  link: linkBlockIdSchema,
+  code: codeBlockIdSchema,
+  spacer: spacerBlockIdSchema,
 } as const;
 
 /** A block id string. See the module doc for the scheme. */

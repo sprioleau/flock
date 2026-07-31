@@ -207,10 +207,15 @@ export function createStarterDocument(): EmailDocument {
  *   │   ├─ txt_e5f6 (heading + marked-up paragraph)
  *   │   ├─ img_g7h8
  *   │   └─ div_i9j0
- *   └─ sec_c3d4 (two-column)
- *       └─ row_k1l2
- *           ├─ col_m3n4 → txt_r7s8
- *           └─ col_p5q6 → btn_t9u0
+ *   ├─ sec_c3d4 (two-column)
+ *   │   └─ row_k1l2
+ *   │       ├─ col_m3n4 → txt_r7s8
+ *   │       └─ col_p5q6 → btn_t9u0
+ *   └─ sec_e5f6 (developer digest)
+ *       ├─ txt_v1w2 (heading-only text)
+ *       ├─ cod_x3y4 (code snippet)
+ *       ├─ spc_z5a6 (spacer)
+ *       └─ lnk_b7c8 (standalone link)
  *
  * Intended for tests and demos; ids are stable across calls.
  */
@@ -220,7 +225,7 @@ export function createSampleDocument(): EmailDocument {
       id: "root",
       type: "root",
       parentId: null,
-      childrenIds: ["sec_a1b2", "sec_c3d4"],
+      childrenIds: ["sec_a1b2", "sec_c3d4", "sec_e5f6"],
       properties: {
         globals: {
           emailBackgroundColor: "#f4f4f4",
@@ -348,6 +353,59 @@ export function createSampleDocument(): EmailDocument {
       properties: {
         label: "Get started",
         href: "https://example.com/start",
+        align: "center",
+      },
+    },
+    sec_e5f6: {
+      id: "sec_e5f6",
+      type: "section",
+      parentId: "root",
+      childrenIds: ["txt_v1w2", "cod_x3y4", "spc_z5a6", "lnk_b7c8"],
+      properties: {},
+    },
+    txt_v1w2: {
+      id: "txt_v1w2",
+      type: "text",
+      parentId: "sec_e5f6",
+      childrenIds: [],
+      properties: {
+        text: {
+          type: "doc",
+          content: [
+            {
+              type: "heading",
+              attrs: { level: 2 },
+              content: [{ type: "text", text: "For developers" }],
+            },
+          ],
+        },
+      },
+    },
+    cod_x3y4: {
+      id: "cod_x3y4",
+      type: "code",
+      parentId: "sec_e5f6",
+      childrenIds: [],
+      properties: {
+        code: 'npm install @tandem/email-sdk\n\nimport { renderToHTML } from "@tandem/email-sdk";',
+        language: "bash",
+      },
+    },
+    spc_z5a6: {
+      id: "spc_z5a6",
+      type: "spacer",
+      parentId: "sec_e5f6",
+      childrenIds: [],
+      properties: { height: 16 },
+    },
+    lnk_b7c8: {
+      id: "lnk_b7c8",
+      type: "link",
+      parentId: "sec_e5f6",
+      childrenIds: [],
+      properties: {
+        text: "Read the changelog",
+        href: "https://example.com/changelog",
         align: "center",
       },
     },

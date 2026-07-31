@@ -3,14 +3,17 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   ButtonBlockView,
+  CodeBlockView,
   ColumnBlockView,
   DividerBlockView,
   ImageBlockView,
   inflate,
+  LinkBlockView,
   resolveBlockStyles,
   resolveRootBlockStyles,
   RowBlockView,
   SectionBlockView,
+  SpacerBlockView,
   TextBlockView,
   type EmailDocument,
   type EmailTreeNode,
@@ -99,6 +102,12 @@ function ReadOnlyNode({ node, globals }: { node: EmailTreeNode; globals: GlobalS
       return <ImageBlockView block={block} resolvedStyles={resolveBlockStyles(globals, block)} />;
     case "divider":
       return <DividerBlockView block={block} resolvedStyles={resolveBlockStyles(globals, block)} />;
+    case "link":
+      return <LinkBlockView block={block} resolvedStyles={resolveBlockStyles(globals, block)} />;
+    case "code":
+      return <CodeBlockView block={block} resolvedStyles={resolveBlockStyles(globals, block)} />;
+    case "spacer":
+      return <SpacerBlockView block={block} resolvedStyles={resolveBlockStyles(globals, block)} />;
     case "root":
       // The root surface is rendered by ReadOnlyEmailPreview itself.
       return null;

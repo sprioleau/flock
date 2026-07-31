@@ -13,6 +13,7 @@ import {
   createDefaultSection,
   generateUniqueBlockId,
 } from "../block-defaults";
+import type { LeafBlockVariant } from "../block-defaults";
 import type { PaletteItem } from "./palette-items";
 
 /**
@@ -78,7 +79,7 @@ export function buildClickToAddPlan(args: {
   const selected = selectedBlockId === null ? undefined : doc[selectedBlockId];
   switch (item.kind) {
     case "leaf":
-      return planLeafAdd({ doc, blockType: item.blockType, selected });
+      return planLeafAdd({ doc, blockType: item.blockType, variant: item.variant, selected });
     case "columns":
       return planColumnsAdd({ doc, columnCount: item.columnCount, selected });
     case "empty-section":
@@ -100,15 +101,22 @@ export function buildClickToAddPlan(args: {
 function planLeafAdd(args: {
   doc: EmailDocument;
   blockType: (typeof LEAF_BLOCK_TYPES)[number];
+  variant: LeafBlockVariant | undefined;
   selected: Block | undefined;
 }): ClickToAddPlan | null {
-  const { doc, blockType, selected } = args;
+  const { doc, blockType, variant, selected } = args;
   const target = resolveLeafTarget(doc, selected);
   if (target === null) {
     // No sections yet: one composite addSection op carrying the new leaf.
     const sectionId = generateUniqueBlockId({ type: "section", doc });
     const leafId = generateUniqueBlockId({ type: blockType, doc });
-    const leaf = createDefaultLeafBlock({ type: blockType, id: leafId, parentId: sectionId, doc });
+    const leaf = createDefaultLeafBlock({
+      type: blockType,
+      variant,
+      id: leafId,
+      parentId: sectionId,
+      doc,
+    });
     return {
       op: {
         name: "addSection",
@@ -123,7 +131,13 @@ function planLeafAdd(args: {
   return {
     op: {
       name: "addBlock",
-      block: createDefaultLeafBlock({ type: blockType, id, parentId: target.parentId, doc }),
+      block: createDefaultLeafBlock({
+        type: blockType,
+        variant,
+        id,
+        parentId: target.parentId,
+        doc,
+      }),
       parentId: target.parentId,
       index: target.index,
     },

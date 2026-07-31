@@ -182,6 +182,9 @@ const SUMMARIZED_PROPERTY_KEYS: Readonly<Partial<Record<Block["type"], readonly 
   text: ["text"],
   button: ["label", "href"],
   image: ["src", "alt", "width"],
+  link: ["text", "href"],
+  code: ["code", "language"],
+  spacer: ["height"],
 };
 
 /** "full" depth: every other explicitly-set scalar property, sorted by key. */
@@ -228,6 +231,19 @@ function summarizeBlockProps({ block, maxTextChars }: SummarizeBlockInput): stri
         block.properties.width !== undefined ? ` w=${block.properties.width}` : "";
       return ` alt="${block.properties.alt}"${width} src=${extractUrlHost(block.properties.src)}`;
     }
+    case "link": {
+      const text = truncate({ text: block.properties.text, maxChars: maxTextChars });
+      return ` "${text}" href=${block.properties.href}`;
+    }
+    case "code": {
+      // First line only — code bodies are long and rarely what the model
+      // needs at skim depth (getBlockDetails returns the full snippet).
+      const [firstLine = ""] = block.properties.code.split("\n");
+      const snippet = truncate({ text: firstLine, maxChars: maxTextChars });
+      return ` ${block.properties.language} "${snippet}"`;
+    }
+    case "spacer":
+      return ` h=${block.properties.height}`;
     case "divider":
     case "root":
       return "";

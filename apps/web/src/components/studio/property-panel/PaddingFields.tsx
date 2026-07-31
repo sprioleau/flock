@@ -1,5 +1,6 @@
 "use client";
 
+import type { ResolvedPadding } from "@tandem/email-sdk";
 import { NumberField } from "./fields";
 import { getBlockPropertyHelp, type DescribableBlockType } from "./schema-help";
 
@@ -7,6 +8,12 @@ import { getBlockPropertyHelp, type DescribableBlockType } from "./schema-help";
  * The four outer-padding overrides shared by every editable block type.
  * Clearable: an emptied input removes the override so the renderer falls back
  * to globals.baseSpacing-derived defaults.
+ *
+ * Unset fields show the RESOLVED effective pixel value as their placeholder —
+ * the exact number the canvas renders through the styles chain — never a
+ * literal "auto" (owner ask 2026-07-31: "I don't know what auto translates
+ * to"). The property itself stays unset, so "empty = follows the theme"
+ * semantics are preserved: a theme/baseSpacing change still flows through.
  */
 
 const PADDING_KEYS = ["paddingTop", "paddingBottom", "paddingLeft", "paddingRight"] as const;
@@ -29,10 +36,18 @@ export interface PaddingProperties {
 export interface PaddingFieldsProps {
   blockType: DescribableBlockType;
   properties: PaddingProperties;
+  /** The block's fully-resolved padding (resolveBlockStyles output) — the
+   * effective values shown as placeholders on unset fields. */
+  resolvedPadding: ResolvedPadding;
   onCommitPadding: (patch: Partial<Record<PaddingKey, number | undefined>>) => void;
 }
 
-export function PaddingFields({ blockType, properties, onCommitPadding }: PaddingFieldsProps) {
+export function PaddingFields({
+  blockType,
+  properties,
+  resolvedPadding,
+  onCommitPadding,
+}: PaddingFieldsProps) {
   return (
     <div className="space-y-2">
       <p className="text-xs font-medium text-muted-foreground">Padding (px)</p>
@@ -44,7 +59,7 @@ export function PaddingFields({ blockType, properties, onCommitPadding }: Paddin
             value={properties[key]}
             isClearable
             min={0}
-            placeholder="auto"
+            placeholder={String(resolvedPadding[key])}
             helpText={getBlockPropertyHelp({ blockType, propertyKey: key })}
             onCommit={(value) => onCommitPadding({ [key]: value })}
           />

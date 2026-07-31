@@ -4,19 +4,12 @@ import type { TextBlock } from "../../schema/blocks";
 import type { TextAlign } from "../../schema/globals";
 import type { InlineNode, TextMark, TextNode } from "../../schema/text";
 import type { ResolvedTextNodeStyles, ResolvedTextStyles } from "../styles";
-import { blockPaddingStyle } from "./shared";
+import { blockPaddingStyle, HEADING_FONT_SIZES } from "./shared";
 
 export interface TextBlockViewProps {
   block: TextBlock;
   resolvedStyles: ResolvedTextStyles;
 }
-
-/**
- * Renderer constants for heading typography. The globals carry per-level
- * font/color/alignment; sizes are fixed here for cross-client consistency
- * (email clients disagree on default hN sizes).
- */
-const HEADING_FONT_SIZES = { 1: "32px", 2: "24px", 3: "20px" } as const;
 
 /**
  * Wrap a text run in email-safe inline elements, innermost-first in mark

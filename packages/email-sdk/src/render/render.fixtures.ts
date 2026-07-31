@@ -1,8 +1,10 @@
 import type {
   ButtonBlock,
+  CodeBlock,
   ColumnBlock,
   DividerBlock,
   ImageBlock,
+  LinkBlock,
   RowBlock,
   SectionBlock,
   TextBlock,
@@ -84,9 +86,9 @@ const richTextDoc: TextDoc = {
 };
 
 /**
- * Shared structure: root > [sec_h1a1 (text, image, divider), sec_c0l2 (row >
- * two columns > text | button)]. Callers supply globals and per-block
- * property overrides.
+ * Shared structure: root > [sec_h1a1 (text, image, divider, link, code,
+ * spacer), sec_c0l2 (row > two columns > text | button)]. Callers supply
+ * globals and per-block property overrides.
  */
 function buildFixture(options: {
   globals: GlobalStyles;
@@ -97,6 +99,9 @@ function buildFixture(options: {
   buttonProperties: Omit<ButtonBlock["properties"], "label" | "href">;
   imageProperties: Omit<ImageBlock["properties"], "src" | "alt">;
   dividerProperties: DividerBlock["properties"];
+  linkProperties: Omit<LinkBlock["properties"], "text" | "href">;
+  codeProperties: Omit<CodeBlock["properties"], "code" | "language">;
+  spacerHeight: number;
 }): EmailDocument {
   return {
     root: {
@@ -110,8 +115,44 @@ function buildFixture(options: {
       id: "sec_h1a1",
       type: "section",
       parentId: "root",
-      childrenIds: ["txt_r1ch", "img_h3r0", "div_l1n3"],
+      childrenIds: [
+        "txt_r1ch",
+        "img_h3r0",
+        "div_l1n3",
+        "lnk_v13w",
+        "cod_sn1p",
+        "spc_g4p0",
+      ],
       properties: options.sectionProperties,
+    },
+    lnk_v13w: {
+      id: "lnk_v13w",
+      type: "link",
+      parentId: "sec_h1a1",
+      childrenIds: [],
+      properties: {
+        text: "View in browser",
+        href: "https://example.com/newsletter/view",
+        ...options.linkProperties,
+      },
+    },
+    cod_sn1p: {
+      id: "cod_sn1p",
+      type: "code",
+      parentId: "sec_h1a1",
+      childrenIds: [],
+      properties: {
+        code: 'import { render } from "@react-email/render";\n\nconst html = await render(<Email />);',
+        language: "typescript",
+        ...options.codeProperties,
+      },
+    },
+    spc_g4p0: {
+      id: "spc_g4p0",
+      type: "spacer",
+      parentId: "sec_h1a1",
+      childrenIds: [],
+      properties: { height: options.spacerHeight },
     },
     txt_r1ch: {
       id: "txt_r1ch",
@@ -234,6 +275,9 @@ export function createGlobalsOnlyFixture(): EmailDocument {
     buttonProperties: {},
     imageProperties: {},
     dividerProperties: {},
+    linkProperties: {},
+    codeProperties: {},
+    spacerHeight: 24,
   });
 }
 
@@ -274,6 +318,16 @@ export function createBlockOverridesOnlyFixture(): EmailDocument {
       backgroundColor: "#dbeafe",
     },
     dividerProperties: { color: "#c9ada7", thickness: 4, paddingTop: 12, paddingBottom: 12 },
+    linkProperties: {
+      textColor: "#8d0801",
+      fontFamily: "Courier New, Courier, monospace",
+      fontSize: 18,
+      isUnderlined: false,
+      align: "center",
+      paddingBottom: 6,
+    },
+    codeProperties: { theme: "light", shouldShowLineNumbers: true, paddingTop: 8 },
+    spacerHeight: 48,
   });
 }
 
@@ -299,5 +353,8 @@ export function createMixedFixture(): EmailDocument {
     buttonProperties: { backgroundColor: "#ffd500", textColor: "#00296b", align: "center" },
     imageProperties: { width: 520 },
     dividerProperties: { thickness: 2 },
+    linkProperties: { align: "right" },
+    codeProperties: {},
+    spacerHeight: 32,
   });
 }

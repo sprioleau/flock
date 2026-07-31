@@ -133,6 +133,9 @@ const BLOCK_TYPE_NOUNS: Record<Block["type"], string> = {
   button: "button",
   image: "image",
   divider: "divider",
+  link: "link",
+  code: "code block",
+  spacer: "spacer",
 };
 
 function countNoun({ count, blockType }: { count: number; blockType: Block["type"] }): string {

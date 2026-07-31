@@ -23,14 +23,17 @@ import {
 
 export const DEFAULT_IMAGE_SRC = "https://placehold.co/600x400";
 
-/** New images default to this share of the email's content width. */
-export const DEFAULT_IMAGE_WIDTH_RATIO = 0.85;
+/** New images default to this share of the email's content width (owner default, 2026-07-31). */
+export const DEFAULT_IMAGE_WIDTH_RATIO = 0.6;
 
 /** New images default to this outer padding on all four sides (px). */
-export const DEFAULT_IMAGE_PADDING_PX = 10;
+export const DEFAULT_IMAGE_PADDING_PX = 12;
+
+/** New dividers default to this padding above and below the line (px). */
+export const DEFAULT_DIVIDER_PADDING_PX = 24;
 
 /**
- * Default width for a new image block: 85% of the document's resolved
+ * Default width for a new image block: 60% of the document's resolved
  * contentWidth (root.properties.globals.contentWidth, falling back to the
  * SDK default), stored as an ABSOLUTE pixel value computed at creation time.
  */
@@ -54,8 +57,22 @@ export function generateUniqueBlockId({ type, doc }: GenerateUniqueBlockIdInput)
   return id;
 }
 
+/**
+ * Content presets: palette items that insert an EXISTING block type with
+ * non-default content. "heading" is the owner-decided shape of the palette's
+ * Heading tile (2026-07-31): a regular TEXT block whose doc is a single
+ * heading node — no separate heading block type, so inline editing, sync,
+ * outline handling, and the agent surface all come along for free.
+ */
+export type LeafBlockVariant = "heading";
+
+/** The default heading level for the palette's Heading preset. */
+export const DEFAULT_HEADING_LEVEL = 2;
+
 export interface CreateDefaultLeafBlockInput {
   type: LeafBlockType;
+  /** Optional content preset (currently only "heading" on text blocks). */
+  variant?: LeafBlockVariant;
   id: BlockId;
   /** The section or column the block will be inserted into. */
   parentId: BlockId;
@@ -66,12 +83,35 @@ export interface CreateDefaultLeafBlockInput {
 /** Build a fully-formed leaf block with sensible default properties. */
 export function createDefaultLeafBlock({
   type,
+  variant,
   id,
   parentId,
   doc,
 }: CreateDefaultLeafBlockInput): Block {
   switch (type) {
     case "text":
+      if (variant === "heading") {
+        return {
+          id,
+          type: "text",
+          parentId,
+          childrenIds: [],
+          properties: {
+            text: {
+              type: "doc",
+              content: [
+                {
+                  type: "heading",
+                  attrs: { level: DEFAULT_HEADING_LEVEL },
+                  content: [{ type: "text", text: "New heading" }],
+                },
+              ],
+            },
+            paddingTop: 8,
+            paddingBottom: 8,
+          },
+        };
+      }
       return {
         id,
         type: "text",
@@ -120,7 +160,44 @@ export function createDefaultLeafBlock({
         type: "divider",
         parentId,
         childrenIds: [],
-        properties: { paddingTop: 12, paddingBottom: 12 },
+        properties: {
+          paddingTop: DEFAULT_DIVIDER_PADDING_PX,
+          paddingBottom: DEFAULT_DIVIDER_PADDING_PX,
+        },
+      };
+    case "link":
+      return {
+        id,
+        type: "link",
+        parentId,
+        childrenIds: [],
+        properties: {
+          text: "New link",
+          href: "https://example.com",
+          paddingTop: 8,
+          paddingBottom: 8,
+        },
+      };
+    case "code":
+      return {
+        id,
+        type: "code",
+        parentId,
+        childrenIds: [],
+        properties: {
+          code: 'console.log("Hello from Tandem");',
+          language: "javascript",
+          paddingTop: 8,
+          paddingBottom: 8,
+        },
+      };
+    case "spacer":
+      return {
+        id,
+        type: "spacer",
+        parentId,
+        childrenIds: [],
+        properties: { height: 24 },
       };
   }
 }

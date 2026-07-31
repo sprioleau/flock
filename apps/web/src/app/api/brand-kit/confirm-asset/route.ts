@@ -30,7 +30,13 @@ import { fetchBinaryResource } from "@/lib/brand-kit-extraction/fetch-page";
  * hard 2MB cap) with an image content-type allowlist → upload to Convex
  * storage (the generate-image server-upload pattern) → `confirmAsset`
  * patches the kit row (durable URL + provenance + revision bump; the
- * previous confirmed file for the kind is deleted).
+ * previous confirmed file for the kind is deleted) → `assets.register`
+ * (Content Studio Stage S: the confirmed binary joins the session's asset
+ * library as kind "logo"/"social-card" — "any logos that were scraped").
+ *
+ * Stage M seam (content-studio §7.1): confirmAsset still DELETES the
+ * previously confirmed file for the kind — once removal is registry-aware,
+ * that site converts to leave replaced files to the library's lifecycle.
  */
 
 const requestBodySchema = z.object({
@@ -167,6 +173,24 @@ export async function POST(request: Request) {
       storageId,
       expectedSourceUrl: assetUrl,
     });
+
+    // 5. Register the confirmed binary in the session's asset library
+    // (AFTER confirmAsset: a concurrent-re-scrape rejection deletes the
+    // upload, and a just-deleted file must never gain a registry row).
+    // Failure here never fails the confirm — the kit row already holds the
+    // durable URL; the file is then merely an unregistered legacy upload.
+    try {
+      await convexClient.mutation(api.assets.register, {
+        sessionId,
+        storageId,
+        kind: kind === "logo" ? "logo" : "social-card",
+        name: brandKit.name,
+        // Scrape origin — inline data: URIs aren't an origin worth recording.
+        ...(assetUrl.startsWith("data:") ? {} : { sourceUrl: assetUrl }),
+      });
+    } catch (registerError) {
+      console.error("[brand-kit] confirm-asset library registration failed:", registerError);
+    }
     return Response.json({ isOk: true, url });
   } catch (error) {
     if (error instanceof ConvexError) {

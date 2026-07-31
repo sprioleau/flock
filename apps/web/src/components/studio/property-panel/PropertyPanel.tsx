@@ -3,11 +3,14 @@
 import type { Block } from "@tandem/email-sdk";
 import {
   ButtonPanel,
+  CodePanel,
   ColumnPanel,
   DividerPanel,
   ImagePanel,
+  LinkPanel,
   RowPanel,
   SectionPanel,
+  SpacerPanel,
   TextPanel,
 } from "./block-panels";
 import { DocumentSettingsPanel } from "./DocumentSettingsPanel";
@@ -33,6 +36,12 @@ export function PropertyPanel({ block }: { block: Block | undefined }) {
       return <DividerPanel block={block} />;
     case "text":
       return <TextPanel block={block} />;
+    case "link":
+      return <LinkPanel block={block} />;
+    case "code":
+      return <CodePanel block={block} />;
+    case "spacer":
+      return <SpacerPanel block={block} />;
     case "root":
       return <DocumentSettingsPanel />;
     case "row":

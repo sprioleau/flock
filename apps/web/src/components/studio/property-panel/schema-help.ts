@@ -1,11 +1,14 @@
 import {
   buttonBlockSchema,
+  codeBlockSchema,
   columnBlockSchema,
   dividerBlockSchema,
   globalStylesSchema,
   imageBlockSchema,
+  linkBlockSchema,
   rowBlockSchema,
   sectionBlockSchema,
+  spacerBlockSchema,
   textBlockSchema,
   type GlobalStyles,
 } from "@tandem/email-sdk";
@@ -38,6 +41,9 @@ const blockPropertyShapesByType = {
   button: buttonBlockSchema.shape.properties.shape,
   image: imageBlockSchema.shape.properties.shape,
   divider: dividerBlockSchema.shape.properties.shape,
+  link: linkBlockSchema.shape.properties.shape,
+  code: codeBlockSchema.shape.properties.shape,
+  spacer: spacerBlockSchema.shape.properties.shape,
 } as const;
 
 export type DescribableBlockType = keyof typeof blockPropertyShapesByType;

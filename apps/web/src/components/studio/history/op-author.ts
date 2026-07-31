@@ -78,6 +78,9 @@ const BLOCK_TYPE_NOUNS: Record<BlockType, string> = {
   button: "button",
   image: "image",
   divider: "divider",
+  link: "link",
+  code: "code block",
+  spacer: "spacer",
 };
 
 function capitalizeFirst(text: string): string {

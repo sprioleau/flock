@@ -1,12 +1,15 @@
 import type {
   Block,
   ButtonBlock,
+  CodeBlock,
   ColumnBlock,
   DividerBlock,
   ImageBlock,
+  LinkBlock,
   RootBlock,
   RowBlock,
   SectionBlock,
+  SpacerBlock,
   TextBlock,
 } from "../schema/blocks";
 import {
@@ -118,6 +121,23 @@ export interface ResolvedDividerStyles extends ResolvedPadding {
   thickness: number;
 }
 
+export interface ResolvedLinkStyles extends ResolvedPadding {
+  textColor: string;
+  fontFamily: string;
+  fontSize: number;
+  isUnderlined: boolean;
+  align: TextAlign;
+}
+
+export interface ResolvedCodeStyles extends ResolvedPadding {
+  theme: "light" | "dark";
+  shouldShowLineNumbers: boolean;
+}
+
+export interface ResolvedSpacerStyles {
+  height: number;
+}
+
 /** Map from block type to its resolved-styles shape. */
 export interface ResolvedStylesByBlockType {
   root: ResolvedRootStyles;
@@ -128,6 +148,9 @@ export interface ResolvedStylesByBlockType {
   button: ResolvedButtonStyles;
   image: ResolvedImageStyles;
   divider: ResolvedDividerStyles;
+  link: ResolvedLinkStyles;
+  code: ResolvedCodeStyles;
+  spacer: ResolvedSpacerStyles;
 }
 
 /** Resolved styles for any block type. */
@@ -288,6 +311,33 @@ function resolveDividerStyles(
   };
 }
 
+/** Renderer default font size for standalone links (matches paragraph text). */
+const DEFAULT_LINK_FONT_SIZE = 14;
+
+function resolveLinkStyles(globals: Required<GlobalStyles>, block: LinkBlock): ResolvedLinkStyles {
+  const { properties } = block;
+  return {
+    textColor: properties.textColor ?? globals.linkTextColor,
+    fontFamily: properties.fontFamily ?? globals.paragraphFontFamily,
+    fontSize: properties.fontSize ?? DEFAULT_LINK_FONT_SIZE,
+    isUnderlined: properties.isUnderlined ?? true,
+    align: properties.align ?? "left",
+    ...resolvePadding(properties, leafPaddingDefaults(globals.baseSpacing)),
+  };
+}
+
+function resolveCodeStyles(globals: Required<GlobalStyles>, block: CodeBlock): ResolvedCodeStyles {
+  return {
+    theme: block.properties.theme ?? "dark",
+    shouldShowLineNumbers: block.properties.shouldShowLineNumbers ?? false,
+    ...resolvePadding(block.properties, leafPaddingDefaults(globals.baseSpacing)),
+  };
+}
+
+function resolveSpacerStyles(block: SpacerBlock): ResolvedSpacerStyles {
+  return { height: block.properties.height };
+}
+
 function resolveAnyBlockStyles(
   globals: Required<GlobalStyles>,
   block: Block,
@@ -309,6 +359,12 @@ function resolveAnyBlockStyles(
       return resolveImageStyles(globals, block);
     case "divider":
       return resolveDividerStyles(globals, block);
+    case "link":
+      return resolveLinkStyles(globals, block);
+    case "code":
+      return resolveCodeStyles(globals, block);
+    case "spacer":
+      return resolveSpacerStyles(block);
   }
 }
 
