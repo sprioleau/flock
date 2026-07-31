@@ -16,8 +16,10 @@ import {
 } from "../operations/ops";
 import { defineEmailAction, type ContentEmailAction } from "./define";
 import {
+  generateImageInputSchema,
   sendTestEmailInputSchema,
   showPreviewInputSchema,
+  type GenerateImageCommand,
   type SendTestEmailCommand,
   type ShowPreviewCommand,
 } from "./editor-commands";
@@ -180,8 +182,40 @@ export const sendTestEmailAction = defineEmailAction({
   run: (input): SendTestEmailCommand => ({ type: "sendTestEmail", to: input.to }),
 });
 
+/**
+ * AI image generation (intent-level args, §9.3): `run` produces the UNFULFILLED
+ * generateImage command; the app executor is effectful — it generates the
+ * image, uploads the binary to durable storage, and streams the FULFILLED
+ * command (src + alt). The pure-doc consequence is ONE updateBlockProperties
+ * operation the client dispatches through the normal validated spine — image
+ * bytes never enter the op log or block properties.
+ *
+ * No approval gate: generation only touches the targeted image block and the
+ * resulting op is undoable (undo restores the previous src). Not parallel-safe:
+ * each call is one slow, billed model request — keep them sequential within a
+ * turn so costs and failures stay legible.
+ */
+export const generateImageAction = defineEmailAction({
+  name: "generateImage",
+  description: generateImageInputSchema.description ?? "",
+  kind: "editor",
+  schema: generateImageInputSchema,
+  readOnly: false, // effectful: a billed generation + storage upload
+  parallelSafe: false,
+  needsApproval: false,
+  run: (input): GenerateImageCommand => ({
+    type: "generateImage",
+    blockId: input.blockId,
+    prompt: input.prompt,
+  }),
+});
+
 /** Every built-in editor action. */
-export const editorEmailActions = [showPreviewAction, sendTestEmailAction] as const;
+export const editorEmailActions = [
+  showPreviewAction,
+  sendTestEmailAction,
+  generateImageAction,
+] as const;
 
 /**
  * The static registry of all built-in actions. Phase 3 feeds

@@ -17,6 +17,7 @@ import {
   type ActionFailureKind,
   type BlockId,
   type EmailDocument,
+  type GenerateImageCommand,
 } from "@tandem/email-sdk";
 import type { Id } from "@convex/_generated/dataModel";
 import {
@@ -231,6 +232,14 @@ function createTandemChatController(convexClient: ConvexReactClient): TandemChat
         return;
       }
       executedCommandToolCallIds.add(toolCallId);
+      // generateImage is NOT a view command: its fulfilled payload (durable
+      // storage URL + alt) must land as a document op even after a mid-turn
+      // draft switch — a billed generation is never dropped. Handled before
+      // the active-canvas gate below.
+      if (command.type === "generateImage") {
+        applyGeneratedImageCommand(command);
+        return;
+      }
       // Mid-turn draft switch (owner decision, follow-on to the op pinning):
       // editor commands act on the ACTIVE canvas — the viewport is ONE store
       // field bound to the active draft (DraftFrameToolbar renders only on
@@ -270,6 +279,72 @@ function createTandemChatController(convexClient: ConvexReactClient): TandemChat
       return false;
     },
   });
+
+  /**
+   * Commit a FULFILLED generateImage command (agent path): the server already
+   * generated the image and uploaded it to Convex storage; the pure-doc
+   * consequence is ONE updateBlockProperties op { src, alt } dispatched with
+   * this turn's agent provenance through the normal validated spine — so it
+   * shares the turn's batch (revertable) and undo restores the previous src.
+   * Base64 never appears here: the command carries only the durable URL.
+   */
+  function applyGeneratedImageCommand(command: GenerateImageCommand): void {
+    if (command.src === undefined) {
+      // Unfulfilled command — the executor failed before upload; the tool
+      // call errored server-side, so there is nothing to commit.
+      return;
+    }
+    const operation = {
+      name: "updateBlockProperties",
+      blockId: command.blockId,
+      properties: { src: command.src, alt: command.alt ?? "" },
+    } as const;
+    const context: ActionContext = {
+      caller: "tool",
+      author: "agent",
+      authorId: chat.id,
+      batchId: turnState.batchId,
+      threadId: chat.id,
+    };
+    if (getIsTurnDocumentActive()) {
+      const result = useEditorStore.getState().dispatch(operation, context);
+      if (result.isOk) {
+        turnState.docAfterLastOp = result.doc;
+      }
+      return;
+    }
+    // Mid-turn draft switch: land the op in the turn's own document (shadow
+    // dry-run + direct Convex submit — the same routing as content ops after
+    // a switch). No tool output to report: the editor tool already returned
+    // its result server-side.
+    const turnDocumentId = turnState.documentId;
+    const shadowDoc = turnState.docAfterLastOp;
+    if (turnDocumentId === null || shadowDoc === null) {
+      return;
+    }
+    const localResult = dispatchContentAction({
+      registry: emailActionRegistry,
+      doc: shadowDoc,
+      name: operation.name,
+      input: operation,
+      context,
+    });
+    if (!localResult.isOk) {
+      return;
+    }
+    turnState.docAfterLastOp = localResult.doc;
+    submitOperationToConvex({
+      convexClient,
+      documentId: turnDocumentId,
+      op: localResult.logEntry.op,
+      styleTextSpanIntent: null,
+      context,
+    }).catch(() => {
+      // The turn document's server snapshot stays authoritative; a failed
+      // submit here just means the generated image never landed — visible
+      // when the draft is reactivated.
+    });
+  }
 
   /**
    * Apply one content op to the turn's document AFTER a mid-turn draft

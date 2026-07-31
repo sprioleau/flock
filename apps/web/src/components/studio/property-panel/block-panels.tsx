@@ -17,6 +17,7 @@ import {
   SelectField,
   TextField,
 } from "./fields";
+import { GenerateImageField } from "./GenerateImageField";
 import { ImageSourceField } from "./ImageSourceField";
 import { PaddingFields } from "./PaddingFields";
 import { getBlockPropertyHelp, type DescribableBlockType } from "./schema-help";
@@ -152,6 +153,7 @@ export function ImagePanel({ block }: { block: ImageBlock }) {
         helpText={helpFor("src")}
         onCommitSrc={(src) => commit({ src })}
       />
+      <GenerateImageField blockId={block.id} />
       <TextField
         label="Alt text"
         value={properties.alt}

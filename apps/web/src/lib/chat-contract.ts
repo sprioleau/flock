@@ -20,6 +20,7 @@ import {
   type EditorCommand,
   type MoveBlockOperation,
   type Operation,
+  type GenerateImageInput,
   type RemoveBlockOperation,
   type ReorderChildrenOperation,
   type ReplaceBlockPropertiesOperation,
@@ -183,6 +184,7 @@ export type TandemChatTools = {
   scaffoldSection: { input: ScaffoldSectionInput; output: never };
   showPreview: { input: ShowPreviewInput; output: EditorToolOutput };
   sendTestEmail: { input: SendTestEmailInput; output: EditorToolOutput };
+  generateImage: { input: GenerateImageInput; output: EditorToolOutput };
   getBlockDetails: { input: { blockId: BlockId }; output: GetBlockDetailsToolOutput };
   fetchWebContent: { input: { url: string }; output: FetchWebContentToolOutput };
 };

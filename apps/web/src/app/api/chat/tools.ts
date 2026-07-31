@@ -13,6 +13,7 @@ import {
   type EditorToolOutput,
   type TandemChatMessage,
 } from "@/lib/chat-contract";
+import { generateAndStoreImage } from "../generate-image/generation";
 import { toModelInputSchema } from "./model-schema";
 import { chatActionRegistry } from "./registry";
 import { sendTestEmailWithResend } from "./send-test-email";
@@ -140,23 +141,48 @@ export function buildChatTools({
           // sees the same sentence to relay. No data part is written on
           // failure, so no stale "queued" chip renders.
           let send: EditorToolOutput["send"];
-          if (result.command.type === "sendTestEmail") {
-            const outcome = await sendTestEmailWithResend({ doc, to: result.command.to });
+          let command = result.command;
+          if (command.type === "sendTestEmail") {
+            const outcome = await sendTestEmailWithResend({ doc, to: command.to });
             if (!outcome.isSent) {
-              throw new Error(`The test email to ${result.command.to} wasn't sent: ${outcome.message}`);
+              throw new Error(`The test email to ${command.to} wasn't sent: ${outcome.message}`);
             }
             send = { messageId: outcome.messageId };
+          }
+          // generateImage is fulfilled HERE (the effectful executor): validate
+          // the target against THIS request's document, generate + upload the
+          // binary to Convex storage server-side (no ephemeral phase on the
+          // agent path), and stream the FULFILLED command (durable https src +
+          // prompt-derived alt). The client dispatcher commits it as ONE
+          // updateBlockProperties op through the normal validated spine —
+          // base64 never reaches the stream, the op log, or Convex.
+          if (command.type === "generateImage") {
+            const targetBlock = doc[command.blockId];
+            if (targetBlock === undefined || targetBlock.type !== "image") {
+              // Retryable: the model sees this on the next step and can
+              // re-target an existing image block (or add one first).
+              throw new Error(
+                `Block "${command.blockId}" is not an image block in the current document — call generateImage with the id of an existing image block.`,
+              );
+            }
+            const outcome = await generateAndStoreImage({ prompt: command.prompt });
+            if (!outcome.isOk) {
+              throw new Error(
+                `The image for ${command.blockId} wasn't generated: ${outcome.message}`,
+              );
+            }
+            command = { ...command, src: outcome.src, alt: outcome.alt };
           }
           // The Phase 3.4 editor-operations channel: one typed data part per
           // dispatched command. id = toolCallId so re-writes reconcile.
           writer.write({
             type: "data-editor-command",
             id: toolCallId,
-            data: { toolCallId, command: result.command },
+            data: { toolCallId, command },
           });
           return {
             status: "dispatched",
-            command: result.command,
+            command,
             ...(send === undefined ? {} : { send }),
           };
         },

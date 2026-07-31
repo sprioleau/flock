@@ -6,6 +6,7 @@ import {
   contentEmailActions,
   editorEmailActions,
   emailActionRegistry,
+  generateImageAction,
   sendTestEmailAction,
   showPreviewAction,
 } from "./builtins";
@@ -55,34 +56,43 @@ describe("built-in content actions", () => {
 });
 
 describe("built-in editor actions", () => {
-  it("ships the two §3.4 stubs", () => {
+  it("ships the two §3.4 stubs plus generateImage", () => {
     expect(editorEmailActions.map((action) => action.name)).toEqual([
       "showPreview",
       "sendTestEmail",
+      "generateImage",
     ]);
     expect(showPreviewAction.kind).toBe("editor");
     expect(sendTestEmailAction.kind).toBe("editor");
+    expect(generateImageAction.kind).toBe("editor");
   });
 
-  it("gates sendTestEmail behind approval, but not showPreview", () => {
+  it("gates sendTestEmail behind approval, but not showPreview or generateImage", () => {
     expect(sendTestEmailAction.needsApproval).toBe(true);
     expect(showPreviewAction.needsApproval).toBe(false);
+    expect(generateImageAction.needsApproval).toBe(false);
+  });
+
+  it("keeps generateImage sequential (one billed model call at a time)", () => {
+    expect(generateImageAction.parallelSafe).toBe(false);
+    expect(generateImageAction.readOnly).toBe(false);
   });
 });
 
 describe("emailActionRegistry", () => {
-  it("registers all 15 built-ins and looks them up by name", () => {
-    expect(emailActionRegistry.actions).toHaveLength(15);
+  it("registers all 16 built-ins and looks them up by name", () => {
+    expect(emailActionRegistry.actions).toHaveLength(16);
     expect(getAction(emailActionRegistry, "updateText")?.kind).toBe("content");
     expect(getAction(emailActionRegistry, "styleTextSpan")?.kind).toBe("content");
     expect(getAction(emailActionRegistry, "scaffoldSection")?.kind).toBe("content");
     expect(getAction(emailActionRegistry, "sendTestEmail")?.kind).toBe("editor");
+    expect(getAction(emailActionRegistry, "generateImage")?.kind).toBe("editor");
   });
 
   it("generates a tool definition for every action", () => {
     const definitions = toAISDKToolDefinitions(emailActionRegistry);
-    expect(definitions).toHaveLength(15);
-    expect(new Set(definitions.map((definition) => definition.name)).size).toBe(15);
+    expect(definitions).toHaveLength(16);
+    expect(new Set(definitions.map((definition) => definition.name)).size).toBe(16);
   });
 
   it("dispatches a content action end to end and its inverse restores the doc", () => {
@@ -154,5 +164,44 @@ describe("emailActionRegistry", () => {
     if (result.isOk) return;
     expect(result.failureKind).toBe("retryable");
     expect(result.errors[0]!.code).toBe("op_validation_failed");
+  });
+
+  it("dispatches generateImage into the unfulfilled intent command", () => {
+    const result = dispatchEditorAction({
+      registry: emailActionRegistry,
+      name: "generateImage",
+      input: { blockId: "img_a1b2", prompt: "A sunrise over mountains" },
+      context: agentContext,
+    });
+    expect(result.isOk).toBe(true);
+    if (!result.isOk) return;
+    // No src/alt yet — the app executor fulfills those after generation+upload.
+    expect(result.command).toEqual({
+      type: "generateImage",
+      blockId: "img_a1b2",
+      prompt: "A sunrise over mountains",
+    });
+    expect(result.isApprovalRequired).toBe(false);
+  });
+
+  it("rejects generateImage inputs with a non-image block id or empty prompt", () => {
+    const withWrongBlockKind = dispatchEditorAction({
+      registry: emailActionRegistry,
+      name: "generateImage",
+      input: { blockId: "txt_e5f6", prompt: "A sunrise" },
+      context: agentContext,
+    });
+    expect(withWrongBlockKind.isOk).toBe(false);
+
+    const withEmptyPrompt = dispatchEditorAction({
+      registry: emailActionRegistry,
+      name: "generateImage",
+      input: { blockId: "img_a1b2", prompt: "" },
+      context: agentContext,
+    });
+    expect(withEmptyPrompt.isOk).toBe(false);
+    if (withEmptyPrompt.isOk) return;
+    expect(withEmptyPrompt.failureKind).toBe("retryable");
+    expect(withEmptyPrompt.errors[0]!.code).toBe("op_validation_failed");
   });
 });

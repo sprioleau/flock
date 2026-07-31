@@ -4,7 +4,6 @@ import {
   ButtonBlockView,
   ColumnBlockView,
   DividerBlockView,
-  ImageBlockView,
   resolveBlockStyles,
   RowBlockView,
   SectionBlockView,
@@ -13,6 +12,7 @@ import {
 } from "@tandem/email-sdk";
 import { AddBlockMenu } from "./AddBlockMenu";
 import { BlockShell } from "./BlockShell";
+import { ImageBlockCanvasSlot } from "./ImageBlockCanvasSlot";
 import { TextBlockCanvasSlot } from "./text-editor/TextBlockCanvasSlot";
 
 export interface CanvasNodeProps {
@@ -76,9 +76,11 @@ export function CanvasNode({ node, globals }: CanvasNodeProps) {
         </BlockShell>
       );
     case "image":
+      // The canvas slot layers the ephemeral AI-generation preview (data-URI
+      // instant paint + status overlay) over the shared SDK view.
       return (
         <BlockShell block={block}>
-          <ImageBlockView block={block} resolvedStyles={resolveBlockStyles(globals, block)} />
+          <ImageBlockCanvasSlot block={block} resolvedStyles={resolveBlockStyles(globals, block)} />
         </BlockShell>
       );
     case "divider":
