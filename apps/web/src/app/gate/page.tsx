@@ -53,7 +53,7 @@ export default async function GatePage({ searchParams }: PageProps<"/gate">) {
       <div className="w-full max-w-xs rounded-xl border border-border bg-card p-6 shadow-sm">
         <GateForm returnToPath={returnToPath} />
       </div>
-      <p className="max-w-sm text-center text-xs text-neutral-400">
+      <p className="max-w-sm text-center text-xs text-muted-foreground">
         Have a shared email link? Open it directly — links with a document id
         don&apos;t need the password.
       </p>

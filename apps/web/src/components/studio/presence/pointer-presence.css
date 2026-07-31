@@ -91,7 +91,9 @@
   width: 8px;
   height: 8px;
   border-radius: 9999px;
-  box-shadow: 0 0 0 2px rgb(255 255 255 / 0.9);
+  /* Halo matches the app surface (like the facepile's ring-background) so it
+     separates the badge from the canvas in both light and dark chrome. */
+  box-shadow: 0 0 0 2px var(--background);
 }
 
 /* Name tag: same visual language as the block presence labels
