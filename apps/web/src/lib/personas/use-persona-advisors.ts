@@ -12,14 +12,14 @@ import {
   persistDismissedPatternKey,
   readDismissedPatternKeys,
 } from "@/lib/suggestions/dismissals";
-import { serializeBlock } from "@/lib/suggestions/use-suggestions";
+import { serializeBlock } from "@/lib/suggestions/serialize-block";
 import type { PersonaSuggestion } from "@/lib/suggestions/types";
 import { useEnabledPersonaSlugs } from "./enabled-personas";
 
 /**
- * Multi-agent canvas v0 — the client half of the reactive advisory runner
- * (proposal §3.3 model A + §6 v0 item 4). One hook owns the whole persona
- * lifecycle for the open document:
+ * Multi-agent canvas — the client half of the reactive advisory runner
+ * (proposal §3.3 model A + §6 v0 item 4, findings persistence per §3.6).
+ * One hook owns the whole persona lifecycle for the open document:
  *
  * PRESENCE — while personas are enabled, keep their roster identities alive
  * (personas.heartbeatPersonas every ~4s; identity+status writes happen
@@ -39,14 +39,25 @@ import { useEnabledPersonaSlugs } from "./enabled-personas";
  * route re-checks server-side. Net effect: ONE batched Gemini call per
  * settled-gesture trigger, at most one per cooldown window.
  *
- * FINDINGS — runner findings become {@link PersonaSuggestion}s
- * (source:"analysis") and inherit the whole suggestions machinery: dry-run
- * re-validation against the LIVE doc, target-block staleness snapshots,
- * patternKey dismissal persistence, apply with `persona:<slug>` provenance
- * and per-batch revert (history.revertBatch via the store).
+ * FINDINGS (multi-agent v1) — the runner PERSISTS findings in the
+ * `personaFindings` table; this hook no longer builds cards from the HTTP
+ * response. Instead it reads the document's OPEN findings through the
+ * reactive `personaFindings.listOpenFindings` query — so findings appear in
+ * EVERY tab and for every collaborator, not just the tab whose edit
+ * triggered the run — and surfaces them as {@link PersonaSuggestion}s
+ * (source:"analysis"). Dismiss and Apply write the row's status back to
+ * Convex (dismissFinding / markFindingApplied), so all tabs converge.
+ *
+ * STALENESS stays LOCAL-ONLY on purpose: each tab compares the persisted
+ * `targetSnapshots` (recorded server-side from the same doc the ops were
+ * dry-run against) with its OWN rendered doc — instant against the local
+ * overlay, and convergent because every tab's doc converges. No mutation is
+ * issued for staleness (that's what keeps apply-vs-staleness race-free
+ * across tabs); the runner prunes stale open rows server-side each run.
  */
 
 type OperationsPage = FunctionReturnType<typeof api.documents.getOperations>;
+type FindingRow = FunctionReturnType<typeof api.personaFindings.listOpenFindings>[number];
 
 /** Op-log tail to subscribe to (matches the suggestions watcher). */
 const OPS_TAIL_LIMIT = 30;
@@ -75,31 +86,20 @@ function tracePersonas(event: Record<string, unknown>): void {
   }
 }
 
-interface RunnerFindingPayload {
-  personaSlug: string;
-  personaName: string;
-  personaColor: string;
-  title: string;
-  description: string;
-  targetBlockNames: string[];
-  targetBlockIds: string[];
-  ops: Operation[];
-}
-
 type RunnerResponse =
   | {
       isOk: true;
-      findings: RunnerFindingPayload[];
+      findings: unknown[];
       skippedReason?: string;
     }
   | { isOk: false; message: string };
 
-interface PersonaCardState {
+/** One locally applied finding: the card's revert affordance state. */
+interface AppliedCardState {
   suggestion: PersonaSuggestion;
-  /** JSON of each target block at arrival time (staleness baseline). */
-  targetSnapshots: Record<string, string | undefined>;
-  /** Set after the human applies the ops; carries the revert handle. */
-  applied: { batchId: string; revertErrorMessage: string | null } | null;
+  findingId: string;
+  batchId: string;
+  revertErrorMessage: string | null;
 }
 
 export interface PersonaCard {
@@ -114,14 +114,22 @@ export interface PersonaAdvisorsController {
   revertApplied: (suggestionId: string) => void;
 }
 
-function buildPatternKey({
-  personaSlug,
-  targetBlockIds,
-}: {
-  personaSlug: string;
-  targetBlockIds: string[];
-}): string {
-  return `persona:${personaSlug}|${[...targetBlockIds].sort().join(",")}`;
+/** A persisted findings row → the suggestions surface's card shape. */
+function toPersonaSuggestion(row: FindingRow): PersonaSuggestion {
+  return {
+    // The Convex row id IS the card id: stable across renders AND tabs.
+    id: row.findingId,
+    source: "analysis",
+    personaSlug: row.personaSlug,
+    personaName: row.personaName,
+    personaColor: row.personaColor,
+    patternKey: row.patternKey,
+    title: row.title,
+    description: row.description,
+    targetBlockNames: row.targetBlockNames,
+    targetBlockIds: row.targetBlockIds as PersonaSuggestion["targetBlockIds"],
+    ops: row.ops as Operation[],
+  };
 }
 
 /** Short prompt-internal note about the ops that triggered this run. */
@@ -146,17 +154,39 @@ export function usePersonaAdvisors(): PersonaAdvisorsController {
   const enabledSlugs = useEnabledPersonaSlugs();
   const personaRows = useQuery(api.personas.listPersonas, enabledSlugs.length > 0 ? {} : "skip");
 
-  const [cardStates, setCardStates] = useState<PersonaCardState[]>([]);
-  const sessionDismissedKeysRef = useRef<Set<string>>(new Set());
+  // THE findings feed: every open finding for this document, all tabs, all
+  // collaborators — reactive, so records/dismissals/applies converge live.
+  const findingRows = useQuery(
+    api.personaFindings.listOpenFindings,
+    documentId !== null ? { documentId } : "skip",
+  );
+
   /**
-   * Ids of cards whose ops were (or are being) applied. A REF, not state, on
-   * purpose: dispatching a card's ops mutates its own target blocks, which
-   * fires the editor-store staleness subscription SYNCHRONOUSLY — before the
-   * applied state update commits — and the applied card would remove itself.
+   * Rows hidden in THIS tab only: locally-detected stale findings ("dies
+   * quietly" — never resurrects even if the block changes back) and
+   * optimistically dismissed rows (hidden ahead of the mutation ack).
+   */
+  const [hiddenFindingIds, setHiddenFindingIds] = useState<ReadonlySet<string>>(new Set());
+  /**
+   * Dismissed patternKeys: session dismissals ∪ the per-document localStorage
+   * bookkeeping (the pre-persistence twin of the dismissed rows' patternKey
+   * skip in personaFindings.recordFindings). Loaded lazily on mount and
+   * reloaded in the document-switch render adjustment below.
+   */
+  const [dismissedPatternKeys, setDismissedPatternKeys] = useState<ReadonlySet<string>>(() =>
+    documentId !== null ? readDismissedPatternKeys(documentId) : new Set(),
+  );
+  /** Cards this tab applied — they carry the revert affordance locally. */
+  const [appliedCards, setAppliedCards] = useState<AppliedCardState[]>([]);
+  /**
+   * Ids of findings whose ops were (or are being) applied. A REF, not state,
+   * on purpose: dispatching a card's ops mutates its own target blocks, which
+   * fires the editor-store staleness subscription SYNCHRONOUSLY — before any
+   * state update commits — and the applied card would hide itself as stale.
    * The ref updates synchronously ahead of the dispatch, so the staleness
    * check can exempt the card immediately.
    */
-  const appliedCardIdsRef = useRef<Set<string>>(new Set());
+  const appliedFindingIdsRef = useRef<Set<string>>(new Set());
   // Per-document runner bookkeeping (cooldowns, dedup key, high-water mark).
   const runnerRef = useRef<{
     documentId: string | null;
@@ -184,33 +214,41 @@ export function usePersonaAdvisors(): PersonaAdvisorsController {
     personaRowsRef.current = personaRows;
   }, [enabledSlugs, personaRows]);
 
-  // Document switch: drop carried-over cards (render-time state adjustment).
+  // Document switch: drop carried-over local card state (render-time state
+  // adjustment; refs/timers are cleared in the effect below).
   const [boundDocumentId, setBoundDocumentId] = useState<Id<"documents"> | null>(documentId);
   if (boundDocumentId !== documentId) {
     setBoundDocumentId(documentId);
-    setCardStates([]);
+    setHiddenFindingIds(new Set());
+    setDismissedPatternKeys(documentId !== null ? readDismissedPatternKeys(documentId) : new Set());
+    setAppliedCards([]);
   }
 
-  const removeCard = (suggestionId: string): void => {
-    const timer = appliedClearTimersRef.current.get(suggestionId);
-    if (timer !== undefined) {
-      clearTimeout(timer);
-      appliedClearTimersRef.current.delete(suggestionId);
-    }
-    appliedCardIdsRef.current.delete(suggestionId);
-    setCardStates((current) =>
-      current.filter((card) => card.suggestion.id !== suggestionId),
-    );
-  };
+  // Document switch / unmount: clear timers and the applied-exemption ref.
   useEffect(() => {
     const timers = appliedClearTimersRef.current;
+    const appliedIds = appliedFindingIdsRef.current;
     return () => {
       for (const timer of timers.values()) {
         clearTimeout(timer);
       }
       timers.clear();
+      appliedIds.clear();
     };
-  }, []);
+  }, [documentId]);
+
+  const removeAppliedCard = (findingId: string): void => {
+    const timer = appliedClearTimersRef.current.get(findingId);
+    if (timer !== undefined) {
+      clearTimeout(timer);
+      appliedClearTimersRef.current.delete(findingId);
+    }
+    appliedFindingIdsRef.current.delete(findingId);
+    // Keep the id hidden: if markFindingApplied failed (row still open), the
+    // card must not pop back after its applied affordance cleared.
+    setHiddenFindingIds((current) => new Set([...current, findingId]));
+    setAppliedCards((current) => current.filter((card) => card.findingId !== findingId));
+  };
 
   // -------------------------------------------------------------------------
   // PRESENCE keep-alive for enabled personas
@@ -234,16 +272,12 @@ export function usePersonaAdvisors(): PersonaAdvisorsController {
   }, [convexClient, documentId, enabledKey]);
 
   // -------------------------------------------------------------------------
-  // WATCH + RUN
+  // WATCH + RUN (findings land in Convex — nothing card-shaped comes back)
   // -------------------------------------------------------------------------
   useEffect(() => {
     if (documentId === null) {
       return;
     }
-
-    const isPatternDismissed = (patternKey: string): boolean =>
-      sessionDismissedKeysRef.current.has(patternKey) ||
-      readDismissedPatternKeys(documentId).has(patternKey);
 
     const runAdvisors = async (page: OperationsPage): Promise<void> => {
       const runner = runnerRef.current;
@@ -305,62 +339,9 @@ export function usePersonaAdvisors(): PersonaAdvisorsController {
           tracePersonas({ step: "run-skipped-server", reason: payload.skippedReason });
           return;
         }
+        // The route persisted the findings; the reactive listOpenFindings
+        // query delivers them to this tab AND every other one.
         tracePersonas({ step: "run-findings", count: payload.findings.length });
-
-        // Findings → PersonaSuggestions: re-validate ops against the LIVE doc
-        // (it may have moved since the server snapshot — belt and braces, the
-        // same dry-run discipline as rule suggestions), filter dismissals,
-        // dedupe by patternKey, snapshot targets, cap the visible set.
-        const liveDoc = useEditorStore.getState().doc;
-        const arrivals: PersonaCardState[] = [];
-        for (const finding of payload.findings) {
-          const patternKey = buildPatternKey({
-            personaSlug: finding.personaSlug,
-            targetBlockIds: finding.targetBlockIds,
-          });
-          if (isPatternDismissed(patternKey)) {
-            continue;
-          }
-          const targetsExist = finding.targetBlockIds.every(
-            (blockId) => (liveDoc as EmailDocument)[blockId as keyof EmailDocument] !== undefined,
-          );
-          if (!targetsExist) {
-            continue; // already stale on arrival
-          }
-          const hasValidOps =
-            finding.ops.length > 0 && applyOperations(liveDoc, finding.ops).isOk;
-          arrivals.push({
-            suggestion: {
-              id: crypto.randomUUID(),
-              source: "analysis",
-              personaSlug: finding.personaSlug,
-              personaName: finding.personaName,
-              personaColor: finding.personaColor,
-              patternKey,
-              title: finding.title,
-              description: finding.description,
-              targetBlockNames: finding.targetBlockNames,
-              targetBlockIds: finding.targetBlockIds,
-              ops: hasValidOps ? finding.ops : [],
-            },
-            targetSnapshots: Object.fromEntries(
-              finding.targetBlockIds.map((blockId) => [
-                blockId,
-                serializeBlock((liveDoc as EmailDocument)[blockId as keyof EmailDocument]),
-              ]),
-            ),
-            applied: null,
-          });
-        }
-        if (arrivals.length > 0) {
-          setCardStates((current) => {
-            const arrivalKeys = new Set(arrivals.map((card) => card.suggestion.patternKey));
-            const kept = current.filter(
-              (card) => card.applied !== null || !arrivalKeys.has(card.suggestion.patternKey),
-            );
-            return [...arrivals, ...kept].slice(0, MAX_VISIBLE_FINDINGS);
-          });
-        }
       } catch (error) {
         tracePersonas({ step: "run-error", message: String(error) });
       } finally {
@@ -449,37 +430,33 @@ export function usePersonaAdvisors(): PersonaAdvisorsController {
   }, [documentId]);
 
   // -------------------------------------------------------------------------
-  // STALENESS: any change to a card's target blocks invalidates it (applied
-  // cards are exempt — their revert affordance must survive the very change
-  // the apply itself made).
+  // STALENESS: any drift between a finding's persisted targetSnapshots and
+  // THIS tab's rendered doc hides it here, permanently ("dies quietly").
+  // Local-only — no mutation — so it can never race an apply in another tab;
+  // every tab converges to the same doc and reaches the same verdict, and
+  // the runner prunes the stale rows server-side on its next pass. Findings
+  // this tab applied are exempt (their revert affordance must survive the
+  // very change the apply itself made).
   // -------------------------------------------------------------------------
   useEffect(() => {
-    if (cardStates.every((card) => card.applied !== null)) {
+    if (findingRows === undefined || findingRows.length === 0) {
       return;
     }
     const checkStaleness = (doc: EmailDocument): void => {
-      const staleIds = cardStates
+      const staleIds = findingRows
         .filter(
-          (card) =>
-            card.applied === null &&
-            !appliedCardIdsRef.current.has(card.suggestion.id) &&
-            card.suggestion.targetBlockIds.some(
-              (blockId) =>
-                serializeBlock(doc[blockId as keyof EmailDocument]) !==
-                card.targetSnapshots[blockId],
+          (row) =>
+            !hiddenFindingIds.has(row.findingId) &&
+            !appliedFindingIdsRef.current.has(row.findingId) &&
+            Object.entries(row.targetSnapshots).some(
+              ([blockId, snapshot]) =>
+                serializeBlock(doc[blockId as keyof EmailDocument]) !== snapshot,
             ),
         )
-        .map((card) => card.suggestion.id);
+        .map((row) => row.findingId);
       if (staleIds.length > 0) {
         tracePersonas({ step: "stale", staleIds });
-        setCardStates((current) =>
-          current.filter(
-            (card) =>
-              card.applied !== null ||
-              appliedCardIdsRef.current.has(card.suggestion.id) ||
-              !staleIds.includes(card.suggestion.id),
-          ),
-        );
+        setHiddenFindingIds((current) => new Set([...current, ...staleIds]));
       }
     };
     const unsubscribe = useEditorStore.subscribe((state) =>
@@ -495,84 +472,121 @@ export function usePersonaAdvisors(): PersonaAdvisorsController {
       isDisposed = true;
       unsubscribe();
     };
-  }, [cardStates]);
+  }, [findingRows, hiddenFindingIds]);
+
+  // -------------------------------------------------------------------------
+  // The visible card set: this tab's applied cards (revert affordance) on
+  // top, then the freshest open findings that aren't locally hidden,
+  // dismissed, or being applied — capped at MAX_VISIBLE_FINDINGS total.
+  // -------------------------------------------------------------------------
+  // Applied ids from STATE here (never the ref — refs must not be read in
+  // render): by the re-render after an apply, the card is in appliedCards.
+  const appliedFindingIds = new Set(appliedCards.map((card) => card.findingId));
+  const visibleOpenRows = (findingRows ?? [])
+    .filter(
+      (row) =>
+        !hiddenFindingIds.has(row.findingId) &&
+        !appliedFindingIds.has(row.findingId) &&
+        !dismissedPatternKeys.has(row.patternKey),
+    )
+    .slice(0, Math.max(0, MAX_VISIBLE_FINDINGS - appliedCards.length));
 
   // -------------------------------------------------------------------------
   // Actions
   // -------------------------------------------------------------------------
   const applySuggestion = (suggestionId: string): void => {
-    const card = cardStates.find((candidate) => candidate.suggestion.id === suggestionId);
-    if (card === undefined || card.applied !== null || card.suggestion.ops.length === 0) {
+    const row = visibleOpenRows.find((candidate) => candidate.findingId === suggestionId);
+    if (row === undefined || row.ops.length === 0) {
       return;
     }
+    const suggestion = toPersonaSuggestion(row);
     const store = useEditorStore.getState();
-    if (!applyOperations(store.doc, card.suggestion.ops).isOk) {
-      removeCard(suggestionId); // raced a concurrent edit — quietly drop
+    if (!applyOperations(store.doc, suggestion.ops).isOk) {
+      // Raced a concurrent edit — quietly drop (locally; the runner prunes).
+      setHiddenFindingIds((current) => new Set([...current, suggestionId]));
       return;
     }
     // Persona provenance (proposal §3.2): author "agent", authorId
     // `persona:<slug>` (its own undo stack + History identity), one batch per
     // apply so history.revertBatch reverts it in one click.
-    const batchId = `persona:${card.suggestion.personaSlug}:${crypto.randomUUID()}`;
-    // Exempt this card from staleness BEFORE dispatching (see appliedCardIdsRef).
-    appliedCardIdsRef.current.add(suggestionId);
-    for (const op of card.suggestion.ops) {
+    const batchId = `persona:${suggestion.personaSlug}:${crypto.randomUUID()}`;
+    // Exempt this card from staleness BEFORE dispatching (see appliedFindingIdsRef).
+    appliedFindingIdsRef.current.add(suggestionId);
+    for (const op of suggestion.ops) {
       const result = store.dispatch(op, {
         caller: "frontend",
         author: "agent",
-        authorId: `persona:${card.suggestion.personaSlug}`,
+        authorId: `persona:${suggestion.personaSlug}`,
         batchId,
       });
       if (!result.isOk) {
-        removeCard(suggestionId); // unreachable after the dry-run; partial batch stays revertable in History
+        // Unreachable after the dry-run; partial batch stays revertable in History.
+        appliedFindingIdsRef.current.delete(suggestionId);
+        setHiddenFindingIds((current) => new Set([...current, suggestionId]));
         return;
       }
     }
-    setCardStates((current) =>
-      current.map((candidate) =>
-        candidate.suggestion.id === suggestionId
-          ? { ...candidate, applied: { batchId, revertErrorMessage: null } }
-          : candidate,
-      ),
-    );
+    setAppliedCards((current) => [
+      { suggestion, findingId: suggestionId, batchId, revertErrorMessage: null },
+      ...current,
+    ]);
+    // Converge the row for every tab: open → applied (+ the revert handle).
+    convexClient
+      .mutation(api.personaFindings.markFindingApplied, {
+        findingId: row.findingId,
+        appliedBatchId: batchId,
+      })
+      .catch((error: unknown) => {
+        console.warn("[personas] markFindingApplied failed", error);
+      });
     const timer = setTimeout(() => {
       appliedClearTimersRef.current.delete(suggestionId);
-      removeCard(suggestionId);
+      removeAppliedCard(suggestionId);
     }, APPLIED_STATE_TTL_MS);
     appliedClearTimersRef.current.set(suggestionId, timer);
   };
 
   const dismissSuggestion = (suggestionId: string): void => {
-    const card = cardStates.find((candidate) => candidate.suggestion.id === suggestionId);
-    if (card !== undefined && card.applied === null) {
-      sessionDismissedKeysRef.current.add(card.suggestion.patternKey);
-      if (documentId !== null) {
-        persistDismissedPatternKey({ documentId, patternKey: card.suggestion.patternKey });
-      }
+    if (appliedCards.some((card) => card.findingId === suggestionId)) {
+      removeAppliedCard(suggestionId);
+      return;
     }
-    removeCard(suggestionId);
+    const row = visibleOpenRows.find((candidate) => candidate.findingId === suggestionId);
+    if (row === undefined) {
+      return;
+    }
+    // Local bookkeeping first (instant hide + the localStorage twin) ...
+    setDismissedPatternKeys((current) => new Set([...current, row.patternKey]));
+    setHiddenFindingIds((current) => new Set([...current, suggestionId]));
+    if (documentId !== null) {
+      persistDismissedPatternKey({ documentId, patternKey: row.patternKey });
+    }
+    // ... then the authoritative row status: every other tab converges, and
+    // recordFindings will refuse to re-record this patternKey.
+    convexClient
+      .mutation(api.personaFindings.dismissFinding, { findingId: row.findingId })
+      .catch((error: unknown) => {
+        console.warn("[personas] dismissFinding failed", error);
+      });
   };
 
   const revertApplied = (suggestionId: string): void => {
-    const card = cardStates.find((candidate) => candidate.suggestion.id === suggestionId);
-    if (card === undefined || card.applied === null) {
+    const card = appliedCards.find((candidate) => candidate.findingId === suggestionId);
+    if (card === undefined) {
       return;
     }
     void useEditorStore
       .getState()
-      .revertAgentBatch(card.applied.batchId)
+      .revertAgentBatch(card.batchId)
       .then((result) => {
         if (result.isOk) {
-          removeCard(suggestionId);
+          removeAppliedCard(suggestionId);
           return;
         }
-        setCardStates((current) =>
+        setAppliedCards((current) =>
           current.map((candidate) =>
-            candidate.suggestion.id === suggestionId && candidate.applied !== null
-              ? {
-                  ...candidate,
-                  applied: { ...candidate.applied, revertErrorMessage: result.message },
-                }
+            candidate.findingId === suggestionId
+              ? { ...candidate, revertErrorMessage: result.message }
               : candidate,
           ),
         );
@@ -580,11 +594,16 @@ export function usePersonaAdvisors(): PersonaAdvisorsController {
   };
 
   return {
-    cards: cardStates.map((card) => ({
-      suggestion: card.suggestion,
-      appliedState:
-        card.applied !== null ? { revertErrorMessage: card.applied.revertErrorMessage } : null,
-    })),
+    cards: [
+      ...appliedCards.map((card) => ({
+        suggestion: card.suggestion,
+        appliedState: { revertErrorMessage: card.revertErrorMessage },
+      })),
+      ...visibleOpenRows.map((row) => ({
+        suggestion: toPersonaSuggestion(row),
+        appliedState: null,
+      })),
+    ],
     applySuggestion,
     dismissSuggestion,
     revertApplied,

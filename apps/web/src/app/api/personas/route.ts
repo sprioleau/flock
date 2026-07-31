@@ -11,8 +11,10 @@ import {
 } from "@tandem/email-sdk";
 import { generateObject } from "ai";
 import { ConvexHttpClient } from "convex/browser";
+import type { FunctionReturnType } from "convex/server";
 import { z } from "zod";
 import { api } from "@convex/_generated/api";
+import { stableStringify } from "@/lib/suggestions/serialize-block";
 
 /**
  * POST /api/personas — the multi-agent canvas v0 ADVISORY RUNNER
@@ -37,6 +39,17 @@ import { api } from "@convex/_generated/api";
  * route adds a per-document minimum interval and an outline-unchanged skip
  * as server backstops, plus a `tandem.personas.request` JSON log line so
  * tokens-per-run stay observable.
+ *
+ * PERSISTENCE (multi-agent v1): surviving findings are RECORDED in the
+ * `personaFindings` table (convex/personaFindings.ts) rather than consumed
+ * only by the initiating client — every tab/collaborator reads them
+ * reactively, and dismiss/apply converge through row status. Each finding is
+ * stored with `targetSnapshots` (stableStringify of every block it depends
+ * on, from THIS run's doc snapshot — the exact doc the ops were dry-run
+ * against) as the shared staleness baseline. Before the call, the runner
+ * prunes stale open rows and feeds the fresh ones back into the prompt as
+ * §5.6b turn-input dedup context — per-request data, appended in the
+ * fresh-tokens-LAST position (the user message), never into a static layer.
  */
 
 /**
@@ -240,6 +253,50 @@ function composeFindingOps({
 
 const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
 
+type OpenFindingRow = FunctionReturnType<typeof api.personaFindings.listOpenFindings>[number];
+
+/** Dismissal identity — MUST match the client's buildPatternKey (use-persona-advisors.ts). */
+function buildFindingPatternKey({
+  personaSlug,
+  targetBlockIds,
+}: {
+  personaSlug: string;
+  targetBlockIds: string[];
+}): string {
+  return `persona:${personaSlug}|${[...targetBlockIds].sort().join(",")}`;
+}
+
+/**
+ * A persisted finding is stale when ANY snapshotted block drifted from this
+ * run's doc (or vanished). Checks every `targetSnapshots` key — that map
+ * covers the ops' blocks too, so fresh ⇒ the stored ops still apply.
+ */
+function isFindingStale({ doc, row }: { doc: EmailDocument; row: OpenFindingRow }): boolean {
+  return Object.entries(row.targetSnapshots).some(([blockId, snapshot]) => {
+    const block = doc[blockId as keyof EmailDocument];
+    return block === undefined || stableStringify(block) !== snapshot;
+  });
+}
+
+/**
+ * §5.6b turn-input dedup: a persona sees its own (and its peers') still-open
+ * findings so it never re-flags what it already flagged. PER-REQUEST content —
+ * this string may only ever be appended in the fresh-tokens-last position.
+ */
+function buildOpenFindingsContext(rows: OpenFindingRow[]): string | null {
+  if (rows.length === 0) {
+    return null;
+  }
+  const lines = rows.map(
+    (row) =>
+      `- [${row.personaSlug}] ${row.title} (about: ${row.targetBlockIds.join(", ")})`,
+  );
+  return [
+    "Findings already reported and still open — do NOT re-report these or minor variations of them; only report genuinely new issues:",
+    ...lines,
+  ].join("\n");
+}
+
 // ---------------------------------------------------------------------------
 // The route
 // ---------------------------------------------------------------------------
@@ -320,6 +377,26 @@ export async function POST(request: Request) {
     // Status choreography: reading (context assembly) → thinking (call in
     // flight) → idle. Transition-only presence writes (§3.5).
     await setStatusForAll("reading");
+
+    // Persisted-findings maintenance (the real "reading" work): prune open
+    // rows whose target blocks drifted since they were recorded (they die
+    // quietly — §5.6), and keep the fresh ones as dedup context (§5.6b).
+    const openFindingRows = await convexClient.query(api.personaFindings.listOpenFindings, {
+      documentId: document.documentId,
+    });
+    const staleFindingIds = openFindingRows
+      .filter((row) => isFindingStale({ doc, row }))
+      .map((row) => row.findingId);
+    if (staleFindingIds.length > 0) {
+      await convexClient.mutation(api.personaFindings.pruneStaleFindings, {
+        documentId: document.documentId,
+        findingIds: staleFindingIds,
+      });
+    }
+    const openFindingsContext = buildOpenFindingsContext(
+      openFindingRows.filter((row) => !staleFindingIds.includes(row.findingId)),
+    );
+
     await sleep(READING_BEAT_MS);
 
     // Cache-ordered prompt (§3.4): [shared static ‖ persona layer] as the
@@ -335,6 +412,7 @@ export async function POST(request: Request) {
       outline,
       "```",
       triggerSummary !== undefined ? `What just happened: ${triggerSummary}` : null,
+      openFindingsContext,
       "Review the document as each persona and return your findings.",
     ]
       .filter((part): part is string => part !== null)
@@ -380,6 +458,45 @@ export async function POST(request: Request) {
     }
 
     runState.lastRunKey = runKey;
+
+    // PERSIST the surviving findings (cross-tab/collab visibility — the
+    // clients' reactive listOpenFindings query does the rest). Snapshots are
+    // taken from THIS run's `doc` — the exact doc the ops were dry-run
+    // against — and cover the ops' blocks as well as the finding's declared
+    // targets, so any drift that could invalidate the ops reads as stale.
+    if (findings.length > 0) {
+      await convexClient.mutation(api.personaFindings.recordFindings, {
+        documentId: document.documentId,
+        findings: findings.map((finding) => {
+          const snapshotBlockIds = new Set(finding.targetBlockIds);
+          for (const op of finding.ops) {
+            if ("blockId" in op && typeof op.blockId === "string") {
+              snapshotBlockIds.add(op.blockId);
+            }
+          }
+          return {
+            personaSlug: finding.personaSlug,
+            personaName: finding.personaName,
+            personaColor: finding.personaColor,
+            patternKey: buildFindingPatternKey({
+              personaSlug: finding.personaSlug,
+              targetBlockIds: finding.targetBlockIds,
+            }),
+            title: finding.title,
+            description: finding.description,
+            targetBlockNames: finding.targetBlockNames,
+            targetBlockIds: finding.targetBlockIds,
+            ops: finding.ops,
+            targetSnapshots: Object.fromEntries(
+              [...snapshotBlockIds].map((blockId) => [
+                blockId,
+                stableStringify(doc[blockId as keyof EmailDocument]),
+              ]),
+            ),
+          };
+        }),
+      });
+    }
 
     // Back to idle; each persona's block-presence chrome points at its top
     // finding's first target block (BlockPresenceIndicator lights up free).

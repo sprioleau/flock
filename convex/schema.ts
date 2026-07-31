@@ -197,6 +197,13 @@ export default defineSchema({
    * the literal type IS the server-side enforcement: an "editing" persona row
    * cannot exist, and no code dispatches ops on a persona's behalf — advisory
    * findings are applied only by a human clicking Apply in the suggestions UI.
+   *
+   * v1 COPY-ON-EDIT (proposal §6 item 9): built-ins are never edited in
+   * place. Saving an edit to a built-in forks a SESSION COPY — slug
+   * `user/<sessionId>/<base>` shadowing `builtin/<base>` in that session's
+   * picker (the deterministic slug scheme means at most one copy per
+   * built-in per session; personas.ts owns the convention). Copies are
+   * ordinary registry rows, so presence/runner plumbing needs no changes.
    */
   agents: defineTable({
     /** Stable namespaced id ("builtin/tone-police"); third-party namespaces later. */
@@ -210,14 +217,20 @@ export default defineSchema({
     /**
      * THE BEHAVIOR: frontmatter-ish header (display metadata) + freeform
      * conduct text, injected as a prompt layer by /api/personas. User-editable
-     * in v1 (v0 renders it read-only in the picker).
+     * in-app (v1); edits to built-ins fork a session copy (see above).
      */
     personaMarkdown: v.string(),
     /** Minimum seconds between runner turns for this persona (budget guard). */
     cooldownSeconds: v.number(),
+    /** True for seeded registry rows (pristine; edits fork a session copy). */
+    isBuiltIn: v.boolean(),
+    /** Owning anonymous session (localStorage id) for user copies; absent on built-ins. */
+    createdBySessionId: v.optional(v.string()),
     createdAtMs: v.number(),
     updatedAtMs: v.number(),
-  }).index("by_slug", ["slug"]),
+  })
+    .index("by_slug", ["slug"])
+    .index("by_createdBySessionId", ["createdBySessionId"]),
 
   /**
    * The per-session brand kit (Phase 7.x brand kit panel): at most ONE active
@@ -256,6 +269,72 @@ export default defineSchema({
     createdAtMs: v.number(),
     updatedAtMs: v.number(),
   }).index("by_sessionId", ["sessionId"]),
+
+  /**
+   * Multi-agent canvas v1 — PERSISTED advisory persona findings (proposal
+   * §3.6 client-merge sketch, §5.6b turn-input dedup). One row = one finding
+   * from the batched /api/personas runner. Persisting (instead of returning
+   * findings only to the initiating client) is what makes findings CROSS-TAB
+   * and CROSS-COLLABORATOR: every tab's suggestion surface reads the same
+   * open rows reactively, and a dismissal or apply in any tab converges
+   * everywhere. This table is also the §10 row-1 "suggestion queue" starting
+   * to exist, and the runner reads a persona's own open rows back as prompt
+   * context so it never re-flags what it already flagged (§5.6b).
+   *
+   * Shape invariants:
+   * - `ops` is unvalidated JSON ON PURPOSE (the ops/blocks column policy in
+   *   the header note): its runtime guard is the email-sdk Zod schemas — the
+   *   runner composes ops via `updateBlockPropertiesOperationSchema` and
+   *   dry-runs the batch through pure `applyOperations` BEFORE recording, and
+   *   the client dry-runs again at Apply time. An EMPTY array is legal and
+   *   means an informational finding (dismiss only, no Apply).
+   * - `targetSnapshots` maps blockId → stableStringify(block) (the client's
+   *   key-order-insensitive staleness serializer, shared via
+   *   apps/web/src/lib/suggestions/serialize-block.ts), computed from the
+   *   SAME doc snapshot the ops were dry-run against. It covers every
+   *   `targetBlockIds` entry PLUS every block the ops touch, so "no snapshot
+   *   drifted" implies "the ops still apply". A finding whose snapshot
+   *   drifts is STALE and dies quietly: each client hides it against its own
+   *   rendered doc (converges without any mutation, so applies never race),
+   *   and the runner deletes stale open rows before assembling its dedup
+   *   context.
+   * - Persona identity (name/color) is denormalized from the `agents` row at
+   *   recording time so cards render without a registry join; the slug stays
+   *   the stable key.
+   * - Lifecycle is one-way: open → dismissed | applied. A dismissed row also
+   *   blocks re-recording the same `patternKey` (the runner skips it), which
+   *   is the server-side twin of the client's localStorage dismissal keys.
+   *   `appliedBatchId` links an applied row to its op-log batch (the ops
+   *   themselves live in `operations` with `persona:<slug>` provenance —
+   *   applying goes through the ONE history spine, never a new write path).
+   */
+  personaFindings: defineTable({
+    documentId: v.id("documents"),
+    /** Registry slug of the persona that produced this finding. */
+    personaSlug: v.string(),
+    /** Denormalized persona identity for the card chip (see note above). */
+    personaName: v.string(),
+    personaColor: v.string(),
+    /** Dismissal identity: `persona:${slug}|${sorted targetBlockIds}` (types.ts). */
+    patternKey: v.string(),
+    title: v.string(),
+    description: v.string(),
+    /** Visible content references ("the button labeled 'Buy now'") — never ids. */
+    targetBlockNames: v.array(v.string()),
+    /** email-sdk block ids this finding depends on (staleness scope). */
+    targetBlockIds: v.array(v.string()),
+    /** Pre-validated updateBlockProperties ops JSON; empty = informational. */
+    ops: v.array(v.any()),
+    /** blockId → stableStringify(block) at recording time (staleness baseline). */
+    targetSnapshots: v.record(v.string(), v.string()),
+    status: v.union(v.literal("open"), v.literal("dismissed"), v.literal("applied")),
+    /** The op-log batchId of the human's apply (set with status "applied"). */
+    appliedBatchId: v.optional(v.string()),
+    createdAtMs: v.number(),
+    updatedAtMs: v.number(),
+  })
+    .index("by_documentId", ["documentId"])
+    .index("by_documentId_and_status", ["documentId", "status"]),
 
   snapshots: defineTable({
     documentId: v.id("documents"),

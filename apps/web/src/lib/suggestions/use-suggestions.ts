@@ -6,13 +6,13 @@ import type { FunctionReturnType } from "convex/server";
 import {
   applyOperations,
   updateBlockPropertiesOperationSchema,
-  type Block,
   type EmailDocument,
 } from "@tandem/email-sdk";
 import { api } from "@convex/_generated/api";
 import type { Id } from "@convex/_generated/dataModel";
 import { useEditorStore } from "@/lib/editor-store";
 import { persistDismissedPatternKey, readDismissedPatternKeys } from "./dismissals";
+import { serializeBlock } from "./serialize-block";
 import {
   evaluateSuggestionRules,
   isSuggestiblePropertyEdit,
@@ -79,28 +79,10 @@ type SuggestionPhase =
       revertErrorMessage: string | null;
     };
 
-/**
- * Key-order-insensitive serialization for staleness comparison. The locally
- * applied doc and its server-snapshot rebase hold semantically identical
- * blocks whose object key ORDER can differ (Convex normalizes field order on
- * write), so plain JSON.stringify would false-positive every snapshot.
- */
-export function stableStringify(value: unknown): string {
-  if (Array.isArray(value)) {
-    return `[${value.map(stableStringify).join(",")}]`;
-  }
-  if (value !== null && typeof value === "object") {
-    const entries = Object.entries(value as Record<string, unknown>)
-      .filter(([, entryValue]) => entryValue !== undefined)
-      .sort(([a], [b]) => (a < b ? -1 : 1));
-    return `{${entries.map(([key, entryValue]) => `${JSON.stringify(key)}:${stableStringify(entryValue)}`).join(",")}}`;
-  }
-  return JSON.stringify(value) ?? "undefined";
-}
-
-/** Staleness baseline serialization — shared with use-persona-advisors.ts. */
-export const serializeBlock = (block: Block | undefined): string | undefined =>
-  block === undefined ? undefined : stableStringify(block);
+// Staleness serialization moved to serialize-block.ts (shared with the
+// /api/personas route, which persists snapshots in personaFindings — the two
+// sides must produce byte-identical output). Re-exported for compatibility.
+export { serializeBlock, stableStringify } from "./serialize-block";
 
 // Dev-only trace of the watcher's evaluation steps, so in-browser verification
 // (agents, debugging) can see WHY a suggestion did or didn't surface.
