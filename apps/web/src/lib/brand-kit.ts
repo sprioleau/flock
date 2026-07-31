@@ -273,6 +273,75 @@ export function getConfirmedBrandAssetUrl({
 }
 
 // ---------------------------------------------------------------------------
+// Brand color palette (color-picker swatches)
+// ---------------------------------------------------------------------------
+
+/** One clickable brand swatch: a normalized color + its user-facing name. */
+export interface BrandPaletteSwatch {
+  /** Normalized #rrggbb. */
+  color: string;
+  /** Tooltip label, e.g. "Accent — Midnight". */
+  label: string;
+}
+
+/** Small on purpose: the swatch row must stay one glanceable strip. */
+export const MAX_BRAND_PALETTE_SWATCHES = 10;
+
+/**
+ * Which globals carry the brand's palette, in display priority: the
+ * signature accent first (buttons/links are where the scraper's accentColor
+ * lands), then surfaces, then text. Labels are user-facing tooltip words.
+ */
+const PALETTE_ROLES: ReadonlyArray<{ key: keyof GlobalStyles; label: string }> = [
+  { key: "buttonBackgroundColor", label: "Accent" },
+  { key: "linkTextColor", label: "Link" },
+  { key: "contentBackgroundColor", label: "Content background" },
+  { key: "emailBackgroundColor", label: "Email background" },
+  { key: "heading1TextColor", label: "Heading text" },
+  { key: "paragraphTextColor", label: "Body text" },
+  { key: "buttonTextColor", label: "Button text" },
+  { key: "dividerColor", label: "Divider" },
+];
+
+/** Normalize any hex form to #rrggbb, or null for non-hex values. */
+function normalizeHexColor(color: string): string | null {
+  const rgb = parseHexColor(color);
+  if (rgb === null) {
+    return null;
+  }
+  return `#${rgb.map((component) => component.toString(16).padStart(2, "0")).join("")}`;
+}
+
+/**
+ * The kit's distinct palette as ordered, labeled swatches — what the color
+ * pickers render as the "Brand colors" row. Deduped across variations
+ * (accent roles win the label when a color repeats in later roles), capped
+ * at {@link MAX_BRAND_PALETTE_SWATCHES}.
+ */
+export function getBrandKitPalette(brandKit: BrandKit): BrandPaletteSwatch[] {
+  const swatches: BrandPaletteSwatch[] = [];
+  const seenColors = new Set<string>();
+  for (const { key, label } of PALETTE_ROLES) {
+    for (const variation of brandKit.variations) {
+      if (swatches.length >= MAX_BRAND_PALETTE_SWATCHES) {
+        return swatches;
+      }
+      const rawValue = variation.globals[key];
+      if (typeof rawValue !== "string") {
+        continue;
+      }
+      const color = normalizeHexColor(rawValue);
+      if (color === null || seenColors.has(color)) {
+        continue;
+      }
+      seenColors.add(color);
+      swatches.push({ color, label: `${label} — ${variation.name}` });
+    }
+  }
+  return swatches;
+}
+
+// ---------------------------------------------------------------------------
 // Current-theme detection
 // ---------------------------------------------------------------------------
 

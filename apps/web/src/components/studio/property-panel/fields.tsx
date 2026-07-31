@@ -9,6 +9,7 @@ import { Label } from "@/components/ui/label";
 import { Slider } from "@/components/ui/slider";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { cn } from "@/lib/utils";
+import { BrandColorSwatches } from "./BrandColorSwatches";
 import { useEndCoalescing } from "./usePanelDispatch";
 import { useLiveDraft } from "./useLiveDraft";
 
@@ -363,6 +364,15 @@ export function ColorField({
           </Button>
         ) : null}
       </div>
+      {/* Item 23: the active kit's palette under every color picker. A pick
+          runs the field's normal live-commit (instant apply) and closes the
+          gesture so the click is exactly one undo step. */}
+      <BrandColorSwatches
+        onPick={(color) => {
+          setDraft(color);
+          endCoalescing();
+        }}
+      />
     </FieldShell>
   );
 }
