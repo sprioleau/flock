@@ -1,4 +1,5 @@
 import { DEFAULT_GLOBAL_STYLES, type GlobalStyles } from "@tandem/email-sdk";
+import type { BrandSocialLink } from "./social-links";
 
 /**
  * Brand kit — the data contract behind the studio's theme selector.
@@ -75,6 +76,12 @@ export interface BrandKit {
   socialImageConfirmedAtMs?: number;
   /** Monotonic save counter (server-managed; absent on unsaved/mock kits). */
   revision?: number;
+  /**
+   * The brand's social profile links (item 26), one per platform, extracted
+   * deterministically (JSON-LD sameAs → footer/nav scan). Used by the footer
+   * fill affordance and exposed to the chat agent's per-request context.
+   */
+  socialLinks?: BrandSocialLink[];
   /** 3–4 agent-generated color variations; the theme dropdown's content. */
   variations: ThemeVariation[];
 }

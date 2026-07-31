@@ -25,6 +25,7 @@ import {
   SelectField,
   TextField,
 } from "./fields";
+import { BrandSocialFillRow } from "./BrandSocialFillRow";
 import { GenerateImageField } from "./GenerateImageField";
 import { ImageSourceField } from "./ImageSourceField";
 import { PaddingFields } from "./PaddingFields";
@@ -261,6 +262,9 @@ export function SectionPanel({ block }: { block: SectionBlock }) {
         onCommit={(value) => commit({ outerBackgroundColor: value })}
       />
       <PaddingFields blockType="section" properties={properties} resolvedPadding={resolved} onCommitPadding={commit} />
+      {/* Item 26: fill this section's social row from the brand kit (renders
+          only when the section has social links and the kit carries some). */}
+      <BrandSocialFillRow sectionId={block.id} />
     </div>
   );
 }

@@ -20,6 +20,7 @@ import {
   PIPELINE_VARIANT,
   type PipelineVariant,
 } from "./constants";
+import { buildBrandSocialContextLine } from "./brand-context";
 import { buildSystemContext } from "./system-context";
 import { buildChatTools } from "./tools";
 
@@ -251,7 +252,13 @@ async function runSinglePassPipeline(input: ChatPipelineInput): Promise<void> {
     doc,
     sessionId,
   });
-  const { staticInstructions, documentContext } = buildSystemContext({ doc, selectedBlockId });
+  // Brand social links ride the FRESH context layer only (fails soft to null).
+  const brandContextLine = await buildBrandSocialContextLine({ sessionId });
+  const { staticInstructions, documentContext } = buildSystemContext({
+    doc,
+    selectedBlockId,
+    brandContextLine,
+  });
 
   // Message order for Gemini implicit context caching: static system text
   // FIRST (stable prefix), conversation next, per-request document context as

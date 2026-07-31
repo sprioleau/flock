@@ -117,6 +117,9 @@ export const brandKitSchema = z.object({
   fonts: z.object({ heading: z.string().min(1), body: z.string().min(1) }),
   logoUrl: z.string().optional(),
   socialImageUrl: z.string().optional(),
+  socialLinks: z
+    .array(z.object({ platform: z.string().min(1), url: z.string().min(1) }))
+    .optional(),
   variations: z
     .array(z.object({ id: z.string().min(1), name: z.string().min(1), globals: requiredGlobalsSchema }))
     .min(MIN_VARIATIONS)
@@ -282,6 +285,7 @@ export async function generateBrandKit({ url }: { url: string }): Promise<BrandK
     fonts,
     ...(logoUrl === undefined || logoUrl === null ? {} : { logoUrl }),
     ...(identity.socialImageUrl === null ? {} : { socialImageUrl: identity.socialImageUrl }),
+    ...(identity.socialLinks.length > 0 ? { socialLinks: identity.socialLinks } : {}),
     variations: dedupeVariationIds(expandedVariations),
   };
 

@@ -197,6 +197,68 @@ check("title cleaning: brand segment before the first separator", () => {
   assert.equal(cleanTitleToBrandName("   "), null);
 });
 
+check("social links: JSON-LD sameAs is canonical; share URLs and dupes filtered", () => {
+  const identity = extractSiteIdentity({
+    html: `<script type="application/ld+json">
+      {"@type":"Organization","name":"Acme","sameAs":[
+        "https://x.com/acme-canonical",
+        "https://www.instagram.com/acme/?hl=en",
+        "https://en.wikipedia.org/wiki/Acme",
+        "https://twitter.com/intent/tweet?text=hi"
+      ]}
+    </script>
+    <footer>
+      <a href="https://x.com/acme-footer">X</a>
+      <a href="https://www.facebook.com/sharer.php?u=x">Share</a>
+      <a href="https://facebook.com/acmeinc">Facebook</a>
+      <a href="https://github.com/acme">GitHub</a>
+    </footer>`,
+    baseUrl: BASE_URL,
+  });
+  assert.deepEqual(identity.socialLinks, [
+    { platform: "x", url: "https://x.com/acme-canonical" }, // sameAs beats the footer anchor
+    { platform: "facebook", url: "https://facebook.com/acmeinc" }, // share link skipped
+    { platform: "instagram", url: "https://instagram.com/acme" }, // query stripped
+    { platform: "github", url: "https://github.com/acme" },
+  ]);
+});
+
+check("social links: Organization nested inside a WebPage node (CNN shape)", () => {
+  const identity = extractSiteIdentity({
+    html: `<script type="application/ld+json">
+      {"@type":"WebPage","name":"Home","publisher":{"@type":"NewsMediaOrganization","name":"CNN",
+        "sameAs":["https://www.facebook.com/cnn/","https://x.com/CNN","https://www.tiktok.com/@cnn"]}}
+    </script>`,
+    baseUrl: BASE_URL,
+  });
+  assert.equal(identity.siteName, "CNN"); // nested Organization name found too
+  assert.deepEqual(identity.socialLinks, [
+    { platform: "x", url: "https://x.com/CNN" },
+    { platform: "facebook", url: "https://facebook.com/cnn" },
+    { platform: "tiktok", url: "https://tiktok.com/@cnn" },
+  ]);
+});
+
+check("social links: footer/nav anchor fallback works without JSON-LD", () => {
+  const identity = extractSiteIdentity({
+    html: `<nav><a href="https://www.linkedin.com/company/acme">LinkedIn</a></nav>
+      <footer><a href="https://youtube.com/@acme">YouTube</a><a href="/contact">Contact</a></footer>`,
+    baseUrl: BASE_URL,
+  });
+  assert.deepEqual(identity.socialLinks, [
+    { platform: "linkedin", url: "https://linkedin.com/company/acme" },
+    { platform: "youtube", url: "https://youtube.com/@acme" },
+  ]);
+});
+
+check("social links: empty when the page has none", () => {
+  const identity = extractSiteIdentity({
+    html: `<title>Acme</title><footer><a href="/privacy">Privacy</a></footer>`,
+    baseUrl: BASE_URL,
+  });
+  assert.deepEqual(identity.socialLinks, []);
+});
+
 check("identity on the saved fixture: head icons beat the masthead, name from og:site_name", () => {
   const fixtureForIdentity = readFileSync(
     path.join(process.cwd(), "src/lib/brand-kit-extraction/__tests__/fixtures/sample-site.html"),

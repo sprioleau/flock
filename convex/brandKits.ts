@@ -53,6 +53,7 @@ export const brandKitValidator = v.object({
   fonts: v.object({ heading: v.string(), body: v.string() }),
   logoUrl: v.optional(v.string()),
   socialImageUrl: v.optional(v.string()),
+  socialLinks: v.optional(v.array(v.object({ platform: v.string(), url: v.string() }))),
   variations: v.array(
     v.object({
       id: v.string(),
@@ -75,6 +76,7 @@ const activeBrandKitValidator = v.object({
   fonts: v.object({ heading: v.string(), body: v.string() }),
   logoUrl: v.optional(v.string()),
   socialImageUrl: v.optional(v.string()),
+  socialLinks: v.optional(v.array(v.object({ platform: v.string(), url: v.string() }))),
   revision: v.number(),
   logoConfirmedAtMs: v.optional(v.number()),
   socialImageConfirmedAtMs: v.optional(v.number()),
@@ -170,6 +172,7 @@ export const getActiveBrandKit = query({
       fonts: row.fonts,
       ...(row.logoUrl !== undefined ? { logoUrl: row.logoUrl } : {}),
       ...(row.socialImageUrl !== undefined ? { socialImageUrl: row.socialImageUrl } : {}),
+      ...(row.socialLinks !== undefined ? { socialLinks: row.socialLinks } : {}),
       revision: getEffectiveRevision(row),
       ...(row.logoConfirmedAtMs !== undefined ? { logoConfirmedAtMs: row.logoConfirmedAtMs } : {}),
       ...(row.socialImageConfirmedAtMs !== undefined
@@ -226,6 +229,9 @@ export const saveBrandKit = mutation({
       sourceUrl: args.brandKit.sourceUrl,
       fonts: args.brandKit.fonts,
       variations: args.brandKit.variations,
+      // Replaced wholesale (undefined removes) — the save's revision bump
+      // covers social-link changes.
+      socialLinks: args.brandKit.socialLinks,
       updatedAtMs: now,
       ...patch,
     });

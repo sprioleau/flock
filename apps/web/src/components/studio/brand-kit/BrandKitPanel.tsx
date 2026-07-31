@@ -17,7 +17,13 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import type { BrandKit, BrandKitAssetKind, BrandKitGenerateResult } from "@/lib/brand-kit";
+import { SOCIAL_PLATFORM_LABELS, type SocialPlatform } from "@/lib/social-links";
 import { useEditorStore } from "@/lib/editor-store";
+
+/** Chip label for a stored platform key (tolerates unknown/legacy keys). */
+function getSocialPlatformLabel(platform: string): string {
+  return SOCIAL_PLATFORM_LABELS[platform as SocialPlatform] ?? platform;
+}
 import { ThemeSwatch } from "../theme/ThemeSwatch";
 import { useActiveBrandKit } from "./useActiveBrandKit";
 
@@ -128,6 +134,7 @@ export function BrandKitPanel() {
           ...(previewKit.socialImageUrl !== undefined
             ? { socialImageUrl: previewKit.socialImageUrl }
             : {}),
+          ...(previewKit.socialLinks !== undefined ? { socialLinks: previewKit.socialLinks } : {}),
           variations: previewKit.variations,
         },
       });
@@ -490,6 +497,26 @@ function BrandKitSummary({
           isConfirmed={brandKit.socialImageConfirmedAtMs !== undefined}
           assetActions={assetActions}
         />
+      )}
+      {brandKit.socialLinks !== undefined && brandKit.socialLinks.length > 0 && (
+        <div className="flex flex-col gap-1" data-testid="brand-kit-social-links">
+          <span className="text-[10px] font-medium text-muted-foreground">Social links</span>
+          <div className="flex flex-wrap items-center gap-1">
+            {brandKit.socialLinks.map(({ platform, url }) => (
+              <a
+                key={platform}
+                href={url}
+                target="_blank"
+                rel="noreferrer"
+                title={url}
+                className="rounded-full border bg-muted px-1.5 py-px text-[10px] font-medium text-muted-foreground hover:text-foreground"
+                data-testid={`brand-kit-social-link-${platform}`}
+              >
+                {getSocialPlatformLabel(platform)}
+              </a>
+            ))}
+          </div>
+        </div>
       )}
       <ul className="flex flex-col gap-1.5">
         {brandKit.variations.map((variation) => (

@@ -20,6 +20,11 @@ import { chatActionRegistry } from "./registry";
 export interface BuildSystemContextInput {
   doc: EmailDocument;
   selectedBlockId?: BlockId;
+  /**
+   * Optional extra FRESH-layer line(s), e.g. the brand social-links context
+   * (brand-context.ts). Fresh data only — never part of the static prefix.
+   */
+  brandContextLine?: string | null;
 }
 
 export interface SystemContext {
@@ -67,10 +72,14 @@ const STATIC_INSTRUCTIONS = [
 export function buildSystemContext({
   doc,
   selectedBlockId,
+  brandContextLine,
 }: BuildSystemContextInput): SystemContext {
   const documentContext = [
     "[DOCUMENT CONTEXT — auto-attached, not written by the user]",
     buildDocumentContext({ doc, options: { selectedBlockId } }),
+    // Fresh-layer brand context (item 26): appended after the outline so the
+    // cached static prefix stays byte-identical.
+    ...(brandContextLine === undefined || brandContextLine === null ? [] : [brandContextLine]),
   ].join("\n");
 
   return { staticInstructions: STATIC_INSTRUCTIONS, documentContext };

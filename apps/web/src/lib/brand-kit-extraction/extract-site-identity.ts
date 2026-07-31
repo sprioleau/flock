@@ -26,6 +26,11 @@
  */
 
 import {
+  classifySocialUrl,
+  dedupeSocialLinks,
+  type BrandSocialLink,
+} from "@/lib/social-links";
+import {
   decodeBasicEntities,
   findMetaContent,
   findPageTitle,
@@ -45,6 +50,12 @@ export interface SiteIdentity {
   logoUrl: string | null;
   /** og:image social-card URL — kit metadata only, never a harvested asset. */
   socialImageUrl: string | null;
+  /**
+   * The brand's social profile links (item 26), at most one per platform.
+   * Ladder: JSON-LD Organization `sameAs` (canonical) → footer/nav anchor
+   * scan for known social domains. Share/intent URLs are never profiles.
+   */
+  socialLinks: BrandSocialLink[];
 }
 
 /** Inline SVGs beyond this many characters are decoration, not a logo. */
@@ -73,6 +84,8 @@ function resolveGuardedUrl({ raw, baseUrl }: { raw: string | null; baseUrl: stri
 interface JsonLdOrganization {
   name: string | null;
   logo: string | null;
+  /** Raw `sameAs` URLs (profile links on other sites) — classified later. */
+  sameAsUrls: string[];
 }
 
 function isOrganizationType(typeValue: unknown): boolean {
@@ -96,17 +109,30 @@ function readJsonLdLogo(logoValue: unknown): string | null {
   return null;
 }
 
-/** Flatten a parsed JSON-LD document into candidate nodes (@graph, arrays). */
-function flattenJsonLdNodes(parsed: unknown): Record<string, unknown>[] {
+/** Recursion guard for nested JSON-LD (typed nodes nest freely in practice). */
+const MAX_JSON_LD_DEPTH = 5;
+
+/**
+ * Flatten a parsed JSON-LD document into candidate typed nodes: arrays,
+ * @graph, AND nested node values — real-world markup embeds the Organization
+ * inside e.g. a WebPage's `publisher` (CNN does exactly this), so a
+ * top-level-only walk misses the canonical `sameAs`/logo/name.
+ */
+function flattenJsonLdNodes(parsed: unknown, depth = 0): Record<string, unknown>[] {
+  if (depth > MAX_JSON_LD_DEPTH) {
+    return [];
+  }
   if (Array.isArray(parsed)) {
-    return parsed.flatMap(flattenJsonLdNodes);
+    return parsed.flatMap((entry) => flattenJsonLdNodes(entry, depth + 1));
   }
   if (typeof parsed !== "object" || parsed === null) {
     return [];
   }
   const node = parsed as Record<string, unknown>;
-  const graph = node["@graph"];
-  return Array.isArray(graph) ? [node, ...graph.flatMap(flattenJsonLdNodes)] : [node];
+  const nestedNodes = Object.values(node).flatMap((value) =>
+    typeof value === "object" && value !== null ? flattenJsonLdNodes(value, depth + 1) : [],
+  );
+  return node["@type"] === undefined ? nestedNodes : [node, ...nestedNodes];
 }
 
 /** First schema.org Organization's name + logo across the page's JSON-LD. */
@@ -115,7 +141,7 @@ function extractJsonLdOrganization(html: string): JsonLdOrganization {
     html.match(
       /<script\b[^>]*type\s*=\s*["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi,
     ) ?? [];
-  const result: JsonLdOrganization = { name: null, logo: null };
+  const result: JsonLdOrganization = { name: null, logo: null, sameAsUrls: [] };
   for (const block of blocks.slice(0, MAX_JSON_LD_BLOCKS)) {
     const jsonText = block.replace(/^<script\b[^>]*>/i, "").replace(/<\/script>$/i, "");
     let parsed: unknown;
@@ -134,8 +160,11 @@ function extractJsonLdOrganization(html: string): JsonLdOrganization {
       if (result.logo === null) {
         result.logo = readJsonLdLogo(node.logo);
       }
-      if (result.name !== null && result.logo !== null) {
-        return result;
+      const sameAs = node.sameAs;
+      for (const candidate of Array.isArray(sameAs) ? sameAs : [sameAs]) {
+        if (typeof candidate === "string" && candidate.length > 0) {
+          result.sameAsUrls.push(candidate);
+        }
       }
     }
   }
@@ -302,6 +331,60 @@ function extractMastheadLogo({ html, baseUrl }: { html: string; baseUrl: string 
 }
 
 // ---------------------------------------------------------------------------
+// Social profile links (item 26)
+// ---------------------------------------------------------------------------
+
+/** Footer regions complement the masthead for the anchor fallback scan. */
+function findFooterRegions(html: string): string[] {
+  return (html.match(/<footer\b[\s\S]*?<\/footer>/gi) ?? [])
+    .slice(0, 2)
+    .map((region) => region.slice(0, MAX_MASTHEAD_REGION_CHARS));
+}
+
+/**
+ * The brand's social profile links. Ladder (first source per platform wins):
+ * 1. JSON-LD Organization `sameAs` — the canonical, author-declared list.
+ * 2. Fallback: anchors in footer/nav/header regions pointing at known
+ *    social domains (share/intent chrome filtered by the classifier).
+ * Every kept URL passes the SSRF syntax guard; one link per platform.
+ */
+function extractSocialLinks({
+  html,
+  baseUrl,
+  sameAsUrls,
+}: {
+  html: string;
+  baseUrl: string;
+  sameAsUrls: string[];
+}): BrandSocialLink[] {
+  const candidates: BrandSocialLink[] = [];
+  const pushCandidate = (rawUrl: string): void => {
+    const resolved = resolveGuardedUrl({ raw: rawUrl, baseUrl });
+    if (resolved === null) {
+      return;
+    }
+    const classified = classifySocialUrl(resolved);
+    if (classified !== null && validateUrlSyntax(classified.url).isAllowed) {
+      candidates.push(classified);
+    }
+  };
+  // Rung 1 — author-declared profiles.
+  for (const url of sameAsUrls) {
+    pushCandidate(url);
+  }
+  // Rung 2 — footer first (social rows live there), then masthead/nav.
+  for (const region of [...findFooterRegions(html), ...findMastheadRegions(html)]) {
+    for (const anchorTag of findTags({ html: region, tagName: "a" })) {
+      const href = getAttribute({ tag: anchorTag, name: "href" });
+      if (href !== null) {
+        pushCandidate(href);
+      }
+    }
+  }
+  return dedupeSocialLinks(candidates);
+}
+
+// ---------------------------------------------------------------------------
 // Company name
 // ---------------------------------------------------------------------------
 
@@ -352,5 +435,11 @@ export function extractSiteIdentity({
     baseUrl,
   });
 
-  return { siteName, logoUrl, socialImageUrl };
+  const socialLinks = extractSocialLinks({
+    html,
+    baseUrl,
+    sameAsUrls: organization.sameAsUrls,
+  });
+
+  return { siteName, logoUrl, socialImageUrl, socialLinks };
 }
