@@ -73,8 +73,11 @@ export type PaletteItem =
 
 /**
  * The block type a palette item stands in for during ALLOWED_CHILD_TYPES
- * legality checks, or null when the item is click-to-add only (the eight
- * section templates in v1 — owner decision 2026-07-30 §8.2).
+ * legality checks. EVERY palette item is draggable (owner decision 2026-07-31,
+ * reversing the v1 click-only rule for section templates): template tiles
+ * stand in for a section, so they resolve to root-level gaps exactly like the
+ * Empty Section tile. Null remains the "cannot drag" contract for any future
+ * click-only item.
  */
 export function getPaletteDragBlockType(item: PaletteItem): BlockType | null {
   switch (item.kind) {
@@ -83,9 +86,8 @@ export function getPaletteDragBlockType(item: PaletteItem): BlockType | null {
     case "columns":
       return "row";
     case "empty-section":
-      return "section";
     case "section-template":
-      return null;
+      return "section";
   }
 }
 
@@ -213,11 +215,11 @@ export const PALETTE_GROUPS: readonly PaletteGroup[] = [
 // The Sections gallery — the palette's third area, categorized (§10)
 // ---------------------------------------------------------------------------
 
-/** The blank starting point, rendered above the categorized gallery. */
+/** The blank starting point, shown beside the Section gallery entry tile. */
 export const EMPTY_SECTION_ITEM: PaletteItem = {
   kind: "empty-section",
   id: "empty-section",
-  label: "Empty",
+  label: "Empty section",
   description: "A blank full-width section.",
   Icon: SquareDashedIcon,
 };

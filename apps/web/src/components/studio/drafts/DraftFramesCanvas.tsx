@@ -1,6 +1,12 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import {
+  useEffect,
+  useRef,
+  useState,
+  type MouseEvent as ReactMouseEvent,
+  type PointerEvent as ReactPointerEvent,
+} from "react";
 import { useConvex, useQuery } from "convex/react";
 import { BanIcon, ChevronLeftIcon, ChevronRightIcon, Loader2Icon } from "lucide-react";
 import type { EmailDocument } from "@tandem/email-sdk";
@@ -64,6 +70,33 @@ export function DraftFramesCanvas({
   const frameRefsById = useRef(new Map<string, HTMLDivElement>());
   const lastScrolledDocumentIdRef = useRef<string | null>(null);
 
+  // Clicking the frames-surface BACKGROUND (the chrome around/between the
+  // frames) deselects the current block — the right rail then flips back to
+  // the Blocks tab (PropertyPanelSlot's deselect rule), so adding blocks is
+  // one click away. Scoped to this element only (never a document-level
+  // listener): a press that starts on a frame, a panel, or a toolbar records
+  // no position, and a drag released over the background moves >4px — both
+  // stay inert, so drops and marquee-ish gestures never clear the selection.
+  // An open inline editor commits first through its normal outside-click
+  // path: the background pointerdown blurs it before this click lands.
+  const backgroundPressPositionRef = useRef<{ x: number; y: number } | null>(null);
+  const handleSurfacePointerDown = (event: ReactPointerEvent<HTMLDivElement>) => {
+    backgroundPressPositionRef.current =
+      event.target === event.currentTarget ? { x: event.clientX, y: event.clientY } : null;
+  };
+  const handleSurfaceClick = (event: ReactMouseEvent<HTMLDivElement>) => {
+    const pressedAt = backgroundPressPositionRef.current;
+    backgroundPressPositionRef.current = null;
+    const isBackgroundClick =
+      event.target === event.currentTarget &&
+      pressedAt !== null &&
+      Math.hypot(event.clientX - pressedAt.x, event.clientY - pressedAt.y) <= 4;
+    if (!isBackgroundClick || useCanvasDragStore.getState().dragSource !== null) {
+      return;
+    }
+    getActiveEditorStore().getState().selectBlock(null);
+  };
+
   // Bring the newly activated frame into view. Depends on `drafts` too: on a
   // deep link the store connects BEFORE the draft-list subscription resolves,
   // so the frame element doesn't exist on the first run — the retry when the
@@ -113,6 +146,8 @@ export function DraftFramesCanvas({
       <div
         className="flex min-h-0 flex-1 items-start gap-20 overflow-auto bg-neutral-200/70 px-16 py-4 dark:bg-black/40"
         data-frames-scroller
+        onPointerDown={handleSurfacePointerDown}
+        onClick={handleSurfaceClick}
       >
         {(drafts ?? []).map((draft) => {
           const isActive = draft._id === activeDocumentId;

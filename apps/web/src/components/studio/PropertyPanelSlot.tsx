@@ -20,10 +20,12 @@ import { ShortcutKbd } from "./shortcuts/ShortcutKbd";
  * selection).
  *
  * Tab semantics: Blocks is the landing tab (browse what's available);
- * selecting a block auto-switches to Properties (the add-then-tweak loop) —
- * EXCEPT while a drag is live, so the Blocks tab never unmounts its own
- * active drag source mid-gesture. The post-drop selection lands after the
- * gesture ends, which is what flips the rail to Properties.
+ * selecting a block auto-switches to Properties, and deselecting (clicking
+ * the canvas or frames-surface background, Escape) switches back to Blocks —
+ * the add-then-tweak loop in both directions. NEITHER switch fires while a
+ * drag is live, so the Blocks tab never unmounts its own active drag source
+ * mid-gesture. The post-drop selection lands after the gesture ends, which
+ * is what flips the rail to Properties.
  *
  * Collapsible like the chat panel (same animated width + cross-fade, same
  * persisted-preference plumbing — panel-preferences.ts; ⌘\ toggles via
@@ -46,13 +48,16 @@ export function PropertyPanelSlot() {
   };
 
   // Adjust-state-during-render (the React "derive from props" pattern, no
-  // effect): a NEW selection flips the rail to Properties unless a drag is
-  // live — the Blocks tab must never unmount its own active drag source.
+  // effect): a NEW selection flips the rail to Properties, and a DESELECT
+  // (canvas-background click, Escape) flips it back to Blocks so adding is
+  // immediately available — the two halves of the add-then-tweak loop.
+  // Neither fires while a drag is live: the Blocks tab must never unmount
+  // its own active drag source mid-gesture.
   const [lastSeenSelectedBlockId, setLastSeenSelectedBlockId] = useState(selectedBlockId);
   if (selectedBlockId !== lastSeenSelectedBlockId) {
     setLastSeenSelectedBlockId(selectedBlockId);
-    if (selectedBlockId !== null && useCanvasDragStore.getState().dragSource === null) {
-      setActiveTab("properties");
+    if (useCanvasDragStore.getState().dragSource === null) {
+      setActiveTab(selectedBlockId !== null ? "properties" : "blocks");
     }
   }
 

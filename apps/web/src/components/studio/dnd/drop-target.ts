@@ -9,6 +9,7 @@ import {
   type EmailDocument,
   type Operation,
 } from "@tandem/email-sdk";
+import type { DispatchableOp } from "@/lib/editor-store";
 import {
   createDefaultColumnsPreset,
   createDefaultLeafBlock,
@@ -34,8 +35,8 @@ import type { DragSource, DropIndicatorLine, DropTarget } from "./drag-drop-stor
  *   column, and the drop is always ONE root reorder (the action-row arrows
  *   coexist as the keyboard path).
  * - PALETTE items resolve with the type they stand in for: leaves →
- *   section/column, column presets (rows) → sections, the Empty Section →
- *   root-level gaps between sections.
+ *   section/column, column presets (rows) → sections, the Empty Section and
+ *   every section-template tile → root-level gaps between sections.
  * Outside any accepting container the position is invalid and resolves to
  * null: no indicator, and release dispatches nothing. Only the ACTIVE
  * draft's editor carries `data-dnd-canvas-root`, so sibling preview frames
@@ -221,18 +222,22 @@ function resolveIndicatorLine(args: {
 
   if (beforeChildId !== null) {
     const rect = getBlockElement(beforeChildId)?.getBoundingClientRect();
-    return rect === undefined
-      ? null
-      : { orientation: "horizontal", left: rect.left, top: rect.top, length: rect.width };
+    if (rect === undefined) {
+      return null;
+    }
+    const span = resolveHorizontalIndicatorSpan({ container, referenceRect: rect });
+    return { orientation: "horizontal", left: span.left, top: rect.top, length: span.length };
   }
   const lastChildId = childIds[childIds.length - 1];
   if (lastChildId !== undefined) {
     const rect = getBlockElement(lastChildId)?.getBoundingClientRect();
-    return rect === undefined
-      ? null
-      : { orientation: "horizontal", left: rect.left, top: rect.bottom, length: rect.width };
+    if (rect === undefined) {
+      return null;
+    }
+    const span = resolveHorizontalIndicatorSpan({ container, referenceRect: rect });
+    return { orientation: "horizontal", left: span.left, top: rect.bottom, length: span.length };
   }
-  const rect = getBlockElement(container.id)?.getBoundingClientRect();
+  const rect = getContainerElement(container)?.getBoundingClientRect();
   return rect === undefined
     ? null
     : {
@@ -241,6 +246,38 @@ function resolveIndicatorLine(args: {
         top: rect.top + Math.min(12, rect.height / 2),
         length: rect.width - 16,
       };
+}
+
+/**
+ * The container's live DOM element. The ROOT has no `data-block-id` wrapper —
+ * it IS the email surface, marked `data-dnd-canvas-root` (only the active
+ * frame carries the marker, so this never resolves to a sibling preview).
+ */
+function getContainerElement(container: Block): HTMLElement | null {
+  return container.type === "root"
+    ? document.querySelector<HTMLElement>(CANVAS_ROOT_SELECTOR)
+    : getBlockElement(container.id);
+}
+
+/**
+ * Horizontal extent of a stack-position indicator line. Root-level gaps are
+ * SECTION boundaries, so the line spans the full email surface width (the
+ * canvas root's rect) — matching how block indicators span their container —
+ * instead of inheriting whatever width the reference child happens to render
+ * at. Non-root containers keep the reference child's own extent.
+ */
+function resolveHorizontalIndicatorSpan(args: {
+  container: Block;
+  referenceRect: DOMRect;
+}): { left: number; length: number } {
+  const { container, referenceRect } = args;
+  if (container.type === "root") {
+    const rootRect = getContainerElement(container)?.getBoundingClientRect();
+    if (rootRect !== undefined) {
+      return { left: rootRect.left, length: rootRect.width };
+    }
+  }
+  return { left: referenceRect.left, length: referenceRect.width };
 }
 
 function areSameIds(a: readonly BlockId[], b: readonly BlockId[]): boolean {
@@ -339,9 +376,14 @@ export function buildDropOperation(args: {
 
 /** A palette drop's single op plus the id to select once it applies. */
 export interface PaletteInsertion {
-  op: Operation;
-  /** The inserted subtree's root (leaf, row, or section) — select + reveal it. */
-  newBlockId: BlockId;
+  op: DispatchableOp;
+  /**
+   * The inserted subtree's root (leaf, row, or section) — select + reveal it.
+   * Null when the id is only known after dispatch (scaffoldSection resolves
+   * server-shaped: read the resulting addSection op's section id from the
+   * dispatch result, exactly like the click path in use-click-to-add).
+   */
+  newBlockId: BlockId | null;
 }
 
 /**
@@ -350,8 +392,10 @@ export interface PaletteInsertion {
  * - leaf tiles → `addBlock` with that type's defaults;
  * - column presets → `restoreBlocks` carrying the prebuilt row+columns
  *   subtree (the duplicate button's pattern);
- * - Empty Section → `addSection` at the resolved root position.
- * Section templates are click-to-add only in v1 and never reach here.
+ * - Empty Section → `addSection` at the resolved root position;
+ * - section templates → ONE `scaffoldSection` intent at the resolved root
+ *   gap, which dispatch resolves to a single canonical `addSection` (so a
+ *   template drop is one undo step, same as the click path).
  */
 export function buildPaletteDropInsertion(args: {
   doc: EmailDocument;
@@ -402,6 +446,19 @@ export function buildPaletteDropInsertion(args: {
       };
     }
     case "section-template":
-      return null;
+      // Templates only resolve to root-level gaps (getPaletteDragBlockType
+      // stands them in for a section), so beforeChildId is always a
+      // top-level section id — exactly scaffoldSection's anchor shape.
+      return {
+        op: {
+          name: "scaffoldSection",
+          templateId: item.templateId,
+          position:
+            dropTarget.beforeChildId === null
+              ? "bottom"
+              : { beforeSectionId: dropTarget.beforeChildId },
+        },
+        newBlockId: null,
+      };
   }
 }

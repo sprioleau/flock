@@ -38,8 +38,10 @@ export interface CanvasDndContextProps {
  * DOM hit chain (see ./drop-target) so SDK nesting rules decide validity and
  * a completed drag dispatches exactly ONE store op:
  * - existing blocks → reorderChildren / moveBlock (unchanged behavior);
- * - palette items → addBlock / restoreBlocks / addSection with defaults,
- *   after which the new block is selected and scrolled into view.
+ * - palette items → addBlock / restoreBlocks / addSection with defaults
+ *   (section-template tiles → one scaffoldSection intent, resolved to a
+ *   single addSection inside dispatch), after which the new block is
+ *   selected and scrolled into view.
  * Leaf blocks AND sections register via useDraggable in BlockShell with the
  * grab handle in the block action row as activator (sections resolve to
  * root-level gaps only — one root reorder per drop; the up/down arrows stay
@@ -152,9 +154,19 @@ export function CanvasDndContext({ children }: CanvasDndContextProps) {
       return;
     }
     const result = editorStore.dispatch(insertion.op);
-    if (result.isOk) {
-      editorStore.selectBlock(insertion.newBlockId);
-      scrollBlockIntoView(insertion.newBlockId);
+    if (!result.isOk) {
+      return;
+    }
+    // scaffoldSection resolves to an addSection op inside dispatch — the new
+    // section's id is only known from the applied op in the result (the same
+    // contract as the click path in use-click-to-add).
+    const appliedOp = result.logEntry.op;
+    const newBlockId =
+      insertion.newBlockId ??
+      (appliedOp.name === "addSection" ? (appliedOp.section.id as BlockId) : null);
+    if (newBlockId !== null) {
+      editorStore.selectBlock(newBlockId);
+      scrollBlockIntoView(newBlockId);
     }
   };
 

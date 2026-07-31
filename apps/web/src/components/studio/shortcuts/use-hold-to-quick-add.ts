@@ -212,7 +212,9 @@ export function useHoldToQuickAdd(): HoldToQuickAdd {
         return;
       }
       const result = editorStore.dispatch(insertion.op);
-      if (result.isOk) {
+      // Quick-add items are all leaves, whose insertions always carry the new
+      // id (null is the section-template contract and never occurs here).
+      if (result.isOk && insertion.newBlockId !== null) {
         editorStore.selectBlock(insertion.newBlockId);
         scrollBlockIntoView(insertion.newBlockId);
       }

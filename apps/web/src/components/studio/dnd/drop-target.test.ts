@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   applyOperation,
   createEmptyDocument,
+  resolveScaffoldSectionOperation,
   type BlockId,
   type EmailDocument,
   type Operation,
@@ -102,7 +103,7 @@ describe("buildPaletteDropInsertion", () => {
     expect(insertion!.op.index).toBe(1); // before btn_aaaa
     expect(insertion!.op.block.type).toBe("text");
     expect(insertion!.op.block.id).toBe(insertion!.newBlockId);
-    expect(doc[insertion!.newBlockId]).toBeUndefined(); // fresh id
+    expect(doc[insertion!.newBlockId!]).toBeUndefined(); // fresh id
     const applied = apply(doc, insertion!.op);
     expect(applied[id("sec_aaaa")]?.childrenIds).toEqual(["txt_aaaa", insertion!.newBlockId, "btn_aaaa"]);
   });
@@ -154,11 +155,43 @@ describe("buildPaletteDropInsertion", () => {
     expect(applied[id("root")]?.childrenIds).toEqual(["sec_aaaa", insertion!.newBlockId, "sec_bbbb"]);
   });
 
-  it("section templates are click-to-add only (no drop insertion)", () => {
+  it("template tile → ONE scaffoldSection intent anchored above the gap's section", () => {
     const doc = buildFixtureDoc();
-    expect(
-      buildPaletteDropInsertion({ doc, item: templateItem, dropTarget: dropTarget("root", null) }),
-    ).toBeNull();
+    const insertion = buildPaletteDropInsertion({
+      doc,
+      item: templateItem,
+      dropTarget: dropTarget("root", "sec_bbbb"),
+    });
+    expect(insertion).not.toBeNull();
+    expect(insertion!.op.name).toBe("scaffoldSection");
+    if (insertion!.op.name !== "scaffoldSection") return;
+    expect(insertion!.op.templateId).toBe("hero");
+    expect(insertion!.op.position).toEqual({ beforeSectionId: "sec_bbbb" });
+    // The id is only known after dispatch resolves the intent (newBlockId
+    // null is the read-it-from-the-applied-op contract, as in click-to-add).
+    expect(insertion!.newBlockId).toBeNull();
+    // The intent must RESOLVE against this document to one applying addSection
+    // in the gap — the same translation dispatch performs.
+    const resolved = resolveScaffoldSectionOperation({ doc, input: insertion!.op });
+    expect(resolved.isOk).toBe(true);
+    if (!resolved.isOk) return;
+    expect(resolved.op.index).toBe(1); // between sec_aaaa and sec_bbbb
+    const applied = apply(doc, resolved.op);
+    expect(applied[id("root")]?.childrenIds).toEqual([
+      "sec_aaaa",
+      resolved.op.section.id,
+      "sec_bbbb",
+    ]);
+  });
+
+  it("template tile → position \"bottom\" when the gap appends (null reference)", () => {
+    const doc = buildFixtureDoc();
+    const insertion = buildPaletteDropInsertion({
+      doc,
+      item: templateItem,
+      dropTarget: dropTarget("root", null),
+    });
+    expect(insertion!.op.name === "scaffoldSection" && insertion!.op.position).toBe("bottom");
   });
 });
 

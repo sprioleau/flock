@@ -1,4 +1,4 @@
-import { createSampleDocument, emailActionRegistry } from "@tandem/email-sdk";
+import { createSampleDocument, emailActionRegistry, SECTION_TEMPLATES } from "@tandem/email-sdk";
 import { describe, expect, it } from "vitest";
 import { buildAgentActionRegistry, getBlockDetailsAction } from "./actions";
 import { buildToolGuidance } from "./prompts";
@@ -52,6 +52,16 @@ describe("buildAgentActionRegistry", () => {
       "call getBlockDetails for a block's full shape before complex edits",
     );
     expect(guidance).toMatch(/- getBlockDetails \(analysis, read-only, parallel-safe\)/);
+  });
+
+  it("advertises the full section catalog in the guidance the chat route serves", () => {
+    // The route builds THIS registry (apps/web api/chat/registry.ts), so the
+    // compose-new-email flow's prompt carries every template id + useWhen.
+    const guidance = buildToolGuidance(registry);
+    expect(guidance).toContain("## Section catalog (scaffoldSection templateId values)");
+    for (const template of SECTION_TEMPLATES) {
+      expect(guidance).toContain(`- ${template.id} — ${template.useWhen}`);
+    }
   });
 
   it("builds a fresh registry per call (no shared mutable state)", () => {

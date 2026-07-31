@@ -47,7 +47,9 @@ export const testimonialColumnsParamsSchema = z
 
 export const testimonialColumnsTemplate = defineSectionTemplate({
   id: "testimonial-columns",
-  name: "Testimonial columns",
+  // Display name deliberately short (owner 2026-07-31): two-line tile labels
+  // broke the gallery grid's height alignment. The id stays testimonial-columns.
+  name: "Testimonials",
   category: "social-proof",
   useWhen: "Stack up social proof with two or three short customer quotes side by side.",
   paramsSchema: testimonialColumnsParamsSchema,
