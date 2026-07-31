@@ -23,8 +23,15 @@ import { presence } from "./presence";
  * facepile naturally ~2.5× the interval later — no disconnect bookkeeping.
  */
 
-/** Persona presence heartbeat interval (offline 2.5× after the last beat). */
-const PERSONA_HEARTBEAT_INTERVAL_MS = 5000;
+/**
+ * Persona presence heartbeat interval (offline 2.5× after the last beat —
+ * the @convex-dev/presence component schedules the disconnect at
+ * `interval * 2.5`). Item 27 (owner: heartbeats "need to chill"): raised
+ * 5s → 30s alongside the client cadence (25s beats against the 75s
+ * tolerance window, safe even under background-tab timer throttling).
+ * Cost: ~6× fewer idle presence mutations per enabled-persona tab.
+ */
+const PERSONA_HEARTBEAT_INTERVAL_MS = 30_000;
 
 /** Sanity cap on how many personas one heartbeat call may keep alive. */
 const MAX_PERSONAS_PER_HEARTBEAT = 8;
@@ -197,6 +204,7 @@ name: Date Checker
 color: "#65a30d"
 capabilities: advisory
 cooldownSeconds: 90
+watch: text, button
 description: Catches contradictory or impossible dates, times, deadlines, and offer numbers before subscribers do.
 ---
 

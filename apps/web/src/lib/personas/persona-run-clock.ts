@@ -119,6 +119,99 @@ export function recordPersonaRunStart({
   notifyListeners();
 }
 
+// ---------------------------------------------------------------------------
+// Last-checked watch-scope hash (item 27 hash-gated checks)
+// ---------------------------------------------------------------------------
+
+/**
+ * Beside the run clock: the last watch-scope hash each (document, persona)
+ * was checked against. The runner skips a due persona entirely — no API
+ * call, no presence churn — when its scope hash hasn't changed since the
+ * last check. localStorage so reloads and sibling tabs share the baseline;
+ * non-reactive on purpose (only the runner reads it, at call time).
+ */
+const CHECKED_HASH_STORAGE_KEY = "tandem_persona_last_hash";
+
+interface CheckedHashEntry {
+  hash: string;
+  atMs: number;
+}
+
+type CheckedHashMap = Record<string, CheckedHashEntry>;
+
+let cachedHashMap: CheckedHashMap | null = null;
+
+function readHashMapFromStorage(): CheckedHashMap {
+  try {
+    const raw = window.localStorage.getItem(CHECKED_HASH_STORAGE_KEY);
+    if (raw === null) {
+      return {};
+    }
+    const parsed: unknown = JSON.parse(raw);
+    if (parsed === null || typeof parsed !== "object" || Array.isArray(parsed)) {
+      return {};
+    }
+    const entries = Object.entries(parsed as Record<string, unknown>).filter(
+      (entry): entry is [string, CheckedHashEntry] => {
+        const value = entry[1] as { hash?: unknown; atMs?: unknown };
+        return typeof value === "object" && value !== null && typeof value.hash === "string" && typeof value.atMs === "number";
+      },
+    );
+    return Object.fromEntries(entries);
+  } catch {
+    return {};
+  }
+}
+
+function getHashMap(): CheckedHashMap {
+  if (cachedHashMap === null) {
+    cachedHashMap = readHashMapFromStorage();
+  }
+  return cachedHashMap;
+}
+
+/** The last-checked scope hash for one (document, persona), or null. */
+export function getPersonaCheckedHash({
+  documentId,
+  slug,
+}: {
+  documentId: string;
+  slug: string;
+}): string | null {
+  return getHashMap()[buildEntryKey({ documentId, slug })]?.hash ?? null;
+}
+
+/** Stamp the scope hash a check ran against (called beside the run stamp). */
+export function recordPersonaCheckedHash({
+  documentId,
+  slug,
+  hash,
+  atMs,
+}: {
+  documentId: string;
+  slug: string;
+  hash: string;
+  atMs: number;
+}): void {
+  const next: CheckedHashMap = {
+    ...getHashMap(),
+    [buildEntryKey({ documentId, slug })]: { hash, atMs },
+  };
+  const keys = Object.keys(next);
+  if (keys.length > MAX_RUN_CLOCK_ENTRIES) {
+    const sortedByAge = keys.sort((a, b) => (next[a]?.atMs ?? 0) - (next[b]?.atMs ?? 0));
+    for (const key of sortedByAge.slice(0, keys.length - MAX_RUN_CLOCK_ENTRIES)) {
+      delete next[key];
+    }
+  }
+  cachedHashMap = next;
+  try {
+    window.localStorage.setItem(CHECKED_HASH_STORAGE_KEY, JSON.stringify(next));
+  } catch {
+    // In-memory stamp still applies for this tab.
+  }
+}
+
 const NO_RUN_AT_MS = null;
 
 /**

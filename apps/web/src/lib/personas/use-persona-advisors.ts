@@ -19,7 +19,16 @@ import {
   useArePersonasPaused,
   useEnabledPersonaSlugs,
 } from "./enabled-personas";
-import { recordPersonaRunStart } from "./persona-run-clock";
+import {
+  getPersonaCheckedHash,
+  recordPersonaCheckedHash,
+  recordPersonaRunStart,
+} from "./persona-run-clock";
+import {
+  computeWatchScopeHash,
+  getPersonaStaggerMs,
+  parsePersonaWatchScope,
+} from "./watch-scope";
 
 /**
  * Multi-agent canvas — the client half of the reactive advisory runner
@@ -70,8 +79,23 @@ const OPS_TAIL_LIMIT = 30;
 /** Trailing debounce between a settled gesture and the runner call. */
 const RUN_DEBOUNCE_MS = 1_200;
 
-/** Keep-alive cadence for enabled persona presence rows. */
-const PRESENCE_HEARTBEAT_MS = 4_000;
+/**
+ * Keep-alive cadence for enabled persona presence rows. Item 27 (owner:
+ * heartbeats "need to chill" — idle burn on the free Convex plan): raised
+ * 4s → 25s against the server's 30s presence interval (the component times
+ * out at 2.5× = 75s, so 25s beats keep ~3× headroom, enough for
+ * background-tab timer throttling). Facepile drop-off after disabling a
+ * persona is correspondingly slower (≤ ~75s) — accepted cost trade.
+ */
+const PRESENCE_HEARTBEAT_MS = 25_000;
+
+/**
+ * Deterministic per-persona stagger window (item 27): each persona's
+ * cooldown is lengthened by hash(slug) % this, so personas drift apart
+ * instead of all coming due at the same moment. Eligibility-only — runs
+ * stay BATCHED (one /api/personas call per trigger window).
+ */
+const STAGGER_WINDOW_MS = 20_000;
 
 /** Global visible-findings cap (owner §10.1 row-1 constraint). */
 const MAX_VISIBLE_FINDINGS = 3;
@@ -303,14 +327,17 @@ export function usePersonaAdvisors(): PersonaAdvisorsController {
       }
       const rowsBySlug = new Map(rows.map((row) => [row.slug, row]));
       const now = Date.now();
-      // Per-persona cooldown gate: only personas past their window run.
+      // Per-persona cooldown gate — with the deterministic stagger offset
+      // (item 27) so personas' windows drift apart instead of all expiring
+      // together. Only personas past cooldown+offset may join this batch.
       const eligibleSlugs = enabledSlugsRef.current.filter((slug) => {
         const row = rowsBySlug.get(slug);
         if (row === undefined) {
           return false;
         }
         const lastRunAtMs = runner.lastRunAtMsBySlug.get(slug) ?? 0;
-        return now - lastRunAtMs >= row.cooldownSeconds * 1000;
+        const staggerMs = getPersonaStaggerMs({ slug, windowMs: STAGGER_WINDOW_MS });
+        return now - lastRunAtMs >= row.cooldownSeconds * 1000 + staggerMs;
       });
       if (eligibleSlugs.length === 0) {
         tracePersonas({ step: "skip-cooldown" });
@@ -322,28 +349,60 @@ export function usePersonaAdvisors(): PersonaAdvisorsController {
       // matches the route: styling-only edits must count as outline changes.
       const doc = useEditorStore.getState().doc;
       const outline = generateDocumentOutline({ doc, options: { depth: "full" } });
-      const runKey = `${[...eligibleSlugs].sort().join(",")}\n${outline}`;
+
+      // Hash-gated checks (item 27): a persona whose WATCHED SCOPE hash is
+      // unchanged since its last check skips silently — no API call, no
+      // presence churn — even when its cooldown is due. Scope comes from the
+      // persona's `watch:` frontmatter (whole document by default); the
+      // baseline lives in localStorage beside the run clock, so reloads and
+      // sibling tabs share it.
+      const scopeHashBySlug = new Map<string, string>();
+      const dueSlugs = eligibleSlugs.filter((slug) => {
+        const row = rowsBySlug.get(slug);
+        if (row === undefined) {
+          return false;
+        }
+        const scope = parsePersonaWatchScope(row.personaMarkdown);
+        const scopeHash = computeWatchScopeHash({
+          doc: doc as EmailDocument,
+          scope,
+          documentOutline: outline,
+        });
+        scopeHashBySlug.set(slug, scopeHash);
+        return scopeHash !== getPersonaCheckedHash({ documentId, slug });
+      });
+      if (dueSlugs.length === 0) {
+        tracePersonas({ step: "skip-scope-unchanged", eligibleSlugs });
+        return;
+      }
+
+      const runKey = `${[...dueSlugs].sort().join(",")}\n${outline}`;
       if (runner.lastRunKey === runKey) {
         tracePersonas({ step: "skip-outline-unchanged" });
         return;
       }
 
       runner.isRunInFlight = true;
-      // Stamp cooldowns at run START so a burst can't double-spend. The
-      // run-clock twin feeds the facepile popover's "checks again in ~Ns"
-      // (localStorage — shared across this browser's tabs, zero presence writes).
-      for (const slug of eligibleSlugs) {
+      // Stamp cooldowns + checked-scope hashes at run START so a burst can't
+      // double-spend. The run-clock twin feeds the facepile popover's
+      // "checks again in ~Ns" (localStorage — shared across this browser's
+      // tabs, zero presence writes).
+      for (const slug of dueSlugs) {
         runner.lastRunAtMsBySlug.set(slug, now);
         recordPersonaRunStart({ documentId, slug, atMs: now });
+        const scopeHash = scopeHashBySlug.get(slug);
+        if (scopeHash !== undefined) {
+          recordPersonaCheckedHash({ documentId, slug, hash: scopeHash, atMs: now });
+        }
       }
-      tracePersonas({ step: "run-start", eligibleSlugs });
+      tracePersonas({ step: "run-start", eligibleSlugs: dueSlugs });
       try {
         const response = await fetch("/api/personas", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
             documentId,
-            personaSlugs: eligibleSlugs,
+            personaSlugs: dueSlugs,
             triggerSummary: summarizeTriggerOps(page),
           }),
         });
@@ -372,17 +431,24 @@ export function usePersonaAdvisors(): PersonaAdvisorsController {
         return;
       }
       const runner = runnerRef.current;
+      const entries = page.operations;
+      const newest = entries[entries.length - 1];
       if (runner.documentId !== documentId) {
+        // First page for this document: BASELINE only, never evaluate (item
+        // 27, owner: "don't check on initial load"). Whatever op history the
+        // document arrives with — including a user edit from a previous
+        // session — is old news; the first check happens only after the
+        // first NEW settled user edit.
         runnerRef.current = {
           documentId,
-          lastEvaluatedVersion: 0,
+          lastEvaluatedVersion: newest?.version ?? 0,
           lastRunAtMsBySlug: new Map(),
           lastRunKey: null,
           isRunInFlight: false,
         };
+        tracePersonas({ step: "baseline", version: newest?.version ?? 0 });
+        return;
       }
-      const entries = page.operations;
-      const newest = entries[entries.length - 1];
       if (newest === undefined || newest.version <= runnerRef.current.lastEvaluatedVersion) {
         return;
       }
