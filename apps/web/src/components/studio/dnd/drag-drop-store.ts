@@ -2,6 +2,18 @@
 
 import type { BlockId } from "@tandem/email-sdk";
 import { create } from "zustand";
+import type { PaletteItem } from "../add-blocks/palette-items";
+
+/**
+ * What is being dragged: an existing canvas block being moved/reordered, or
+ * a palette item from the Blocks tab about to be inserted with defaults.
+ * Everything downstream (drop resolution, indicator, overlay, the sibling-
+ * frame reject affordance) branches on this union instead of assuming the
+ * dragged thing already lives in the document.
+ */
+export type DragSource =
+  | { kind: "existing-block"; blockId: BlockId }
+  | { kind: "palette"; item: PaletteItem };
 
 /**
  * The drop-indicator line in viewport coordinates. Horizontal lines mark a
@@ -29,11 +41,11 @@ export interface DropTarget {
 }
 
 interface CanvasDragState {
-  /** Block currently being dragged, or null when no drag is active. */
-  activeBlockId: BlockId | null;
+  /** The live drag's source, or null when no drag is active. */
+  dragSource: DragSource | null;
   /** Valid drop position under the pointer, or null (invalid target). */
   dropTarget: DropTarget | null;
-  startDrag: (blockId: BlockId) => void;
+  startDrag: (source: DragSource) => void;
   setDropTarget: (dropTarget: DropTarget | null) => void;
   endDrag: () => void;
 }
@@ -41,14 +53,15 @@ interface CanvasDragState {
 /**
  * Ephemeral drag-gesture UI state, deliberately separate from the document
  * store (it is never persisted or undoable). BlockShell subscribes for
- * ghost/valid-container styling and the drag layer reads the indicator line
- * position — no React context, so pointer moves never rerender the canvas
- * tree wholesale.
+ * ghost/valid-container styling, the drag layer reads the indicator line
+ * position, and the draft frames read the source for the "drops go to the
+ * active draft" affordance — no React context, so pointer moves never
+ * rerender the canvas tree wholesale.
  */
 export const useCanvasDragStore = create<CanvasDragState>()((set) => ({
-  activeBlockId: null,
+  dragSource: null,
   dropTarget: null,
-  startDrag: (blockId) => set({ activeBlockId: blockId, dropTarget: null }),
+  startDrag: (source) => set({ dragSource: source, dropTarget: null }),
   setDropTarget: (dropTarget) => set({ dropTarget }),
-  endDrag: () => set({ activeBlockId: null, dropTarget: null }),
+  endDrag: () => set({ dragSource: null, dropTarget: null }),
 }));

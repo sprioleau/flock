@@ -1,4 +1,5 @@
 import {
+  buildColumns,
   createTextDoc,
   generateBlockId,
   resolveGlobalStyles,
@@ -6,6 +7,7 @@ import {
   type Block,
   type BlockId,
   type BlockType,
+  type BuildColumnsInput,
   type EmailDocument,
   type LeafBlockType,
   type SectionBlock,
@@ -121,6 +123,53 @@ export function createDefaultLeafBlock({
         properties: { paddingTop: 12, paddingBottom: 12 },
       };
   }
+}
+
+export interface CreateDefaultColumnsPresetInput {
+  /** How many equal columns the new row holds. */
+  columnCount: 2 | 3;
+  /** The section the new row will be inserted into. */
+  sectionId: BlockId;
+  /** The current document — ids are generated collision-free against it. */
+  doc: EmailDocument;
+}
+
+export interface DefaultColumnsPreset {
+  /** The new row's id — the subtree root (select it after insertion). */
+  rowId: BlockId;
+  /** Row first, then columns — exactly the restoreBlocks `blocks` contract. */
+  blocks: Block[];
+}
+
+/**
+ * Build the layout-palette columns preset: one row of N empty, equal-width
+ * columns, assembled by the SDK's shared `buildColumns` (the same
+ * row/column assembler every section template uses, so width arithmetic can
+ * never drift). Empty columns render with BlockShell's min-height, so they
+ * are immediately visible and droppable. Insert with ONE `restoreBlocks` op
+ * ("valid to call directly" per its contract — the duplicate button uses the
+ * same pattern), giving a single undo step.
+ */
+export function createDefaultColumnsPreset({
+  columnCount,
+  sectionId,
+  doc,
+}: CreateDefaultColumnsPresetInput): DefaultColumnsPreset {
+  const usedIds = new Set<string>(Object.keys(doc));
+  const allocateId: BuildColumnsInput["allocateId"] = (type) => {
+    let id: string = generateBlockId(type);
+    while (usedIds.has(id)) {
+      id = generateBlockId(type);
+    }
+    usedIds.add(id);
+    return id;
+  };
+  const { rowId, blocks } = buildColumns({
+    sectionId,
+    columns: Array.from({ length: columnCount }, () => ({ leaves: [] })),
+    allocateId,
+  });
+  return { rowId: rowId as BlockId, blocks };
 }
 
 /** Build an empty section block ready for addSection under the root. */

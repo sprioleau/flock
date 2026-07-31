@@ -12,6 +12,7 @@ import { useEditorStore } from "@/lib/editor-store";
 import { PresenceProvider } from "@/lib/presence";
 import { getOrCreateSessionId } from "@/lib/session";
 import { ChatPanel } from "./chat/ChatPanel";
+import { CanvasDndContext } from "./dnd/CanvasDndContext";
 import { DraftFramesCanvas } from "./drafts/DraftFramesCanvas";
 import { DraftSelector } from "./drafts/DraftSelector";
 import { HistoryPanel } from "./history/HistoryPanel";
@@ -175,18 +176,23 @@ export function StudioShell() {
     );
   }
 
+  // The dnd context wraps the WHOLE studio row — not just the canvas — so
+  // the right rail's Blocks-tab palette tiles and the canvas blocks register
+  // against ONE @dnd-kit context (palette → canvas drags need both ends).
   const studioLayout = (
-    <div className="flex h-dvh w-full overflow-hidden">
-      <ChatPanel />
-      <main className="relative flex min-w-0 flex-1 flex-col">
-        <StudioToolbar leading={<DraftSelector onActivateDraft={switchToDraft} />}>
-          <HistoryPanel />
-        </StudioToolbar>
-        <DraftFramesCanvas onActivateDraft={switchToDraft} />
-        <EditorNotice />
-      </main>
-      <PropertyPanelSlot />
-    </div>
+    <CanvasDndContext>
+      <div className="flex h-dvh w-full overflow-hidden">
+        <ChatPanel />
+        <main className="relative flex min-w-0 flex-1 flex-col">
+          <StudioToolbar leading={<DraftSelector onActivateDraft={switchToDraft} />}>
+            <HistoryPanel />
+          </StudioToolbar>
+          <DraftFramesCanvas onActivateDraft={switchToDraft} />
+          <EditorNotice />
+        </main>
+        <PropertyPanelSlot />
+      </div>
+    </CanvasDndContext>
   );
 
   // Phase 6.2 presence: one room per open document (roomId = the document id).

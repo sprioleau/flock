@@ -50,7 +50,7 @@ export function BlockShell({ block, children, className }: BlockShellProps) {
   });
   const isValidDropContainer = useCanvasDragStore(
     (state) =>
-      state.activeBlockId !== null &&
+      state.dragSource !== null &&
       state.dropTarget !== null &&
       !state.dropTarget.isNoop &&
       state.dropTarget.parentId === block.id,

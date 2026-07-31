@@ -8,7 +8,6 @@ import { useEditorStore } from "@/lib/editor-store";
 import { cn } from "@/lib/utils";
 import { createDefaultSection, generateUniqueBlockId } from "./block-defaults";
 import { CanvasNode } from "./CanvasNode";
-import { CanvasDndContext } from "./dnd/CanvasDndContext";
 import { PersonaCursorOverlay } from "./presence/PersonaCursorOverlay";
 import { PointerPresenceOverlay } from "./presence/PointerPresenceOverlay";
 
@@ -47,55 +46,57 @@ export function EditorCanvas() {
     });
   };
 
+  // NOTE: the @dnd-kit context lives up in StudioShell (shared with the
+  // right rail's Blocks palette); this canvas only carries the
+  // data-dnd-canvas-root marker that gates drop resolution to the ACTIVE
+  // frame.
   return (
-    <CanvasDndContext>
+    <div
+      // No inner scroller (owner decision): the email content defines the
+      // frame's height, and the frames surface (DraftFramesCanvas) is the
+      // ONE scroll region. Pointer/persona cursor overlays live in content
+      // space inside, so they scroll with the email and clip at that outer
+      // scrollport instead.
+      className="email-canvas bg-neutral-200/70"
+      onClick={() => selectBlock(null)}
+      data-testid="editor-canvas"
+    >
       <div
-        // No inner scroller (owner decision): the email content defines the
-        // frame's height, and the frames surface (DraftFramesCanvas) is the
-        // ONE scroll region. Pointer/persona cursor overlays live in content
-        // space inside, so they scroll with the email and clip at that outer
-        // scrollport instead.
-        className="email-canvas bg-neutral-200/70"
-        onClick={() => selectBlock(null)}
-        data-testid="editor-canvas"
+        className={cn(
+          "relative mx-auto flex min-h-full flex-col pt-10 transition-[width] duration-200",
+          viewport === "mobile" ? "w-[375px] shadow-lg" : "w-full",
+        )}
+        style={{ backgroundColor: rootStyles.emailBackgroundColor }}
+        data-viewport={viewport}
+        data-dnd-canvas-root
       >
-        <div
-          className={cn(
-            "relative mx-auto flex min-h-full flex-col pt-10 transition-[width] duration-200",
-            viewport === "mobile" ? "w-[375px] shadow-lg" : "w-full",
-          )}
-          style={{ backgroundColor: rootStyles.emailBackgroundColor }}
-          data-viewport={viewport}
-          data-dnd-canvas-root
-        >
-          {tree.children.map((child) => (
-            <CanvasNode key={child.block.id} node={child} globals={globals} />
-          ))}
-          <div className="flex flex-1 items-start justify-center py-6">
-            <Button
-              variant="outline"
-              size="sm"
-              className="gap-1.5"
-              onClick={(event) => {
-                event.stopPropagation();
-                addSection();
-              }}
-            >
-              <PlusIcon className="size-4" />
-              Add section
-            </Button>
-          </div>
-          {/* Persona cursors (multi-agent v1): simulated advisory-persona
-              mice, choreographed client-side from the reactive findings query
-              + persona presence status. Before the human overlay so human
-              cursors paint on top. */}
-          <PersonaCursorOverlay />
-          {/* Pointer presence (remote cursors + local capture): inside the
-              canvas root so cursors live in content space — scrolling and
-              scrollport clipping come for free. */}
-          <PointerPresenceOverlay />
+        {tree.children.map((child) => (
+          <CanvasNode key={child.block.id} node={child} globals={globals} />
+        ))}
+        <div className="flex flex-1 items-start justify-center py-6">
+          <Button
+            variant="outline"
+            size="sm"
+            className="gap-1.5"
+            onClick={(event) => {
+              event.stopPropagation();
+              addSection();
+            }}
+          >
+            <PlusIcon className="size-4" />
+            Add section
+          </Button>
         </div>
+        {/* Persona cursors (multi-agent v1): simulated advisory-persona
+            mice, choreographed client-side from the reactive findings query
+            + persona presence status. Before the human overlay so human
+            cursors paint on top. */}
+        <PersonaCursorOverlay />
+        {/* Pointer presence (remote cursors + local capture): inside the
+            canvas root so cursors live in content space — scrolling and
+            scrollport clipping come for free. */}
+        <PointerPresenceOverlay />
       </div>
-    </CanvasDndContext>
+    </div>
   );
 }

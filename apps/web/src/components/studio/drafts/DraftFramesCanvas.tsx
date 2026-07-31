@@ -2,13 +2,14 @@
 
 import { useEffect, useRef, useState } from "react";
 import { useConvex, useQuery } from "convex/react";
-import { ChevronLeftIcon, ChevronRightIcon, Loader2Icon } from "lucide-react";
+import { BanIcon, ChevronLeftIcon, ChevronRightIcon, Loader2Icon } from "lucide-react";
 import type { EmailDocument } from "@tandem/email-sdk";
 import { api } from "@convex/_generated/api";
 import type { Id } from "@convex/_generated/dataModel";
 import { Button } from "@/components/ui/button";
 import { useEditorStore } from "@/lib/editor-store";
 import { cn } from "@/lib/utils";
+import { useCanvasDragStore } from "../dnd/drag-drop-store";
 import { EditorCanvas } from "../EditorCanvas";
 import { ReadOnlyEmailPreview } from "../history/ReadOnlyEmailPreview";
 import { DraftFrameToolbar } from "./DraftFrameToolbar";
@@ -99,7 +100,15 @@ export function DraftFramesCanvas({
           content — no frame has an inner scroller — so this surface scrolls
           both axes: horizontally across frames, vertically through the
           tallest one. Frames stay top-aligned (items-start). */}
-      <div className="flex min-h-0 flex-1 items-start gap-20 overflow-auto bg-neutral-200/70 px-16 py-4">
+      {/* Chrome surface: darker-than-panels in dark mode (Figma-style canvas);
+          the light value is unchanged. Email pixels inside frames come from
+          document inline styles and never react to the app theme.
+          data-frames-scroller: the dnd layer edge-scrolls this surface
+          during palette drags (see CanvasDndContext). */}
+      <div
+        className="flex min-h-0 flex-1 items-start gap-20 overflow-auto bg-neutral-200/70 px-16 py-4 dark:bg-black/40"
+        data-frames-scroller
+      >
         {(drafts ?? []).map((draft) => {
           const isActive = draft._id === activeDocumentId;
           const registerFrameRef = (element: HTMLDivElement | null): void => {
@@ -157,6 +166,9 @@ function ActiveDraftFrame({
   frameWidthPx: number;
   registerFrameRef: (element: HTMLDivElement | null) => void;
 }) {
+  // Drops only land here: while a drag is live the active frame gets a
+  // subtle ring (and siblings dim) so the legal target reads at a glance.
+  const isDragActive = useCanvasDragStore((state) => state.dragSource !== null);
   return (
     <div
       ref={registerFrameRef}
@@ -176,7 +188,12 @@ function ActiveDraftFrame({
       {/* Height follows content (owner decision): no inner max-height or
           scroll region — the email defines the frame's height and the frames
           surface does all scrolling. */}
-      <div className="flex flex-col overflow-hidden rounded-lg border bg-background shadow-md ring-1 ring-black/5">
+      <div
+        className={cn(
+          "flex flex-col overflow-hidden rounded-lg border bg-background shadow-md ring-1 ring-black/5 dark:ring-white/10",
+          isDragActive && "ring-2 ring-ring/50",
+        )}
+      >
         <EditorCanvas />
       </div>
     </div>
@@ -195,6 +212,11 @@ function SiblingDraftFrame({
   onActivate: () => void;
   registerFrameRef: (element: HTMLDivElement | null) => void;
 }) {
+  // Reject-with-affordance (owner decision §8.3 — never activate-on-hover):
+  // while a drag is live, siblings dim/desaturate and show a static hint
+  // badge. Static, not hover-driven: pointer capture during a dnd gesture
+  // means :hover never updates on other elements.
+  const isDragActive = useCanvasDragStore((state) => state.dragSource !== null);
   return (
     <div
       ref={registerFrameRef}
@@ -222,12 +244,24 @@ function SiblingDraftFrame({
         className={cn(
           // Full scaled content, no inner scroller — consistent with the
           // active frame's height-follows-content behavior.
-          "cursor-pointer overflow-hidden rounded-lg text-left",
-          "ring-1 ring-black/5 transition-shadow hover:ring-2 hover:ring-ring/60",
+          "relative overflow-hidden rounded-lg text-left",
+          "ring-1 ring-black/5 transition-[box-shadow,opacity,filter] dark:ring-white/10",
           "focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none",
+          isDragActive
+            ? "cursor-not-allowed opacity-50 saturate-50"
+            : "cursor-pointer hover:ring-2 hover:ring-ring/60",
         )}
         data-testid="draft-frame-preview"
+        data-drop-rejected={isDragActive || undefined}
       >
+        {isDragActive && (
+          <div className="absolute inset-0 z-10 flex items-start justify-center pt-10">
+            <span className="inline-flex items-center gap-1.5 rounded-full border bg-background/95 px-2.5 py-1 text-xs text-muted-foreground shadow-sm">
+              <BanIcon className="size-3.5" aria-hidden />
+              Drops go to the active draft
+            </span>
+          </div>
+        )}
         {shouldMountLivePreview ? (
           <LiveSiblingPreview documentId={draft._id} />
         ) : (

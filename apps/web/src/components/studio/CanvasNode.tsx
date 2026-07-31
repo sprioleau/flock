@@ -10,7 +10,6 @@ import {
   type EmailTreeNode,
   type GlobalStyles,
 } from "@tandem/email-sdk";
-import { AddBlockMenu } from "./AddBlockMenu";
 import { BlockShell } from "./BlockShell";
 import { ImageBlockCanvasSlot } from "./ImageBlockCanvasSlot";
 import { TextBlockCanvasSlot } from "./text-editor/TextBlockCanvasSlot";
@@ -38,9 +37,11 @@ export function CanvasNode({ node, globals }: CanvasNodeProps) {
     case "section":
       return (
         <BlockShell block={block}>
+          {/* Adding blocks happens through the right rail's Blocks tab
+              (drag in or click-to-add) — the old per-section ghost
+              "+ Add block" menu is gone (owner decision 2026-07-30). */}
           <SectionBlockView block={block} resolvedStyles={resolveBlockStyles(globals, block)}>
             {children}
-            <AddBlockMenu parentId={block.id} />
           </SectionBlockView>
         </BlockShell>
       );
