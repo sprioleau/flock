@@ -22,11 +22,13 @@ import type * as model_assets from "../model/assets.js";
 import type * as model_brandKitAssets from "../model/brandKitAssets.js";
 import type * as model_cleanup from "../model/cleanup.js";
 import type * as model_emailDocuments from "../model/emailDocuments.js";
+import type * as model_savedSections from "../model/savedSections.js";
 import type * as model_textBlockSync from "../model/textBlockSync.js";
 import type * as personaFindings from "../personaFindings.js";
 import type * as personas from "../personas.js";
 import type * as presence from "../presence.js";
 import type * as prosemirror from "../prosemirror.js";
+import type * as savedSections from "../savedSections.js";
 
 import type {
   ApiFromModules,
@@ -49,11 +51,13 @@ declare const fullApi: ApiFromModules<{
   "model/brandKitAssets": typeof model_brandKitAssets;
   "model/cleanup": typeof model_cleanup;
   "model/emailDocuments": typeof model_emailDocuments;
+  "model/savedSections": typeof model_savedSections;
   "model/textBlockSync": typeof model_textBlockSync;
   personaFindings: typeof personaFindings;
   personas: typeof personas;
   presence: typeof presence;
   prosemirror: typeof prosemirror;
+  savedSections: typeof savedSections;
 }>;
 
 /**

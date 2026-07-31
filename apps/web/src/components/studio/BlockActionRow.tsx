@@ -1,12 +1,23 @@
 "use client";
 
-import type { MouseEvent } from "react";
+import { useState, type MouseEvent } from "react";
 import type { DraggableAttributes, DraggableSyntheticListeners } from "@dnd-kit/core";
-import { ArrowDownIcon, ArrowUpIcon, CopyIcon, GripVerticalIcon, Trash2Icon } from "lucide-react";
+import { useMutation } from "convex/react";
+import {
+  ArrowDownIcon,
+  ArrowUpIcon,
+  BookmarkCheckIcon,
+  BookmarkIcon,
+  CopyIcon,
+  GripVerticalIcon,
+  Trash2Icon,
+} from "lucide-react";
 import type { BlockId } from "@tandem/email-sdk";
+import { api } from "@convex/_generated/api";
 import { Button } from "@/components/ui/button";
 import { buildDuplicateBlockOperation } from "@/lib/duplicate-block";
 import { useEditorStore } from "@/lib/editor-store";
+import { collectSectionSubtree, seedNameFromSectionSubtree } from "@/lib/saved-sections";
 
 export interface BlockActionRowProps {
   blockId: BlockId;
@@ -25,13 +36,19 @@ export interface BlockActionRowProps {
 
 /**
  * Floating action bar on the selected block: grab handle (pointer drag),
- * move up / move down / duplicate / delete. No block-type badge here — the
- * left-edge BlockBreadcrumb chip stack is the "what's selected" cue (owner
- * decision). Move = a reorderChildren op on the parent (adjacent swap);
- * duplicate = a restoreBlocks op carrying a fresh-id clone of the subtree
- * (see lib/duplicate-block.ts); delete = a removeBlock op. All flow through
- * the store's dispatch (§7 invariant); drops dispatch their single op from
- * CanvasDndContext.
+ * move up / move down / duplicate / save (sections) / delete. No block-type
+ * badge here — the left-edge BlockBreadcrumb chip stack is the "what's
+ * selected" cue (owner decision). Move = a reorderChildren op on the parent
+ * (adjacent swap); duplicate = a restoreBlocks op carrying a fresh-id clone
+ * of the subtree (see lib/duplicate-block.ts); delete = a removeBlock op.
+ * All flow through the store's dispatch (§7 invariant); drops dispatch
+ * their single op from CanvasDndContext.
+ *
+ * Save (sections only): bookmarks the section's subtree VERBATIM into the
+ * session's saved-sections list (convex/savedSections.ts — the asset-library
+ * scoping), reusable from the Blocks palette's Saved group. Not a document
+ * op — nothing on the history spine changes; the icon flips to a check as
+ * inline confirmation.
  */
 export function BlockActionRow({
   blockId,
@@ -41,6 +58,10 @@ export function BlockActionRow({
 }: BlockActionRowProps) {
   const doc = useEditorStore((state) => state.doc);
   const dispatch = useEditorStore((state) => state.dispatch);
+  const sessionId = useEditorStore((state) => state.authorId);
+  const saveSavedSection = useMutation(api.savedSections.save);
+  // Inline save confirmation: the bookmark flips to a check briefly.
+  const [isJustSaved, setIsJustSaved] = useState(false);
 
   const block = doc[blockId];
   const parent = block?.parentId != null ? doc[block.parentId] : undefined;
@@ -73,6 +94,27 @@ export function BlockActionRow({
     if (operation !== null) {
       dispatch(operation);
     }
+  };
+
+  const isSaveableSection = block.type === "section";
+
+  const saveSection = (): void => {
+    if (sessionId === null || isJustSaved) {
+      return;
+    }
+    const subtreeBlocks = collectSectionSubtree({ doc, sectionId: blockId });
+    if (subtreeBlocks === null) {
+      return;
+    }
+    const seededName = seedNameFromSectionSubtree(subtreeBlocks);
+    void saveSavedSection({
+      sessionId,
+      ...(seededName.length === 0 ? {} : { name: seededName }),
+      blocks: subtreeBlocks,
+    }).then(() => {
+      setIsJustSaved(true);
+      window.setTimeout(() => setIsJustSaved(false), 2000);
+    });
   };
 
   return (
@@ -123,6 +165,17 @@ export function BlockActionRow({
       >
         <CopyIcon />
       </Button>
+      {isSaveableSection && (
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          aria-label={isJustSaved ? "Section saved" : "Save section for reuse"}
+          data-testid={`save-section-${blockId}`}
+          onClick={stopThen(saveSection)}
+        >
+          {isJustSaved ? <BookmarkCheckIcon className="text-primary" /> : <BookmarkIcon />}
+        </Button>
+      )}
       <Button
         variant="ghost"
         size="icon-sm"

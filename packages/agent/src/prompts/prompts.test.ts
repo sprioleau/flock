@@ -47,6 +47,19 @@ describe("SYSTEM_STATIC (layer a — cacheable)", () => {
       /use scaffoldSection whenever a catalog template fits[\s\S]*hand-compose addSection\/addBlock only for layouts no template covers/,
     );
     expect(SYSTEM_STATIC).toContain("never set colors, fonts, or padding on scaffolded sections");
+    // Compose-new-email flows are steered to catalog composition too: a whole
+    // email is built from catalog sections chosen by their useWhen lines.
+    expect(SYSTEM_STATIC).toMatch(
+      /build a whole NEW email, compose it from catalog sections[\s\S]*chosen by its useWhen line/,
+    );
+  });
+
+  it("teaches per-section streaming for multi-section composition", () => {
+    // Full-email builds must arrive as one tool call per section, top to
+    // bottom, so the canvas paints progressively (perceived-latency rule).
+    expect(SYSTEM_STATIC).toMatch(
+      /emit ONE tool call per section, in reading order[\s\S]*never pack multiple sections into a single call/,
+    );
   });
 });
 

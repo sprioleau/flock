@@ -32,6 +32,7 @@ import {
   type DispatchableOp,
   type EditorStoreApi,
 } from "@/lib/editor-store";
+import { scrollBlockIntoView } from "../add-blocks/scroll-block-into-view";
 
 /**
  * The Phase 3 chat brain: wires AI SDK v7 `useChat` to the editor store.
@@ -224,6 +225,15 @@ function createTandemChatController(): TandemChatController {
           errorText: serializeApplyFailure(result),
         });
         return;
+      }
+      // Scroll-follow for streamed section inserts: when the agent composes
+      // an email one section per tool call (the per-section streaming
+      // contract), reveal each section as it lands so the user watches the
+      // email assemble. The APPLIED op is read from the dispatch result —
+      // scaffoldSection resolves to an addSection op inside dispatch.
+      const appliedOp = result.logEntry.op;
+      if (appliedOp.name === "addSection") {
+        scrollBlockIntoView(appliedOp.section.id);
       }
       void chat.addToolOutput({
         tool: toolName,

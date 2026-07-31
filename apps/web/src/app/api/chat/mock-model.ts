@@ -32,6 +32,12 @@ import { MockLanguageModelV4 } from "ai/test";
  * - mentions "test email"           → sendTestEmail (exercises approval flow)
  * - contains a URL                  → fetchWebContent with that URL (the
  *   server then performs the REAL fetch + extraction — Phase 7.4a seam)
+ * - asks for a "full email" (or whole/entire/complete email) → the
+ *   per-section streaming script: FOUR sequential scaffoldSection calls
+ *   (header, hero, feature-columns, footer), each streamed as its own
+ *   tool-input-start → deltas → tool-call sequence with real inter-chunk
+ *   delays — the probe that pins "section 1 is applied before section N is
+ *   even generated" (see pipeline-streaming.test.ts)
  * - asks to add a section (e.g. "add a hero section") → scaffoldSection with
  *   the mentioned catalog templateId (exercises the Phase 7.2 scaffold seam)
  * - otherwise → updateBlockProperties on the selected block (fallback
@@ -151,6 +157,81 @@ function planMockToolCall({
  */
 const MALFORMED_PROBE_REGEX = /\bmalformed tool calls\b/i;
 
+/**
+ * Full-email compose script: intent regex + the sections it streams, in
+ * reading order. Checked BEFORE the single-section scaffold intent ("build
+ * the whole email" must not degrade to one hero section).
+ */
+const COMPOSE_EMAIL_REGEX = /\b(?:full|whole|entire|complete)\s+email\b/i;
+
+export const MOCK_COMPOSE_EMAIL_TEMPLATE_IDS = [
+  "header",
+  "hero",
+  "feature-columns",
+  "footer",
+] as const;
+
+/**
+ * The per-section streaming chunk sequence: one scaffoldSection call per
+ * template, each with its own tool-input-start → 16-char deltas →
+ * tool-input-end → tool-call. With simulateReadableStream's per-chunk delay
+ * this reproduces the shape (and pacing) of a real model composing a full
+ * email section by section — downstream, section 1's validated call reaches
+ * the client while section N's input is still being generated.
+ */
+function buildComposeEmailChunks() {
+  const perSectionChunks = MOCK_COMPOSE_EMAIL_TEMPLATE_IDS.flatMap((templateId, index) => {
+    const toolCallId = `call_${crypto.randomUUID()}`;
+    const inputJson = JSON.stringify({
+      name: "scaffoldSection",
+      templateId,
+      position: "bottom" as const,
+      params: {},
+    });
+    const inputDeltas: string[] = [];
+    for (let sliceStart = 0; sliceStart < inputJson.length; sliceStart += 16) {
+      inputDeltas.push(inputJson.slice(sliceStart, sliceStart + 16));
+    }
+    return [
+      ...(index === 0
+        ? [
+            { type: "text-start" as const, id: "text-1" },
+            {
+              type: "text-delta" as const,
+              id: "text-1",
+              delta: "Building the email one section at a time.",
+            },
+            { type: "text-end" as const, id: "text-1" },
+          ]
+        : []),
+      { type: "tool-input-start" as const, id: toolCallId, toolName: "scaffoldSection" },
+      ...inputDeltas.map((delta) => ({
+        type: "tool-input-delta" as const,
+        id: toolCallId,
+        delta,
+      })),
+      { type: "tool-input-end" as const, id: toolCallId },
+      {
+        type: "tool-call" as const,
+        toolCallId,
+        toolName: "scaffoldSection",
+        input: inputJson,
+      },
+    ];
+  });
+  return [
+    ...perSectionChunks,
+    {
+      type: "finish" as const,
+      finishReason: { unified: "tool-calls" as const, raw: undefined },
+      usage: {
+        inputTokens: { total: 10, noCache: 10, cacheRead: undefined, cacheWrite: undefined },
+        outputTokens: { total: 25, text: 10, reasoning: undefined },
+      },
+    },
+  ];
+}
+
 function buildMalformedProbeChunks(selectedBlockId: BlockId | undefined) {
   const blockId = selectedBlockId ?? ("btn_t9u0" as BlockId);
   const recoverableEnvelope = JSON.stringify(
@@ -195,6 +276,7 @@ function buildMalformedProbeChunks(selectedBlockId: BlockId | undefined) {
 export function createMockChatModel(input: CreateMockChatModelInput) {
   const isContinuationRequest = input.isContinuationRequest ?? false;
   const isMalformedProbe = MALFORMED_PROBE_REGEX.test(input.lastUserText);
+  const isComposeEmailProbe = COMPOSE_EMAIL_REGEX.test(input.lastUserText);
   const plan = planMockToolCall(input);
   const inputJson = JSON.stringify(plan.input);
   // Unique per request — clients dedupe applied ops by toolCallId (Spike C).
@@ -228,6 +310,23 @@ export function createMockChatModel(input: CreateMockChatModelInput) {
                 timestamp: new Date(0),
               },
               ...buildMalformedProbeChunks(input.selectedBlockId),
+            ],
+          }),
+        };
+      }
+      if (isComposeEmailProbe && isFirstStep) {
+        return {
+          stream: simulateReadableStream({
+            chunkDelayInMs: 20,
+            chunks: [
+              { type: "stream-start" as const, warnings: [] },
+              {
+                type: "response-metadata" as const,
+                id: `mock-response-${doStreamCallCount}`,
+                modelId: "tandem-mock-chat-model",
+                timestamp: new Date(0),
+              },
+              ...buildComposeEmailChunks(),
             ],
           }),
         };

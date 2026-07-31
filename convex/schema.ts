@@ -285,6 +285,12 @@ export default defineSchema({
     socialImageStorageId: v.optional(v.id("_storage")),
     socialImageSourceUrl: v.optional(v.string()),
     socialImageConfirmedAtMs: v.optional(v.number()),
+    /**
+     * The brand's social profile links (item 26): one per platform (x,
+     * facebook, instagram, …), deterministically extracted and SSRF-guarded.
+     * Replaced wholesale by each save (revision bumps with every save).
+     */
+    socialLinks: v.optional(v.array(v.object({ platform: v.string(), url: v.string() }))),
     /** ThemeVariation[]: complete `Required<GlobalStyles>` payloads (see guard note above). */
     variations: v.array(
       v.object({
@@ -418,6 +424,34 @@ export default defineSchema({
   })
     .index("by_documentId", ["documentId"])
     .index("by_documentId_and_status", ["documentId", "status"]),
+
+  /**
+   * Saved reusable sections: a user bookmarks a section they've customized
+   * (footer with their details, header with their logo, an article layout)
+   * and re-inserts it into any draft later. Session-scoped like `assets` —
+   * the same demoable-identity model: one anonymous browser session owns its
+   * saved list, readable from every canvas/draft of that session.
+   *
+   * `blocks` is the section's SUBTREE as a flat list in the restoreBlocks
+   * shape (section root FIRST, every descendant's parentId pointing into the
+   * list) and is unvalidated JSON per the ops/blocks column policy above:
+   * the runtime guard is the email-sdk Zod blockSchema + subtree-closure
+   * check run by savedSections.save BEFORE the row is written. Saved rows
+   * keep their ORIGINAL ids — fresh ids are minted at INSERT time (the
+   * duplicate-block pattern), so one saved section inserts many times safely.
+   */
+  savedSections: defineTable({
+    /** Anonymous owner session (localStorage id) — same key as assets/brandKits. */
+    sessionId: v.string(),
+    /** Human-editable display name, seeded from the section's first text. */
+    name: v.string(),
+    /** Flat subtree, root first (restoreBlocks shape). Runtime guard: email-sdk Zod on save. */
+    blocks: v.array(v.any()),
+    /** Denormalized blocks.length for list cards (avoids shipping counts client-side). */
+    blockCount: v.number(),
+    createdAtMs: v.number(),
+    updatedAtMs: v.number(),
+  }).index("by_sessionId", ["sessionId"]),
 
   snapshots: defineTable({
     documentId: v.id("documents"),
