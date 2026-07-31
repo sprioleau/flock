@@ -29,9 +29,15 @@ import { deleteBlockSyncDoc } from "./textBlockSync";
  *   4. per-text-block ProseMirror sync docs + all block rows
  *   5. the transient ghost-session row, if one was stranded (at most one
  *      per document; normally deleted when the ghost run ends)
- *   6. the document row
- *   7. the parent canvas, iff it now holds no documents (canvases own
+ *   6. persisted persona findings for the document (advisory suggestion
+ *      rows; a handful per document at most)
+ *   7. the document row
+ *   8. the parent canvas, iff it now holds no documents (canvases own
  *      documents; an empty canvas of an unclaimed session is dead weight)
+ *
+ * The cascade is shared with the USER-INVOKED draft delete
+ * (documents.deleteDocument), which runs it with the same budget and
+ * schedules a targeted cleanup continuation if the budget runs out.
  */
 
 export const DEFAULT_RETENTION_DAYS = 30;
@@ -201,7 +207,22 @@ export async function deleteDocumentCascade({
     budget.remaining -= 1;
   }
 
-  // 6. The document row, LAST — its presence is the resumption marker.
+  // 6. Persisted persona findings (advisory suggestion rows) — added after
+  // Phase 6.1: without this step a deleted document would strand its open/
+  // dismissed/applied finding rows forever.
+  const personaFindingRows = await ctx.db
+    .query("personaFindings")
+    .withIndex("by_documentId", (q) => q.eq("documentId", documentId))
+    .collect();
+  for (const row of personaFindingRows) {
+    if (budget.remaining <= 0) {
+      return { isComplete: false };
+    }
+    await ctx.db.delete(row._id);
+    budget.remaining -= 1;
+  }
+
+  // 7. The document row, LAST — its presence is the resumption marker.
   if (budget.remaining <= 0) {
     return { isComplete: false };
   }
@@ -209,7 +230,7 @@ export async function deleteDocumentCascade({
   stats.deletedDocuments += 1;
   budget.remaining -= 1;
 
-  // 7. The parent canvas, iff this was its last document.
+  // 8. The parent canvas, iff this was its last document.
   const survivingSibling = await ctx.db
     .query("documents")
     .withIndex("by_canvasId", (q) => q.eq("canvasId", document.canvasId))

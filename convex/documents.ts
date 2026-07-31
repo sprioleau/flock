@@ -5,8 +5,14 @@ import {
   type Operation,
 } from "@tandem/email-sdk";
 import { v } from "convex/values";
+import { internal } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
 import { mutation, query, type MutationCtx, type QueryCtx } from "./_generated/server";
+import {
+  createEmptyCleanupStats,
+  deleteDocumentCascade,
+  MAX_ROW_DELETIONS_PER_RUN,
+} from "./model/cleanup";
 import { emailDocumentValidator, operationAuthorValidator, actionCallerValidator } from "./schema";
 import {
   applyContextValidator,
@@ -209,6 +215,116 @@ export const renameDocument = mutation({
 });
 
 // ---------------------------------------------------------------------------
+// deleteDocument / promoteDocumentToNewCanvas
+// ---------------------------------------------------------------------------
+
+/**
+ * Delete one draft and its full constellation (blocks, operations, snapshots,
+ * ProseMirror sync docs, exclusively-referenced storage files, ghost
+ * sessions, persona findings) via the SAME cascade the Phase 6.1 cleanup
+ * cron uses — one deletion path, no drift.
+ *
+ * Guard: the LAST draft on a canvas can never be deleted (the UI disables
+ * the action; this is the server-side backstop). Deleting always leaves the
+ * canvas with at least one draft, so the cascade's empty-canvas step never
+ * fires here.
+ *
+ * If the cascade exhausts its row budget (a document with a very long op
+ * log), the document row is still present and a targeted cleanup
+ * continuation is scheduled to finish the job; the client can treat the
+ * delete as done either way.
+ */
+export const deleteDocument = mutation({
+  args: { documentId: v.id("documents") },
+  returns: v.union(
+    v.object({ isOk: v.literal(true) }),
+    v.object({
+      isOk: v.literal(false),
+      reason: v.union(v.literal("not_found"), v.literal("last_draft")),
+    }),
+  ),
+  handler: async (ctx, args) => {
+    const document = await ctx.db.get(args.documentId);
+    if (document === null) {
+      return { isOk: false as const, reason: "not_found" as const };
+    }
+    // Drafts per canvas stay small (a handful of frames); bounded.
+    const siblings = await ctx.db
+      .query("documents")
+      .withIndex("by_canvasId", (q) => q.eq("canvasId", document.canvasId))
+      .collect();
+    const hasSurvivingSibling = siblings.some((row) => row._id !== document._id);
+    if (!hasSurvivingSibling) {
+      return { isOk: false as const, reason: "last_draft" as const };
+    }
+
+    const budget = { remaining: MAX_ROW_DELETIONS_PER_RUN };
+    const stats = createEmptyCleanupStats();
+    const { isComplete } = await deleteDocumentCascade({ ctx, document, budget, stats });
+    if (!isComplete) {
+      // Finish the cascade out-of-band: retentionDays 0 makes the cutoff
+      // "now", and onlyDocumentId narrows the run to this document.
+      await ctx.scheduler.runAfter(0, internal.cleanup.cleanupStaleDocuments, {
+        retentionDays: 0,
+        onlyDocumentId: document._id,
+      });
+    }
+    await ctx.db.patch(document.canvasId, { updatedAtMs: Date.now() });
+    return { isOk: true as const };
+  },
+});
+
+/**
+ * §10.2 "promote a draft to its own canvas": MOVE the document to a freshly
+ * created canvas titled after the draft. The document id — and with it the
+ * whole history spine (operations/snapshots/blocks/sync docs/findings are
+ * all keyed by documentId) — is unchanged; only `canvasId` and the canvas
+ * placement move. Existing `?doc=` links keep working and now open the new
+ * canvas.
+ *
+ * Guard: a draft that is already alone on its canvas has nothing to promote
+ * (the UI disables the action; this is the backstop).
+ */
+export const promoteDocumentToNewCanvas = mutation({
+  args: { documentId: v.id("documents") },
+  returns: v.union(
+    v.object({ isOk: v.literal(true), canvasId: v.id("canvases") }),
+    v.object({
+      isOk: v.literal(false),
+      reason: v.union(v.literal("not_found"), v.literal("already_alone")),
+    }),
+  ),
+  handler: async (ctx, args) => {
+    const document = await ctx.db.get(args.documentId);
+    if (document === null) {
+      return { isOk: false as const, reason: "not_found" as const };
+    }
+    const siblings = await ctx.db
+      .query("documents")
+      .withIndex("by_canvasId", (q) => q.eq("canvasId", document.canvasId))
+      .collect();
+    const hasSurvivingSibling = siblings.some((row) => row._id !== document._id);
+    if (!hasSurvivingSibling) {
+      return { isOk: false as const, reason: "already_alone" as const };
+    }
+    const now = Date.now();
+    const newCanvasId = await ctx.db.insert("canvases", {
+      sessionId: document.sessionId,
+      title: document.name,
+      createdAtMs: now,
+      updatedAtMs: now,
+    });
+    await ctx.db.patch(document._id, {
+      canvasId: newCanvasId,
+      orderIndex: 0,
+      updatedAtMs: now,
+    });
+    await ctx.db.patch(document.canvasId, { updatedAtMs: now });
+    return { isOk: true as const, canvasId: newCanvasId };
+  },
+});
+
+// ---------------------------------------------------------------------------
 // applyOperations — THE write path
 // ---------------------------------------------------------------------------
 
@@ -393,6 +509,54 @@ export const documentExists = query({
     }
     const document = await ctx.db.get(documentId);
     return document !== null;
+  },
+});
+
+/**
+ * Sibling of documentExists for the `?canvas=` capability link: a lean
+ * existence check keyed by an UNTRUSTED string. Same trust model — the
+ * canvas id IS the capability, and nothing beyond a boolean per id leaks.
+ */
+export const canvasExists = query({
+  args: { canvasKey: v.string() },
+  returns: v.boolean(),
+  handler: async (ctx, args) => {
+    const canvasId = ctx.db.normalizeId("canvases", args.canvasKey);
+    if (canvasId === null) {
+      return false;
+    }
+    const canvas = await ctx.db.get(canvasId);
+    return canvas !== null;
+  },
+});
+
+/**
+ * Resolve a `?canvas=<id>` link to the draft the studio should open: the
+ * canvas's most recently updated draft ("continue where the canvas left
+ * off"); the drafts bar then shows all of its siblings. Keyed by an
+ * UNTRUSTED string — malformed/foreign ids, and canvases with no drafts,
+ * normalize to null.
+ */
+export const getCanvasEntryDocument = query({
+  args: { canvasKey: v.string() },
+  returns: v.union(v.null(), v.id("documents")),
+  handler: async (ctx, args) => {
+    const canvasId = ctx.db.normalizeId("canvases", args.canvasKey);
+    if (canvasId === null) {
+      return null;
+    }
+    // Drafts per canvas stay small (a handful of frames); bounded.
+    const drafts = await ctx.db
+      .query("documents")
+      .withIndex("by_canvasId", (q) => q.eq("canvasId", canvasId))
+      .collect();
+    if (drafts.length === 0) {
+      return null;
+    }
+    const mostRecentDraft = drafts.reduce((latest, row) =>
+      row.updatedAtMs > latest.updatedAtMs ? row : latest,
+    );
+    return mostRecentDraft._id;
   },
 });
 

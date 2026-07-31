@@ -23,6 +23,14 @@ export const GATE_COOKIE_MAX_AGE_SECONDS = 60 * 60 * 24 * 30; // ~30 days
 export const DOC_COOKIE_NAME = "tandem_doc_ok";
 export const DOC_COOKIE_MAX_AGE_SECONDS = 60 * 60; // 1 hour
 
+/**
+ * Canvas twin of the doc cookie: set after a successful `?canvas=<id>`
+ * existence check, scoped to that one canvas id. Same trust model — it only
+ * skips repeat Convex lookups for the same capability link.
+ */
+export const CANVAS_COOKIE_NAME = "tandem_canvas_ok";
+export const CANVAS_COOKIE_MAX_AGE_SECONDS = 60 * 60; // 1 hour
+
 export const GATE_PATH = "/gate";
 /** Query param on /gate carrying the originally-requested URL. */
 export const GATE_RETURN_TO_PARAM = "from";
@@ -72,6 +80,19 @@ export function deriveDocCookieValue({
 }): string {
   return createHmac("sha256", password)
     .update(`tandem-doc-ok-v1:${documentKey}`)
+    .digest("hex");
+}
+
+/** The value stored in the per-canvas cookie for a given password + canvas id. */
+export function deriveCanvasCookieValue({
+  password,
+  canvasKey,
+}: {
+  password: string;
+  canvasKey: string;
+}): string {
+  return createHmac("sha256", password)
+    .update(`tandem-canvas-ok-v1:${canvasKey}`)
     .digest("hex");
 }
 

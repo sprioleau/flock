@@ -13,7 +13,9 @@ import {
   type StyleTextSpanInput,
 } from "@tandem/email-sdk";
 import type { ConvexReactClient } from "convex/react";
-import { create } from "zustand";
+import { createContext, useContext } from "react";
+import { useStore, type StoreApi } from "zustand";
+import { createStore } from "zustand/vanilla";
 import { api } from "@convex/_generated/api";
 import type { Id } from "@convex/_generated/dataModel";
 
@@ -51,6 +53,19 @@ import type { Id } from "@convex/_generated/dataModel";
  * (per-author; authorId = the anonymous session id), and AI-batch revert
  * calls `history.revertBatch`. The old local undo/redo stacks are gone;
  * button enablement comes from the reactive `history.canUndoRedo` query.
+ *
+ * Drafts v2 — STORE-PER-DOCUMENT FACTORY (the "simultaneous editing needs
+ * per-document editor-store instances" seam the frames redesign left open):
+ * the store is no longer a module singleton. {@link createEditorStore} makes
+ * an independent instance (own doc/overlay/selection/timers), and a
+ * refcounted registry ({@link acquireEditorStore} / {@link releaseEditorStore})
+ * caches one instance per documentId for the frame that mounts it. The
+ * ACTIVE instance — the one bound to the authoritative ?doc= URL — is held
+ * in a swappable holder; {@link useEditorStore} keeps its historical shape
+ * (selector hook + getState/subscribe statics) by delegating to the nearest
+ * {@link EditorStoreProvider} and falling back to the active instance, so
+ * every existing consumer works unchanged whether it renders inside a
+ * specific frame's subtree or in shell chrome (toolbar, chat, panels).
  */
 
 /** Default provenance for ops produced by this UI's own controls. */
@@ -237,7 +252,7 @@ export type RevertBatchResult = { isOk: true } | { isOk: false; message: string 
 /** Result surfaced to the history panel's restore affordance. */
 export type RestoreVersionResult = { isOk: true } | { isOk: false; message: string };
 
-interface EditorState {
+export interface EditorState {
   /** The rendered email document: server head + the pending local overlay. */
   doc: EmailDocument;
   /** Last server snapshot from the reactive getDocument query (null until loaded). */
@@ -335,7 +350,16 @@ function reconcileSelection(
     : null;
 }
 
-export const useEditorStore = create<EditorState>()((set, get) => {
+/** One independent editor-store instance (vanilla zustand StoreApi). */
+export type EditorStoreApi = StoreApi<EditorState>;
+
+/**
+ * THE FACTORY: one fully independent editor store — its own rendered doc,
+ * server mirror, pending-op overlay, selection, gesture timers, and Convex
+ * client binding. Two instances never share document state.
+ */
+export function createEditorStore(): EditorStoreApi {
+  return createStore<EditorState>()((set, get) => {
   // The Convex client is runtime wiring, not renderable state.
   let convexClient: ConvexReactClient | null = null;
   let flushTimerId: ReturnType<typeof setTimeout> | null = null;
@@ -697,7 +721,135 @@ export const useEditorStore = create<EditorState>()((set, get) => {
     stopTextEditing: () => set({ editingBlockId: null }),
     setViewport: (viewport) => set({ viewport }),
   };
-});
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Per-document registry — one cached instance per documentId
+// ---------------------------------------------------------------------------
+
+interface EditorStoreRegistryEntry {
+  store: EditorStoreApi;
+  /** Mounted holders (frames, pinned chat turns). Disposed when it hits 0. */
+  referenceCount: number;
+}
+
+const editorStoreRegistry = new Map<Id<"documents">, EditorStoreRegistryEntry>();
+
+/**
+ * Get (or create) THE store instance for a document and take a reference.
+ * Lifecycle contract: every acquire is paired with one
+ * {@link releaseEditorStore} (frame unmount / doc close); the instance —
+ * and with it selection, viewport, and any not-yet-confirmed overlay — is
+ * retained while anyone still holds it.
+ */
+export function acquireEditorStore(documentId: Id<"documents">): EditorStoreApi {
+  const existingEntry = editorStoreRegistry.get(documentId);
+  if (existingEntry !== undefined) {
+    existingEntry.referenceCount += 1;
+    return existingEntry.store;
+  }
+  const store = createEditorStore();
+  editorStoreRegistry.set(documentId, { store, referenceCount: 1 });
+  return store;
+}
+
+/** Drop one reference; the last release detaches and evicts the instance. */
+export function releaseEditorStore(documentId: Id<"documents">): void {
+  const entry = editorStoreRegistry.get(documentId);
+  if (entry === undefined) {
+    return;
+  }
+  entry.referenceCount -= 1;
+  if (entry.referenceCount > 0) {
+    return;
+  }
+  editorStoreRegistry.delete(documentId);
+  // Clears gesture timers and document-scoped state; the detached instance
+  // is then garbage-collectable once its subscribers unhook.
+  entry.store.getState().resetDocumentState();
+}
+
+/** Peek without taking a reference (null when no frame holds the document). */
+export function peekEditorStore(documentId: Id<"documents">): EditorStoreApi | null {
+  return editorStoreRegistry.get(documentId)?.store ?? null;
+}
+
+// ---------------------------------------------------------------------------
+// The ACTIVE instance + the compatibility hook
+// ---------------------------------------------------------------------------
+
+/**
+ * The active editor store: the instance bound to the authoritative `?doc=`
+ * URL. Held in a tiny swappable store so hook consumers re-render when the
+ * lifecycle owner (StudioShell) swaps instances on a draft switch. Starts
+ * with a detached default instance — exactly the old singleton's boot state.
+ */
+const activeEditorStoreHolder = createStore<{ store: EditorStoreApi }>(() => ({
+  store: createEditorStore(),
+}));
+
+/** The instance currently bound to the URL's ?doc= (always non-null). */
+export function getActiveEditorStore(): EditorStoreApi {
+  return activeEditorStoreHolder.getState().store;
+}
+
+/** Swap the active instance (lifecycle owner only — the ?doc= URL is authoritative). */
+export function setActiveEditorStore(store: EditorStoreApi): void {
+  if (activeEditorStoreHolder.getState().store !== store) {
+    activeEditorStoreHolder.setState({ store });
+  }
+}
+
+/**
+ * Scope a subtree (one draft frame) to a specific store instance. Consumers
+ * inside it read THAT document's state through {@link useEditorStore};
+ * consumers outside any provider read the active instance.
+ */
+const EditorStoreContext = createContext<EditorStoreApi | null>(null);
+export const EditorStoreProvider = EditorStoreContext.Provider;
+
+/**
+ * The historical consumer surface, preserved: a selector hook that also
+ * carries getState/subscribe statics. Hook reads resolve against the nearest
+ * EditorStoreProvider, falling back to the active instance; the statics
+ * always target the ACTIVE instance (imperative call sites all mean "the
+ * document the studio is editing").
+ */
+export function useEditorStore<SelectedValue>(
+  selector: (state: EditorState) => SelectedValue,
+): SelectedValue {
+  const contextStore = useContext(EditorStoreContext);
+  const activeStore = useStore(activeEditorStoreHolder, (holder) => holder.store);
+  return useStore(contextStore ?? activeStore, selector);
+}
+
+useEditorStore.getState = (): EditorState => getActiveEditorStore().getState();
+
+useEditorStore.setState = (partial: Partial<EditorState>): void => {
+  getActiveEditorStore().setState(partial);
+};
+
+/**
+ * Subscribe to the ACTIVE instance, surviving instance swaps: when the
+ * lifecycle owner swaps the active store (draft switch), the subscription
+ * transparently re-attaches to the new instance — matching the old
+ * singleton's "one subscription across draft switches" behavior that
+ * use-persona-advisors and use-suggestions rely on.
+ */
+useEditorStore.subscribe = (
+  listener: (state: EditorState, previousState: EditorState) => void,
+): (() => void) => {
+  let unsubscribeFromStore = getActiveEditorStore().subscribe(listener);
+  const unsubscribeFromHolder = activeEditorStoreHolder.subscribe((holder) => {
+    unsubscribeFromStore();
+    unsubscribeFromStore = holder.store.subscribe(listener);
+  });
+  return () => {
+    unsubscribeFromHolder();
+    unsubscribeFromStore();
+  };
+};
 
 // Dev-only escape hatch so in-browser verification (agents, debugging) can
 // inspect the pending overlay and document without going through React.

@@ -17,6 +17,7 @@ import type * as files from "../files.js";
 import type * as ghost from "../ghost.js";
 import type * as healthcheck from "../healthcheck.js";
 import type * as history from "../history.js";
+import type * as model_brandKitAssets from "../model/brandKitAssets.js";
 import type * as model_cleanup from "../model/cleanup.js";
 import type * as model_emailDocuments from "../model/emailDocuments.js";
 import type * as model_textBlockSync from "../model/textBlockSync.js";
@@ -41,6 +42,7 @@ declare const fullApi: ApiFromModules<{
   ghost: typeof ghost;
   healthcheck: typeof healthcheck;
   history: typeof history;
+  "model/brandKitAssets": typeof model_brandKitAssets;
   "model/cleanup": typeof model_cleanup;
   "model/emailDocuments": typeof model_emailDocuments;
   "model/textBlockSync": typeof model_textBlockSync;

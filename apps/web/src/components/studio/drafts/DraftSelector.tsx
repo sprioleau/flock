@@ -8,13 +8,25 @@ import {
   ChevronLeftIcon,
   ChevronRightIcon,
   CopyIcon,
+  FrameIcon,
+  Link2Icon,
   LinkIcon,
   PencilLineIcon,
   PlusIcon,
+  Trash2Icon,
 } from "lucide-react";
 import { api } from "@convex/_generated/api";
 import type { Id } from "@convex/_generated/dataModel";
 import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogClose,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -24,6 +36,13 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
+import { useEditorStore } from "@/lib/editor-store";
 import { getOrCreateSessionId } from "@/lib/session";
 import { cn } from "@/lib/utils";
 import { computeNextDraftName, useCanvasDrafts, type DraftListEntry } from "./use-canvas-drafts";
@@ -47,6 +66,9 @@ export function DraftSelector({
   const [isRenaming, setIsRenaming] = useState(false);
   const [nameInput, setNameInput] = useState("");
   const [isCreatePending, setIsCreatePending] = useState(false);
+  const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
+  const [isDeletePending, setIsDeletePending] = useState(false);
+  const [isPromotePending, setIsPromotePending] = useState(false);
 
   if (drafts === undefined || drafts.length === 0) {
     return null;
@@ -56,6 +78,8 @@ export function DraftSelector({
   const previousDraft = activeIndex > 0 ? drafts[activeIndex - 1]! : null;
   const nextDraft =
     activeIndex >= 0 && activeIndex < drafts.length - 1 ? drafts[activeIndex + 1]! : null;
+  /** Delete and promote both need a sibling: a canvas always keeps ≥ 1 draft. */
+  const hasSiblingDrafts = drafts.length > 1;
 
   const beginRename = (): void => {
     if (activeDraft === null) {
@@ -105,6 +129,97 @@ export function DraftSelector({
     navigator.clipboard.writeText(url).catch((error: unknown) => {
       console.error("copy draft link failed", error);
     });
+  };
+
+  /** Whole-canvas share link: opens the canvas's latest draft, drafts bar shows all. */
+  const copyCanvasLink = (): void => {
+    if (activeDraft === null) {
+      return;
+    }
+    const url = `${window.location.origin}/studio?canvas=${activeDraft.canvasId}`;
+    navigator.clipboard.writeText(url).catch((error: unknown) => {
+      console.error("copy canvas link failed", error);
+    });
+  };
+
+  /** §10.2 promote: MOVE the active draft to a freshly created canvas of its own. */
+  const promoteActiveDraft = (): void => {
+    if (activeDraft === null || isPromotePending) {
+      return;
+    }
+    setIsPromotePending(true);
+    convexClient
+      .mutation(api.documents.promoteDocumentToNewCanvas, { documentId: activeDraft._id })
+      .then((result) => {
+        const store = useEditorStore.getState();
+        if (!result.isOk) {
+          store.showNotice(
+            result.reason === "already_alone"
+              ? "This draft is already on its own canvas."
+              : "This draft no longer exists.",
+          );
+          return;
+        }
+        // Same document id, new canvas: re-point the store's canvas so the
+        // drafts bar and canvas link follow the move. The ?doc= URL is
+        // unchanged and stays authoritative.
+        if (store.documentId === activeDraft._id) {
+          store.connectDocument({
+            convexClient,
+            documentId: activeDraft._id,
+            canvasId: result.canvasId,
+            authorId: getOrCreateSessionId(),
+          });
+        }
+        store.showNotice(`"${activeDraft.name}" now lives on its own canvas.`);
+      })
+      .catch((error: unknown) => {
+        console.error("promoteDocumentToNewCanvas failed", error);
+        useEditorStore.getState().showNotice("Couldn't promote the draft (connection error).");
+      })
+      .finally(() => {
+        setIsPromotePending(false);
+      });
+  };
+
+  /**
+   * Confirmed delete of the ACTIVE draft: hand the frame to a sibling first
+   * (so the live subscription never lands on a deleted document), then run
+   * the server-side cascade.
+   */
+  const confirmDeleteActiveDraft = (): void => {
+    if (activeDraft === null || isDeletePending) {
+      return;
+    }
+    const fallbackDraft = nextDraft ?? previousDraft;
+    if (fallbackDraft === null) {
+      // Last draft on the canvas — the menu item is disabled; backstop only.
+      setIsDeleteDialogOpen(false);
+      return;
+    }
+    setIsDeletePending(true);
+    onActivateDraft(fallbackDraft._id);
+    convexClient
+      .mutation(api.documents.deleteDocument, { documentId: activeDraft._id })
+      .then((result) => {
+        if (!result.isOk) {
+          useEditorStore
+            .getState()
+            .showNotice(
+              result.reason === "last_draft"
+                ? "A canvas needs at least one draft — this one can't be deleted."
+                : "This draft was already deleted.",
+            );
+        }
+      })
+      .catch((error: unknown) => {
+        console.error("deleteDocument failed", error);
+        useEditorStore.getState().showNotice("Couldn't delete the draft (connection error).");
+      })
+      .finally(() => {
+        setIsDeletePending(false);
+        setIsDeleteDialogOpen(false);
+      });
   };
 
   const createDraft = (): void => {
@@ -214,8 +329,42 @@ export function DraftSelector({
               <CopyIcon /> Duplicate
             </DropdownMenuItem>
             <DropdownMenuItem onClick={copyActiveDraftLink}>
-              <LinkIcon /> Copy link
+              <LinkIcon /> Copy draft link
             </DropdownMenuItem>
+            <DropdownMenuItem onClick={copyCanvasLink}>
+              <Link2Icon /> Copy canvas link
+            </DropdownMenuItem>
+            <DropdownMenuSeparator />
+            <TooltipProvider>
+              <MaybeDisabledTooltip
+                isDisabled={!hasSiblingDrafts}
+                message="This draft is already on its own canvas."
+              >
+                <DropdownMenuItem
+                  disabled={!hasSiblingDrafts || isPromotePending}
+                  onClick={promoteActiveDraft}
+                  data-testid="draft-menu-promote"
+                >
+                  <FrameIcon /> Promote to new canvas
+                </DropdownMenuItem>
+              </MaybeDisabledTooltip>
+              <MaybeDisabledTooltip
+                isDisabled={!hasSiblingDrafts}
+                message="A canvas needs at least one draft."
+              >
+                <DropdownMenuItem
+                  variant="destructive"
+                  disabled={!hasSiblingDrafts}
+                  onClick={() => {
+                    // Defer past the menu's close/focus-return, same as rename.
+                    setTimeout(() => setIsDeleteDialogOpen(true), 0);
+                  }}
+                  data-testid="draft-menu-delete"
+                >
+                  <Trash2Icon /> Delete draft
+                </DropdownMenuItem>
+              </MaybeDisabledTooltip>
+            </TooltipProvider>
             <DropdownMenuSeparator />
             <DropdownMenuItem disabled={isCreatePending} onClick={createDraft}>
               <PlusIcon /> New draft
@@ -235,7 +384,56 @@ export function DraftSelector({
       >
         <ChevronRightIcon />
       </Button>
+
+      <Dialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
+        <DialogContent className="max-w-sm" data-testid="draft-delete-dialog">
+          <DialogHeader>
+            <DialogTitle>Delete this draft?</DialogTitle>
+            <DialogDescription>
+              “{activeDraft?.name ?? "This draft"}” and its entire edit history will be
+              permanently deleted. This can’t be undone.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <DialogClose render={<Button variant="outline" size="sm" />}>Cancel</DialogClose>
+            <Button
+              variant="destructive"
+              size="sm"
+              disabled={isDeletePending}
+              onClick={confirmDeleteActiveDraft}
+              data-testid="draft-delete-confirm"
+            >
+              Delete draft
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
+  );
+}
+
+/**
+ * Wraps a disabled menu item in a tooltip explaining WHY it is disabled
+ * (disabled items are pointer-events-none, so the wrapping span catches the
+ * hover). Enabled items render bare — no tooltip noise on the happy path.
+ */
+function MaybeDisabledTooltip({
+  isDisabled,
+  message,
+  children,
+}: {
+  isDisabled: boolean;
+  message: string;
+  children: React.ReactNode;
+}) {
+  if (!isDisabled) {
+    return children;
+  }
+  return (
+    <Tooltip>
+      <TooltipTrigger render={<span className="block" />}>{children}</TooltipTrigger>
+      <TooltipContent side="right">{message}</TooltipContent>
+    </Tooltip>
   );
 }
 
