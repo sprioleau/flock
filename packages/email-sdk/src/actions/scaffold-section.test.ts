@@ -46,6 +46,27 @@ describe("scaffoldSectionInputSchema", () => {
     }
   });
 
+  it("accepts saved-section templateIds (host-resolved) with an optional position", () => {
+    expect(
+      scaffoldSectionInputSchema.safeParse({
+        name: "scaffoldSection",
+        templateId: "saved:kd70yrb5kq2r62zwn5x6q5aptd8bkzwc",
+      }).success,
+    ).toBe(true);
+    expect(
+      scaffoldSectionInputSchema.safeParse({
+        name: "scaffoldSection",
+        templateId: "saved:abc123",
+        position: "top",
+      }).success,
+    ).toBe(true);
+    // The bare prefix is not a valid saved id.
+    expect(
+      scaffoldSectionInputSchema.safeParse({ name: "scaffoldSection", templateId: "saved:" })
+        .success,
+    ).toBe(false);
+  });
+
   it("rejects unknown template ids and unknown param fields at the schema gate", () => {
     expect(
       scaffoldSectionInputSchema.safeParse({ name: "scaffoldSection", templateId: "promo-code" })
@@ -133,6 +154,21 @@ describe("resolveScaffoldSectionOperation", () => {
     for (const templateId of SECTION_TEMPLATE_IDS) {
       expect(result.errors[0]!.message).toContain(templateId);
     }
+  });
+
+  it("returns a saved-section repair hint when a saved id reaches the catalog resolver", () => {
+    // Saved ids resolve in the HOST app (which owns the subtrees); reaching
+    // this resolver means the row is gone or the host intercept was skipped.
+    const result = resolveScaffoldSectionOperation({
+      doc,
+      input: { name: "scaffoldSection", templateId: "saved:gone123" } as ScaffoldSectionInput,
+      random: createSeededRandom(),
+    });
+    expect(result.isOk).toBe(false);
+    if (result.isOk) return;
+    expect(result.errors[0]!.code).toBe("unknown_section_template");
+    expect(result.errors[0]!.message).toContain("saved:gone123");
+    expect(result.errors[0]!.message).toContain("deleted");
   });
 
   it("returns target_not_found for a bad anchor, quoting the ACTUAL section ids", () => {

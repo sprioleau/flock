@@ -36,6 +36,27 @@ export function seedSavedSectionName(name: string | undefined): string {
   return (lastSpaceIndex > 0 ? slice.slice(0, lastSpaceIndex) : slice.slice(0, MAX_NAME_LENGTH)).trimEnd();
 }
 
+/**
+ * Generous caps on the LLM-authored enrichment prose (the personas
+ * finding-schema truncation pattern: length guidance lives in the prompt,
+ * storage truncates on receipt — one wordy generation never fails the patch).
+ */
+export const ENRICHMENT_TEXT_CAPS = {
+  useWhen: 240,
+  description: 320,
+} as const;
+
+/** Truncate at a word boundary with an ellipsis (no-op under the cap). */
+export function truncateEnrichmentText({ text, cap }: { text: string; cap: number }): string {
+  const collapsed = text.replace(/\s+/g, " ").trim();
+  if (collapsed.length <= cap) {
+    return collapsed;
+  }
+  const slice = collapsed.slice(0, cap);
+  const lastSpaceIndex = slice.lastIndexOf(" ");
+  return `${(lastSpaceIndex > cap * 0.6 ? slice.slice(0, lastSpaceIndex) : slice).trimEnd()}…`;
+}
+
 export type SubtreeValidationResult = { isValid: true } | { isValid: false; message: string };
 
 /**

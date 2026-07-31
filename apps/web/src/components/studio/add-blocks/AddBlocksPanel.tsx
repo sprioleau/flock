@@ -12,6 +12,7 @@ import {
   type PaletteItem,
 } from "./palette-items";
 import { PaletteTile } from "./PaletteTile";
+import { SavedSectionsGroup } from "./SavedSectionsGroup";
 import { SectionTemplatePreview } from "./SectionTemplatePreview";
 import { useClickToAdd } from "./use-click-to-add";
 
@@ -93,6 +94,9 @@ export function AddBlocksPanel() {
             />
           </button>
         </div>
+        {/* The session's saved reusable sections (hidden until one exists);
+            "Manage…" opens the saved-sections manager modal. */}
+        <SavedSectionsGroup />
       </section>
     </div>
   );

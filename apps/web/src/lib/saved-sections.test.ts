@@ -9,6 +9,7 @@ import {
 import { describe, expect, it } from "vitest";
 import {
   buildInsertSavedSectionPlan,
+  buildStandaloneSectionDoc,
   collectSectionSubtree,
   seedNameFromSectionSubtree,
 } from "./saved-sections";
@@ -156,5 +157,59 @@ describe("buildInsertSavedSectionPlan (one op, fresh ids)", () => {
       selectedBlockId: null,
     });
     expect(plan).toBeNull();
+  });
+
+  it("honors explicit scaffold positions (the agent path)", () => {
+    const savedBlocks = getSavedFooterSubtree();
+    const topPlan = buildInsertSavedSectionPlan({
+      doc: sampleDoc,
+      savedBlocks,
+      selectedBlockId: null,
+      position: "top",
+    });
+    expect(topPlan!.op.index).toBe(0);
+
+    const anchoredPlan = buildInsertSavedSectionPlan({
+      doc: sampleDoc,
+      savedBlocks,
+      selectedBlockId: null,
+      position: { afterSectionId: firstSectionId as never },
+    });
+    expect(anchoredPlan!.op.index).toBe(root.childrenIds.indexOf(firstSectionId as never) + 1);
+
+    // A bad anchor returns null (the agent path reports a retryable error).
+    const badAnchorPlan = buildInsertSavedSectionPlan({
+      doc: sampleDoc,
+      savedBlocks,
+      selectedBlockId: null,
+      position: { afterSectionId: "sec_none" as never },
+    });
+    expect(badAnchorPlan).toBeNull();
+  });
+});
+
+describe("buildStandaloneSectionDoc (previews + enrichment outline)", () => {
+  it("wraps a saved subtree as a one-section document carrying the given globals", () => {
+    const savedBlocks = getSavedFooterSubtree();
+    const doc = buildStandaloneSectionDoc({
+      blocks: savedBlocks,
+      globals: { backgroundColor: "#112233" } as never,
+    });
+    expect(doc).not.toBeNull();
+    const docRoot = doc![ROOT_BLOCK_ID]!;
+    expect(docRoot.childrenIds).toEqual([savedBlocks[0]!.id]);
+    expect((docRoot.properties as { globals: { backgroundColor: string } }).globals.backgroundColor).toBe(
+      "#112233",
+    );
+    // Every saved block is present; the section root is re-parented to root.
+    for (const block of savedBlocks) {
+      expect(doc![block.id]).toBeDefined();
+    }
+    expect(doc![savedBlocks[0]!.id]!.parentId).toBe(ROOT_BLOCK_ID);
+  });
+
+  it("refuses a payload whose root is not a section", () => {
+    const savedBlocks = getSavedFooterSubtree();
+    expect(buildStandaloneSectionDoc({ blocks: savedBlocks.slice(1) })).toBeNull();
   });
 });

@@ -376,7 +376,10 @@ export {
   scaffoldSectionInputSchema,
   scaffoldSectionPositionSchema,
   resolveScaffoldSectionOperation,
+  resolveScaffoldSectionIndex,
   scaffoldSectionAction,
+  SAVED_SECTION_TEMPLATE_ID_PREFIX,
+  isSavedSectionTemplateId,
 } from "./actions/scaffold-section";
 export type {
   ScaffoldSectionInput,

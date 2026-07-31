@@ -18,6 +18,7 @@ import { Button } from "@/components/ui/button";
 import { buildDuplicateBlockOperation } from "@/lib/duplicate-block";
 import { useEditorStore } from "@/lib/editor-store";
 import { collectSectionSubtree, seedNameFromSectionSubtree } from "@/lib/saved-sections";
+import { SavedSectionsManagerDialog } from "./add-blocks/SavedSectionsManagerDialog";
 
 export interface BlockActionRowProps {
   blockId: BlockId;
@@ -60,8 +61,10 @@ export function BlockActionRow({
   const dispatch = useEditorStore((state) => state.dispatch);
   const sessionId = useEditorStore((state) => state.authorId);
   const saveSavedSection = useMutation(api.savedSections.save);
-  // Inline save confirmation: the bookmark flips to a check briefly.
+  // Inline save confirmation: the bookmark flips to a check briefly; clicking
+  // the check answers "where did it go?" by opening the manager modal.
   const [isJustSaved, setIsJustSaved] = useState(false);
+  const [isManagerOpen, setIsManagerOpen] = useState(false);
 
   const block = doc[blockId];
   const parent = block?.parentId != null ? doc[block.parentId] : undefined;
@@ -99,7 +102,12 @@ export function BlockActionRow({
   const isSaveableSection = block.type === "section";
 
   const saveSection = (): void => {
-    if (sessionId === null || isJustSaved) {
+    if (sessionId === null) {
+      return;
+    }
+    if (isJustSaved) {
+      // Second click while the check shows = "take me to my saved sections".
+      setIsManagerOpen(true);
       return;
     }
     const subtreeBlocks = collectSectionSubtree({ doc, sectionId: blockId });
@@ -111,9 +119,18 @@ export function BlockActionRow({
       sessionId,
       ...(seededName.length === 0 ? {} : { name: seededName }),
       blocks: subtreeBlocks,
-    }).then(() => {
+    }).then(({ savedSectionId }) => {
       setIsJustSaved(true);
       window.setTimeout(() => setIsJustSaved(false), 2000);
+      // ASYNC enrichment (fails-soft): a small LLM call authors the row's
+      // useWhen/description for the compose agent. Fire-and-forget — the
+      // save UX never waits, and any failure just leaves the row unenriched.
+      void fetch("/api/saved-sections/enrich", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ savedSectionId }),
+        keepalive: true,
+      }).catch(() => {});
     });
   };
 
@@ -166,15 +183,20 @@ export function BlockActionRow({
         <CopyIcon />
       </Button>
       {isSaveableSection && (
-        <Button
-          variant="ghost"
-          size="icon-sm"
-          aria-label={isJustSaved ? "Section saved" : "Save section for reuse"}
-          data-testid={`save-section-${blockId}`}
-          onClick={stopThen(saveSection)}
-        >
-          {isJustSaved ? <BookmarkCheckIcon className="text-primary" /> : <BookmarkIcon />}
-        </Button>
+        <>
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            aria-label={
+              isJustSaved ? "Section saved — open saved sections" : "Save section for reuse"
+            }
+            data-testid={`save-section-${blockId}`}
+            onClick={stopThen(saveSection)}
+          >
+            {isJustSaved ? <BookmarkCheckIcon className="text-primary" /> : <BookmarkIcon />}
+          </Button>
+          <SavedSectionsManagerDialog isOpen={isManagerOpen} onOpenChange={setIsManagerOpen} />
+        </>
       )}
       <Button
         variant="ghost"

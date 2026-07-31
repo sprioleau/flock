@@ -449,6 +449,19 @@ export default defineSchema({
     blocks: v.array(v.any()),
     /** Denormalized blocks.length for list cards (avoids shipping counts client-side). */
     blockCount: v.number(),
+    /**
+     * LLM-authored selection guidance (the catalog templates' useWhen
+     * analogue): when to reach for this section while composing. Written
+     * ASYNCHRONOUSLY after save by the fails-soft enrichment call
+     * (/api/saved-sections/enrich) — absent until it lands (or forever, if
+     * enrichment failed; the row works fine without it).
+     */
+    useWhen: v.optional(v.string()),
+    /** LLM-authored structural summary (layout + content inventory), same lifecycle. */
+    description: v.optional(v.string()),
+    /** Inserts to date (palette, manager modal, agent) — a prompt TIEBREAKER, never a ranker. */
+    useCount: v.optional(v.number()),
+    lastUsedAtMs: v.optional(v.number()),
     createdAtMs: v.number(),
     updatedAtMs: v.number(),
   }).index("by_sessionId", ["sessionId"]),

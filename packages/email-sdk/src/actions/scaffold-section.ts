@@ -88,21 +88,55 @@ const scaffoldSectionBranches = SECTION_TEMPLATES.map((template) =>
 );
 
 /**
- * Full input schema: a discriminated union on templateId, so each template's
- * content params are typed and documented for the model. Cast to the erased
- * {@link ScaffoldSectionInput} — the per-branch param types only exist to
- * teach the model; dispatch re-validates and the resolver re-parses params.
+ * Saved-section templateIds: `saved:<rowId>` — the ids the host app's saved
+ * sections library advertises in the FRESH per-request context (they are
+ * user data, so they can never be part of this static schema). The catalog
+ * resolver below cannot resolve them (the subtree lives in the host's
+ * storage); the HOST intercepts scaffoldSection calls whose templateId
+ * carries this prefix and performs its own one-op insert.
+ */
+export const SAVED_SECTION_TEMPLATE_ID_PREFIX = "saved:";
+
+export function isSavedSectionTemplateId(templateId: string): boolean {
+  return templateId.startsWith(SAVED_SECTION_TEMPLATE_ID_PREFIX);
+}
+
+const savedSectionBranch = z.strictObject({
+  name: z.literal("scaffoldSection").describe("Action discriminator."),
+  templateId: z
+    .string()
+    .regex(/^saved:.+$/)
+    .describe(
+      'One of the user\'s own SAVED sections, exactly as listed in the document context (format "saved:<id>"). Inserts that saved section as-is.',
+    ),
+  position: scaffoldSectionPositionSchema.optional(),
+  params: z
+    .looseObject({})
+    .optional()
+    .describe("Saved sections carry their own content — omit params entirely."),
+});
+
+/**
+ * Full input schema: a discriminated union on templateId (so each catalog
+ * template's content params are typed and documented for the model), plus
+ * the saved-section branch (`saved:<id>` string ids from the fresh context).
+ * Cast to the erased {@link ScaffoldSectionInput} — the per-branch param
+ * types only exist to teach the model; dispatch re-validates and the
+ * resolver re-parses params.
  */
 export const scaffoldSectionInputSchema = z
-  .discriminatedUnion(
-    "templateId",
-    scaffoldSectionBranches as [
-      (typeof scaffoldSectionBranches)[number],
-      ...(typeof scaffoldSectionBranches)[number][],
-    ],
-  )
+  .union([
+    z.discriminatedUnion(
+      "templateId",
+      scaffoldSectionBranches as [
+        (typeof scaffoldSectionBranches)[number],
+        ...(typeof scaffoldSectionBranches)[number][],
+      ],
+    ),
+    savedSectionBranch,
+  ])
   .describe(
-    "Adds one complete, professionally structured section from the section catalog in a single step: pick a templateId, give only the content the user specified, and say where it goes.",
+    "Adds one complete, professionally structured section in a single step: pick a templateId (a catalog template, or one of the user's saved sections when listed in the document context), give only the content the user specified, and say where it goes.",
   ) as unknown as z.ZodType<ScaffoldSectionInput>;
 
 // ---------------------------------------------------------------------------
@@ -141,6 +175,63 @@ const MAX_BUILD_ATTEMPTS = 5;
  * position anchor quotes the document's ACTUAL top-level section ids, and bad
  * params carry the exact validation issues.
  */
+/**
+ * Resolve a scaffold position ("top" / "bottom" / before/after anchor) into
+ * an insertion index among the root's sections. Shared by the catalog
+ * resolver below and host-app saved-section inserts (which resolve the SAME
+ * position vocabulary against their own subtree source).
+ */
+export function resolveScaffoldSectionIndex({
+  doc,
+  position,
+}: {
+  doc: EmailDocument;
+  position?: ScaffoldSectionPosition;
+}): { isOk: true; index: number } | { isOk: false; errors: ResolvedOperationError[] } {
+  const root = doc[ROOT_BLOCK_ID];
+  if (root === undefined || root.type !== "root") {
+    return {
+      isOk: false,
+      errors: [
+        {
+          code: "target_not_found",
+          message:
+            "The document has no root block — sections can only be scaffolded into a well-formed document.",
+        },
+      ],
+    };
+  }
+  const sectionIds = root.childrenIds;
+
+  const resolvedPosition = position ?? "bottom";
+  if (resolvedPosition === "top") {
+    return { isOk: true, index: 0 };
+  }
+  if (resolvedPosition === "bottom") {
+    return { isOk: true, index: sectionIds.length };
+  }
+  const isBeforeAnchor = "beforeSectionId" in resolvedPosition;
+  const anchorId = isBeforeAnchor
+    ? resolvedPosition.beforeSectionId
+    : resolvedPosition.afterSectionId;
+  const anchorIndex = sectionIds.indexOf(anchorId);
+  if (anchorIndex === -1) {
+    const currentSections =
+      sectionIds.length > 0 ? sectionIds.join(", ") : "(the document has no sections yet)";
+    return {
+      isOk: false,
+      errors: [
+        {
+          code: "target_not_found",
+          message: `No top-level section "${anchorId}" exists to anchor the insert. Current sections, top to bottom: ${currentSections}. Anchor to one of these ids, or use "top"/"bottom".`,
+          blockId: anchorId,
+        },
+      ],
+    };
+  }
+  return { isOk: true, index: isBeforeAnchor ? anchorIndex : anchorIndex + 1 };
+}
+
 export function resolveScaffoldSectionOperation({
   doc,
   input,
@@ -148,6 +239,20 @@ export function resolveScaffoldSectionOperation({
 }: ResolveScaffoldSectionOperationInput): ResolveScaffoldSectionResult {
   const template = getSectionTemplate(input.templateId);
   if (template === undefined) {
+    // Saved-section ids validate (see savedSectionBranch) but resolve in the
+    // HOST app, which owns the saved subtrees and intercepts these calls
+    // before dispatch. Reaching this resolver with one is a wiring gap.
+    if (isSavedSectionTemplateId(input.templateId)) {
+      return {
+        isOk: false,
+        errors: [
+          {
+            code: "unknown_section_template",
+            message: `Saved section "${input.templateId}" could not be inserted here — it may have been deleted. Use a saved id from the current document context, or a catalog templateId.`,
+          },
+        ],
+      };
+    }
     return {
       isOk: false,
       errors: [
@@ -159,46 +264,11 @@ export function resolveScaffoldSectionOperation({
     };
   }
 
-  const root = doc[ROOT_BLOCK_ID];
-  if (root === undefined || root.type !== "root") {
-    return {
-      isOk: false,
-      errors: [
-        {
-          code: "target_not_found",
-          message: 'The document has no root block — sections can only be scaffolded into a well-formed document.',
-        },
-      ],
-    };
+  const resolvedIndex = resolveScaffoldSectionIndex({ doc, position: input.position });
+  if (!resolvedIndex.isOk) {
+    return resolvedIndex;
   }
-  const sectionIds = root.childrenIds;
-
-  const position = input.position ?? "bottom";
-  let index: number;
-  if (position === "top") {
-    index = 0;
-  } else if (position === "bottom") {
-    index = sectionIds.length;
-  } else {
-    const isBeforeAnchor = "beforeSectionId" in position;
-    const anchorId = isBeforeAnchor ? position.beforeSectionId : position.afterSectionId;
-    const anchorIndex = sectionIds.indexOf(anchorId);
-    if (anchorIndex === -1) {
-      const currentSections =
-        sectionIds.length > 0 ? sectionIds.join(", ") : "(the document has no sections yet)";
-      return {
-        isOk: false,
-        errors: [
-          {
-            code: "target_not_found",
-            message: `No top-level section "${anchorId}" exists to anchor the insert. Current sections, top to bottom: ${currentSections}. Anchor to one of these ids, or use "top"/"bottom".`,
-            blockId: anchorId,
-          },
-        ],
-      };
-    }
-    index = isBeforeAnchor ? anchorIndex : anchorIndex + 1;
-  }
+  const index = resolvedIndex.index;
 
   const parsedParams = template.paramsSchema.safeParse(input.params ?? {});
   if (!parsedParams.success) {
@@ -253,7 +323,7 @@ export function resolveScaffoldSectionOperation({
 export const scaffoldSectionAction = defineEmailAction({
   name: "scaffoldSection",
   description:
-    "Add a complete, professionally structured section from the section catalog in ONE step — headers, heroes, feature layouts, article, image gallery, call-to-action, product card, pricing, code sample, testimonials, stats, and footers (the catalog listing below the tools has every templateId). Give the templateId, the content the user specified (all params have sensible defaults), and where to insert it. Prefer this over hand-assembling addSection/addBlock whenever a catalog template fits; the scaffolded section inherits the document's theme automatically.",
+    "Add a complete, professionally structured section from the section catalog in ONE step — headers, heroes, feature layouts, article, image gallery, call-to-action, product card, pricing, code sample, testimonials, stats, and footers (the catalog listing below the tools has every templateId). Give the templateId, the content the user specified (all params have sensible defaults), and where to insert it. When the document context lists the user's SAVED sections, their ids (format \"saved:<id>\") are also valid templateIds and insert that saved section as-is (omit params). Prefer this over hand-assembling addSection/addBlock whenever a catalog template or saved section fits; the scaffolded section inherits the document's theme automatically.",
   kind: "content",
   schema: scaffoldSectionInputSchema,
   readOnly: false,

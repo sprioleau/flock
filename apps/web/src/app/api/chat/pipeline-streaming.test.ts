@@ -23,10 +23,11 @@ import { runChatPipeline } from "./pipeline";
 interface RecordedChunk {
   type: string;
   toolCallId: string | undefined;
+  input?: unknown;
   atMs: number;
 }
 
-async function runComposeProbe(): Promise<RecordedChunk[]> {
+async function runPipelineProbe(lastUserText: string): Promise<RecordedChunk[]> {
   const recordedChunks: RecordedChunk[] = [];
   let mergedStream: ReadableStream<unknown> | null = null;
 
@@ -38,7 +39,6 @@ async function runComposeProbe(): Promise<RecordedChunk[]> {
     onError: undefined,
   } as unknown as UIMessageStreamWriter<TandemChatMessage>;
 
-  const lastUserText = "Compose a full email announcing our spring launch.";
   const messages: TandemChatMessage[] = [
     { id: "msg-1", role: "user", parts: [{ type: "text", text: lastUserText }] },
   ];
@@ -60,10 +60,11 @@ async function runComposeProbe(): Promise<RecordedChunk[]> {
     if (done) {
       break;
     }
-    const chunk = value as { type: string; toolCallId?: string };
+    const chunk = value as { type: string; toolCallId?: string; input?: unknown };
     recordedChunks.push({
       type: chunk.type,
       toolCallId: chunk.toolCallId,
+      input: chunk.input,
       atMs: performance.now(),
     });
   }
@@ -72,7 +73,9 @@ async function runComposeProbe(): Promise<RecordedChunk[]> {
 
 describe("per-section streaming through the chat pipeline", () => {
   it("delivers each validated section call before the next section starts generating", async () => {
-    const recordedChunks = await runComposeProbe();
+    const recordedChunks = await runPipelineProbe(
+      "Compose a full email announcing our spring launch.",
+    );
 
     const inputStarts = recordedChunks.filter((chunk) => chunk.type === "tool-input-start");
     const inputAvailables = recordedChunks.filter(
@@ -104,5 +107,24 @@ describe("per-section streaming through the chat pipeline", () => {
         gapsMs: gapsMs.map((gapMs) => Math.round(gapMs)),
       }),
     );
+  });
+
+  it("passes a saved-section scaffold call through the server validation gate", async () => {
+    // Owner V2 item 3: templateId "saved:<rowId>" must clear streamText's
+    // inputSchema validation (the widened SDK schema through the Gemini
+    // model-schema conversion) and stream as a VALIDATED tool call — the
+    // client's saved-scaffold intercept receives it at input-available.
+    const recordedChunks = await runPipelineProbe(
+      "Add my saved:kd70yrb5kq2r62zwn5x6q5aptd8bkzwc section at the bottom.",
+    );
+    const availableChunk = recordedChunks.find((chunk) => chunk.type === "tool-input-available");
+    expect(availableChunk).toBeDefined();
+    expect(availableChunk!.input).toMatchObject({
+      name: "scaffoldSection",
+      templateId: "saved:kd70yrb5kq2r62zwn5x6q5aptd8bkzwc",
+      position: "bottom",
+    });
+    // No invalid-call degradation anywhere in the stream.
+    expect(recordedChunks.some((chunk) => chunk.type.includes("error"))).toBe(false);
   });
 });

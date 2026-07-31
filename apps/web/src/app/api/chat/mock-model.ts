@@ -32,6 +32,8 @@ import { MockLanguageModelV4 } from "ai/test";
  * - mentions "test email"           → sendTestEmail (exercises approval flow)
  * - contains a URL                  → fetchWebContent with that URL (the
  *   server then performs the REAL fetch + extraction — Phase 7.4a seam)
+ * - contains a saved-section id ("saved:<rowId>") → scaffoldSection with
+ *   that saved templateId (the owner-V2 saved-sections compose seam)
  * - asks for a "full email" (or whole/entire/complete email) → the
  *   per-section streaming script: FOUR sequential scaffoldSection calls
  *   (header, hero, feature-columns, footer), each streamed as its own
@@ -118,6 +120,22 @@ function planMockToolCall({
       toolName: "fetchWebContent",
       input: { url: urlMatch[0] },
       acknowledgementText: "Reading that page now.",
+    };
+  }
+  // A saved-section id in the message → scaffoldSection with the saved
+  // templateId (owner V2 item 3): exercises the widened schema through the
+  // server validation gate and the client's saved-scaffold intercept.
+  const savedSectionIdMatch = lastUserText.match(/\bsaved:[a-z0-9]+\b/i);
+  if (savedSectionIdMatch !== null) {
+    return {
+      toolName: "scaffoldSection",
+      input: {
+        name: "scaffoldSection",
+        templateId: savedSectionIdMatch[0],
+        position: "bottom",
+        params: {},
+      },
+      acknowledgementText: "Adding your saved section.",
     };
   }
   const hasScaffoldIntent = /\b(add|insert|scaffold)\b[\s\S]*\bsection\b/i.test(lastUserText);

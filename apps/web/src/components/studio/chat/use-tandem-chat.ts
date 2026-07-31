@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Chat, useChat } from "@ai-sdk/react";
 import {
   DefaultChatTransport,
@@ -8,14 +8,21 @@ import {
   lastAssistantMessageIsCompleteWithApprovalResponses,
   lastAssistantMessageIsCompleteWithToolCalls,
 } from "ai";
+import { useMutation, useQuery } from "convex/react";
 import {
   emailActionRegistry,
+  isSavedSectionTemplateId,
+  SAVED_SECTION_TEMPLATE_ID_PREFIX,
   type ActionContext,
   type ActionDispatchError,
   type ActionFailureKind,
+  type Block,
   type GenerateImageCommand,
+  type ScaffoldSectionPosition,
 } from "@tandem/email-sdk";
-import type { Id } from "@convex/_generated/dataModel";
+import { api } from "@convex/_generated/api";
+import type { Doc, Id } from "@convex/_generated/dataModel";
+import { buildInsertSavedSectionPlan } from "@/lib/saved-sections";
 import {
   CHAT_API_PATH,
   editorCommandDataPartSchema,
@@ -87,6 +94,19 @@ interface TandemChatController {
   beginUserTurn: () => void;
   /** Dev-only x-tandem-mock switch, read by the transport at request time. */
   setIsMockEnabled: (isMockEnabled: boolean) => void;
+  /**
+   * Keep the controller's saved-sections runtime current (reactive rows +
+   * the usage-stat recorder) — the agent path resolves scaffoldSection
+   * `saved:<id>` calls against this cache synchronously, preserving the
+   * per-section streaming order.
+   */
+  setSavedSectionsRuntime: (runtime: SavedSectionsRuntime) => void;
+}
+
+interface SavedSectionsRuntime {
+  rows: Doc<"savedSections">[];
+  /** Fails-soft useCount/lastUsedAtMs bump (owner V2 item 4). */
+  recordUse: (savedSectionId: Id<"savedSections">) => void;
 }
 
 function createTandemChatController(): TandemChatController {
@@ -117,6 +137,11 @@ function createTandemChatController(): TandemChatController {
   };
 
   let heldTurnDocumentId: Id<"documents"> | null = null;
+
+  // Reactive saved-sections cache (kept current by setSavedSectionsRuntime):
+  // saved scaffold calls resolve against it synchronously — never an async
+  // fetch that could reorder a per-section streaming turn's inserts.
+  let savedSectionsRuntime: SavedSectionsRuntime = { rows: [], recordUse: () => {} };
 
   /** Swap the chat's registry hold from the previous turn's doc to `documentId`. */
   const holdTurnDocument = (documentId: Id<"documents"> | null): void => {
@@ -190,6 +215,19 @@ function createTandemChatController(): TandemChatController {
         return;
       }
       appliedToolCallIds.add(toolCallId);
+
+      // Saved-section scaffolds (templateId "saved:<rowId>") resolve HERE,
+      // against the session's saved subtrees — the catalog resolver can't
+      // (owner V2 item 3). Checked before the registry gate on purpose: the
+      // registry resolves catalog ids only.
+      const scaffoldTemplateId =
+        toolName === "scaffoldSection" && typeof input === "object" && input !== null
+          ? (input as { templateId?: unknown }).templateId
+          : undefined;
+      if (typeof scaffoldTemplateId === "string" && isSavedSectionTemplateId(scaffoldTemplateId)) {
+        applySavedSectionScaffold({ toolName, toolCallId, input });
+        return;
+      }
 
       const validation = validateAndClassifyOp(input);
       if (!validation.isValid) {
@@ -346,6 +384,100 @@ function createTandemChatController(): TandemChatController {
   }
 
   /**
+   * Resolve and apply one saved-section scaffold call (owner V2 item 3):
+   * find the row in the reactive cache, plan the ONE restoreBlocks op with
+   * fresh ids honoring the call's scaffold position (SDK-shared resolution),
+   * and dispatch with this turn's agent provenance — the same store-routing
+   * rules as every other content op (active document, else the turn's
+   * retained instance). Missing rows report a retryable tool error so the
+   * model can fall back to the catalog. Every successful insert bumps the
+   * row's usage stats (fails soft).
+   */
+  function applySavedSectionScaffold({
+    toolName,
+    toolCallId,
+    input,
+  }: {
+    toolName: keyof TandemChatTools;
+    toolCallId: string;
+    input: unknown;
+  }): void {
+    const { templateId, position } = input as {
+      templateId: string;
+      position?: ScaffoldSectionPosition;
+    };
+    const rowId = templateId.slice(SAVED_SECTION_TEMPLATE_ID_PREFIX.length);
+    const row = savedSectionsRuntime.rows.find((candidate) => candidate._id === rowId);
+
+    const reportFailure = (message: string): void => {
+      void chat.addToolOutput({
+        state: "output-error",
+        tool: toolName,
+        toolCallId,
+        errorText: serializeApplyFailure({
+          failureKind: "retryable",
+          errors: [{ code: "target_not_found", message }],
+        }),
+      });
+    };
+
+    if (row === undefined) {
+      reportFailure(
+        `No saved section "${templateId}" exists in this session's saved list — use an id exactly as listed under "Saved sections" in the document context, or a catalog templateId.`,
+      );
+      return;
+    }
+
+    const isTurnDocumentActive = getIsTurnDocumentActive();
+    const store = isTurnDocumentActive
+      ? useEditorStore.getState()
+      : getTurnDocumentStore()?.getState();
+    if (store === undefined) {
+      reportFailure("The document this turn was editing is no longer available.");
+      return;
+    }
+
+    const plan = buildInsertSavedSectionPlan({
+      doc: store.doc,
+      savedBlocks: row.blocks as Block[],
+      selectedBlockId: null,
+      position: position ?? "bottom",
+    });
+    if (plan === null) {
+      reportFailure(
+        "The saved section could not be inserted at that position — anchor to an existing top-level section id, or use \"top\"/\"bottom\".",
+      );
+      return;
+    }
+
+    const result = store.dispatch(plan.op, {
+      caller: "tool",
+      author: "agent",
+      authorId: chat.id,
+      batchId: turnState.batchId,
+      threadId: chat.id,
+    });
+    if (!result.isOk) {
+      void chat.addToolOutput({
+        state: "output-error",
+        tool: toolName,
+        toolCallId,
+        errorText: serializeApplyFailure(result),
+      });
+      return;
+    }
+    if (isTurnDocumentActive) {
+      scrollBlockIntoView(plan.sectionId);
+    }
+    savedSectionsRuntime.recordUse(row._id);
+    void chat.addToolOutput({
+      tool: toolName,
+      toolCallId,
+      output: { status: "applied", batchId: turnState.batchId } as never,
+    });
+  }
+
+  /**
    * Apply one content op to the turn's document AFTER a mid-turn draft
    * switch: dispatch into the turn document's RETAINED store instance (the
    * chat's registry hold keeps it alive) — the exact same validated dispatch
@@ -425,6 +557,9 @@ function createTandemChatController(): TandemChatController {
     setIsMockEnabled: (isMockEnabled) => {
       turnState.isMockEnabled = isMockEnabled;
     },
+    setSavedSectionsRuntime: (runtime) => {
+      savedSectionsRuntime = runtime;
+    },
   };
 }
 
@@ -481,6 +616,26 @@ export function useTandemChat(): TandemChat {
   const [isMockEnabled, setIsMockEnabledState] = useState(false);
 
   const chat = useChat<TandemChatMessage>({ chat: controller.chat });
+
+  // Saved-sections runtime for the agent's `saved:<id>` scaffold calls:
+  // reactive rows (a delete/save reflects immediately) + the fails-soft
+  // usage recorder, pushed into the controller's closure on every change.
+  const sessionId = useEditorStore((state) => state.authorId);
+  const savedSections = useQuery(
+    api.savedSections.listForSession,
+    sessionId === null ? "skip" : { sessionId },
+  );
+  const recordSavedSectionUse = useMutation(api.savedSections.recordUse);
+  useEffect(() => {
+    controller.setSavedSectionsRuntime({
+      rows: savedSections ?? [],
+      recordUse: (savedSectionId) => {
+        if (sessionId !== null) {
+          void recordSavedSectionUse({ sessionId, savedSectionId }).catch(() => {});
+        }
+      },
+    });
+  }, [controller, savedSections, recordSavedSectionUse, sessionId]);
 
   const sendUserMessage = (text: string): void => {
     const trimmedText = text.trim();

@@ -1,6 +1,6 @@
 "use client";
 
-import type { MouseEvent } from "react";
+import { useState, type MouseEvent } from "react";
 import { useMutation, useQuery } from "convex/react";
 import { BookmarkIcon, XIcon } from "lucide-react";
 import type { Block } from "@tandem/email-sdk";
@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/button";
 import { useEditorStore } from "@/lib/editor-store";
 import { buildInsertSavedSectionPlan } from "@/lib/saved-sections";
 import { formatRelativeTime } from "../history/history-grouping";
+import { SavedSectionsManagerDialog } from "./SavedSectionsManagerDialog";
 import { scrollBlockIntoView } from "./scroll-block-into-view";
 
 /**
@@ -35,6 +36,8 @@ export function SavedSectionsGroup() {
     sessionId === null ? "skip" : { sessionId },
   );
   const removeSavedSection = useMutation(api.savedSections.remove);
+  const recordUse = useMutation(api.savedSections.recordUse);
+  const [isManagerOpen, setIsManagerOpen] = useState(false);
 
   if (sessionId === null || savedSections === undefined || savedSections.length === 0) {
     return null;
@@ -58,6 +61,9 @@ export function SavedSectionsGroup() {
     }
     editorStore.selectBlock(plan.sectionId);
     scrollBlockIntoView(plan.sectionId);
+    // Usage stat (owner V2 item 4): a tiebreaker signal for the compose
+    // agent, bumped on EVERY insert path. Fails soft.
+    void recordUse({ sessionId, savedSectionId: row._id }).catch(() => {});
   };
 
   const deleteSavedSection = (event: MouseEvent, row: Doc<"savedSections">): void => {
@@ -68,7 +74,18 @@ export function SavedSectionsGroup() {
 
   return (
     <div className="flex flex-col gap-1.5" data-testid="saved-sections-group">
-      <h4 className="px-1 pt-1.5 text-[11px] font-medium text-muted-foreground/80">Saved</h4>
+      <div className="flex items-baseline justify-between">
+        <h4 className="px-1 pt-1.5 text-[11px] font-medium text-muted-foreground/80">Saved</h4>
+        <button
+          type="button"
+          onClick={() => setIsManagerOpen(true)}
+          className="cursor-pointer px-1 text-[11px] font-medium text-muted-foreground underline-offset-2 hover:text-foreground hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          data-testid="open-saved-sections-manager"
+        >
+          Manage…
+        </button>
+      </div>
+      <SavedSectionsManagerDialog isOpen={isManagerOpen} onOpenChange={setIsManagerOpen} />
       <div className="flex flex-col gap-1.5">
         {savedSections.map((row) => (
           <div

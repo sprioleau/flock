@@ -21,6 +21,7 @@ import {
   type PipelineVariant,
 } from "./constants";
 import { buildBrandSocialContextLine } from "./brand-context";
+import { buildSavedSectionsContext } from "./saved-sections-context";
 import { buildSystemContext } from "./system-context";
 import { buildChatTools } from "./tools";
 
@@ -252,12 +253,17 @@ async function runSinglePassPipeline(input: ChatPipelineInput): Promise<void> {
     doc,
     sessionId,
   });
-  // Brand social links ride the FRESH context layer only (fails soft to null).
-  const brandContextLine = await buildBrandSocialContextLine({ sessionId });
+  // Brand social links + saved sections ride the FRESH context layer only
+  // (both fail soft to null; fetched concurrently — same Convex deployment).
+  const [brandContextLine, savedSectionsContext] = await Promise.all([
+    buildBrandSocialContextLine({ sessionId }),
+    buildSavedSectionsContext({ sessionId }),
+  ]);
   const { staticInstructions, documentContext } = buildSystemContext({
     doc,
     selectedBlockId,
     brandContextLine,
+    savedSectionsContext,
   });
 
   // Message order for Gemini implicit context caching: static system text

@@ -25,6 +25,12 @@ export interface BuildSystemContextInput {
    * (brand-context.ts). Fresh data only — never part of the static prefix.
    */
   brandContextLine?: string | null;
+  /**
+   * Optional fresh-layer saved-sections block (saved-sections-context.ts):
+   * the user's own reusable sections, advertised as scaffoldSection
+   * `saved:<id>` templateIds. Fresh data only — never the static prefix.
+   */
+  savedSectionsContext?: string | null;
 }
 
 export interface SystemContext {
@@ -73,6 +79,7 @@ export function buildSystemContext({
   doc,
   selectedBlockId,
   brandContextLine,
+  savedSectionsContext,
 }: BuildSystemContextInput): SystemContext {
   const documentContext = [
     "[DOCUMENT CONTEXT — auto-attached, not written by the user]",
@@ -80,6 +87,10 @@ export function buildSystemContext({
     // Fresh-layer brand context (item 26): appended after the outline so the
     // cached static prefix stays byte-identical.
     ...(brandContextLine === undefined || brandContextLine === null ? [] : [brandContextLine]),
+    // Fresh-layer saved sections (owner V2): same byte-identity contract.
+    ...(savedSectionsContext === undefined || savedSectionsContext === null
+      ? []
+      : [savedSectionsContext]),
   ].join("\n");
 
   return { staticInstructions: STATIC_INSTRUCTIONS, documentContext };
