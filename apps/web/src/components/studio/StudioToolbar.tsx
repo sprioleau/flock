@@ -9,6 +9,7 @@ import { LibraryPanel } from "./library/LibraryPanel";
 import { AgentCollaboratorsButton } from "./personas/AgentCollaboratorsButton";
 import { PresenceFacepile } from "./presence/PresenceFacepile";
 import { ReplayPanel } from "./replay/ReplayPanel";
+import { SendTestEmailDialog } from "./SendTestEmailDialog";
 import { ThemeMenu } from "./theme/ThemeMenu";
 
 /**
@@ -88,6 +89,9 @@ export function StudioToolbar({
         </Button>
         <ReplayPanel />
         <OpInspector />
+        {/* Test-send stays in the header (not the per-frame toolbar): it acts
+            on the ACTIVE draft via the store, like History beside it. */}
+        <SendTestEmailDialog />
         {children}
       </div>
     </header>
