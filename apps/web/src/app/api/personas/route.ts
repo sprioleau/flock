@@ -15,6 +15,7 @@ import type { FunctionReturnType } from "convex/server";
 import { z } from "zod";
 import { api } from "@convex/_generated/api";
 import { stableStringify } from "@/lib/suggestions/serialize-block";
+import { proposedEditSchema, runnerOutputSchema, truncateFindingProse } from "./finding-schema";
 
 /**
  * POST /api/personas — the multi-agent canvas v0 ADVISORY RUNNER
@@ -81,57 +82,11 @@ const requestBodySchema = z.object({
 
 // ---------------------------------------------------------------------------
 // Model output schema — intent-level findings (deterministic translation to
-// ops happens below, never inside the model).
+// ops happens below, never inside the model). Lives in finding-schema.ts
+// (with the long-label truncation backstop) so the reliability contract is
+// unit-testable — see that module's header for why prose fields carry NO
+// hard length caps.
 // ---------------------------------------------------------------------------
-
-const proposedEditSchema = z.object({
-  blockId: z
-    .string()
-    .describe("The target block's id exactly as it appears in the document outline."),
-  property: z
-    .string()
-    .describe('The block property to change, e.g. "backgroundColor", "align", "label".'),
-  value: z
-    .string()
-    .describe(
-      'The new value as a string ("#0d9488", "center", "24"). Numbers and true/false are auto-converted.',
-    ),
-});
-
-const findingSchema = z.object({
-  personaSlug: z.string().describe("The slug of the persona this finding belongs to."),
-  title: z.string().max(90).describe("Short card headline. Never mention block ids."),
-  description: z
-    .string()
-    .max(320)
-    .describe(
-      "1-3 sentences: what clashes and the concrete fix (include the suggested rewrite for copy findings). Refer to content by its visible text, never by block ids.",
-    ),
-  targetBlockNames: z
-    .array(z.string().max(60))
-    .min(1)
-    .max(4)
-    .describe('Visible content references, e.g. "the button labeled \\"Buy now\\"". Never ids.'),
-  targetBlockIds: z
-    .array(z.string())
-    .min(1)
-    .max(6)
-    .describe("The outline ids of every block this finding is about (internal use only)."),
-  proposedEdits: z
-    .array(proposedEditSchema)
-    .max(6)
-    .optional()
-    .describe(
-      "Concrete block-property edits that implement the fix, when the fix IS a property change. Omit for copy rewrites or anything a property edit cannot express.",
-    ),
-});
-
-const runnerOutputSchema = z.object({
-  findings: z
-    .array(findingSchema)
-    .max(4)
-    .describe("All findings across all personas. An empty array is a valid, good answer."),
-});
 
 // ---------------------------------------------------------------------------
 // Shared static persona-conduct layer (byte-identical every request — part of
@@ -146,6 +101,7 @@ Rules for every persona:
 - Emit at most 2 findings per persona, and only issues that persona's definition genuinely covers. Zero findings is a perfectly good answer — never invent a nitpick to have something to say.
 - Tag every finding with the persona's slug in personaSlug.
 - In title, description, and targetBlockNames, refer to content ONLY by what the user can see ("the heading 'Spring sale'", "the button labeled 'Buy now'") — internal block ids must never appear in that prose. Put ids only in targetBlockIds and proposedEdits.blockId, copied exactly from the outline.
+- Keep those visible-content quotes SHORT: when a label or heading is long, quote just its first few words followed by an ellipsis ("the button labeled 'Join thousands of happy…'").
 - When the fix is a change to block properties (colors, alignment, sizes, a button label), include proposedEdits with the exact property values. When the fix is rewording copy, put the suggested rewrite in the description instead and omit proposedEdits.
 - Findings must be about the document as it is NOW (the outline below is current).`;
 
@@ -429,7 +385,9 @@ export async function POST(request: Request) {
 
     const personasBySlug = new Map(personas.map((persona) => [persona.slug, persona]));
     const findings: RunnerFinding[] = [];
-    for (const finding of object.findings) {
+    // Truncation backstop (finding-schema.ts): one wordy label must never
+    // cost the run, and stored findings must stay card-sized.
+    for (const finding of object.findings.map(truncateFindingProse)) {
       const persona = personasBySlug.get(finding.personaSlug);
       if (persona === undefined) {
         continue; // hallucinated slug — drop
