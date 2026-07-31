@@ -61,22 +61,59 @@ interface CreateToolCallRepairerInput {
 }
 
 /**
+ * The failed call's arguments as something the repair request can PHYSICALLY
+ * carry. `toolCall.input` at repair time is the provider's RAW argument text —
+ * for the calls that need repairing it is often a STRING (unparsed, sometimes
+ * a JSON-escaped envelope, sometimes truncated JSON). Embedding that string
+ * verbatim in a replayed assistant tool-call made the Google provider encode
+ * `function_call.args` as a protobuf-Struct-invalid string and the REPAIR
+ * REQUEST ITSELF was rejected (AI_APICallError inside AI_ToolCallRepairError —
+ * observed live, terminal). Parse to an object when possible; otherwise
+ * replay `{}` and carry the raw text inside the error prose instead.
+ */
+function toReplayableToolInput(rawInput: unknown): {
+  input: Record<string, unknown>;
+  unparseableRawText: string | null;
+} {
+  let current: unknown = rawInput;
+  for (let unwrapAttempt = 0; unwrapAttempt < 2 && typeof current === "string"; unwrapAttempt++) {
+    try {
+      current = JSON.parse(current);
+    } catch {
+      break;
+    }
+  }
+  if (typeof current === "object" && current !== null && !Array.isArray(current)) {
+    return { input: current as Record<string, unknown>, unparseableRawText: null };
+  }
+  const rawText = typeof rawInput === "string" ? rawInput : JSON.stringify(rawInput);
+  return { input: {}, unparseableRawText: rawText ?? "" };
+}
+
+/** Cap on raw argument text quoted back to the model in a repair prompt. */
+const MAX_QUOTED_RAW_INPUT_LENGTH = 2_000;
+
+/**
  * repairToolCall hook: when the model emits a tool call that fails inputSchema
  * validation (InvalidToolInputError → the SDK analogue of the registry's
  * retryable `op_validation_failed`), re-ask the SAME model once, feeding the
  * Zod error message back as a tool result — exactly the plan's "one repair
  * round-trip with the error message".
  *
- * Terminal-equivalent cases return null, which lets the SDK surface the
- * original error (→ shaped into a structured error part by the route's
- * onError):
+ * Terminal-equivalent cases return null, which lets the SDK degrade the call
+ * to an invalid-tool-call part: the client renders one failure chip, a
+ * tool-error result goes back to the model, and THE TURN CONTINUES — one
+ * unsalvageable call never fails the turn:
  * - NoSuchToolError — a hallucinated tool name; per SDK guidance we do not
  *   guess a replacement (the registry's `unknown_action` stays retryable for
  *   DISPATCH, but at parse time there is no input worth repairing).
  * - The repair budget (MAX_REPAIR_ATTEMPTS_PER_TOOL_CALL) is exhausted.
  * - The re-ask did not produce a call to the same tool.
+ * - The re-ask itself failed (network, provider rejection). This hook must
+ *   NEVER throw: a thrown repairer wraps into ToolCallRepairError and turns a
+ *   one-call problem into a turn-level wall of JSON.
  */
-function createToolCallRepairer({
+export function createToolCallRepairer({
   model,
   schemaOnlyTools,
   staticInstructions,
@@ -97,7 +134,14 @@ function createToolCallRepairer({
 
     // Re-ask strategy (bundled AI SDK docs, tools-and-tool-calling): replay
     // the step's messages plus the failed call and its validation error as a
-    // tool result, and take the corrected call from the response.
+    // tool result, and take the corrected call from the response. The failed
+    // call's args are re-encoded first (toReplayableToolInput) — the raw
+    // provider text must never ride in a tool-call slot.
+    const { input: replayableInput, unparseableRawText } = toReplayableToolInput(toolCall.input);
+    const rawInputNote =
+      unparseableRawText === null
+        ? ""
+        : `\nYour arguments were not valid JSON. They began: ${unparseableRawText.slice(0, MAX_QUOTED_RAW_INPUT_LENGTH)}`;
     const repairMessages: ModelMessage[] = [
       ...messages,
       {
@@ -107,7 +151,7 @@ function createToolCallRepairer({
             type: "tool-call",
             toolCallId: toolCall.toolCallId,
             toolName: toolCall.toolName,
-            input: toolCall.input,
+            input: replayableInput,
           },
         ],
       },
@@ -120,32 +164,48 @@ function createToolCallRepairer({
             toolName: toolCall.toolName,
             output: {
               type: "text",
-              value: `The tool input failed validation. ${error.message}\nCall ${toolCall.toolName} again with corrected input.`,
+              value: `The tool input failed validation. ${error.message}${rawInputNote}\nCall ${toolCall.toolName} again with corrected input.`,
             },
           },
         ],
       },
     ];
 
-    const repairResult = await generateText({
-      model,
-      system: staticInstructions,
-      messages: repairMessages,
-      tools: schemaOnlyTools,
-    });
+    try {
+      const repairResult = await generateText({
+        model,
+        system: staticInstructions,
+        messages: repairMessages,
+        tools: schemaOnlyTools,
+      });
 
-    const repairedToolCall = repairResult.toolCalls.find(
-      (candidate) => candidate.toolName === toolCall.toolName,
-    );
-    if (repairedToolCall === undefined) {
+      const repairedToolCall = repairResult.toolCalls.find(
+        (candidate) => candidate.toolName === toolCall.toolName,
+      );
+      if (repairedToolCall === undefined) {
+        return null;
+      }
+      return {
+        type: "tool-call",
+        toolCallId: toolCall.toolCallId,
+        toolName: toolCall.toolName,
+        input: JSON.stringify(repairedToolCall.input),
+      };
+    } catch (repairRequestError) {
+      // Never throw (see the hook contract above): a failed re-ask degrades
+      // to "unrepaired" and the SDK's invalid-call path keeps the turn alive.
+      console.error(
+        JSON.stringify({
+          tag: "tandem.chat.repairRequestFailed",
+          toolName: toolCall.toolName,
+          message:
+            repairRequestError instanceof Error
+              ? repairRequestError.message.slice(0, 500)
+              : String(repairRequestError),
+        }),
+      );
       return null;
     }
-    return {
-      type: "tool-call",
-      toolCallId: toolCall.toolCallId,
-      toolName: toolCall.toolName,
-      input: JSON.stringify(repairedToolCall.input),
-    };
   };
 }
 

@@ -22,6 +22,12 @@ import { MockLanguageModelV4 } from "ai/test";
  * usage shapes), per the Spike C finding: do not write these from memory.
  *
  * Scripted behavior, keyed off the last user message:
+ * - mentions "malformed tool calls" → the item-20 reliability probe: one
+ *   tool call whose args arrive as a STRINGIFIED JSON envelope (the observed
+ *   live Gemini mangle — must be silently recovered by the pre-validation
+ *   unwrap) plus one with unparseable truncated args (must degrade to a
+ *   single failure chip without killing the turn; the repair re-ask against
+ *   this mock throws, exercising the repairer's never-throw path)
  * - mentions preview/mobile/desktop → showPreview editor tool call
  * - mentions "test email"           → sendTestEmail (exercises approval flow)
  * - contains a URL                  → fetchWebContent with that URL (the
@@ -134,8 +140,61 @@ function planMockToolCall({
   };
 }
 
+/**
+ * Item-20 reliability probe (see the header): the EXACT malformed shapes from
+ * the live failure, scripted. Call 1's raw argument text is a JSON-ENCODED
+ * STRING of the whole envelope (name embedded) — the pre-validation unwrap
+ * must recover it into a normally-applied op. Call 2's raw text is truncated
+ * garbage — unrepairable by construction (this mock has no doGenerate, so the
+ * repair re-ask throws), and must cost exactly one failure chip while the
+ * turn survives.
+ */
+const MALFORMED_PROBE_REGEX = /\bmalformed tool calls\b/i;
+
+function buildMalformedProbeChunks(selectedBlockId: BlockId | undefined) {
+  const blockId = selectedBlockId ?? ("btn_t9u0" as BlockId);
+  const recoverableEnvelope = JSON.stringify(
+    JSON.stringify({
+      name: "updateBlockProperties",
+      blockId,
+      properties: { label: "Unwrapped OK" },
+    }),
+  );
+  const unparseableArgs = '{"name":"updateBlockProperties","blockId":';
+  return [
+    { type: "text-start" as const, id: "text-1" },
+    {
+      type: "text-delta" as const,
+      id: "text-1",
+      delta: "Sending one recoverable and one broken tool call.",
+    },
+    { type: "text-end" as const, id: "text-1" },
+    {
+      type: "tool-call" as const,
+      toolCallId: `call_${crypto.randomUUID()}`,
+      toolName: "updateBlockProperties",
+      input: recoverableEnvelope,
+    },
+    {
+      type: "tool-call" as const,
+      toolCallId: `call_${crypto.randomUUID()}`,
+      toolName: "updateBlockProperties",
+      input: unparseableArgs,
+    },
+    {
+      type: "finish" as const,
+      finishReason: { unified: "tool-calls" as const, raw: undefined },
+      usage: {
+        inputTokens: { total: 10, noCache: 10, cacheRead: undefined, cacheWrite: undefined },
+        outputTokens: { total: 25, text: 10, reasoning: undefined },
+      },
+    },
+  ];
+}
+
 export function createMockChatModel(input: CreateMockChatModelInput) {
   const isContinuationRequest = input.isContinuationRequest ?? false;
+  const isMalformedProbe = MALFORMED_PROBE_REGEX.test(input.lastUserText);
   const plan = planMockToolCall(input);
   const inputJson = JSON.stringify(plan.input);
   // Unique per request — clients dedupe applied ops by toolCallId (Spike C).
@@ -156,6 +215,23 @@ export function createMockChatModel(input: CreateMockChatModelInput) {
     doStream: async () => {
       doStreamCallCount += 1;
       const isFirstStep = doStreamCallCount === 1 && !isContinuationRequest;
+      if (isMalformedProbe && isFirstStep) {
+        return {
+          stream: simulateReadableStream({
+            chunkDelayInMs: 20,
+            chunks: [
+              { type: "stream-start" as const, warnings: [] },
+              {
+                type: "response-metadata" as const,
+                id: `mock-response-${doStreamCallCount}`,
+                modelId: "tandem-mock-chat-model",
+                timestamp: new Date(0),
+              },
+              ...buildMalformedProbeChunks(input.selectedBlockId),
+            ],
+          }),
+        };
+      }
       // One array literal (conditional spreads) so TS infers a single chunk
       // union for simulateReadableStream's generic across both step shapes.
       return {

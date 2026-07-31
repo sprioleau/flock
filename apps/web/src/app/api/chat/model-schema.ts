@@ -64,8 +64,32 @@ function rewriteNumericLiterals(node: unknown): unknown {
 }
 
 /**
+ * Known Gemini tool-call mangle (observed live on deep nested inputs like
+ * addSection's children): the model emits `function_call.args` as ONE
+ * JSON-ESCAPED STRING of the whole argument object instead of a typed object.
+ * The SDK's JSON parse of the raw call then yields a string, Zod rejects it
+ * ("expected object, received string"), and a repair round is spent — or
+ * worse, wasted — on a call whose content was actually valid. Unwrap it here,
+ * BEFORE validation: parse the string (twice if needed — double-encoding has
+ * been seen) and validate the result instead. Anything that doesn't parse to
+ * an object falls through to normal Zod rejection.
+ */
+export function unwrapStringifiedToolInput(value: unknown): unknown {
+  let current: unknown = value;
+  for (let unwrapAttempt = 0; unwrapAttempt < 2 && typeof current === "string"; unwrapAttempt++) {
+    try {
+      current = JSON.parse(current);
+    } catch {
+      return value;
+    }
+  }
+  return isJsonObject(current) ? current : value;
+}
+
+/**
  * Build the model-facing input schema for one tool: Gemini-compatible JSON
- * Schema declaration, original Zod schema for validation.
+ * Schema declaration, original Zod schema for validation (with the
+ * stringified-args unwrap above applied first).
  */
 export function toModelInputSchema(zodInputSchema: z.ZodType): Schema<unknown> {
   const rawJsonSchema = z.toJSONSchema(zodInputSchema, {
@@ -76,7 +100,7 @@ export function toModelInputSchema(zodInputSchema: z.ZodType): Schema<unknown> {
 
   return jsonSchema(compatibleJsonSchema, {
     validate: (value) => {
-      const parsed = zodInputSchema.safeParse(value);
+      const parsed = zodInputSchema.safeParse(unwrapStringifiedToolInput(value));
       return parsed.success
         ? { success: true, value: parsed.data }
         : { success: false, error: parsed.error };
