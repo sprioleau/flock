@@ -55,7 +55,16 @@ export function PresenceFacepile() {
 const AVATAR_CLASSES =
   "flex size-6 shrink-0 items-center justify-center rounded-full text-[10px] font-semibold text-white ring-2 ring-background select-none";
 
+/** Persona roster members (multi-agent canvas v0) carry this userId prefix. */
+const isPersonaEntry = (entry: PresenceRosterEntry): boolean =>
+  entry.userId.startsWith("persona:");
+
 function AvatarGlyph({ entry }: { entry: PresenceRosterEntry }) {
+  if (isPersonaEntry(entry)) {
+    // Personas show their initial like humans — their identity is a NAME, not
+    // "the agent" — with the status dot below marking them as non-human.
+    return <>{entry.data.name.charAt(0).toUpperCase()}</>;
+  }
   if (entry.data.isAgent === true) {
     return <SparklesIcon className="size-3" aria-hidden />;
   }
@@ -63,24 +72,51 @@ function AvatarGlyph({ entry }: { entry: PresenceRosterEntry }) {
 }
 
 function memberLabel(entry: PresenceRosterEntry): string {
+  if (isPersonaEntry(entry)) {
+    const status = entry.data.status;
+    return `${entry.data.name} (AI persona)${status !== undefined ? ` — ${status}` : ""}`;
+  }
   if (entry.data.isAgent === true) {
     return `${entry.data.name} (AI agent)`;
   }
   return entry.isSelf ? `${entry.data.name} (you)` : entry.data.name;
 }
 
-/** A remote member (human or agent): colored circle + name tooltip. */
+/**
+ * The persona's live lifecycle dot (bottom-right of the avatar): gray when
+ * idle, amber while reading (context assembly), pulsing violet while its
+ * analysis call is in flight. Statuses are written server-side on real state
+ * transitions (convex/personas.ts setPersonaStatus).
+ */
+function PersonaStatusDot({ status }: { status: "idle" | "reading" | "thinking" | undefined }) {
+  return (
+    <span
+      className={cn(
+        "absolute -right-px -bottom-px size-2 rounded-full ring-2 ring-background",
+        status === "thinking" && "animate-pulse bg-violet-500",
+        status === "reading" && "animate-pulse bg-amber-500",
+        (status === "idle" || status === undefined) && "bg-muted-foreground/50",
+      )}
+      data-testid="persona-status-dot"
+      data-status={status ?? "idle"}
+      aria-hidden
+    />
+  );
+}
+
+/** A remote member (human, agent, or persona): colored circle + name tooltip. */
 function MemberAvatar({ entry }: { entry: PresenceRosterEntry }) {
   return (
     <Tooltip>
       <TooltipTrigger
-        className={AVATAR_CLASSES}
+        className={cn(AVATAR_CLASSES, "relative")}
         style={{ backgroundColor: entry.data.color }}
         aria-label={memberLabel(entry)}
         data-testid="presence-avatar"
         data-presence-user={entry.userId}
       >
         <AvatarGlyph entry={entry} />
+        {isPersonaEntry(entry) && <PersonaStatusDot status={entry.data.status} />}
       </TooltipTrigger>
       <TooltipContent side="bottom">{memberLabel(entry)}</TooltipContent>
     </Tooltip>

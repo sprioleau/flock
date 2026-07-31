@@ -183,6 +183,43 @@ export default defineSchema({
   }).index("by_documentId", ["documentId"]),
 
   /**
+   * Multi-agent canvas v0 (docs/proposals/multi-agent-canvas.md §3.1): the
+   * persona registry. A persona is PURE DATA — behavior lives entirely in
+   * `personaMarkdown` (+ the typed capability/cooldown fields); no
+   * persona-conditional code path may ever branch on a slug (§4.6, the
+   * marketplace invariant). Built-ins are seeded idempotently by
+   * personas.seedBuiltInPersonas.
+   *
+   * v1 SEAM (editing personas): widen `capabilityMode` to
+   * v.union(v.literal("advisory"), v.literal("editing")) and add a dispatch
+   * path that routes persona tool calls through the SAME validated mutations
+   * as the chat agent (documents.applyOperations / agentText.*). Until then
+   * the literal type IS the server-side enforcement: an "editing" persona row
+   * cannot exist, and no code dispatches ops on a persona's behalf — advisory
+   * findings are applied only by a human clicking Apply in the suggestions UI.
+   */
+  agents: defineTable({
+    /** Stable namespaced id ("builtin/tone-police"); third-party namespaces later. */
+    slug: v.string(),
+    /** Display name shown in the facepile / picker / suggestion cards. */
+    name: v.string(),
+    /** Presence + card accent color (distinct from human hue wheel & agent violet). */
+    color: v.string(),
+    /** Server-enforced capability: advisory personas have NO dispatch path. */
+    capabilityMode: v.literal("advisory"),
+    /**
+     * THE BEHAVIOR: frontmatter-ish header (display metadata) + freeform
+     * conduct text, injected as a prompt layer by /api/personas. User-editable
+     * in v1 (v0 renders it read-only in the picker).
+     */
+    personaMarkdown: v.string(),
+    /** Minimum seconds between runner turns for this persona (budget guard). */
+    cooldownSeconds: v.number(),
+    createdAtMs: v.number(),
+    updatedAtMs: v.number(),
+  }).index("by_slug", ["slug"]),
+
+  /**
    * The per-session brand kit (Phase 7.x brand kit panel): at most ONE active
    * kit per anonymous session in v1 — saveBrandKit replaces any existing row.
    * Every canvas/tab of the session reads the same kit reactively

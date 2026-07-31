@@ -71,6 +71,43 @@ export interface Suggestion {
   targetBlockIds: BlockId[];
 }
 
+/**
+ * Multi-agent canvas v0: one advisory persona FINDING, flowing through the
+ * `source: "analysis"` seam this module reserved (see the header note —
+ * nothing downstream cares how a suggestion was made). Structurally a
+ * sibling of {@link Suggestion} rather than an extension of it: persona
+ * findings carry an identity chip and a single pre-validated op batch
+ * instead of the rules' escalation ladder, and an EMPTY `ops` array is legal
+ * (a purely informational card with dismiss only). Everything else — dry-run
+ * validation, target-snapshot staleness, patternKey dismissal bookkeeping,
+ * apply-with-provenance + per-batch revert — is the exact same machinery
+ * (use-persona-advisors.ts reuses it piece by piece).
+ */
+export interface PersonaSuggestion {
+  /** Unique per instance (fresh id per runner response). */
+  id: string;
+  source: Extract<SuggestionSource, "analysis">;
+  /** Persona identity for the card chip + apply provenance. */
+  personaSlug: string;
+  personaName: string;
+  personaColor: string;
+  /**
+   * Dismissal identity: `persona:${personaSlug}|${sorted targetBlockIds}`.
+   * Dismissing quiets THIS persona for THOSE blocks on this document
+   * (shared localStorage bookkeeping with rule suggestions — the `persona:`
+   * prefix keeps the key spaces disjoint).
+   */
+  patternKey: string;
+  title: string;
+  description: string;
+  /** Visible content references ("the button labeled 'Buy now'") — never ids. */
+  targetBlockNames: string[];
+  /** Blocks the finding depends on; any change invalidates it (staleness). */
+  targetBlockIds: BlockId[];
+  /** Pre-composed, dry-run-validated ops. Empty = informational card. */
+  ops: Operation[];
+}
+
 /** One settled user property edit, extracted from an op-log entry. */
 export interface RecentPropertyEdit {
   blockId: BlockId;

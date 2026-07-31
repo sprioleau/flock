@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { CheckIcon, SparklesIcon, Undo2Icon, XIcon } from "lucide-react";
+import { usePersonaAdvisors, type PersonaCard } from "@/lib/personas/use-persona-advisors";
 import { useSuggestions } from "@/lib/suggestions/use-suggestions";
 import type { Suggestion, SuggestionRungId } from "@/lib/suggestions/types";
 import { cn } from "@/lib/utils";
@@ -19,6 +20,15 @@ import { cn } from "@/lib/utils";
  *   same history.revertBatch path as chat-turn revert chips (suggestions
  *   apply outside a chat turn, so the affordance lives here — see
  *   use-suggestions.ts), then clears on its own.
+ *
+ * Multi-agent canvas v0: persona ADVISORY findings (source:"analysis") render
+ * here too — up to 3 quiet cards, each chipped with its persona's name and
+ * color, stacked above the rule card. A finding with pre-validated ops gets
+ * one-click Apply (same instant dispatch + revert path, `persona:<slug>`
+ * provenance); a finding without ops is informational with dismiss only.
+ * This component always mounts while the studio is open, so it is also the
+ * host of {@link usePersonaAdvisors} — the hook that keeps enabled personas
+ * on the facepile and fires the batched runner after settled user gestures.
  */
 export interface SuggestionCardProps {
   /** Keeps the card's controls out of the tab order while the panel is collapsed. */
@@ -32,14 +42,26 @@ const quietButtonClassName = cn(
 
 export function SuggestionCard({ isPanelExpanded }: SuggestionCardProps) {
   const { visibleSuggestion, appliedState, applyRung, dismiss, revertApplied } = useSuggestions();
+  const personaAdvisors = usePersonaAdvisors();
 
-  if (visibleSuggestion === null && appliedState === null) {
+  if (visibleSuggestion === null && appliedState === null && personaAdvisors.cards.length === 0) {
     return null;
   }
   const tabIndex = isPanelExpanded ? 0 : -1;
 
   return (
-    <div className="shrink-0 border-t px-3 py-2" data-testid="suggestion-card">
+    <div className="flex shrink-0 flex-col gap-2 border-t px-3 py-2" data-testid="suggestion-card">
+      {personaAdvisors.cards.map((card) => (
+        <PersonaFindingCard
+          key={card.suggestion.id}
+          card={card}
+          tabIndex={tabIndex}
+          onApply={() => personaAdvisors.applySuggestion(card.suggestion.id)}
+          onDismiss={() => personaAdvisors.dismissSuggestion(card.suggestion.id)}
+          onRevert={() => personaAdvisors.revertApplied(card.suggestion.id)}
+        />
+      ))}
+      {(visibleSuggestion !== null || appliedState !== null) && (
       <div className="rounded-lg border bg-muted/30 px-2.5 py-2">
         {appliedState !== null ? (
           <div className="flex flex-col gap-1">
@@ -78,7 +100,113 @@ export function SuggestionCard({ isPanelExpanded }: SuggestionCardProps) {
           />
         ) : null}
       </div>
+      )}
     </div>
+  );
+}
+
+/**
+ * One persona finding: identity chip (persona color dot + name), title,
+ * description, target hints, and either Apply+Dismiss (ops pre-validated by
+ * the runner + re-dry-run at click time) or Dismiss only (informational).
+ */
+function PersonaFindingCard({
+  card,
+  tabIndex,
+  onApply,
+  onDismiss,
+  onRevert,
+}: {
+  card: PersonaCard;
+  tabIndex: number;
+  onApply: () => void;
+  onDismiss: () => void;
+  onRevert: () => void;
+}) {
+  const { suggestion, appliedState } = card;
+  return (
+    <div
+      className="rounded-lg border bg-muted/30 px-2.5 py-2"
+      data-testid="persona-finding-card"
+      data-persona-slug={suggestion.personaSlug}
+    >
+      {appliedState !== null ? (
+        <div className="flex flex-col gap-1">
+          <div className="flex items-center gap-2">
+            <CheckIcon className="size-3.5 shrink-0 text-muted-foreground" />
+            <p
+              className="min-w-0 flex-1 truncate text-xs text-muted-foreground"
+              data-testid="persona-finding-applied"
+            >
+              Applied — {suggestion.personaName}&apos;s suggestion
+            </p>
+            <button
+              type="button"
+              tabIndex={tabIndex}
+              onClick={onRevert}
+              className={quietButtonClassName}
+              data-testid="persona-finding-revert"
+            >
+              <Undo2Icon className="size-3" />
+              Revert
+            </button>
+          </div>
+          {appliedState.revertErrorMessage !== null && (
+            <p className="text-[11px] text-destructive">{appliedState.revertErrorMessage}</p>
+          )}
+        </div>
+      ) : (
+        <div className="flex flex-col gap-1">
+          <div className="flex items-start gap-2">
+            <PersonaChip name={suggestion.personaName} color={suggestion.personaColor} />
+            <button
+              type="button"
+              aria-label={`Dismiss ${suggestion.personaName} suggestion`}
+              tabIndex={tabIndex}
+              onClick={onDismiss}
+              className="ml-auto cursor-pointer rounded-sm text-muted-foreground hover:text-foreground"
+              data-testid="persona-finding-dismiss"
+            >
+              <XIcon className="size-3.5" />
+            </button>
+          </div>
+          <p className="text-xs font-medium" data-testid="persona-finding-title">
+            {suggestion.title}
+          </p>
+          <p className="text-[11px] text-muted-foreground" data-testid="persona-finding-description">
+            {suggestion.description}
+          </p>
+          {suggestion.ops.length > 0 && (
+            <div className="flex flex-wrap gap-1.5 pt-1">
+              <button
+                type="button"
+                tabIndex={tabIndex}
+                onClick={onApply}
+                className={quietButtonClassName}
+                data-testid="persona-finding-apply"
+              >
+                <CheckIcon className="size-3" />
+                Apply
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** The persona identity chip: color dot + name, quiet by design. */
+function PersonaChip({ name, color }: { name: string; color: string }) {
+  return (
+    <span
+      className="inline-flex items-center gap-1.5 rounded-full border px-1.5 py-0.5 text-[10px] font-medium"
+      style={{ borderColor: color, color }}
+      data-testid="persona-finding-chip"
+    >
+      <span className="size-1.5 rounded-full" style={{ backgroundColor: color }} aria-hidden />
+      {name}
+    </span>
   );
 }
 

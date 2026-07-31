@@ -1,9 +1,11 @@
 "use client";
 
+import { useState } from "react";
 import { api } from "@convex/_generated/api";
 import { useMutation, useQuery } from "convex/react";
-import { GhostIcon, SettingsIcon } from "lucide-react";
+import { GhostIcon, SettingsIcon, UsersIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { PersonaPickerDialog } from "@/components/studio/personas/PersonaPickerDialog";
 import {
   DropdownMenu,
   DropdownMenuCheckboxItem,
@@ -36,6 +38,8 @@ import { updateAppSettings, useAppSettings } from "./app-settings";
 export function SettingsFab() {
   const { isDemoModeEnabled, isTimeTravelReplayEnabled, isOpInspectorEnabled } = useAppSettings();
   const documentId = useEditorStore((state) => state.documentId);
+  // Multi-agent canvas v0: the persona picker (see PersonaPickerDialog).
+  const [isPersonaPickerOpen, setIsPersonaPickerOpen] = useState(false);
 
   const ghostStatus = useQuery(
     api.ghost.getGhostStatus,
@@ -76,6 +80,18 @@ export function SettingsFab() {
         <DropdownMenuContent side="top" align="end" sideOffset={8} className="w-60">
           <DropdownMenuGroup>
             <DropdownMenuLabel>Settings</DropdownMenuLabel>
+            <DropdownMenuItem
+              onClick={() => setIsPersonaPickerOpen(true)}
+              data-testid="settings-agents-entry"
+            >
+              <UsersIcon className="size-4 shrink-0" />
+              <span className="flex flex-col gap-0.5 py-0.5">
+                <span>Agents…</span>
+                <span className="text-xs text-muted-foreground">
+                  Enable advisory AI teammates for this browser
+                </span>
+              </span>
+            </DropdownMenuItem>
             <DropdownMenuCheckboxItem
               checked={isDemoModeEnabled}
               onCheckedChange={(isChecked) => updateAppSettings({ isDemoModeEnabled: isChecked })}
@@ -137,6 +153,7 @@ export function SettingsFab() {
           </DropdownMenuGroup>
         </DropdownMenuContent>
       </DropdownMenu>
+      <PersonaPickerDialog isOpen={isPersonaPickerOpen} onOpenChange={setIsPersonaPickerOpen} />
     </div>
   );
 }

@@ -1,0 +1,422 @@
+import { google } from "@ai-sdk/google";
+import {
+  generateDocumentOutline,
+  SYSTEM_STATIC,
+} from "@tandem/agent";
+import {
+  applyOperations,
+  updateBlockPropertiesOperationSchema,
+  type EmailDocument,
+  type Operation,
+} from "@tandem/email-sdk";
+import { generateObject } from "ai";
+import { ConvexHttpClient } from "convex/browser";
+import { z } from "zod";
+import { api } from "@convex/_generated/api";
+
+/**
+ * POST /api/personas — the multi-agent canvas v0 ADVISORY RUNNER
+ * (docs/proposals/multi-agent-canvas.md §3.3 model A, §4.2 batched call).
+ *
+ * One settled user gesture (client watcher, use-persona-advisors.ts) fires at
+ * most ONE Gemini analysis call covering ALL enabled advisory personas. The
+ * prompt stacks cache-friendly (§3.4): shared static core first, then the
+ * enabled personas' markdowns ordered by slug (a stable extended prefix per
+ * enabled set), fresh tokens (outline + trigger summary) always last.
+ *
+ * Structured output = per-persona findings. A finding MAY carry concrete
+ * intent-level property edits ({blockId, property, value} — the
+ * llm-tool-interface principle: simple args, deterministic translation to
+ * `updateBlockProperties` ops inside this route), and every op batch is
+ * DRY-RUN through the SDK's pure `applyOperations` before it is surfaced;
+ * findings whose ops fail the dry-run degrade to informational. Personas
+ * never dispatch anything — findings become source:"analysis" suggestions
+ * client-side, and only a human clicking Apply writes to the document.
+ *
+ * Budget discipline (§5.1): per-persona cooldowns gate client-side; this
+ * route adds a per-document minimum interval and an outline-unchanged skip
+ * as server backstops, plus a `tandem.personas.request` JSON log line so
+ * tokens-per-run stay observable.
+ */
+
+/**
+ * Model for the batched persona analysis call. Deliberately NOT the chat
+ * pipeline's DEFAULT_GEMINI_MODEL_ID ("gemini-3.6-flash"): Gemini free-tier
+ * daily quotas are per-model, and the reactive runner must never starve the
+ * user-initiated chat agent (the brand-kit pipeline set this precedent —
+ * see generate-brand-kit.ts). 3.5-flash-lite is plenty for a one-shot
+ * structured findings pass over a ~1K-token outline.
+ */
+const PERSONA_MODEL_ID = "gemini-3.5-flash-lite";
+
+/** Hard timeout on the one analysis call. */
+const GENERATION_TIMEOUT_MS = 45_000;
+
+/** Server backstop between runs per document (client cooldowns are the real gate). */
+const MIN_RUN_INTERVAL_MS = 20_000;
+
+/** Brief visible "reading" beat before the call — presentation smoothing only
+ * (§3.5: the one theatrical liberty; the statuses themselves are real). */
+const READING_BEAT_MS = 800;
+
+const requestBodySchema = z.object({
+  documentId: z.string().min(1),
+  personaSlugs: z.array(z.string().min(1)).min(1).max(8),
+  /** Short human-readable note about the settled gesture(s) that triggered this run. */
+  triggerSummary: z.string().max(600).optional(),
+});
+
+// ---------------------------------------------------------------------------
+// Model output schema — intent-level findings (deterministic translation to
+// ops happens below, never inside the model).
+// ---------------------------------------------------------------------------
+
+const proposedEditSchema = z.object({
+  blockId: z
+    .string()
+    .describe("The target block's id exactly as it appears in the document outline."),
+  property: z
+    .string()
+    .describe('The block property to change, e.g. "backgroundColor", "align", "label".'),
+  value: z
+    .string()
+    .describe(
+      'The new value as a string ("#0d9488", "center", "24"). Numbers and true/false are auto-converted.',
+    ),
+});
+
+const findingSchema = z.object({
+  personaSlug: z.string().describe("The slug of the persona this finding belongs to."),
+  title: z.string().max(90).describe("Short card headline. Never mention block ids."),
+  description: z
+    .string()
+    .max(320)
+    .describe(
+      "1-3 sentences: what clashes and the concrete fix (include the suggested rewrite for copy findings). Refer to content by its visible text, never by block ids.",
+    ),
+  targetBlockNames: z
+    .array(z.string().max(60))
+    .min(1)
+    .max(4)
+    .describe('Visible content references, e.g. "the button labeled \\"Buy now\\"". Never ids.'),
+  targetBlockIds: z
+    .array(z.string())
+    .min(1)
+    .max(6)
+    .describe("The outline ids of every block this finding is about (internal use only)."),
+  proposedEdits: z
+    .array(proposedEditSchema)
+    .max(6)
+    .optional()
+    .describe(
+      "Concrete block-property edits that implement the fix, when the fix IS a property change. Omit for copy rewrites or anything a property edit cannot express.",
+    ),
+});
+
+const runnerOutputSchema = z.object({
+  findings: z
+    .array(findingSchema)
+    .max(4)
+    .describe("All findings across all personas. An empty array is a valid, good answer."),
+});
+
+// ---------------------------------------------------------------------------
+// Shared static persona-conduct layer (byte-identical every request — part of
+// the cacheable prefix together with SYSTEM_STATIC).
+// ---------------------------------------------------------------------------
+
+const PERSONA_CONDUCT_STATIC = `## Advisory persona review
+
+You are NOT editing this email. You are a panel of advisory reviewer personas, each defined below. The user just made an edit; review the CURRENT document as each persona and report findings.
+
+Rules for every persona:
+- Emit at most 2 findings per persona, and only issues that persona's definition genuinely covers. Zero findings is a perfectly good answer — never invent a nitpick to have something to say.
+- Tag every finding with the persona's slug in personaSlug.
+- In title, description, and targetBlockNames, refer to content ONLY by what the user can see ("the heading 'Spring sale'", "the button labeled 'Buy now'") — internal block ids must never appear in that prose. Put ids only in targetBlockIds and proposedEdits.blockId, copied exactly from the outline.
+- When the fix is a change to block properties (colors, alignment, sizes, a button label), include proposedEdits with the exact property values. When the fix is rewording copy, put the suggested rewrite in the description instead and omit proposedEdits.
+- Findings must be about the document as it is NOW (the outline below is current).`;
+
+// ---------------------------------------------------------------------------
+// In-memory run state (demo-scale, single instance — the brand-kit pattern)
+// ---------------------------------------------------------------------------
+
+interface DocumentRunState {
+  lastRunStartedAtMs: number;
+  /** Outline + enabled-set fingerprint of the last completed run. */
+  lastRunKey: string | null;
+  isRunInFlight: boolean;
+}
+
+const runStateByDocument = new Map<string, DocumentRunState>();
+
+function getRunState(documentId: string): DocumentRunState {
+  let state = runStateByDocument.get(documentId);
+  if (state === undefined) {
+    state = { lastRunStartedAtMs: 0, lastRunKey: null, isRunInFlight: false };
+    runStateByDocument.set(documentId, state);
+  }
+  return state;
+}
+
+// ---------------------------------------------------------------------------
+// Helpers
+// ---------------------------------------------------------------------------
+
+type PersonaRow = {
+  slug: string;
+  name: string;
+  color: string;
+  capabilityMode: "advisory";
+  personaMarkdown: string;
+  cooldownSeconds: number;
+};
+
+interface RunnerFinding {
+  personaSlug: string;
+  personaName: string;
+  personaColor: string;
+  title: string;
+  description: string;
+  targetBlockNames: string[];
+  targetBlockIds: string[];
+  /** Dry-run-validated updateBlockProperties ops; empty = informational. */
+  ops: Operation[];
+}
+
+function failureResponse({ message, status }: { message: string; status: number }): Response {
+  return Response.json({ isOk: false, message }, { status });
+}
+
+function skippedResponse(skippedReason: string): Response {
+  return Response.json({ isOk: true, findings: [], skippedReason });
+}
+
+/** Deterministic coercion of the model's string values to property scalars. */
+function coercePropertyValue(raw: string): string | number | boolean {
+  if (raw === "true") {
+    return true;
+  }
+  if (raw === "false") {
+    return false;
+  }
+  if (/^-?\d+(\.\d+)?$/.test(raw)) {
+    return Number(raw);
+  }
+  return raw;
+}
+
+/**
+ * Intent-level edits → validated `updateBlockProperties` ops (grouped per
+ * block), dry-run against the current doc. Null when anything fails — the
+ * finding then surfaces as informational instead of carrying broken ops.
+ */
+function composeFindingOps({
+  doc,
+  proposedEdits,
+}: {
+  doc: EmailDocument;
+  proposedEdits: z.infer<typeof proposedEditSchema>[];
+}): Operation[] | null {
+  const propertiesByBlockId = new Map<string, Record<string, unknown>>();
+  for (const edit of proposedEdits) {
+    const properties = propertiesByBlockId.get(edit.blockId) ?? {};
+    properties[edit.property] = coercePropertyValue(edit.value);
+    propertiesByBlockId.set(edit.blockId, properties);
+  }
+  const ops: Operation[] = [];
+  for (const [blockId, properties] of propertiesByBlockId) {
+    const parsed = updateBlockPropertiesOperationSchema.safeParse({
+      name: "updateBlockProperties",
+      blockId,
+      properties,
+    });
+    if (!parsed.success) {
+      return null;
+    }
+    ops.push(parsed.data);
+  }
+  return applyOperations(doc, ops).isOk ? ops : null;
+}
+
+const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
+
+// ---------------------------------------------------------------------------
+// The route
+// ---------------------------------------------------------------------------
+
+export async function POST(request: Request) {
+  let json: unknown;
+  try {
+    json = await request.json();
+  } catch {
+    return failureResponse({ status: 400, message: "Request body must be JSON." });
+  }
+  const parsedBody = requestBodySchema.safeParse(json);
+  if (!parsedBody.success) {
+    return failureResponse({ status: 400, message: "Expected { documentId, personaSlugs }." });
+  }
+  const { documentId, personaSlugs, triggerSummary } = parsedBody.data;
+
+  const convexUrl = process.env.NEXT_PUBLIC_CONVEX_URL;
+  if (convexUrl === undefined) {
+    return failureResponse({ status: 500, message: "Convex is not configured." });
+  }
+  const convexClient = new ConvexHttpClient(convexUrl);
+
+  const document = await convexClient.query(api.documents.getDocumentByKey, {
+    documentKey: documentId,
+  });
+  if (document === null) {
+    return failureResponse({ status: 404, message: "That document does not exist." });
+  }
+
+  // CAPABILITY ENFORCEMENT (proposal §4.6): only registry rows run, and only
+  // advisory ones — which is every row the v0 schema can hold. This filter is
+  // the guard that stays when v1 widens capabilityMode.
+  const personas = (
+    await convexClient.query(api.personas.getPersonasBySlugs, { slugs: [...personaSlugs] })
+  ).filter((persona): persona is PersonaRow => persona.capabilityMode === "advisory");
+  if (personas.length === 0) {
+    return failureResponse({ status: 400, message: "No known advisory personas were requested." });
+  }
+
+  const doc = document.doc as EmailDocument;
+  // Depth "full": every explicitly-set property as key=value. The default
+  // "blocks" depth omits styling props (a button line is just label+href),
+  // which would blind the Styling Recommender AND make the outline-unchanged
+  // skip treat pure styling edits as no-ops. Still compact (~1 line/block).
+  const outline = generateDocumentOutline({ doc, options: { depth: "full" } });
+  const enabledKey = personas.map((persona) => persona.slug).join(",");
+  const runKey = `${enabledKey}\n${outline}`;
+
+  // Server-side budget backstops (the client gates per-persona cooldowns).
+  const runState = getRunState(documentId);
+  const now = Date.now();
+  if (runState.isRunInFlight) {
+    return skippedResponse("run-in-flight");
+  }
+  if (now - runState.lastRunStartedAtMs < MIN_RUN_INTERVAL_MS) {
+    return skippedResponse("server-cooldown");
+  }
+  if (runState.lastRunKey === runKey) {
+    return skippedResponse("outline-unchanged");
+  }
+  runState.isRunInFlight = true;
+  runState.lastRunStartedAtMs = now;
+
+  const setStatusForAll = async (status: "idle" | "reading" | "thinking"): Promise<void> => {
+    await Promise.all(
+      personas.map((persona) =>
+        convexClient.mutation(api.personas.setPersonaStatus, {
+          documentId: document.documentId,
+          slug: persona.slug,
+          status,
+        }),
+      ),
+    );
+  };
+
+  try {
+    // Status choreography: reading (context assembly) → thinking (call in
+    // flight) → idle. Transition-only presence writes (§3.5).
+    await setStatusForAll("reading");
+    await sleep(READING_BEAT_MS);
+
+    // Cache-ordered prompt (§3.4): [shared static ‖ persona layer] as the
+    // system message — stable per enabled set — and ALL per-request content
+    // (outline, trigger) in the user message, always last.
+    const personaLayer = personas
+      .map((persona) => `## Persona: ${persona.name} (slug: ${persona.slug})\n\n${persona.personaMarkdown}`)
+      .join("\n\n");
+    const system = [SYSTEM_STATIC, PERSONA_CONDUCT_STATIC, personaLayer].join("\n\n");
+    const prompt = [
+      "Current document outline:",
+      "```",
+      outline,
+      "```",
+      triggerSummary !== undefined ? `What just happened: ${triggerSummary}` : null,
+      "Review the document as each persona and return your findings.",
+    ]
+      .filter((part): part is string => part !== null)
+      .join("\n\n");
+
+    await setStatusForAll("thinking");
+    const { object, usage } = await generateObject({
+      model: google(PERSONA_MODEL_ID),
+      schema: runnerOutputSchema,
+      system,
+      prompt,
+      abortSignal: AbortSignal.timeout(GENERATION_TIMEOUT_MS),
+    });
+
+    const personasBySlug = new Map(personas.map((persona) => [persona.slug, persona]));
+    const findings: RunnerFinding[] = [];
+    for (const finding of object.findings) {
+      const persona = personasBySlug.get(finding.personaSlug);
+      if (persona === undefined) {
+        continue; // hallucinated slug — drop
+      }
+      const knownTargetBlockIds = finding.targetBlockIds.filter(
+        (blockId) => doc[blockId as keyof EmailDocument] !== undefined,
+      );
+      if (knownTargetBlockIds.length === 0) {
+        continue; // finding points at nothing real — drop
+      }
+      const ops =
+        finding.proposedEdits !== undefined && finding.proposedEdits.length > 0
+          ? composeFindingOps({ doc, proposedEdits: finding.proposedEdits })
+          : [];
+      findings.push({
+        personaSlug: persona.slug,
+        personaName: persona.name,
+        personaColor: persona.color,
+        title: finding.title,
+        description: finding.description,
+        targetBlockNames: finding.targetBlockNames,
+        targetBlockIds: knownTargetBlockIds,
+        // ops === null → the dry-run failed → informational fallback.
+        ops: ops ?? [],
+      });
+    }
+
+    runState.lastRunKey = runKey;
+
+    // Back to idle; each persona's block-presence chrome points at its top
+    // finding's first target block (BlockPresenceIndicator lights up free).
+    await Promise.all(
+      personas.map((persona) => {
+        const topFinding = findings.find((finding) => finding.personaSlug === persona.slug);
+        return convexClient.mutation(api.personas.setPersonaStatus, {
+          documentId: document.documentId,
+          slug: persona.slug,
+          status: "idle",
+          ...(topFinding !== undefined
+            ? { selectedBlockId: topFinding.targetBlockIds[0]! }
+            : {}),
+        });
+      }),
+    );
+
+    // The budget ledger line (plan §4.4 cost-logging convention).
+    console.log(
+      JSON.stringify({
+        tag: "tandem.personas.request",
+        model: PERSONA_MODEL_ID,
+        personaSlugs: personas.map((persona) => persona.slug),
+        findingCount: findings.length,
+        usage,
+      }),
+    );
+
+    return Response.json({ isOk: true, findings, usage });
+  } catch (error) {
+    console.error("[personas] runner failed:", error);
+    await setStatusForAll("idle").catch(() => undefined);
+    return failureResponse({
+      status: 502,
+      message: "The persona review call failed — the next settled edit will retry.",
+    });
+  } finally {
+    runState.isRunInFlight = false;
+  }
+}

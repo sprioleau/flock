@@ -20,6 +20,7 @@ import type * as history from "../history.js";
 import type * as model_cleanup from "../model/cleanup.js";
 import type * as model_emailDocuments from "../model/emailDocuments.js";
 import type * as model_textBlockSync from "../model/textBlockSync.js";
+import type * as personas from "../personas.js";
 import type * as presence from "../presence.js";
 import type * as prosemirror from "../prosemirror.js";
 
@@ -42,6 +43,7 @@ declare const fullApi: ApiFromModules<{
   "model/cleanup": typeof model_cleanup;
   "model/emailDocuments": typeof model_emailDocuments;
   "model/textBlockSync": typeof model_textBlockSync;
+  personas: typeof personas;
   presence: typeof presence;
   prosemirror: typeof prosemirror;
 }>;

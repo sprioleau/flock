@@ -85,7 +85,7 @@ type SuggestionPhase =
  * blocks whose object key ORDER can differ (Convex normalizes field order on
  * write), so plain JSON.stringify would false-positive every snapshot.
  */
-function stableStringify(value: unknown): string {
+export function stableStringify(value: unknown): string {
   if (Array.isArray(value)) {
     return `[${value.map(stableStringify).join(",")}]`;
   }
@@ -98,7 +98,8 @@ function stableStringify(value: unknown): string {
   return JSON.stringify(value) ?? "undefined";
 }
 
-const serializeBlock = (block: Block | undefined): string | undefined =>
+/** Staleness baseline serialization — shared with use-persona-advisors.ts. */
+export const serializeBlock = (block: Block | undefined): string | undefined =>
   block === undefined ? undefined : stableStringify(block);
 
 // Dev-only trace of the watcher's evaluation steps, so in-browser verification

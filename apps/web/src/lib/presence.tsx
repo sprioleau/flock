@@ -46,6 +46,14 @@ export interface PresenceData {
   name: string;
   color: string;
   isAgent?: boolean;
+  /**
+   * Live lifecycle status for non-human roster members (multi-agent canvas
+   * v0 — persona presence, userId prefix `persona:`). Written server-side on
+   * state TRANSITIONS only (convex/personas.ts): "reading" while the runner
+   * assembles document context, "thinking" while its batched analysis call is
+   * in flight, "idle" otherwise. Humans never broadcast this field.
+   */
+  status?: "idle" | "reading" | "thinking";
   /** Block whose inline editor this user has open (or the agent is mutating). */
   editingBlockId?: string;
   /**
