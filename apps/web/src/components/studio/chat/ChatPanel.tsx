@@ -72,7 +72,13 @@ export function ChatPanel() {
 
   const isAgentBusy = status === "submitted" || status === "streaming" || hasPendingApproval;
   const isErrorPaused = status === "error";
+  // Queues are scoped per document: the panel survives drafts-bar switches,
+  // so an unscoped queue would fire into whichever draft is active when the
+  // agent goes idle (see use-message-queue.ts).
+  const documentId = useEditorStore((state) => state.documentId);
   const queue = useMessageQueue({
+    documentId,
+    getActiveDocumentId: () => useEditorStore.getState().documentId,
     isAgentIdle: status === "ready" && !hasPendingApproval,
     isErrorPaused,
     getIsAgentIdle,
