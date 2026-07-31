@@ -2,9 +2,10 @@
 
 import type { MouseEvent } from "react";
 import type { DraggableAttributes, DraggableSyntheticListeners } from "@dnd-kit/core";
-import { ArrowDownIcon, ArrowUpIcon, GripVerticalIcon, Trash2Icon } from "lucide-react";
+import { ArrowDownIcon, ArrowUpIcon, CopyIcon, GripVerticalIcon, Trash2Icon } from "lucide-react";
 import type { BlockId } from "@tandem/email-sdk";
 import { Button } from "@/components/ui/button";
+import { buildDuplicateBlockOperation } from "@/lib/duplicate-block";
 import { useEditorStore } from "@/lib/editor-store";
 
 export interface BlockActionRowProps {
@@ -24,11 +25,13 @@ export interface BlockActionRowProps {
 
 /**
  * Floating action bar on the selected block: grab handle (pointer drag),
- * move up / move down / delete. No block-type badge here — the left-edge
- * BlockBreadcrumb chip stack is the "what's selected" cue (owner decision).
- * Move = a reorderChildren op on the parent (adjacent swap); delete = a
- * removeBlock op. Both flow through the store's dispatch (§7 invariant);
- * drops dispatch their single op from CanvasDndContext.
+ * move up / move down / duplicate / delete. No block-type badge here — the
+ * left-edge BlockBreadcrumb chip stack is the "what's selected" cue (owner
+ * decision). Move = a reorderChildren op on the parent (adjacent swap);
+ * duplicate = a restoreBlocks op carrying a fresh-id clone of the subtree
+ * (see lib/duplicate-block.ts); delete = a removeBlock op. All flow through
+ * the store's dispatch (§7 invariant); drops dispatch their single op from
+ * CanvasDndContext.
  */
 export function BlockActionRow({
   blockId,
@@ -63,6 +66,13 @@ export function BlockActionRow({
   const stopThen = (action: () => void) => (event: MouseEvent) => {
     event.stopPropagation();
     action();
+  };
+
+  const duplicateBlock = (): void => {
+    const operation = buildDuplicateBlockOperation({ doc, blockId });
+    if (operation !== null) {
+      dispatch(operation);
+    }
   };
 
   return (
@@ -104,6 +114,14 @@ export function BlockActionRow({
         onClick={stopThen(() => moveBy(1))}
       >
         <ArrowDownIcon />
+      </Button>
+      <Button
+        variant="ghost"
+        size="icon-sm"
+        aria-label="Duplicate block"
+        onClick={stopThen(duplicateBlock)}
+      >
+        <CopyIcon />
       </Button>
       <Button
         variant="ghost"

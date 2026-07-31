@@ -35,3 +35,4 @@ apps/web/src/app/spike/
 apps/web/src/app/api/spike/
 .claude-screenshots/
 .playwright-mcp/
+.claude/settings.local.json
