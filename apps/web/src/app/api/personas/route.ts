@@ -78,6 +78,14 @@ const requestBodySchema = z.object({
   personaSlugs: z.array(z.string().min(1)).min(1).max(8),
   /** Short human-readable note about the settled gesture(s) that triggered this run. */
   triggerSummary: z.string().max(600).optional(),
+  /**
+   * An explicit human "Check now" (persona-sweep.ts) rather than the ambient
+   * settled-edit watcher. Explicit intent is the strongest trigger there is:
+   * it bypasses the server cooldown AND the outline-unchanged skip (the user
+   * wants a fresh verdict on the document AS IS). The in-flight guard still
+   * applies — one batched analysis call per document at a time.
+   */
+  isManualSweep: z.boolean().optional(),
 });
 
 // ---------------------------------------------------------------------------
@@ -269,6 +277,7 @@ export async function POST(request: Request) {
     return failureResponse({ status: 400, message: "Expected { documentId, personaSlugs }." });
   }
   const { documentId, personaSlugs, triggerSummary } = parsedBody.data;
+  const isManualSweep = parsedBody.data.isManualSweep === true;
 
   const convexUrl = process.env.NEXT_PUBLIC_CONVEX_URL;
   if (convexUrl === undefined) {
@@ -308,11 +317,15 @@ export async function POST(request: Request) {
   if (runState.isRunInFlight) {
     return skippedResponse("run-in-flight");
   }
-  if (now - runState.lastRunStartedAtMs < MIN_RUN_INTERVAL_MS) {
-    return skippedResponse("server-cooldown");
-  }
-  if (runState.lastRunKey === runKey) {
-    return skippedResponse("outline-unchanged");
+  // A manual sweep (explicit human intent) skips the budget backstops that
+  // exist to tame the AMBIENT trigger; the in-flight guard above still holds.
+  if (!isManualSweep) {
+    if (now - runState.lastRunStartedAtMs < MIN_RUN_INTERVAL_MS) {
+      return skippedResponse("server-cooldown");
+    }
+    if (runState.lastRunKey === runKey) {
+      return skippedResponse("outline-unchanged");
+    }
   }
   runState.isRunInFlight = true;
   runState.lastRunStartedAtMs = now;

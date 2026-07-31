@@ -3,6 +3,8 @@ import {
   buildFindingHoverAnchor,
   buildReadingLaneX,
   extractPersonaSlugFromPresenceUserId,
+  getPresentationRemainingMs,
+  PRESENTATION_WINDOW_MS,
 } from "./persona-cursor-helpers";
 
 describe("extractPersonaSlugFromPresenceUserId", () => {
@@ -67,5 +69,57 @@ describe("buildReadingLaneX", () => {
     expect(buildReadingLaneX("builtin/tone-police")).not.toBe(
       buildReadingLaneX("builtin/styling-recommender"),
     );
+  });
+});
+
+describe("getPresentationRemainingMs", () => {
+  const CREATED_AT_MS = 1_700_000_000_000;
+
+  it("grants the full window to a finding that just landed", () => {
+    expect(
+      getPresentationRemainingMs({ findingCreatedAtMs: CREATED_AT_MS, nowMs: CREATED_AT_MS }),
+    ).toBe(PRESENTATION_WINDOW_MS);
+  });
+
+  it("counts down as the finding ages", () => {
+    expect(
+      getPresentationRemainingMs({
+        findingCreatedAtMs: CREATED_AT_MS,
+        nowMs: CREATED_AT_MS + 3_000,
+      }),
+    ).toBe(PRESENTATION_WINDOW_MS - 3_000);
+  });
+
+  it("returns 0 once the window has passed — the cursor-fade contract", () => {
+    expect(
+      getPresentationRemainingMs({
+        findingCreatedAtMs: CREATED_AT_MS,
+        nowMs: CREATED_AT_MS + PRESENTATION_WINDOW_MS,
+      }),
+    ).toBe(0);
+    expect(
+      getPresentationRemainingMs({
+        findingCreatedAtMs: CREATED_AT_MS,
+        nowMs: CREATED_AT_MS + PRESENTATION_WINDOW_MS + 60_000,
+      }),
+    ).toBe(0);
+  });
+
+  it("returns 0 for a finding that arrived already old (late-joining tab)", () => {
+    expect(
+      getPresentationRemainingMs({
+        findingCreatedAtMs: CREATED_AT_MS - 3_600_000,
+        nowMs: CREATED_AT_MS,
+      }),
+    ).toBe(0);
+  });
+
+  it("clamps a future-stamped finding (clock skew) to the full window, never more", () => {
+    expect(
+      getPresentationRemainingMs({
+        findingCreatedAtMs: CREATED_AT_MS + 120_000,
+        nowMs: CREATED_AT_MS,
+      }),
+    ).toBe(PRESENTATION_WINDOW_MS);
   });
 });

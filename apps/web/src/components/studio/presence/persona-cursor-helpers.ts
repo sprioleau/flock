@@ -54,3 +54,38 @@ export function buildFindingHoverAnchor(findingId: string): { x: number; y: numb
 export function buildReadingLaneX(slug: string): number {
   return 0.3 + ((hashString(slug) % 100) / 100) * 0.4;
 }
+
+/**
+ * How long an idle persona cursor PRESENTS a fresh finding (hovers its
+ * target block) before fading out. Owner rule (2026-07-31): cursors are
+ * visible only while a persona is actively looking at something — a run's
+ * reading/thinking phases, plus this bounded presentation beat right after a
+ * finding lands — never camped indefinitely on an open finding.
+ */
+export const PRESENTATION_WINDOW_MS = 8_000;
+
+/**
+ * Milliseconds of presentation left for a finding, measured from its
+ * server-stamped createdAtMs. 0 ⇒ the window has passed (cursor fades).
+ *
+ * Cross-tab consistency argument: createdAtMs is written server-side
+ * (personaFindings.recordFindings), so every collaborator's tab computes the
+ * same window from the same timestamp — the fade stays client-side timing
+ * with zero presence writes. Client-clock skew shifts the window by the skew
+ * amount (bounded, cosmetic); a timestamp that reads as FUTURE on this
+ * client's clock (clock behind the server) clamps to the full window rather
+ * than extending it.
+ */
+export function getPresentationRemainingMs({
+  findingCreatedAtMs,
+  nowMs,
+}: {
+  findingCreatedAtMs: number;
+  nowMs: number;
+}): number {
+  const elapsedMs = nowMs - findingCreatedAtMs;
+  if (elapsedMs <= 0) {
+    return PRESENTATION_WINDOW_MS; // future-stamped (clock skew): full window
+  }
+  return Math.max(0, PRESENTATION_WINDOW_MS - elapsedMs);
+}

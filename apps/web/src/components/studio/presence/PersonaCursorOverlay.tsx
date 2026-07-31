@@ -1,6 +1,13 @@
 "use client";
 
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useRef,
+  useState,
+  useSyncExternalStore,
+} from "react";
 import { useQuery } from "convex/react";
 import type { FunctionReturnType } from "convex/server";
 import { api } from "@convex/_generated/api";
@@ -15,6 +22,7 @@ import {
   buildFindingHoverAnchor,
   buildReadingLaneX,
   extractPersonaSlugFromPresenceUserId,
+  getPresentationRemainingMs,
 } from "./persona-cursor-helpers";
 import { PointerCursorArrow, resolvePointerPosition } from "./PointerPresenceOverlay";
 import "./pointer-presence.css";
@@ -45,12 +53,16 @@ import "./pointer-presence.css";
  *    pulsing badge (the facepile's reading treatment).
  * 2. status "thinking" → parks at its current spot, violet pulsing badge
  *    (a real pending LLM call — the facepile's thinking treatment).
- * 3. idle + an OPEN finding → glides to the newest finding's first target
- *    block and hovers there (gentle CSS bob) at a DETERMINISTIC anchor
- *    hashed from the Convex finding id — every tab computes the same spot —
- *    with the violet "thinking about something" badge at the cursor.
- * 4. idle, no finding → fades out (released). Dismissing/applying a finding
- *    reaches here reactively in all tabs.
+ * 3. idle + a FRESH open finding (created within PRESENTATION_WINDOW_MS,
+ *    server-stamped createdAtMs — same verdict in every tab) → glides to the
+ *    finding's first target block and PRESENTS it there (gentle CSS bob) at
+ *    a DETERMINISTIC anchor hashed from the Convex finding id, violet badge.
+ * 4. otherwise → fades out (released). Owner rule (2026-07-31): cursors fade
+ *    whenever the persona is not actively looking at something — a finding
+ *    staying OPEN no longer keeps its cursor camped on the target; the
+ *    presentation window ends and the cursor fades while the card remains.
+ *    Dismissing/applying a finding mid-presentation also reaches here
+ *    reactively in all tabs.
  *
  * All motion is CSS interpolation between these sparse logical anchors
  * (~1.1s glide, slower than the humans' 180ms tracking so it reads as
@@ -64,7 +76,7 @@ type FindingRow = FunctionReturnType<typeof api.personaFindings.listOpenFindings
 type PersonaStatus = NonNullable<PresenceData["status"]>;
 
 /** What the cursor is doing right now (drives target, badge, and testids). */
-type PersonaCursorActivity = "reading" | "thinking" | "hovering" | "hidden";
+type PersonaCursorActivity = "reading" | "thinking" | "presenting" | "hidden";
 
 /** A logical cursor anchor — the same shape the human pointer payload uses. */
 interface PersonaCursorTarget {
@@ -125,6 +137,9 @@ function PersonaCursorLayer({
     }
     // listOpenFindings is newest-first → `find` = the persona's most recent
     // open finding. Rows whose target list is empty can't anchor a hover.
+    // (A re-affirming runner pass refreshes an open row's createdAtMs, which
+    // re-opens its presentation window — the persona really did just look at
+    // it again.)
     const finding =
       findingRows.find((row) => row.personaSlug === slug && row.targetBlockIds.length > 0) ??
       null;
@@ -137,6 +152,7 @@ function PersonaCursorLayer({
         color: entry.data.color,
         status: (entry.data.status ?? "idle") as PersonaStatus,
         findingBlockId: finding?.targetBlockIds[0] ?? null,
+        findingCreatedAtMs: finding?.createdAtMs ?? 0,
         findingAnchorX: anchor?.x ?? 0,
         findingAnchorY: anchor?.y ?? 0,
       },
@@ -158,6 +174,7 @@ function PersonaCursorLayer({
           color={cursor.color}
           status={cursor.status}
           findingBlockId={cursor.findingBlockId}
+          findingCreatedAtMs={cursor.findingCreatedAtMs}
           findingAnchorX={cursor.findingAnchorX}
           findingAnchorY={cursor.findingAnchorY}
           layoutVersion={layoutVersion}
@@ -190,7 +207,7 @@ function resolveActivityTarget({
   overlayElement: HTMLElement;
   lastTarget: PersonaCursorTarget | null;
 }): PersonaCursorTarget | null {
-  if (activity === "hovering" && findingBlockId !== null) {
+  if (activity === "presenting" && findingBlockId !== null) {
     return { blockId: findingBlockId, x: findingAnchorX, y: findingAnchorY };
   }
   const blockElements =
@@ -219,12 +236,66 @@ function resolveActivityTarget({
   return null;
 }
 
+/**
+ * Whether a finding is still inside its presentation window
+ * (PRESENTATION_WINDOW_MS from its server-stamped createdAtMs), as a tiny
+ * external "clock store": the snapshot compares the clock to the window and
+ * the subscription arms one timeout for the expiry instant, so the cursor
+ * fades exactly when the window closes with no ticking and no render-time
+ * clock reads. Findings that arrive already old (e.g. this tab loaded later)
+ * read as closed from the first render — every tab agrees on the window
+ * because the timestamp is server-stamped. `findingCreatedAtMs` 0 = no
+ * finding (always closed).
+ */
+function useIsPresentationWindowOpen({
+  findingCreatedAtMs,
+}: {
+  findingCreatedAtMs: number;
+}): boolean {
+  const subscribe = useCallback(
+    (onStoreChange: () => void) => {
+      let timerId: number | null = null;
+      const armExpiryTimer = (): void => {
+        const remainingMs = getPresentationRemainingMs({
+          findingCreatedAtMs,
+          nowMs: Date.now(),
+        });
+        if (remainingMs <= 0) {
+          return; // already expired — nothing will change
+        }
+        // Re-arm after firing: a future-stamped createdAtMs (clock skew)
+        // still reads open at the first expiry check, so keep watching
+        // until the snapshot actually flips.
+        timerId = window.setTimeout(() => {
+          onStoreChange();
+          armExpiryTimer();
+        }, remainingMs);
+      };
+      armExpiryTimer();
+      return () => {
+        if (timerId !== null) {
+          window.clearTimeout(timerId);
+        }
+      };
+    },
+    [findingCreatedAtMs],
+  );
+  const getIsWindowOpenSnapshot = useCallback(
+    () =>
+      findingCreatedAtMs !== 0 &&
+      getPresentationRemainingMs({ findingCreatedAtMs, nowMs: Date.now() }) > 0,
+    [findingCreatedAtMs],
+  );
+  return useSyncExternalStore(subscribe, getIsWindowOpenSnapshot, () => false);
+}
+
 function PersonaCursor({
   slug,
   name,
   color,
   status,
   findingBlockId,
+  findingCreatedAtMs,
   findingAnchorX,
   findingAnchorY,
   layoutVersion,
@@ -235,6 +306,7 @@ function PersonaCursor({
   status: PersonaStatus;
   /** Primitive fields (not the row object) so effects key on values. */
   findingBlockId: string | null;
+  findingCreatedAtMs: number;
   findingAnchorX: number;
   findingAnchorY: number;
   layoutVersion: number;
@@ -266,15 +338,18 @@ function PersonaCursor({
     return () => window.clearInterval(intervalId);
   }, [isReading]);
 
-  // A live run (reading/thinking) outranks the finding hover; back to idle
-  // the cursor settles on the persona's newest open finding, if any.
+  // A live run (reading/thinking) outranks the presentation; back to idle
+  // the cursor presents the persona's newest finding only while its
+  // presentation window is open, then fades (owner: fade whenever the
+  // persona is not actively looking at something).
+  const isPresentationWindowOpen = useIsPresentationWindowOpen({ findingCreatedAtMs });
   const activity: PersonaCursorActivity =
     status === "reading"
       ? "reading"
       : status === "thinking"
         ? "thinking"
-        : findingBlockId !== null
-          ? "hovering"
+        : findingBlockId !== null && isPresentationWindowOpen
+          ? "presenting"
           : "hidden";
 
   useLayoutEffect(() => {
@@ -337,8 +412,8 @@ function PersonaCursor({
         {activity !== "hidden" && (
           /* Status badge at the cursor — the facepile PersonaStatusDot's
            * exact color/pulse grammar: amber while reading, violet while
-           * thinking (a pending call) AND while dwelling on an open finding
-           * ("thinking about something" — the owner's ask). */
+           * thinking (a pending call) AND while presenting a fresh finding
+           * (the bounded post-run beat before the cursor fades). */
           <span
             className={cn(
               "tandem-persona-cursor__badge animate-pulse",

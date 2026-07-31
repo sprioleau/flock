@@ -19,6 +19,7 @@ import {
   useArePersonasPaused,
   useEnabledPersonaSlugs,
 } from "./enabled-personas";
+import { recordPersonaRunStart } from "./persona-run-clock";
 
 /**
  * Multi-agent canvas — the client half of the reactive advisory runner
@@ -327,9 +328,12 @@ export function usePersonaAdvisors(): PersonaAdvisorsController {
       }
 
       runner.isRunInFlight = true;
-      // Stamp cooldowns at run START so a burst can't double-spend.
+      // Stamp cooldowns at run START so a burst can't double-spend. The
+      // run-clock twin feeds the facepile popover's "checks again in ~Ns"
+      // (localStorage — shared across this browser's tabs, zero presence writes).
       for (const slug of eligibleSlugs) {
         runner.lastRunAtMsBySlug.set(slug, now);
+        recordPersonaRunStart({ documentId, slug, atMs: now });
       }
       tracePersonas({ step: "run-start", eligibleSlugs });
       try {

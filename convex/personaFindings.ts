@@ -108,6 +108,57 @@ export const listOpenFindings = query({
   },
 });
 
+/** Upper bound on history rows returned (recommendations modal, demo scale). */
+const MAX_HISTORY_FINDINGS = 100;
+
+const findingHistoryPayloadValidator = v.object({
+  findingId: v.id("personaFindings"),
+  personaSlug: v.string(),
+  personaName: v.string(),
+  personaColor: v.string(),
+  title: v.string(),
+  description: v.string(),
+  targetBlockNames: v.array(v.string()),
+  status: findingStatusValidator,
+  /** True when the finding carries ops a human can apply (else informational). */
+  isActionable: v.boolean(),
+  createdAtMs: v.number(),
+});
+
+/**
+ * The recommendations-history feed: EVERY finding for a document — open,
+ * dismissed, and applied — newest first, bounded. Backs the recommendations
+ * modal (all/agent tabs) and the facepile popover's recent list. Rows are
+ * trimmed to display fields only: no ops JSON or snapshots ride along (the
+ * modal's per-item actions go through the same dismiss/apply mutations the
+ * cards use, keyed by findingId).
+ */
+export const listFindingsForDocument = query({
+  args: { documentId: v.id("documents") },
+  returns: v.array(findingHistoryPayloadValidator),
+  handler: async (ctx, args) => {
+    const rows = await ctx.db
+      .query("personaFindings")
+      .withIndex("by_documentId", (q) => q.eq("documentId", args.documentId))
+      .order("desc")
+      .take(MAX_HISTORY_FINDINGS);
+    return rows
+      .sort((a, b) => b.createdAtMs - a.createdAtMs)
+      .map((row) => ({
+        findingId: row._id,
+        personaSlug: row.personaSlug,
+        personaName: row.personaName,
+        personaColor: row.personaColor,
+        title: row.title,
+        description: row.description,
+        targetBlockNames: row.targetBlockNames,
+        status: row.status,
+        isActionable: row.ops.length > 0,
+        createdAtMs: row.createdAtMs,
+      }));
+  },
+});
+
 /**
  * Record one runner pass's findings. Dedup rules (§5.6):
  * - a DISMISSED row with the same patternKey wins — the finding is skipped
