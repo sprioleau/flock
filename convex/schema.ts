@@ -256,10 +256,32 @@ export default defineSchema({
     sourceUrl: v.optional(v.string()),
     /** Email-safe CSS font stacks the kit was built around. */
     fonts: v.object({ heading: v.string(), body: v.string() }),
-    /** Brand logo: absolute URL or data:image/svg+xml URI (inline-SVG logos). */
+    /**
+     * Monotonic save counter (brand-kit architecture §3.2): bumped by every
+     * patch-in-place save and by asset confirm/remove (meaningful diffs);
+     * NOT by name-only renames. `(kitId, revision)` is what Stage M draft
+     * pointers compare against. Optional for pre-Stage-S rows — absent
+     * means revision 1 (normalized by getEffectiveRevision).
+     */
+    revision: v.optional(v.number()),
+    /**
+     * Brand logo: extraction suggestion (absolute URL or data:image/svg+xml
+     * URI) until confirmed, then OVERWRITTEN with the durable Convex storage
+     * serving URL. Confirmed-only may enter documents (owner decision 4) —
+     * gate via getConfirmedBrandAssetUrl, never read this field directly
+     * from document-writing code.
+     */
     logoUrl: v.optional(v.string()),
-    /** og:image social-card URL — display-only kit metadata. */
+    /** Set on confirm: the uploaded logo binary (deleted on replace/clear). */
+    logoStorageId: v.optional(v.id("_storage")),
+    /** Provenance: the original scraped URL the confirmed binary came from. */
+    logoSourceUrl: v.optional(v.string()),
+    logoConfirmedAtMs: v.optional(v.number()),
+    /** og:image social-card URL — same suggestion→confirmed lifecycle as logo. */
     socialImageUrl: v.optional(v.string()),
+    socialImageStorageId: v.optional(v.id("_storage")),
+    socialImageSourceUrl: v.optional(v.string()),
+    socialImageConfirmedAtMs: v.optional(v.number()),
     /** ThemeVariation[]: complete `Required<GlobalStyles>` payloads (see guard note above). */
     variations: v.array(
       v.object({

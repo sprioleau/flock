@@ -60,13 +60,21 @@ export interface BrandKit {
   /** Font stacks extracted for the brand. */
   fonts: BrandKitFonts;
   /**
-   * Brand logo: an absolute URL from the site's head metadata / masthead, or
-   * a `data:image/svg+xml` URI when the logo was an inline SVG. (Uploading
-   * the binary to Convex storage is a separate backlog item.)
+   * Brand logo. Until confirmed: an extraction SUGGESTION (absolute URL from
+   * the site's head metadata / masthead, or a `data:image/svg+xml` URI).
+   * After confirmation (confirm-asset route): the durable Convex storage
+   * serving URL. Owner decision 4: only CONFIRMED assets may enter documents
+   * — gate all document-writing reads through getConfirmedBrandAssetUrl.
    */
   logoUrl?: string;
-  /** The site's og:image social-card URL — display-only kit metadata. */
+  /** Set (server-side) when the logo was confirmed into Convex storage. */
+  logoConfirmedAtMs?: number;
+  /** The site's og:image social-card URL — same suggestion→confirmed lifecycle. */
   socialImageUrl?: string;
+  /** Set (server-side) when the social card was confirmed into Convex storage. */
+  socialImageConfirmedAtMs?: number;
+  /** Monotonic save counter (server-managed; absent on unsaved/mock kits). */
+  revision?: number;
   /** 3–4 agent-generated color variations; the theme dropdown's content. */
   variations: ThemeVariation[];
 }
@@ -231,6 +239,38 @@ export function getBrandKitValidationErrors(brandKit: BrandKit): string[] {
 export type BrandKitGenerateResult =
   | { isOk: true; brandKit: BrandKit }
   | { isOk: false; message: string };
+
+// ---------------------------------------------------------------------------
+// Confirmed-asset gate (owner decision 4, brand-kit architecture proposal)
+// ---------------------------------------------------------------------------
+
+/** The two confirmable brand-kit asset kinds. */
+export type BrandKitAssetKind = "logo" | "socialCard";
+
+/**
+ * THE gate for reading brand assets anywhere that writes into documents
+ * (Stage M: the "Logo" add-block preset, propagation re-sourcing). Returns
+ * the asset URL only when it has been CONFIRMED into Convex storage — an
+ * unconfirmed suggestion is a third-party hotlink and may only be previewed
+ * in kit UI (owner decision 4). Do not read `brandKit.logoUrl` directly from
+ * document-writing code.
+ */
+export function getConfirmedBrandAssetUrl({
+  brandKit,
+  kind,
+}: {
+  brandKit: BrandKit;
+  kind: BrandKitAssetKind;
+}): string | null {
+  if (kind === "logo") {
+    return brandKit.logoConfirmedAtMs !== undefined && brandKit.logoUrl !== undefined
+      ? brandKit.logoUrl
+      : null;
+  }
+  return brandKit.socialImageConfirmedAtMs !== undefined && brandKit.socialImageUrl !== undefined
+    ? brandKit.socialImageUrl
+    : null;
+}
 
 // ---------------------------------------------------------------------------
 // Current-theme detection

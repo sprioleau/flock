@@ -56,15 +56,15 @@ function failure({
 }
 
 /** Read a response body up to `maxBytes`; truncates silently past the cap. */
-async function readBodyCapped({
+async function readBytesCapped({
   response,
   maxBytes,
 }: {
   response: Response;
   maxBytes: number;
-}): Promise<string> {
+}): Promise<Uint8Array> {
   if (response.body === null) {
-    return "";
+    return new Uint8Array(0);
   }
   const reader = response.body.getReader();
   const chunks: Uint8Array[] = [];
@@ -88,7 +88,12 @@ async function readBodyCapped({
     merged.set(remaining >= chunk.byteLength ? chunk : chunk.subarray(0, remaining), offset);
     offset += Math.min(chunk.byteLength, remaining);
   }
-  return new TextDecoder("utf-8", { fatal: false }).decode(merged);
+  return merged;
+}
+
+/** Text flavor of {@link readBytesCapped} (lossy UTF-8 decode). */
+async function readBodyCapped(input: { response: Response; maxBytes: number }): Promise<string> {
+  return new TextDecoder("utf-8", { fatal: false }).decode(await readBytesCapped(input));
 }
 
 interface GuardedFetchOk {
@@ -215,6 +220,50 @@ export async function fetchPage(
     });
   }
   return { isOk: true, html, finalUrl };
+}
+
+export type FetchBinaryResult =
+  | { isOk: true; bytes: Uint8Array; contentType: string }
+  | FetchPageFailure;
+
+/**
+ * Fetch a binary resource through the same SSRF rails (per-hop guard,
+ * deadline, byte cap) — the confirm-asset flow's image download. The body is
+ * HARD-capped: a response larger than `maxBytes` is rejected, not truncated
+ * (a truncated image is a corrupt image).
+ */
+export async function fetchBinaryResource({
+  url,
+  timeoutMs = DEFAULT_TIMEOUT_MS,
+  maxBytes,
+}: {
+  url: string;
+  timeoutMs?: number;
+  maxBytes: number;
+}): Promise<FetchBinaryResult> {
+  const fetchResult = await guardedFetch({ url, deadlineAtMs: Date.now() + timeoutMs });
+  if (!fetchResult.isOk) {
+    return fetchResult;
+  }
+  const { response } = fetchResult;
+  if (!response.ok) {
+    await response.body?.cancel().catch(() => undefined);
+    return failure({
+      reason: "http_error",
+      message: "We couldn't download that file (the site responded with an error).",
+    });
+  }
+  // Read one byte past the cap so an at-cap read distinguishes "exactly cap"
+  // from "over cap" — over-cap downloads are rejected outright.
+  const bytes = await readBytesCapped({ response, maxBytes: maxBytes + 1 });
+  if (bytes.byteLength > maxBytes) {
+    return failure({
+      reason: "http_error",
+      message: "That file is too large for us to save.",
+    });
+  }
+  const contentType = (response.headers.get("content-type") ?? "").split(";")[0].trim().toLowerCase();
+  return { isOk: true, bytes, contentType };
 }
 
 /**

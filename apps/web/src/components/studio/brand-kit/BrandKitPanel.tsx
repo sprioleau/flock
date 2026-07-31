@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useMutation } from "convex/react";
 import { ConvexError } from "convex/values";
-import { Loader2Icon, PaletteIcon, SparklesIcon } from "lucide-react";
+import { CheckIcon, Loader2Icon, PaletteIcon, SparklesIcon } from "lucide-react";
 import { api } from "@convex/_generated/api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -16,7 +16,7 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
-import type { BrandKit, BrandKitGenerateResult } from "@/lib/brand-kit";
+import type { BrandKit, BrandKitAssetKind, BrandKitGenerateResult } from "@/lib/brand-kit";
 import { useEditorStore } from "@/lib/editor-store";
 import { ThemeSwatch } from "../theme/ThemeSwatch";
 import { useActiveBrandKit } from "./useActiveBrandKit";
@@ -31,7 +31,14 @@ import { useActiveBrandKit } from "./useActiveBrandKit";
  * - shows the session's ACTIVE kit (saved kit → MOCK_BRAND_KIT fallback);
  * - "Create from website URL" → POST /api/brand-kit/generate (the scraper
  *   pipeline) → previews the returned kit's variations with the same
- *   Aa+circles swatches → Save (replaces the session's kit) or Discard;
+ *   Aa+circles swatches → Save (patches the session's kit row in place) or
+ *   Discard;
+ * - Stage S (brand-kit architecture §8): the extracted logo/social card are
+ *   SUGGESTIONS with confirm affordances — "Confirm & save" pulls the binary
+ *   into Convex storage via POST /api/brand-kit/confirm-asset and the row's
+ *   URL becomes durable ("Saved" chip). Unconfirmed suggestions render in
+ *   this panel only (owner decision 4). The company name is a suggestion
+ *   too: a plain editable input, persisted via renameBrandKit;
  * - "Reset to default" clears the saved kit, dropping every tab back to the
  *   mock kit live.
  *
@@ -43,6 +50,8 @@ export function BrandKitPanel() {
   const { brandKit: activeBrandKit, hasSavedKit } = useActiveBrandKit();
   const saveBrandKit = useMutation(api.brandKits.saveBrandKit);
   const clearBrandKit = useMutation(api.brandKits.clearBrandKit);
+  const renameBrandKit = useMutation(api.brandKits.renameBrandKit);
+  const removeBrandKitAsset = useMutation(api.brandKits.removeBrandKitAsset);
 
   const [isOpen, setIsOpen] = useState(false);
   const [websiteUrl, setWebsiteUrl] = useState("");
@@ -52,6 +61,8 @@ export function BrandKitPanel() {
   const [isSaving, setIsSaving] = useState(false);
   const [saveErrorMessage, setSaveErrorMessage] = useState<string | null>(null);
   const [isResetting, setIsResetting] = useState(false);
+  const [busyAssetKind, setBusyAssetKind] = useState<BrandKitAssetKind | null>(null);
+  const [assetErrorMessage, setAssetErrorMessage] = useState<string | null>(null);
 
   const handleOpenChange = (nextIsOpen: boolean): void => {
     setIsOpen(nextIsOpen);
@@ -62,6 +73,8 @@ export function BrandKitPanel() {
       setGenerateErrorMessage(null);
       setPreviewKit(null);
       setSaveErrorMessage(null);
+      setBusyAssetKind(null);
+      setAssetErrorMessage(null);
     }
   };
 
@@ -148,6 +161,71 @@ export function BrandKitPanel() {
     }
   };
 
+  /** Persist a name edit on the SAVED kit (suggestion — the user's edit wins). */
+  const commitActiveKitName = async (name: string): Promise<void> => {
+    const trimmedName = name.trim();
+    if (
+      sessionId === null ||
+      !hasSavedKit ||
+      trimmedName.length === 0 ||
+      trimmedName === activeBrandKit.name
+    ) {
+      return;
+    }
+    try {
+      await renameBrandKit({ sessionId, name: trimmedName });
+    } catch (error: unknown) {
+      setAssetErrorMessage(
+        error instanceof ConvexError ? String(error.data) : "Couldn't rename the kit. Try again.",
+      );
+    }
+  };
+
+  /** Confirm a suggested asset: binary → Convex storage → durable row URL. */
+  const confirmAsset = async (kind: BrandKitAssetKind): Promise<void> => {
+    if (sessionId === null || busyAssetKind !== null) {
+      return;
+    }
+    setBusyAssetKind(kind);
+    setAssetErrorMessage(null);
+    try {
+      const response = await fetch("/api/brand-kit/confirm-asset", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sessionId, kind }),
+      });
+      const result = (await response.json()) as { isOk: boolean; message?: string };
+      if (!result.isOk) {
+        setAssetErrorMessage(result.message ?? "Couldn't save that image. Try again.");
+      }
+      // Success needs no local state: the kit row updated and the reactive
+      // query swaps the card to the durable URL + "Saved" chip live.
+    } catch {
+      setAssetErrorMessage("Couldn't save that image right now. Try again.");
+    } finally {
+      setBusyAssetKind(null);
+    }
+  };
+
+  const removeAsset = async (kind: BrandKitAssetKind): Promise<void> => {
+    if (sessionId === null || busyAssetKind !== null) {
+      return;
+    }
+    setBusyAssetKind(kind);
+    setAssetErrorMessage(null);
+    try {
+      await removeBrandKitAsset({ sessionId, kind });
+    } catch (error: unknown) {
+      setAssetErrorMessage(
+        error instanceof ConvexError
+          ? String(error.data)
+          : "Couldn't remove that image. Try again.",
+      );
+    } finally {
+      setBusyAssetKind(null);
+    }
+  };
+
   return (
     <Dialog open={isOpen} onOpenChange={handleOpenChange}>
       <DialogTrigger
@@ -178,7 +256,25 @@ export function BrandKitPanel() {
         <div className="flex max-h-[70vh] min-h-0 flex-col gap-4 overflow-y-auto">
           <section className="flex flex-col gap-2">
             <h3 className="text-xs font-medium text-muted-foreground">Active kit</h3>
-            <BrandKitSummary brandKit={activeBrandKit} isDefaultKit={!hasSavedKit} />
+            <BrandKitSummary
+              brandKit={activeBrandKit}
+              isDefaultKit={!hasSavedKit}
+              onNameCommit={hasSavedKit ? (name) => void commitActiveKitName(name) : undefined}
+              assetActions={
+                hasSavedKit
+                  ? {
+                      busyKind: busyAssetKind,
+                      onConfirm: (kind) => void confirmAsset(kind),
+                      onRemove: (kind) => void removeAsset(kind),
+                    }
+                  : undefined
+              }
+            />
+            {assetErrorMessage !== null && (
+              <p className="text-xs text-destructive" data-testid="brand-kit-asset-error">
+                {assetErrorMessage}
+              </p>
+            )}
             {hasSavedKit && (
               <Button
                 variant="outline"
@@ -246,7 +342,17 @@ export function BrandKitPanel() {
           {previewKit !== null && (
             <section className="flex flex-col gap-2" data-testid="brand-kit-preview">
               <h3 className="text-xs font-medium text-muted-foreground">Preview</h3>
-              <BrandKitSummary brandKit={previewKit} isDefaultKit={false} />
+              <BrandKitSummary
+                brandKit={previewKit}
+                isDefaultKit={false}
+                onNameCommit={(name) =>
+                  setPreviewKit((current) => (current === null ? null : { ...current, name }))
+                }
+              />
+              <p className="text-xs text-muted-foreground">
+                The name and images are suggestions from the site — edit the name freely; save the
+                kit, then confirm its logo and social card to keep them.
+              </p>
               {saveErrorMessage !== null && (
                 <p className="text-xs text-destructive" data-testid="brand-kit-save-error">
                   {saveErrorMessage}
@@ -283,36 +389,60 @@ export function BrandKitPanel() {
   );
 }
 
+interface BrandKitAssetActions {
+  busyKind: BrandKitAssetKind | null;
+  onConfirm: (kind: BrandKitAssetKind) => void;
+  onRemove: (kind: BrandKitAssetKind) => void;
+}
+
 /**
- * One kit rendered as a card: name (+ "Default" badge for the mock fallback),
- * source URL, the heading/body font stacks (each shown in itself), and every
- * variation as a ThemeSwatch row — the same Aa+circles cue the theme dropdown
- * uses, so the panel and the menu read identically.
+ * One kit rendered as a card: the name (editable when `onNameCommit` is
+ * given — the extracted name is only a suggestion), a "Default" badge for
+ * the mock fallback, source URL, the heading/body font stacks (each shown
+ * in itself), the confirmable logo/social-card asset rows, and every
+ * variation as a ThemeSwatch row — the same Aa+circles cue the theme
+ * dropdown uses. `assetActions` present = the saved-kit context
+ * (Confirm & save / Remove buttons); absent = preview/default context
+ * (chips only — decision 4 keeps unconfirmed suggestions display-only
+ * everywhere regardless).
  */
 function BrandKitSummary({
   brandKit,
   isDefaultKit,
+  onNameCommit,
+  assetActions,
 }: {
   brandKit: BrandKit;
   isDefaultKit: boolean;
+  onNameCommit?: (name: string) => void;
+  assetActions?: BrandKitAssetActions;
 }) {
   return (
     <div className="flex flex-col gap-3 rounded-lg border p-3">
       <div className="flex min-w-0 items-center gap-2">
-        {brandKit.logoUrl !== undefined && (
-          // Plain <img> on purpose: the source is an arbitrary external host
-          // (or a data:image/svg+xml URI) — next/image can't optimize either.
-          // eslint-disable-next-line @next/next/no-img-element
-          <img
-            src={brandKit.logoUrl}
-            alt=""
-            className="size-6 shrink-0 rounded border bg-white object-contain p-0.5"
-            data-testid="brand-kit-logo"
+        {onNameCommit === undefined ? (
+          <span className="min-w-0 truncate text-sm font-medium" data-testid="brand-kit-name">
+            {brandKit.name}
+          </span>
+        ) : (
+          // Uncontrolled + keyed by the current name: reactive updates (e.g.
+          // a rename from another tab) reset the field; commits happen on
+          // blur or Enter.
+          <Input
+            key={brandKit.name}
+            type="text"
+            defaultValue={brandKit.name}
+            aria-label="Brand kit name"
+            className="h-8 min-w-0 text-sm font-medium"
+            onBlur={(event) => onNameCommit(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === "Enter") {
+                event.currentTarget.blur();
+              }
+            }}
+            data-testid="brand-kit-name-input"
           />
         )}
-        <span className="min-w-0 truncate text-sm font-medium" data-testid="brand-kit-name">
-          {brandKit.name}
-        </span>
         {isDefaultKit && (
           <span className="shrink-0 rounded-full border bg-muted px-1.5 py-px text-[10px] font-medium text-muted-foreground">
             Default
@@ -343,14 +473,22 @@ function BrandKitSummary({
           </dd>
         </div>
       </dl>
+      {brandKit.logoUrl !== undefined && (
+        <BrandAssetRow
+          kind="logo"
+          label="Logo"
+          url={brandKit.logoUrl}
+          isConfirmed={brandKit.logoConfirmedAtMs !== undefined}
+          assetActions={assetActions}
+        />
+      )}
       {brandKit.socialImageUrl !== undefined && (
-        // Subtle social-card peek — metadata display only, kept small.
-        // eslint-disable-next-line @next/next/no-img-element
-        <img
-          src={brandKit.socialImageUrl}
-          alt=""
-          className="h-14 w-auto max-w-full self-start rounded border object-cover opacity-90"
-          data-testid="brand-kit-social-image"
+        <BrandAssetRow
+          kind="socialCard"
+          label="Social card"
+          url={brandKit.socialImageUrl}
+          isConfirmed={brandKit.socialImageConfirmedAtMs !== undefined}
+          assetActions={assetActions}
         />
       )}
       <ul className="flex flex-col gap-1.5">
@@ -365,6 +503,105 @@ function BrandKitSummary({
           </li>
         ))}
       </ul>
+    </div>
+  );
+}
+
+/** Where an asset suggestion points, in friendly words. */
+function describeAssetSource({ url, isConfirmed }: { url: string; isConfirmed: boolean }): string {
+  if (isConfirmed) {
+    return "Saved to your kit";
+  }
+  if (url.startsWith("data:")) {
+    return "From the site's HTML";
+  }
+  try {
+    return new URL(url).hostname;
+  } catch {
+    return "From the site";
+  }
+}
+
+/**
+ * One confirmable asset (§8.1): thumbnail + source + Suggested/Saved chip;
+ * in the saved-kit context also [Confirm & save] / [Remove]. Unconfirmed
+ * suggestions never leave this UI (owner decision 4).
+ */
+function BrandAssetRow({
+  kind,
+  label,
+  url,
+  isConfirmed,
+  assetActions,
+}: {
+  kind: BrandKitAssetKind;
+  label: string;
+  url: string;
+  isConfirmed: boolean;
+  assetActions?: BrandKitAssetActions;
+}) {
+  const isBusy = assetActions?.busyKind === kind;
+  const isAnotherAssetBusy =
+    assetActions !== undefined && assetActions.busyKind !== null && !isBusy;
+  return (
+    <div className="flex items-center gap-2" data-testid={`brand-kit-asset-${kind}`}>
+      {/* Plain <img> on purpose: the source is an arbitrary external host
+          (or a data:image/svg+xml URI) — next/image can't optimize either. */}
+      {/* eslint-disable-next-line @next/next/no-img-element */}
+      <img
+        src={url}
+        alt=""
+        className={
+          kind === "logo"
+            ? "size-8 shrink-0 rounded border bg-white object-contain p-0.5"
+            : "h-8 w-14 shrink-0 rounded border object-cover"
+        }
+        data-testid={`brand-kit-asset-${kind}-image`}
+      />
+      <div className="flex min-w-0 flex-col">
+        <span className="text-xs font-medium">{label}</span>
+        <span className="truncate text-[11px] text-muted-foreground">
+          {describeAssetSource({ url, isConfirmed })}
+        </span>
+      </div>
+      <span
+        className={
+          isConfirmed
+            ? "ml-auto flex shrink-0 items-center gap-1 rounded-full border border-emerald-300 bg-emerald-50 px-1.5 py-px text-[10px] font-medium text-emerald-700"
+            : "ml-auto shrink-0 rounded-full border bg-muted px-1.5 py-px text-[10px] font-medium text-muted-foreground"
+        }
+        data-testid={`brand-kit-asset-${kind}-chip`}
+      >
+        {isConfirmed && <CheckIcon className="size-2.5" />}
+        {isConfirmed ? "Saved" : "Suggested"}
+      </span>
+      {assetActions !== undefined && (
+        <div className="flex shrink-0 items-center gap-1">
+          {!isConfirmed && (
+            <Button
+              variant="outline"
+              size="sm"
+              className="h-6 px-2 text-[11px]"
+              onClick={() => assetActions.onConfirm(kind)}
+              disabled={isBusy || isAnotherAssetBusy}
+              data-testid={`brand-kit-asset-${kind}-confirm`}
+            >
+              {isBusy && <Loader2Icon className="animate-spin" />}
+              Confirm &amp; save
+            </Button>
+          )}
+          <Button
+            variant="ghost"
+            size="sm"
+            className="h-6 px-2 text-[11px] text-muted-foreground"
+            onClick={() => assetActions.onRemove(kind)}
+            disabled={isBusy || isAnotherAssetBusy}
+            data-testid={`brand-kit-asset-${kind}-remove`}
+          >
+            Remove
+          </Button>
+        </div>
+      )}
     </div>
   );
 }
