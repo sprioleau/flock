@@ -7,6 +7,7 @@ import {
   type ChatRequestErrorResponse,
   type TandemChatMessage,
 } from "@/lib/chat-contract";
+import { getSessionIdFromCookieHeader } from "@/lib/session-cookie";
 import { DEFAULT_GEMINI_MODEL_ID, MOCK_MODEL_ID } from "./constants";
 import { toChatErrorText } from "./errors";
 import { createMockChatModel } from "./mock-model";
@@ -60,6 +61,10 @@ export async function POST(request: Request) {
     });
   }
   const { id: threadId, messages, document, selectedBlockId } = parsedBody.data;
+  // The anonymous session id rides the same-origin cookie (lib/session.ts
+  // mirrors localStorage into it) — the generateImage executor registers
+  // every generation under this session's library (Content Studio Stage S).
+  const sessionId = getSessionIdFromCookieHeader(request.headers.get("cookie"));
 
   // Schema-valid but structurally broken documents (orphans, cycles, pointer
   // disagreements) are rejected before any model call — integrity failures
@@ -104,6 +109,7 @@ export async function POST(request: Request) {
         doc: document,
         selectedBlockId,
         threadId,
+        sessionId,
         writer,
       }),
     onError: toChatErrorText,

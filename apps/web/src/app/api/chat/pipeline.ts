@@ -45,6 +45,12 @@ export interface ChatPipelineInput {
   selectedBlockId?: BlockId;
   /** Chat/thread id from the client transport, used for op provenance. */
   threadId?: string;
+  /**
+   * The calling browser's anonymous session id (from the same-origin session
+   * cookie), or null when absent. The generateImage executor registers every
+   * generation under this session's asset library (Content Studio Stage S).
+   */
+  sessionId: string | null;
   writer: UIMessageStreamWriter<TandemChatMessage>;
 }
 
@@ -214,8 +220,17 @@ export function createToolCallRepairer({
 // ---------------------------------------------------------------------------
 
 async function runSinglePassPipeline(input: ChatPipelineInput): Promise<void> {
-  const { model, modelId, isUsingMockModel, messages, doc, selectedBlockId, threadId, writer } =
-    input;
+  const {
+    model,
+    modelId,
+    isUsingMockModel,
+    messages,
+    doc,
+    selectedBlockId,
+    threadId,
+    sessionId,
+    writer,
+  } = input;
 
   const requestStartMs = performance.now();
   let firstChunkMs: number | undefined;
@@ -230,7 +245,12 @@ async function runSinglePassPipeline(input: ChatPipelineInput): Promise<void> {
     threadId,
   };
 
-  const { tools, schemaOnlyTools, toolApproval } = buildChatTools({ writer, actionContext, doc });
+  const { tools, schemaOnlyTools, toolApproval } = buildChatTools({
+    writer,
+    actionContext,
+    doc,
+    sessionId,
+  });
   const { staticInstructions, documentContext } = buildSystemContext({ doc, selectedBlockId });
 
   // Message order for Gemini implicit context caching: static system text

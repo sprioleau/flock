@@ -61,6 +61,12 @@ export interface BuildChatToolsInput {
   actionContext: ActionContext;
   /** This request's document — what analysis actions read (never mutated). */
   doc: EmailDocument;
+  /**
+   * The calling browser's anonymous session id (session cookie), or null.
+   * generateImage registers what it uploads under this session's library
+   * (Content Studio Stage S — every generation registers unconditionally).
+   */
+  sessionId: string | null;
 }
 
 export interface BuiltChatTools {
@@ -84,6 +90,7 @@ export function buildChatTools({
   writer,
   actionContext,
   doc,
+  sessionId,
 }: BuildChatToolsInput): BuiltChatTools {
   const tools: ToolSet = {};
   const schemaOnlyTools: ToolSet = {};
@@ -165,7 +172,7 @@ export function buildChatTools({
                 `Block "${command.blockId}" is not an image block in the current document — call generateImage with the id of an existing image block.`,
               );
             }
-            const outcome = await generateAndStoreImage({ prompt: command.prompt });
+            const outcome = await generateAndStoreImage({ prompt: command.prompt, sessionId });
             if (!outcome.isOk) {
               throw new Error(
                 `The image for ${command.blockId} wasn't generated: ${outcome.message}`,

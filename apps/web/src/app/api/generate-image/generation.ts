@@ -199,21 +199,41 @@ export type StoreImageOutcome =
   | { isStored: true; src: string }
   | { isStored: false; message: string };
 
+/** Library registration context (Content Studio Stage S). */
+export interface StoreImageRegistrationInput {
+  /** The calling browser's anonymous session id — the library owner. */
+  sessionId: string;
+  /** The generation prompt (provenance; also seeds the display name). */
+  prompt?: string;
+  /** Prompt-derived alt text, stored alongside the asset. */
+  alt?: string;
+}
+
 export interface StoreImageInConvexInput {
   base64: string;
   mimeType: string;
+  /**
+   * When present, the upload is REGISTERED in the session's asset library
+   * (kind "generated") — registration subsumes the getFileUrl step. Absent
+   * (no session cookie on the request) falls back to the bare
+   * upload-and-resolve path with a server log, so generation still works.
+   */
+  registration?: StoreImageRegistrationInput;
   /** Env source, overridable in tests. */
   env?: Record<string, string | undefined>;
 }
 
 /**
- * Upload generated image bytes to Convex storage and resolve the serving URL —
- * the server-side mirror of ImageSourceField's upload flow (generateUploadUrl
- * → POST bytes → getFileUrl), via ConvexHttpClient like the personas route.
+ * Upload generated image bytes to Convex storage, register them in the
+ * calling session's asset library (Content Studio Stage S — EVERY successful
+ * generation registers unconditionally, per binding owner decision), and
+ * resolve the serving URL — the server-side mirror of the human path's
+ * upload flow, via ConvexHttpClient like the personas route.
  */
 export async function storeImageInConvex({
   base64,
   mimeType,
+  registration,
   env = process.env,
 }: StoreImageInConvexInput): Promise<StoreImageOutcome> {
   const convexUrl = env.NEXT_PUBLIC_CONVEX_URL;
@@ -234,6 +254,24 @@ export async function storeImageInConvex({
       throw new Error(`Storage upload failed with status ${response.status}`);
     }
     const { storageId } = (await response.json()) as { storageId: Id<"_storage"> };
+    if (registration !== undefined) {
+      const { url } = await convexClient.mutation(api.assets.register, {
+        sessionId: registration.sessionId,
+        storageId,
+        kind: "generated",
+        ...(registration.prompt === undefined ? {} : { prompt: registration.prompt }),
+        ...(registration.alt === undefined ? {} : { alt: registration.alt }),
+      });
+      return { isStored: true, src: url };
+    }
+    // No session context: keep the pre-registry behavior (the file is a
+    // legacy unregistered upload) and leave a trace for the Stage M backfill.
+    console.warn(
+      JSON.stringify({
+        tag: "tandem.image.storedUnregistered",
+        message: "no session id on the request — the upload joined storage but not a library",
+      }),
+    );
     const src = await convexClient.query(api.files.getFileUrl, { storageId });
     if (src === null) {
       throw new Error("Uploaded image has no serving URL");
@@ -260,13 +298,19 @@ export type GenerateAndStoreImageOutcome =
 
 export interface GenerateAndStoreImageInput {
   prompt: string;
+  /**
+   * The calling browser's anonymous session id (or null when the request
+   * carried no session cookie) — the library the generation registers under.
+   */
+  sessionId: string | null;
   aspectRatio?: ImageAspectRatio;
   isMockForced?: boolean;
 }
 
-/** The agent executor's one-shot: model → storage → durable https URL + alt. */
+/** The agent executor's one-shot: model → storage + library registration → durable https URL + alt. */
 export async function generateAndStoreImage({
   prompt,
+  sessionId,
   aspectRatio,
   isMockForced,
 }: GenerateAndStoreImageInput): Promise<GenerateAndStoreImageOutcome> {
@@ -281,6 +325,9 @@ export async function generateAndStoreImage({
   const storage = await storeImageInConvex({
     base64: generation.base64,
     mimeType: generation.mimeType,
+    ...(sessionId === null
+      ? {}
+      : { registration: { sessionId, prompt, alt: generation.alt } }),
   });
   if (!storage.isStored) {
     return { isOk: false, message: storage.message };

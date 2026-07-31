@@ -1,13 +1,14 @@
 "use client";
 
 import { useRef, useState } from "react";
-import { useConvex, useMutation } from "convex/react";
+import { useMutation } from "convex/react";
 import { Loader2, Upload } from "lucide-react";
 import { api } from "@convex/_generated/api";
 import type { Id } from "@convex/_generated/dataModel";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { useEditorStore } from "@/lib/editor-store";
 import { useEndCoalescing } from "./usePanelDispatch";
 import { useLiveDraft } from "./useLiveDraft";
 
@@ -16,7 +17,9 @@ import { useLiveDraft } from "./useLiveDraft";
  * button backed by Convex file storage (docs/uploading-storing-files-convex.md):
  *
  *   generateUploadUrl (mutation) → POST file bytes → { storageId }
- *   → getFileUrl (query) → plain https URL → onCommitSrc(url)
+ *   → assets.register (Content Studio Stage S: every upload joins the
+ *     session's library, kind "uploaded", named after the file; registration
+ *     resolves the plain https serving URL) → onCommitSrc(url)
  *
  * Blocks store the plain URL string — no Convex coupling in the SDK.
  *
@@ -44,8 +47,10 @@ function isAbsoluteHttpUrl(value: string): boolean {
 }
 
 export function ImageSourceField({ src, helpText, onCommitSrc }: ImageSourceFieldProps) {
-  const convex = useConvex();
+  // The anonymous session id — the library owner every upload registers under.
+  const sessionId = useEditorStore((state) => state.authorId);
   const generateUploadUrl = useMutation(api.files.generateUploadUrl);
+  const registerAsset = useMutation(api.assets.register);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [isUploading, setIsUploading] = useState(false);
   const [uploadError, setUploadError] = useState<string | null>(null);
@@ -77,10 +82,19 @@ export function ImageSourceField({ src, helpText, onCommitSrc }: ImageSourceFiel
         throw new Error(`Upload failed with status ${response.status}`);
       }
       const { storageId } = (await response.json()) as { storageId: Id<"_storage"> };
-      const url = await convex.query(api.files.getFileUrl, { storageId });
-      if (url === null) {
-        throw new Error("Uploaded file has no serving URL");
+      if (sessionId === null) {
+        // The store connects before the panel can render an image block —
+        // this is a wiring bug, not a user-recoverable state.
+        throw new Error("No session yet — try again in a moment");
       }
+      // Registration subsumes the getFileUrl step: the file joins the
+      // session's library AND resolves its durable serving URL in one call.
+      const { url } = await registerAsset({
+        sessionId,
+        storageId,
+        kind: "uploaded",
+        name: file.name,
+      });
       onCommitSrc(url);
     } catch (error) {
       setUploadError(error instanceof Error ? error.message : "Upload failed");

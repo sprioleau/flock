@@ -43,6 +43,9 @@ const blockTypeValidator = v.union(
   v.literal("button"),
   v.literal("image"),
   v.literal("divider"),
+  v.literal("link"),
+  v.literal("code"),
+  v.literal("spacer"),
 );
 
 /** Mirrors email-sdk OPERATION_AUTHORS. */
@@ -293,6 +296,55 @@ export default defineSchema({
     createdAtMs: v.number(),
     updatedAtMs: v.number(),
   }).index("by_sessionId", ["sessionId"]),
+
+  /**
+   * Content Studio Stage S: the per-session image library. One row = one
+   * OWNED storage file. Registration at upload time is MANDATORY for all new
+   * uploads (docs/proposals/content-studio.md §4) — this table is the system
+   * of record for storage-file ownership: the document-deletion cascade
+   * RETAINS any file with a row here (model/cleanup.ts §6.1), so a registered
+   * asset outlives the drafts it was used in ("the image I uploaded
+   * yesterday"). Unregistered legacy files keep the old cascade behavior
+   * until the Stage M backfill registers them.
+   *
+   * NOTE (cleanup): like brandKits, asset rows are session-keyed and NOT
+   * reaped by the document cron. Stage L adds the dead-session sweep
+   * (assets whose session owns no documents and are >30 days old).
+   */
+  assets: defineTable({
+    /** Anonymous owner session (localStorage id) — the "user" (same key as brandKits). */
+    sessionId: v.string(),
+    storageId: v.id("_storage"),
+    /**
+     * Durable serving URL, denormalized at registration (stable for the
+     * file's lifetime; also the join key against block `src` strings, which
+     * store plain URLs by design — the SDK has no Convex coupling).
+     */
+    url: v.string(),
+    /** Provenance kind — the library's filter axis. Widens later ("scraped"). */
+    kind: v.union(
+      v.literal("uploaded"),
+      v.literal("generated"),
+      v.literal("logo"),
+      v.literal("social-card"),
+    ),
+    /** Human-editable display name; seeded per kind (filename / prompt stem / kit name). */
+    name: v.string(),
+    /** Denormalized from the _storage system doc at registration (grid display). */
+    mimeType: v.optional(v.string()),
+    sizeBytes: v.optional(v.number()),
+    /** kind:"generated" — the prompt (rerun/regenerate affordances later). */
+    prompt: v.optional(v.string()),
+    /** Model- or user-authored alt text; inserted alongside src. */
+    alt: v.optional(v.string()),
+    /** kind:"logo"/"social-card" — the scrape origin (brand-kit provenance). */
+    sourceUrl: v.optional(v.string()),
+    createdAtMs: v.number(),
+    updatedAtMs: v.number(),
+  })
+    .index("by_sessionId", ["sessionId"])
+    .index("by_storageId", ["storageId"])
+    .index("by_url", ["url"]),
 
   /**
    * Multi-agent canvas v1 — PERSISTED advisory persona findings (proposal

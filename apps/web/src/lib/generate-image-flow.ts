@@ -11,6 +11,7 @@ import {
 } from "@/app/api/generate-image/contract";
 import { useEditorStore } from "@/lib/editor-store";
 import { useImagePreviewStore, type GeneratedImagePayload } from "@/lib/image-preview-store";
+import { getOrCreateSessionId } from "@/lib/session";
 
 /**
  * The human-path generation flow (owner's perceived-latency design):
@@ -139,10 +140,18 @@ async function uploadAndCommitGeneratedImage({
       throw new Error(`Upload failed with status ${uploadResponse.status}`);
     }
     const { storageId } = (await uploadResponse.json()) as { storageId: Id<"_storage"> };
-    const src = await convexClient.query(api.files.getFileUrl, { storageId });
-    if (src === null) {
-      throw new Error("Uploaded image has no serving URL");
-    }
+    // Content Studio Stage S: EVERY successful generation joins the session's
+    // library at upload, unconditionally (BINDING owner decision — even one
+    // the user immediately regenerates past). Registration subsumes the
+    // getFileUrl step and resolves the durable serving URL.
+    const prompt = useImagePreviewStore.getState().previewsByBlockId[blockId]?.prompt;
+    const { url: src } = await convexClient.mutation(api.assets.register, {
+      sessionId: getOrCreateSessionId(),
+      storageId,
+      kind: "generated",
+      alt: generated.alt,
+      ...(prompt === undefined ? {} : { prompt }),
+    });
 
     // Decode the durable URL BEFORE swapping so preview → committed src is
     // visually seamless (same pixels, already in the image cache).

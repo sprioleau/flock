@@ -9,6 +9,7 @@
  */
 
 import type * as agentText from "../agentText.js";
+import type * as assets from "../assets.js";
 import type * as brandKits from "../brandKits.js";
 import type * as cleanup from "../cleanup.js";
 import type * as crons from "../crons.js";
@@ -17,6 +18,7 @@ import type * as files from "../files.js";
 import type * as ghost from "../ghost.js";
 import type * as healthcheck from "../healthcheck.js";
 import type * as history from "../history.js";
+import type * as model_assets from "../model/assets.js";
 import type * as model_brandKitAssets from "../model/brandKitAssets.js";
 import type * as model_cleanup from "../model/cleanup.js";
 import type * as model_emailDocuments from "../model/emailDocuments.js";
@@ -34,6 +36,7 @@ import type {
 
 declare const fullApi: ApiFromModules<{
   agentText: typeof agentText;
+  assets: typeof assets;
   brandKits: typeof brandKits;
   cleanup: typeof cleanup;
   crons: typeof crons;
@@ -42,6 +45,7 @@ declare const fullApi: ApiFromModules<{
   ghost: typeof ghost;
   healthcheck: typeof healthcheck;
   history: typeof history;
+  "model/assets": typeof model_assets;
   "model/brandKitAssets": typeof model_brandKitAssets;
   "model/cleanup": typeof model_cleanup;
   "model/emailDocuments": typeof model_emailDocuments;

@@ -1,5 +1,6 @@
 import type { Doc, Id } from "../_generated/dataModel";
 import type { MutationCtx } from "../_generated/server";
+import { isUrlRegisteredAsset } from "./assets";
 import { deleteBlockSyncDoc } from "./textBlockSync";
 
 /**
@@ -278,7 +279,24 @@ async function deleteUnreferencedStorageFiles({
   // Only URLs served by THIS deployment's file storage are candidates
   // (sample docs use placehold.co etc.; foreign URLs are not ours to delete).
   const storageUrlPrefix = `${process.env.CONVEX_CLOUD_URL}/api/storage/`;
-  const candidateUrls = [...urls].filter((url) => url.startsWith(storageUrlPrefix));
+  const prefixedUrls = [...urls].filter((url) => url.startsWith(storageUrlPrefix));
+  if (prefixedUrls.length === 0) {
+    return { isComplete: true };
+  }
+
+  // Content Studio retain rule (docs/proposals/content-studio.md §6.1):
+  // REGISTERED assets are owned by the session's library, not by documents —
+  // "the image I uploaded yesterday" must survive the draft it was used in.
+  // One indexed assets.by_url point lookup per candidate; registered files
+  // are retained unconditionally. Unregistered legacy files keep the
+  // reference-counted cascade behavior below until the backfill (Stage M)
+  // registers them.
+  const candidateUrls: string[] = [];
+  for (const url of prefixedUrls) {
+    if (!(await isUrlRegisteredAsset(ctx, url))) {
+      candidateUrls.push(url);
+    }
+  }
   if (candidateUrls.length === 0) {
     return { isComplete: true };
   }

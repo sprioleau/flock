@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { selectCanRedo, selectCanUndo, useEditorStore } from "@/lib/editor-store";
 import { BrandKitPanel } from "./brand-kit/BrandKitPanel";
 import { OpInspector } from "./inspector/OpInspector";
+import { LibraryPanel } from "./library/LibraryPanel";
 import { AgentCollaboratorsButton } from "./personas/AgentCollaboratorsButton";
 import { PresenceFacepile } from "./presence/PresenceFacepile";
 import { ReplayPanel } from "./replay/ReplayPanel";
@@ -50,6 +51,9 @@ export function StudioToolbar({
         {leading}
         <ThemeMenu />
         <BrandKitPanel />
+        {/* The session's asset library — user-level like the brand kit
+            beside it (Content Studio Stage S, owner placement decision). */}
+        <LibraryPanel />
       </div>
 
       <div className="flex min-w-0 items-center gap-1.5">
