@@ -23,6 +23,7 @@ import { DraftFramesCanvas } from "./drafts/DraftFramesCanvas";
 import { DraftSelector } from "./drafts/DraftSelector";
 import { HistoryPanel } from "./history/HistoryPanel";
 import { PropertyPanelSlot } from "./PropertyPanelSlot";
+import { StudioShortcuts } from "./shortcuts/StudioShortcuts";
 import { StudioToolbar } from "./StudioToolbar";
 
 /**
@@ -236,6 +237,10 @@ export function StudioShell() {
         </main>
         <PropertyPanelSlot />
       </div>
+      {/* Keyboard layer: global shortcuts + the slash-summon / hold-A
+          surfaces. Inside the gate on purpose — no bindings before the
+          document is ready. */}
+      <StudioShortcuts />
     </CanvasDndContext>
   );
 

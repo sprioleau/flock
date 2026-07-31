@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import {
   MessagesSquareIcon,
   MousePointerClickIcon,
@@ -10,6 +10,7 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { useEditorStore } from "@/lib/editor-store";
 import { usePersonaAdvisors } from "@/lib/personas/use-persona-advisors";
 import { useSuggestions } from "@/lib/suggestions/use-suggestions";
@@ -17,8 +18,10 @@ import { cn } from "@/lib/utils";
 import { DemoQueueButton } from "../demo/DemoQueueButton";
 import { SettingsFab } from "../demo/SettingsFab";
 import { ActiveDraftIndicator } from "../drafts/ActiveDraftIndicator";
+import { updatePanelPreferences, usePanelPreferences } from "../panel-preferences";
+import { ShortcutKbd } from "../shortcuts/ShortcutKbd";
 import { ChatMessageList } from "./ChatMessageList";
-import { registerComposerHandoffHandler } from "./composer-handoff";
+import { registerComposerHandoffHandlers } from "./composer-handoff";
 import { QueuedMessageList } from "./QueuedMessageList";
 import { SuggestionCard } from "./SuggestionCard";
 import { useMessageQueue } from "./use-message-queue";
@@ -30,9 +33,13 @@ const COLLAPSED_WIDTH_PX = 48;
 
 /**
  * The Phase 3 chat panel: a real AI chat whose streamed operations apply live
- * to the studio canvas. Collapsible with an animated width transition
- * (expanded by default now that the chat is real); the rail and the panel
- * body cross-fade so neither state pops in.
+ * to the studio canvas. Collapsible with an animated width transition —
+ * COLLAPSED by default (owner decision: the canvas is the product; the rail
+ * badge keeps recommendations visible), with the persisted per-browser
+ * preference winning after the first expand/collapse (panel-preferences.ts).
+ * The rail and the panel body cross-fade so neither state pops in. ⌘B
+ * toggles the panel (StudioShortcuts); ⌘K and the slash-summon overlay reach
+ * the composer through the handoff seam below.
  *
  * Chat-UX layer (this file wires, the hooks decide):
  * - Submitting while the agent is busy QUEUES the message (FIFO, editable
@@ -42,28 +49,50 @@ const COLLAPSED_WIDTH_PX = 48;
  *   until the user approves/denies, and hold again if a turn errors.
  */
 export function ChatPanel() {
-  const [isExpanded, setIsExpanded] = useState(true);
+  // Persisted per-browser expand state — collapsed on a fresh profile, the
+  // user's last choice afterwards. Every toggle writes through the
+  // preference, so clicks and shortcuts persist alike.
+  const isExpanded = usePanelPreferences().isChatPanelExpanded;
+  const setIsExpanded = useCallback((nextIsExpanded: boolean): void => {
+    updatePanelPreferences({ isChatPanelExpanded: nextIsExpanded });
+  }, []);
   const [draftText, setDraftText] = useState("");
   const composerTextareaRef = useRef<HTMLTextAreaElement | null>(null);
 
-  // The composer-handoff seam (composer-handoff.ts): persona finding cards
-  // and the recommendations modal insert a ready-to-send prompt HERE —
-  // focused, caret at the end, editable, never auto-sent. Expanding first
-  // means a handoff from the modal works while the panel is collapsed.
+  // Live submit path for the SEND handoff (registered once below; the ref is
+  // refreshed every render so a queued-vs-direct decision never goes stale).
+  const submitPromptTextRef = useRef<(text: string) => void>(() => {});
+
+  // The composer-handoff seam (composer-handoff.ts): INSERT — persona finding
+  // cards and the recommendations modal insert a ready-to-send prompt HERE —
+  // focused, caret at the end, editable, never auto-sent. SEND — the
+  // slash-summon overlay submits through the composer's own send path. FOCUS
+  // — the ⌘K shortcut. All three expand first, so a handoff works while the
+  // panel is collapsed.
   useEffect(() => {
-    return registerComposerHandoffHandler((prompt) => {
-      setIsExpanded(true);
-      setDraftText(prompt);
-      // Focus after React commits the value (and the panel un-hides).
-      requestAnimationFrame(() => {
-        const textarea = composerTextareaRef.current;
-        if (textarea !== null) {
-          textarea.focus();
-          textarea.setSelectionRange(prompt.length, prompt.length);
-        }
-      });
+    return registerComposerHandoffHandlers({
+      insertPrompt: (prompt) => {
+        setIsExpanded(true);
+        setDraftText(prompt);
+        // Focus after React commits the value (and the panel un-hides).
+        requestAnimationFrame(() => {
+          const textarea = composerTextareaRef.current;
+          if (textarea !== null) {
+            textarea.focus();
+            textarea.setSelectionRange(prompt.length, prompt.length);
+          }
+        });
+      },
+      sendPrompt: (prompt) => {
+        setIsExpanded(true);
+        submitPromptTextRef.current(prompt);
+      },
+      focusComposer: () => {
+        setIsExpanded(true);
+        requestAnimationFrame(() => composerTextareaRef.current?.focus());
+      },
     });
-  }, []);
+  }, [setIsExpanded]);
   // Suggestion controllers live HERE (not in SuggestionCard): the collapsed
   // rail's notification badge needs the pending count, and each hook must
   // mount exactly once (usePersonaAdvisors hosts the persona presence
@@ -119,19 +148,30 @@ export function ChatPanel() {
   });
   const hasQueuedMessages = queue.queuedMessages.length > 0;
 
-  const submitDraft = (): void => {
-    const trimmedText = draftText.trim();
+  // Queue behind existing items even when momentarily idle (FIFO fairness);
+  // an error pause with an EMPTY queue sends directly (send clears the
+  // error), matching how native chats let you just try again. Shared by the
+  // composer submit and the slash-summon SEND handoff.
+  const submitPromptText = (text: string): void => {
+    const trimmedText = text.trim();
     if (trimmedText.length === 0) {
       return;
     }
-    // Queue behind existing items even when momentarily idle (FIFO fairness);
-    // an error pause with an EMPTY queue sends directly (send clears the
-    // error), matching how native chats let you just try again.
     if (isAgentBusy || hasQueuedMessages) {
       queue.enqueueMessage(trimmedText);
     } else {
       sendUserMessage(trimmedText);
     }
+  };
+  useEffect(() => {
+    submitPromptTextRef.current = submitPromptText;
+  });
+
+  const submitDraft = (): void => {
+    if (draftText.trim().length === 0) {
+      return;
+    }
+    submitPromptText(draftText);
     setDraftText("");
   };
 
@@ -175,37 +215,47 @@ export function ChatPanel() {
         )}
         aria-hidden={isExpanded}
       >
-        <Button
-          variant="ghost"
-          size="icon-sm"
-          aria-label={
-            pendingRecommendationCount > 0
-              ? `Expand chat panel (${pendingRecommendationCount} suggestions pending)`
-              : "Expand chat panel"
-          }
-          title="Chat"
-          tabIndex={isExpanded ? -1 : 0}
-          onClick={() => setIsExpanded(true)}
-          className="relative"
-        >
-          <MessagesSquareIcon />
-          {/* Pending-recommendation badge: suggestion cards live inside the
-              panel, so while collapsed this is their only signal. Reactive by
-              construction (the count derives from the live controllers);
-              renders nothing at zero. */}
-          {pendingRecommendationCount > 0 && (
-            <span
-              className={cn(
-                "absolute -top-1 -right-1 flex h-4 min-w-4 items-center justify-center",
-                "rounded-full bg-primary px-1 text-[10px] font-medium text-primary-foreground",
-              )}
-              data-testid="chat-rail-recommendation-badge"
-              aria-hidden
+        <TooltipProvider>
+          <Tooltip>
+            <TooltipTrigger
+              render={
+                <Button
+                  variant="ghost"
+                  size="icon-sm"
+                  aria-label={
+                    pendingRecommendationCount > 0
+                      ? `Expand chat panel (${pendingRecommendationCount} suggestions pending)`
+                      : "Expand chat panel"
+                  }
+                  tabIndex={isExpanded ? -1 : 0}
+                  onClick={() => setIsExpanded(true)}
+                  className="relative"
+                />
+              }
             >
-              {pendingRecommendationCount > 9 ? "9+" : pendingRecommendationCount}
-            </span>
-          )}
-        </Button>
+              <MessagesSquareIcon />
+              {/* Pending-recommendation badge: suggestion cards live inside the
+                  panel, so while collapsed this is their only signal. Reactive by
+                  construction (the count derives from the live controllers);
+                  renders nothing at zero. */}
+              {pendingRecommendationCount > 0 && (
+                <span
+                  className={cn(
+                    "absolute -top-1 -right-1 flex h-4 min-w-4 items-center justify-center",
+                    "rounded-full bg-primary px-1 text-[10px] font-medium text-primary-foreground",
+                  )}
+                  data-testid="chat-rail-recommendation-badge"
+                  aria-hidden
+                >
+                  {pendingRecommendationCount > 9 ? "9+" : pendingRecommendationCount}
+                </span>
+              )}
+            </TooltipTrigger>
+            <TooltipContent side="right">
+              Open chat <ShortcutKbd shortcutId="toggleChatPanel" />
+            </TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
       </div>
 
       {/* Expanded panel body (fixed inner width so text never reflows mid-animation) */}
@@ -219,15 +269,26 @@ export function ChatPanel() {
       >
         <div className="flex h-12 shrink-0 items-center justify-between border-b px-4">
           <h1 className="font-heading text-sm font-semibold">Tandem</h1>
-          <Button
-            variant="ghost"
-            size="icon-sm"
-            aria-label="Collapse chat panel"
-            tabIndex={isExpanded ? 0 : -1}
-            onClick={() => setIsExpanded(false)}
-          >
-            <PanelLeftCloseIcon />
-          </Button>
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger
+                render={
+                  <Button
+                    variant="ghost"
+                    size="icon-sm"
+                    aria-label="Collapse chat panel"
+                    tabIndex={isExpanded ? 0 : -1}
+                    onClick={() => setIsExpanded(false)}
+                  />
+                }
+              >
+                <PanelLeftCloseIcon />
+              </TooltipTrigger>
+              <TooltipContent side="right">
+                Collapse <ShortcutKbd shortcutId="toggleChatPanel" />
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
         </div>
 
         <ChatMessageList

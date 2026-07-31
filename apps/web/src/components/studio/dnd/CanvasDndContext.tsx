@@ -12,11 +12,11 @@ import {
 } from "@dnd-kit/core";
 import { ROOT_BLOCK_ID, type BlockId } from "@tandem/email-sdk";
 import { useEditorStore } from "@/lib/editor-store";
-import { cn } from "@/lib/utils";
 import type { PaletteItem } from "../add-blocks/palette-items";
 import { scrollBlockIntoView } from "../add-blocks/scroll-block-into-view";
 import { useCanvasDragStore, type DragSource } from "./drag-drop-store";
 import { DragGhost } from "./DragGhost";
+import { DropIndicatorLineView } from "./DropIndicatorLineView";
 import {
   buildDropOperation,
   buildPaletteDropInsertion,
@@ -284,22 +284,5 @@ function DropIndicatorLine() {
   if (indicatorLine === null) {
     return null;
   }
-  const isVertical = indicatorLine.orientation === "vertical";
-  return (
-    <div
-      className={cn(
-        // The 1px halo separates the line from busy content beneath; the
-        // background token keeps it chrome-colored in both themes.
-        "pointer-events-none fixed z-50 rounded-full bg-sky-500 shadow-[0_0_0_1px_var(--background)]",
-        isVertical ? "w-1 -translate-x-1/2" : "h-1 -translate-y-1/2",
-      )}
-      style={{
-        left: indicatorLine.left,
-        top: indicatorLine.top,
-        ...(isVertical ? { height: indicatorLine.length } : { width: indicatorLine.length }),
-      }}
-      data-testid="drop-indicator"
-      data-orientation={indicatorLine.orientation}
-    />
-  );
+  return <DropIndicatorLineView line={indicatorLine} />;
 }

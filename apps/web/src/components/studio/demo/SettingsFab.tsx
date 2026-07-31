@@ -15,9 +15,11 @@ import {
   DropdownMenuRadioGroup,
   DropdownMenuRadioItem,
   DropdownMenuSeparator,
+  DropdownMenuShortcut,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { useEditorStore } from "@/lib/editor-store";
+import { getShortcutDisplay } from "../shortcuts/ShortcutKbd";
 import { updateAppSettings, useAppSettings } from "./app-settings";
 
 /**
@@ -83,7 +85,12 @@ export function SettingsFab() {
         </DropdownMenuTrigger>
         <DropdownMenuContent side="top" align="end" sideOffset={8} className="w-60">
           <DropdownMenuGroup>
-            <DropdownMenuLabel>Appearance</DropdownMenuLabel>
+            {/* The muted key hint (DropdownMenuShortcut pattern): ⇧⌘L cycles
+                light → dark → system (bound in StudioShortcuts). */}
+            <DropdownMenuLabel className="flex items-center">
+              Appearance
+              <DropdownMenuShortcut>{getShortcutDisplay("cycleTheme")}</DropdownMenuShortcut>
+            </DropdownMenuLabel>
             {/* Theme applies to app chrome only — the email document keeps its
                 own author-chosen colors in both modes. */}
             <DropdownMenuRadioGroup

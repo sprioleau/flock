@@ -1,32 +1,48 @@
 "use client";
 
 /**
- * The composer handoff seam: lets far-away surfaces (persona finding cards,
- * the recommendations modal) INSERT a ready-to-send prompt into the chat
- * composer — focused and editable, never auto-sent. The user stays in
- * charge: they read, tweak, and send (or don't).
+ * The composer handoff seam: lets far-away surfaces reach the chat composer
+ * without a second chat pipeline. Three modes, one registry:
+ *
+ * - INSERT ({@link handOffPromptToComposer}): persona finding cards and the
+ *   recommendations modal insert a ready-to-send prompt — focused and
+ *   editable, never auto-sent. The user stays in charge.
+ * - SEND ({@link sendPromptThroughComposer}): the slash-summon quick prompt
+ *   submits its text as a NORMAL chat message through the panel's own send
+ *   path (queueing behind a busy agent exactly like a composer submit); the
+ *   panel expands so the user sees their prompt land in the thread.
+ * - FOCUS ({@link focusChatComposer}): the focus-chat shortcut expands the
+ *   panel and puts the caret in the composer, leaving the draft untouched.
  *
  * Shape: a module-level single-handler registry, not a store. ChatPanel — the
- * one owner of the composer's draft state — registers its handler on mount;
- * callers fire {@link handOffPromptToComposer} from anywhere in the tree
- * (the recommendations modal mounts OUTSIDE ChatPanel, so a callback prop
- * can't reach it; module scope is the same seam the suggestions tray's
- * collapsed-state store already uses). No DOM lookups, no custom events.
+ * one owner of the composer's draft state and send machinery — registers its
+ * handlers on mount; callers fire from anywhere in the tree (the
+ * recommendations modal and the shortcut layer mount OUTSIDE ChatPanel, so a
+ * callback prop can't reach them; module scope is the same seam the
+ * suggestions tray's collapsed-state store already uses). No DOM lookups, no
+ * custom events.
  */
 
-type ComposerHandoffHandler = (prompt: string) => void;
+export interface ComposerHandoffHandlers {
+  /** Replace the draft with `prompt`, expand, and focus — never auto-send. */
+  insertPrompt: (prompt: string) => void;
+  /** Submit `prompt` through the composer's send path (queues while busy). */
+  sendPrompt: (prompt: string) => void;
+  /** Expand the panel and focus the composer, keeping the current draft. */
+  focusComposer: () => void;
+}
 
-let activeHandler: ComposerHandoffHandler | null = null;
+let activeHandlers: ComposerHandoffHandlers | null = null;
 
 /**
  * ChatPanel's registration (one composer per studio — last registration
- * wins, and unregistering only clears its own handler on unmount races).
+ * wins, and unregistering only clears its own handlers on unmount races).
  */
-export function registerComposerHandoffHandler(handler: ComposerHandoffHandler): () => void {
-  activeHandler = handler;
+export function registerComposerHandoffHandlers(handlers: ComposerHandoffHandlers): () => void {
+  activeHandlers = handlers;
   return () => {
-    if (activeHandler === handler) {
-      activeHandler = null;
+    if (activeHandlers === handlers) {
+      activeHandlers = null;
     }
   };
 }
@@ -36,9 +52,31 @@ export function registerComposerHandoffHandler(handler: ComposerHandoffHandler):
  * the current draft. Returns whether a composer was mounted to receive it.
  */
 export function handOffPromptToComposer(prompt: string): boolean {
-  if (activeHandler === null) {
+  if (activeHandlers === null) {
     return false;
   }
-  activeHandler(prompt);
+  activeHandlers.insertPrompt(prompt);
+  return true;
+}
+
+/**
+ * Send `prompt` as a normal chat message via the composer's own send path
+ * (the panel expands so the message is seen landing in the thread). Returns
+ * whether a composer was mounted to receive it.
+ */
+export function sendPromptThroughComposer(prompt: string): boolean {
+  if (activeHandlers === null) {
+    return false;
+  }
+  activeHandlers.sendPrompt(prompt);
+  return true;
+}
+
+/** Expand the chat panel and focus the composer (draft preserved). */
+export function focusChatComposer(): boolean {
+  if (activeHandlers === null) {
+    return false;
+  }
+  activeHandlers.focusComposer();
   return true;
 }

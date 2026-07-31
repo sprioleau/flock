@@ -1,12 +1,17 @@
 "use client";
 
 import { Fragment, useState } from "react";
+import { PanelRightCloseIcon, PanelRightOpenIcon } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { useEditorStore } from "@/lib/editor-store";
 import { getAncestorIds } from "@/lib/get-ancestor-ids";
 import { cn } from "@/lib/utils";
 import { AddBlocksPanel } from "./add-blocks/AddBlocksPanel";
 import { useCanvasDragStore } from "./dnd/drag-drop-store";
+import { updatePanelPreferences, usePanelPreferences } from "./panel-preferences";
 import { PropertyPanel } from "./property-panel/PropertyPanel";
+import { ShortcutKbd } from "./shortcuts/ShortcutKbd";
 
 /**
  * The right rail: a two-tab panel — BLOCKS (the add-blocks palette, §8.1
@@ -19,12 +24,26 @@ import { PropertyPanel } from "./property-panel/PropertyPanel";
  * EXCEPT while a drag is live, so the Blocks tab never unmounts its own
  * active drag source mid-gesture. The post-drop selection lands after the
  * gesture ends, which is what flips the rail to Properties.
+ *
+ * Collapsible like the chat panel (same animated width + cross-fade, same
+ * persisted-preference plumbing — panel-preferences.ts; ⌘\ toggles via
+ * StudioShortcuts). Expanded by default: the palette is the primary add
+ * affordance. The body stays MOUNTED while collapsed (fixed inner width,
+ * hidden + unreachable), so tab state and the palette's drag sources survive
+ * a collapse exactly like the chat panel's message list does.
  */
 type RightRailTab = "blocks" | "properties";
+
+const EXPANDED_WIDTH_PX = 280;
+const COLLAPSED_WIDTH_PX = 48;
 
 export function PropertyPanelSlot() {
   const [activeTab, setActiveTab] = useState<RightRailTab>("blocks");
   const selectedBlockId = useEditorStore((state) => state.selectedBlockId);
+  const isExpanded = usePanelPreferences().isRightRailExpanded;
+  const setIsExpanded = (nextIsExpanded: boolean): void => {
+    updatePanelPreferences({ isRightRailExpanded: nextIsExpanded });
+  };
 
   // Adjust-state-during-render (the React "derive from props" pattern, no
   // effect): a NEW selection flips the rail to Properties unless a drag is
@@ -40,26 +59,90 @@ export function PropertyPanelSlot() {
   return (
     <aside
       data-slot="right-rail"
-      className="flex w-[280px] shrink-0 flex-col border-l bg-background"
+      className="relative shrink-0 overflow-hidden border-l bg-background transition-[width] duration-300 ease-in-out"
+      style={{ width: isExpanded ? EXPANDED_WIDTH_PX : COLLAPSED_WIDTH_PX }}
     >
+      {/* Collapsed rail */}
       <div
-        role="tablist"
-        aria-label="Editor panel"
-        className="flex h-12 shrink-0 items-stretch gap-1 border-b px-2 pt-2"
+        className={cn(
+          "absolute inset-y-0 right-0 flex w-12 flex-col items-center py-3 transition-opacity duration-200",
+          isExpanded ? "pointer-events-none opacity-0" : "opacity-100 delay-100",
+        )}
+        aria-hidden={isExpanded}
       >
-        <RightRailTabButton
-          label="Blocks"
-          isActive={activeTab === "blocks"}
-          onSelect={() => setActiveTab("blocks")}
-        />
-        <RightRailTabButton
-          label="Properties"
-          isActive={activeTab === "properties"}
-          onSelect={() => setActiveTab("properties")}
-        />
+        <TooltipProvider>
+          <Tooltip>
+            <TooltipTrigger
+              render={
+                <Button
+                  variant="ghost"
+                  size="icon-sm"
+                  aria-label="Expand blocks and properties panel"
+                  tabIndex={isExpanded ? -1 : 0}
+                  onClick={() => setIsExpanded(true)}
+                  data-testid="right-rail-expand"
+                />
+              }
+            >
+              <PanelRightOpenIcon />
+            </TooltipTrigger>
+            <TooltipContent side="left">
+              Open blocks &amp; properties <ShortcutKbd shortcutId="toggleRightRail" />
+            </TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
       </div>
-      <div className="min-h-0 flex-1 overflow-y-auto" role="tabpanel">
-        {activeTab === "blocks" ? <AddBlocksPanel /> : <PropertiesTab />}
+
+      {/* Expanded body (fixed inner width so content never reflows mid-animation) */}
+      <div
+        className={cn(
+          "flex h-full flex-col transition-opacity duration-200",
+          isExpanded ? "opacity-100 delay-100" : "pointer-events-none opacity-0",
+        )}
+        style={{ width: EXPANDED_WIDTH_PX }}
+        aria-hidden={!isExpanded}
+      >
+        <div className="flex h-12 shrink-0 items-stretch gap-1 border-b px-2 pt-2">
+          <div role="tablist" aria-label="Editor panel" className="flex flex-1 items-stretch gap-1">
+            <RightRailTabButton
+              label="Blocks"
+              isActive={activeTab === "blocks"}
+              isReachable={isExpanded}
+              onSelect={() => setActiveTab("blocks")}
+            />
+            <RightRailTabButton
+              label="Properties"
+              isActive={activeTab === "properties"}
+              isReachable={isExpanded}
+              onSelect={() => setActiveTab("properties")}
+            />
+          </div>
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger
+                render={
+                  <Button
+                    variant="ghost"
+                    size="icon-sm"
+                    aria-label="Collapse blocks and properties panel"
+                    tabIndex={isExpanded ? 0 : -1}
+                    onClick={() => setIsExpanded(false)}
+                    className="self-center"
+                    data-testid="right-rail-collapse"
+                  />
+                }
+              >
+                <PanelRightCloseIcon />
+              </TooltipTrigger>
+              <TooltipContent side="left">
+                Collapse <ShortcutKbd shortcutId="toggleRightRail" />
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+        </div>
+        <div className="min-h-0 flex-1 overflow-y-auto" role="tabpanel">
+          {activeTab === "blocks" ? <AddBlocksPanel /> : <PropertiesTab />}
+        </div>
       </div>
     </aside>
   );
@@ -68,10 +151,13 @@ export function PropertyPanelSlot() {
 function RightRailTabButton({
   label,
   isActive,
+  isReachable,
   onSelect,
 }: {
   label: string;
   isActive: boolean;
+  /** False while the rail is collapsed — hidden tabs leave the tab order. */
+  isReachable: boolean;
   onSelect: () => void;
 }) {
   return (
@@ -79,6 +165,7 @@ function RightRailTabButton({
       type="button"
       role="tab"
       aria-selected={isActive}
+      tabIndex={isReachable ? 0 : -1}
       onClick={onSelect}
       className={cn(
         "flex-1 cursor-pointer rounded-t-md border-b-2 px-3 text-sm font-medium transition-colors",
