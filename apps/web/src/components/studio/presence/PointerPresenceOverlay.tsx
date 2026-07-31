@@ -108,9 +108,11 @@ function PointerOverlayLayer({ roster }: { roster: PresenceRosterEntry[] }) {
 /**
  * Anchor-relative position of a remote pointer in overlay (= canvas-content)
  * space, or null when it can't be resolved locally (anchor block deleted /
- * not yet rendered here, zero-size rects mid-layout).
+ * not yet rendered here, zero-size rects mid-layout). Shared with
+ * PersonaCursorOverlay so persona cursors land on the same content geometry
+ * as human ones.
  */
-function resolvePointerPosition({
+export function resolvePointerPosition({
   pointer,
   overlayElement,
 }: {
@@ -209,25 +211,36 @@ function RemotePointerCursor({
 
   return (
     <div ref={cursorRef} className="tandem-pointer-cursor" data-testid="remote-pointer-cursor">
-      {/* Arrow tip sits at the element origin — exactly on the remote point. */}
-      <svg
-        className="tandem-pointer-cursor__arrow"
-        width="15"
-        height="15"
-        viewBox="0 0 15 15"
-        fill="none"
-      >
-        <path
-          d="M1 1 L1 12.5 L4.2 9.6 L6.3 13.8 L8.6 12.7 L6.6 8.6 L10.9 8.6 Z"
-          fill={color}
-          stroke="white"
-          strokeWidth="1"
-          strokeLinejoin="round"
-        />
-      </svg>
+      <PointerCursorArrow color={color} />
       <span className="tandem-pointer-cursor__label" style={{ backgroundColor: color }}>
         {name}
       </span>
     </div>
+  );
+}
+
+/**
+ * The shared cursor arrow glyph — its tip sits at the element origin, exactly
+ * on the resolved point. Used by human remote cursors here and by
+ * PersonaCursorOverlay (personas share the human cursor grammar on purpose —
+ * owner decision 2026-07-30 overriding the §3.5 chip recommendation).
+ */
+export function PointerCursorArrow({ color }: { color: string }) {
+  return (
+    <svg
+      className="tandem-pointer-cursor__arrow"
+      width="15"
+      height="15"
+      viewBox="0 0 15 15"
+      fill="none"
+    >
+      <path
+        d="M1 1 L1 12.5 L4.2 9.6 L6.3 13.8 L8.6 12.7 L6.6 8.6 L10.9 8.6 Z"
+        fill={color}
+        stroke="white"
+        strokeWidth="1"
+        strokeLinejoin="round"
+      />
+    </svg>
   );
 }

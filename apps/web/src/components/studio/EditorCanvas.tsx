@@ -9,6 +9,7 @@ import { cn } from "@/lib/utils";
 import { createDefaultSection, generateUniqueBlockId } from "./block-defaults";
 import { CanvasNode } from "./CanvasNode";
 import { CanvasDndContext } from "./dnd/CanvasDndContext";
+import { PersonaCursorOverlay } from "./presence/PersonaCursorOverlay";
 import { PointerPresenceOverlay } from "./presence/PointerPresenceOverlay";
 
 /**
@@ -79,6 +80,11 @@ export function EditorCanvas() {
               Add section
             </Button>
           </div>
+          {/* Persona cursors (multi-agent v1): simulated advisory-persona
+              mice, choreographed client-side from the reactive findings query
+              + persona presence status. Before the human overlay so human
+              cursors paint on top. */}
+          <PersonaCursorOverlay />
           {/* Pointer presence (remote cursors + local capture): inside the
               canvas root so cursors live in content space — scrolling and
               scrollport clipping come for free. */}
