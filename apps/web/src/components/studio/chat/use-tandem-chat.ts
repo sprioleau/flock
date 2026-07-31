@@ -112,10 +112,26 @@ function createTandemChatController(convexClient: ConvexReactClient): TandemChat
     selectedBlockId: null as BlockId | null,
   };
 
-  /** True while the store is still connected to the turn's own document. */
-  const getIsTurnDocumentActive = (): boolean =>
-    turnState.documentId === null ||
-    useEditorStore.getState().documentId === turnState.documentId;
+  /**
+   * True while the USER is still on the turn's own document. The ?doc= param
+   * is the authoritative signal: a drafts-bar switch updates it SYNCHRONOUSLY
+   * (pushState), while the store re-connects only when the incoming draft's
+   * first snapshot arrives — a window long enough for a streamed op or
+   * command to slip through and hit the wrong draft. Store fallback covers
+   * non-browser contexts.
+   */
+  const getIsTurnDocumentActive = (): boolean => {
+    if (turnState.documentId === null) {
+      return true;
+    }
+    if (typeof window !== "undefined") {
+      const urlDocumentId = new URLSearchParams(window.location.search).get("doc");
+      if (urlDocumentId !== null) {
+        return urlDocumentId === turnState.documentId;
+      }
+    }
+    return useEditorStore.getState().documentId === turnState.documentId;
+  };
 
   const transport = new DefaultChatTransport<TandemChatMessage>({
     api: CHAT_API_PATH,
@@ -215,6 +231,17 @@ function createTandemChatController(convexClient: ConvexReactClient): TandemChat
         return;
       }
       executedCommandToolCallIds.add(toolCallId);
+      // Mid-turn draft switch (owner decision, follow-on to the op pinning):
+      // editor commands act on the ACTIVE canvas — the viewport is ONE store
+      // field bound to the active draft (DraftFrameToolbar renders only on
+      // the active frame); there is no per-draft view state to retarget. So
+      // a view command from a turn pinned to a now-inactive draft is DROPPED
+      // outright: never flip a different draft's viewport. (Marked executed
+      // above on purpose — the command belonged to that moment of the turn,
+      // not to whenever its draft is next activated.)
+      if (!getIsTurnDocumentActive()) {
+        return;
+      }
       if (command.type === "showPreview") {
         useEditorStore.getState().setViewport(command.mode);
       }
