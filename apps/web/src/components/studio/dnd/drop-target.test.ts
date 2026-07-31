@@ -7,6 +7,7 @@ import {
   type Operation,
 } from "@tandem/email-sdk";
 import {
+  createDefaultColumnsPreset,
   createDefaultLeafBlock,
   createDefaultSection,
 } from "../block-defaults";
@@ -16,6 +17,7 @@ import {
   buildDropOperation,
   buildPaletteDropInsertion,
   computeReorderedChildIds,
+  resolveContainerId,
 } from "./drop-target";
 
 /**
@@ -198,6 +200,100 @@ describe("buildDropOperation (existing-block drags, regression)", () => {
       dropTarget: { ...dropTarget("sec_aaaa", "txt_aaaa"), isNoop: true },
     });
     expect(op).toBeNull();
+  });
+});
+
+describe("buildDropOperation (existing-SECTION drags — owner reversal of arrows-only)", () => {
+  it("section drop into a root gap → ONE reorderChildren on root (single undo)", () => {
+    const doc = buildFixtureDoc();
+    const op = buildDropOperation({
+      doc,
+      draggedBlockId: id("sec_bbbb"),
+      dropTarget: dropTarget("root", "sec_aaaa"),
+    });
+    expect(op).toEqual({
+      name: "reorderChildren",
+      parentId: "root",
+      orderedChildIds: ["sec_bbbb", "sec_aaaa"],
+    });
+    const applied = apply(doc, op!);
+    expect(applied[id("root")]?.childrenIds).toEqual(["sec_bbbb", "sec_aaaa"]);
+  });
+
+  it("first section dragged to the end (null reference appends)", () => {
+    const doc = buildFixtureDoc();
+    const op = buildDropOperation({
+      doc,
+      draggedBlockId: id("sec_aaaa"),
+      dropTarget: dropTarget("root", null),
+    });
+    expect(op).toEqual({
+      name: "reorderChildren",
+      parentId: "root",
+      orderedChildIds: ["sec_bbbb", "sec_aaaa"],
+    });
+  });
+
+  it("same-position section drop reorders to the identical list (resolver marks it noop)", () => {
+    const doc = buildFixtureDoc();
+    // resolveDropTarget derives isNoop from exactly this equality; pin it so
+    // a release-in-place stays dispatch-free.
+    expect(
+      computeReorderedChildIds({
+        childIds: doc[id("root")]!.childrenIds,
+        draggedBlockId: id("sec_aaaa"),
+        beforeChildId: id("sec_bbbb"),
+      }),
+    ).toEqual(doc[id("root")]!.childrenIds);
+  });
+});
+
+describe("resolveContainerId (nesting legality, pure hit-chain walk)", () => {
+  /** Fixture doc plus a 2-column row inside sec_bbbb; returns a column id. */
+  function buildColumnsFixture(): { doc: EmailDocument; columnId: BlockId } {
+    const base = buildFixtureDoc();
+    const preset = createDefaultColumnsPreset({ columnCount: 2, sectionId: id("sec_bbbb"), doc: base });
+    const doc = apply(base, {
+      name: "restoreBlocks",
+      blocks: preset.blocks,
+      parentId: id("sec_bbbb"),
+      index: 0,
+    });
+    const columnId = doc[preset.rowId]?.childrenIds[0];
+    if (columnId === undefined) {
+      throw new Error("columns fixture has no column");
+    }
+    return { doc, columnId };
+  }
+
+  it("a dragged SECTION over a leaf in another section resolves to root, never the section", () => {
+    const doc = buildFixtureDoc();
+    expect(resolveContainerId({ doc, draggedType: "section", hitBlockId: id("txt_aaaa") })).toBe(
+      "root",
+    );
+    expect(resolveContainerId({ doc, draggedType: "section", hitBlockId: id("sec_aaaa") })).toBe(
+      "root",
+    );
+  });
+
+  it("a dragged SECTION over a column resolves to root — sections never enter columns", () => {
+    const { doc, columnId } = buildColumnsFixture();
+    expect(resolveContainerId({ doc, draggedType: "section", hitBlockId: columnId })).toBe("root");
+  });
+
+  it("a dragged SECTION over canvas padding (no block) resolves to root", () => {
+    const doc = buildFixtureDoc();
+    expect(resolveContainerId({ doc, draggedType: "section", hitBlockId: null })).toBe("root");
+  });
+
+  it("a dragged LEAF over a column resolves to that column (regression)", () => {
+    const { doc, columnId } = buildColumnsFixture();
+    expect(resolveContainerId({ doc, draggedType: "text", hitBlockId: columnId })).toBe(columnId);
+  });
+
+  it("a dragged LEAF over canvas padding resolves to nothing — leaves are not root-legal", () => {
+    const doc = buildFixtureDoc();
+    expect(resolveContainerId({ doc, draggedType: "text", hitBlockId: null })).toBeNull();
   });
 });
 

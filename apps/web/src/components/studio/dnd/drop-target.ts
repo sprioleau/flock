@@ -27,7 +27,12 @@ import type { DragSource, DropIndicatorLine, DropTarget } from "./drag-drop-stor
  *
  * Semantics (SDK nesting rules, ALLOWED_CHILD_TYPES), by drag source:
  * - EXISTING leaf blocks target the innermost section/column on the
- *   pointer's hit chain; sections reorder via the action-row buttons only.
+ *   pointer's hit chain.
+ * - EXISTING sections resolve like palette sections: only the root accepts
+ *   a section, so wherever the pointer rests the hit chain walks up to a
+ *   root-level gap — a section can never land inside another section or a
+ *   column, and the drop is always ONE root reorder (the action-row arrows
+ *   coexist as the keyboard path).
  * - PALETTE items resolve with the type they stand in for: leaves →
  *   section/column, column presets (rows) → sections, the Empty Section →
  *   root-level gaps between sections.
@@ -95,9 +100,10 @@ function resolveDraggedDescriptor(args: {
 /**
  * The container that would receive a block of `draggedType` with the pointer
  * resting on `hitBlockId`, or null when nothing on the hit chain may accept
- * it.
+ * it. Pure (doc walk only) — exported so the nesting-legality seam is unit
+ * testable without live DOM rects.
  */
-function resolveContainerId(args: {
+export function resolveContainerId(args: {
   doc: EmailDocument;
   draggedType: BlockType;
   hitBlockId: BlockId | null;
@@ -105,8 +111,9 @@ function resolveContainerId(args: {
   const { doc, draggedType, hitBlockId } = args;
 
   // Walk up the hit chain to the first container whose type accepts the
-  // dragged type (for a leaf: section or column; for a palette section:
-  // the root — so hovering any section resolves to a root-level position).
+  // dragged type (for a leaf: section or column; for a section — existing
+  // or palette — the root, so hovering anywhere in any section resolves to
+  // a root-level position and never inside another container).
   for (let id: BlockId | null = hitBlockId; id !== null; ) {
     const block: Block | undefined = doc[id];
     if (block === undefined) {
@@ -118,8 +125,9 @@ function resolveContainerId(args: {
     id = block.parentId;
   }
   // Pointer inside the canvas but over no block (the top padding or the
-  // add-section footer): root-accepted types (palette sections) still land
-  // under the root; everything else stays invalid there.
+  // add-section footer): root-accepted types (sections, palette or
+  // existing) still land under the root; everything else stays invalid
+  // there.
   if (hitBlockId === null && ALLOWED_CHILD_TYPES.root.includes(draggedType)) {
     return ROOT_BLOCK_ID;
   }
@@ -292,6 +300,8 @@ export function resolveDropTarget(args: {
  * for a no-op: same-parent drops become one reorderChildren, cross-parent
  * drops one moveBlock (index is the position after detaching, which for a
  * different parent is simply the position among its current children).
+ * Sections always take the reorderChildren branch — their only legal parent
+ * is the root, so a section drop is ONE root reorder (single undo).
  */
 export function buildDropOperation(args: {
   doc: EmailDocument;

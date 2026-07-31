@@ -40,9 +40,10 @@ export interface CanvasDndContextProps {
  * - existing blocks → reorderChildren / moveBlock (unchanged behavior);
  * - palette items → addBlock / restoreBlocks / addSection with defaults,
  *   after which the new block is selected and scrolled into view.
- * Leaf blocks register via useDraggable in BlockShell with the grab handle
- * in the block action row as activator; palette tiles register whole-tile in
- * PaletteTile; sections reorder through the action-row buttons only.
+ * Leaf blocks AND sections register via useDraggable in BlockShell with the
+ * grab handle in the block action row as activator (sections resolve to
+ * root-level gaps only — one root reorder per drop; the up/down arrows stay
+ * as the keyboard path); palette tiles register whole-tile in PaletteTile.
  */
 export function CanvasDndContext({ children }: CanvasDndContextProps) {
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 4 } }));

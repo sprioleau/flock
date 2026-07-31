@@ -19,12 +19,13 @@ export interface BlockShellProps {
 
 /**
  * Block types that can be picked up on the canvas: leaves move within and
- * across sections/columns. Containers (sections, rows, columns) are never
- * drag sources — sections are too large on screen to drag comfortably, so
- * section reordering stays on the move up/down buttons — but sections and
- * columns remain drop targets for leaves.
+ * across sections/columns, and sections reorder among the root's children
+ * (owner decision 2026-07-31, reversing the Phase 2 arrows-only rule — the
+ * move up/down buttons stay as the keyboard-accessible path). Rows and
+ * columns remain non-draggable structure; sections and columns remain drop
+ * targets for leaves.
  */
-const DRAGGABLE_BLOCK_TYPES: readonly BlockType[] = LEAF_BLOCK_TYPES;
+const DRAGGABLE_BLOCK_TYPES: readonly BlockType[] = [...LEAF_BLOCK_TYPES, "section"];
 
 /**
  * The interactive wrapper every canvas block renders inside: hover outline,
