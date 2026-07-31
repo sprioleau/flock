@@ -55,6 +55,32 @@ describe("runnerOutputSchema (long-label reliability)", () => {
   });
 });
 
+describe("runnerOutputSchema (suggestedPrompt — main-agent handoff)", () => {
+  it("accepts an op-less finding carrying a suggestedPrompt", () => {
+    const result = runnerOutputSchema.safeParse({
+      findings: [
+        buildFinding({
+          suggestedPrompt:
+            "Help me replace the hero image's placeholder URL with a real image from my website.",
+        }),
+      ],
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it("accepts a finding without the field (older/edit-carrying findings)", () => {
+    const parsed = runnerOutputSchema.parse({ findings: [buildFinding()] });
+    expect(parsed.findings[0]!.suggestedPrompt).toBeUndefined();
+  });
+
+  it("accepts an over-long suggestedPrompt (same no-hard-cap reliability rule)", () => {
+    const result = runnerOutputSchema.safeParse({
+      findings: [buildFinding({ suggestedPrompt: "p".repeat(2000) })],
+    });
+    expect(result.success).toBe(true);
+  });
+});
+
 describe("truncateFindingText", () => {
   it("returns short text unchanged (byte-stable under the cap)", () => {
     expect(truncateFindingText({ text: "short", cap: 60 })).toBe("short");
@@ -88,5 +114,22 @@ describe("truncateFindingProse", () => {
     expect(truncated.proposedEdits).toEqual([
       { blockId: "btn_t9u0", property: "label", value: "Join us" },
     ]);
+  });
+
+  it("caps suggestedPrompt with the same ellipsis backstop", () => {
+    const parsed = runnerOutputSchema.parse({
+      findings: [buildFinding({ suggestedPrompt: "p".repeat(2000) })],
+    });
+    const truncated = truncateFindingProse(parsed.findings[0]!);
+    expect(truncated.suggestedPrompt!.length).toBeLessThanOrEqual(
+      FINDING_TEXT_CAPS.suggestedPrompt,
+    );
+    expect(truncated.suggestedPrompt!.endsWith("…")).toBe(true);
+  });
+
+  it("leaves suggestedPrompt absent when the model omitted it (no undefined key)", () => {
+    const parsed = runnerOutputSchema.parse({ findings: [buildFinding()] });
+    const truncated = truncateFindingProse(parsed.findings[0]!);
+    expect("suggestedPrompt" in truncated).toBe(false);
   });
 });

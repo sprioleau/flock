@@ -42,6 +42,8 @@ const findingInputValidator = v.object({
   targetBlockIds: v.array(v.string()),
   /** Dry-run-validated ops JSON (runtime guard: email-sdk Zod, in the route). */
   ops: v.array(v.any()),
+  /** Main-agent handoff prompt (op-less findings only — see the schema note). */
+  suggestedPrompt: v.optional(v.string()),
   /** blockId → stableStringify(block) from the doc the ops were validated against. */
   targetSnapshots: v.record(v.string(), v.string()),
 });
@@ -57,6 +59,7 @@ const findingPayloadValidator = v.object({
   targetBlockNames: v.array(v.string()),
   targetBlockIds: v.array(v.string()),
   ops: v.array(v.any()),
+  suggestedPrompt: v.optional(v.string()),
   targetSnapshots: v.record(v.string(), v.string()),
   createdAtMs: v.number(),
 });
@@ -73,6 +76,7 @@ function toFindingPayload(row: Doc<"personaFindings">) {
     targetBlockNames: row.targetBlockNames,
     targetBlockIds: row.targetBlockIds,
     ops: row.ops,
+    ...(row.suggestedPrompt !== undefined ? { suggestedPrompt: row.suggestedPrompt } : {}),
     targetSnapshots: row.targetSnapshots,
     createdAtMs: row.createdAtMs,
   };
@@ -122,6 +126,8 @@ const findingHistoryPayloadValidator = v.object({
   status: findingStatusValidator,
   /** True when the finding carries ops a human can apply (else informational). */
   isActionable: v.boolean(),
+  /** Handoff prompt for op-less rows ("Ask in chat" in the modal). */
+  suggestedPrompt: v.optional(v.string()),
   createdAtMs: v.number(),
 });
 
@@ -154,6 +160,7 @@ export const listFindingsForDocument = query({
         targetBlockNames: row.targetBlockNames,
         status: row.status,
         isActionable: row.ops.length > 0,
+        ...(row.suggestedPrompt !== undefined ? { suggestedPrompt: row.suggestedPrompt } : {}),
         createdAtMs: row.createdAtMs,
       }));
   },
@@ -198,6 +205,10 @@ export const recordFindings = mutation({
       if (openMatch !== undefined) {
         await ctx.db.patch(openMatch._id, {
           ...finding,
+          // Replace-in-place must REPLACE optionals too: patching undefined
+          // clears the field, so a fresh copy without a handoff prompt (e.g.
+          // it now carries ops) can't inherit the old row's stale prompt.
+          suggestedPrompt: finding.suggestedPrompt,
           createdAtMs: nowMs,
           updatedAtMs: nowMs,
         });

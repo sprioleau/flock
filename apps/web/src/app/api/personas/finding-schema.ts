@@ -22,6 +22,7 @@ export const FINDING_TEXT_CAPS = {
   title: 160,
   description: 480,
   targetBlockName: 160,
+  suggestedPrompt: 480,
 } as const;
 
 /** Truncate one prose field to `cap`, marking the cut with an ellipsis. */
@@ -75,6 +76,12 @@ export const findingSchema = z.object({
     .describe(
       "Concrete block-property edits that implement the fix, when the fix IS a property change. Omit for copy rewrites or anything a property edit cannot express.",
     ),
+  suggestedPrompt: z
+    .string()
+    .optional()
+    .describe(
+      "ONLY when proposedEdits is omitted: a short ready-to-send message, written in the user's first-person voice, asking their email-editing assistant to resolve this finding. Refer to content by its visible text, never by block ids. Omit whenever proposedEdits is present.",
+    ),
 });
 
 export const runnerOutputSchema = z.object({
@@ -98,5 +105,13 @@ export function truncateFindingProse(finding: RunnerOutputFinding): RunnerOutput
     targetBlockNames: finding.targetBlockNames.map((name) =>
       truncateFindingText({ text: name, cap: FINDING_TEXT_CAPS.targetBlockName }),
     ),
+    ...(finding.suggestedPrompt !== undefined
+      ? {
+          suggestedPrompt: truncateFindingText({
+            text: finding.suggestedPrompt,
+            cap: FINDING_TEXT_CAPS.suggestedPrompt,
+          }),
+        }
+      : {}),
   };
 }

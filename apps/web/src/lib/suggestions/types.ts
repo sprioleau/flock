@@ -106,6 +106,13 @@ export interface PersonaSuggestion {
   targetBlockIds: BlockId[];
   /** Pre-composed, dry-run-validated ops. Empty = informational card. */
   ops: Operation[];
+  /**
+   * Main-agent handoff for op-less findings: a ready-to-send chat prompt in
+   * the user's voice. The card's "Ask in chat" inserts it into the composer
+   * (focused, editable — never auto-sent). Absent on findings with ops and
+   * on rows recorded before the field existed (no CTA then).
+   */
+  suggestedPrompt?: string;
 }
 
 /** One settled user property edit, extracted from an op-log entry. */

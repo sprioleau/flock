@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import {
   MessagesSquareIcon,
   MousePointerClickIcon,
@@ -18,6 +18,7 @@ import { DemoQueueButton } from "../demo/DemoQueueButton";
 import { SettingsFab } from "../demo/SettingsFab";
 import { ActiveDraftIndicator } from "../drafts/ActiveDraftIndicator";
 import { ChatMessageList } from "./ChatMessageList";
+import { registerComposerHandoffHandler } from "./composer-handoff";
 import { QueuedMessageList } from "./QueuedMessageList";
 import { SuggestionCard } from "./SuggestionCard";
 import { useMessageQueue } from "./use-message-queue";
@@ -43,6 +44,26 @@ const COLLAPSED_WIDTH_PX = 48;
 export function ChatPanel() {
   const [isExpanded, setIsExpanded] = useState(true);
   const [draftText, setDraftText] = useState("");
+  const composerTextareaRef = useRef<HTMLTextAreaElement | null>(null);
+
+  // The composer-handoff seam (composer-handoff.ts): persona finding cards
+  // and the recommendations modal insert a ready-to-send prompt HERE —
+  // focused, caret at the end, editable, never auto-sent. Expanding first
+  // means a handoff from the modal works while the panel is collapsed.
+  useEffect(() => {
+    return registerComposerHandoffHandler((prompt) => {
+      setIsExpanded(true);
+      setDraftText(prompt);
+      // Focus after React commits the value (and the panel un-hides).
+      requestAnimationFrame(() => {
+        const textarea = composerTextareaRef.current;
+        if (textarea !== null) {
+          textarea.focus();
+          textarea.setSelectionRange(prompt.length, prompt.length);
+        }
+      });
+    });
+  }, []);
   // Suggestion controllers live HERE (not in SuggestionCard): the collapsed
   // rail's notification badge needs the pending count, and each hook must
   // mount exactly once (usePersonaAdvisors hosts the persona presence
@@ -285,6 +306,7 @@ export function ChatPanel() {
               </div>
             )}
             <Textarea
+              ref={composerTextareaRef}
               value={draftText}
               onChange={(event) => setDraftText(event.target.value)}
               onKeyDown={handleComposerKeyDown}

@@ -325,6 +325,13 @@ export default defineSchema({
     targetBlockIds: v.array(v.string()),
     /** Pre-validated updateBlockProperties ops JSON; empty = informational. */
     ops: v.array(v.any()),
+    /**
+     * Main-agent handoff for OP-LESS findings: a ready-to-send chat prompt in
+     * the user's voice ("Ask in chat" inserts it into the composer — never
+     * auto-sent). Absent on findings with ops and on rows recorded before the
+     * field existed (those render without the handoff CTA).
+     */
+    suggestedPrompt: v.optional(v.string()),
     /** blockId → stableStringify(block) at recording time (staleness baseline). */
     targetSnapshots: v.record(v.string(), v.string()),
     status: v.union(v.literal("open"), v.literal("dismissed"), v.literal("applied")),

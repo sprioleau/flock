@@ -1,11 +1,19 @@
 "use client";
 
 import { useState, useSyncExternalStore } from "react";
-import { CheckIcon, ChevronDownIcon, SparklesIcon, Undo2Icon, XIcon } from "lucide-react";
+import {
+  CheckIcon,
+  ChevronDownIcon,
+  MessageSquarePlusIcon,
+  SparklesIcon,
+  Undo2Icon,
+  XIcon,
+} from "lucide-react";
 import type { PersonaAdvisorsController, PersonaCard } from "@/lib/personas/use-persona-advisors";
 import type { SuggestionsController } from "@/lib/suggestions/use-suggestions";
 import type { Suggestion, SuggestionRungId } from "@/lib/suggestions/types";
 import { cn } from "@/lib/utils";
+import { handOffPromptToComposer } from "./composer-handoff";
 
 /**
  * The Phase 7.3 suggestion surface: one slim, dismissible card directly above
@@ -25,7 +33,10 @@ import { cn } from "@/lib/utils";
  * here too — up to 3 quiet cards, each chipped with its persona's name and
  * color, stacked above the rule card. A finding with pre-validated ops gets
  * one-click Apply (same instant dispatch + revert path, `persona:<slug>`
- * provenance); a finding without ops is informational with dismiss only.
+ * provenance); a finding without ops is informational — dismiss, plus, when
+ * the runner authored a suggestedPrompt, an "Ask in chat" handoff that
+ * inserts that prompt into the composer (focused, editable, never auto-sent)
+ * so the user partners with the main chat agent on the fix.
  *
  * Both controllers are OWNED by ChatPanel (which always mounts, collapsed or
  * not) and passed down: ChatPanel also needs the pending-recommendation count
@@ -300,7 +311,7 @@ function PersonaFindingCard({
           <p className="text-[11px] text-muted-foreground" data-testid="persona-finding-description">
             {suggestion.description}
           </p>
-          {suggestion.ops.length > 0 && (
+          {suggestion.ops.length > 0 ? (
             <div className="flex flex-wrap gap-1.5 pt-1">
               <button
                 type="button"
@@ -313,7 +324,22 @@ function PersonaFindingCard({
                 Apply
               </button>
             </div>
-          )}
+          ) : suggestion.suggestedPrompt !== undefined ? (
+            // Op-less finding with a runner-authored handoff prompt: insert
+            // it into the composer for the user to review and send (or edit).
+            <div className="flex flex-wrap gap-1.5 pt-1">
+              <button
+                type="button"
+                tabIndex={tabIndex}
+                onClick={() => handOffPromptToComposer(suggestion.suggestedPrompt!)}
+                className={quietButtonClassName}
+                data-testid="persona-finding-ask-in-chat"
+              >
+                <MessageSquarePlusIcon className="size-3" />
+                Ask in chat
+              </button>
+            </div>
+          ) : null}
         </div>
       )}
     </div>

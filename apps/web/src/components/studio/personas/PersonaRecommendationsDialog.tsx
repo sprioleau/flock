@@ -1,9 +1,11 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useMutation, useQuery } from "convex/react";
 import type { FunctionReturnType } from "convex/server";
+import { MessageSquarePlusIcon } from "lucide-react";
 import { api } from "@convex/_generated/api";
+import { handOffPromptToComposer } from "@/components/studio/chat/composer-handoff";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -36,6 +38,13 @@ import { getRecommendationOutcome } from "./recommendation-outcome";
  * dismissal or apply in any tab (cards, another collaborator, this modal)
  * updates every open modal live. The per-row Dismiss action reuses the SAME
  * dismissFinding mutation the suggestion cards call — no new write path.
+ *
+ * Pending op-less rows that carry a runner-authored suggestedPrompt get the
+ * cards' "Ask in chat" handoff here too: clicking closes the modal and
+ * inserts the prompt into the chat composer (focused, editable, never
+ * auto-sent). The insertion runs inside the dialog's finalFocus callback —
+ * returning false there SKIPS the close-time focus restore for exactly this
+ * close, so focus lands in the composer instead of back on the trigger.
  */
 
 type FindingHistoryRow = FunctionReturnType<
@@ -83,9 +92,31 @@ export function PersonaRecommendationsDialog({
     (row) => selectedSlug === null || row.personaSlug === selectedSlug,
   );
 
+  // "Ask in chat" handoff staged across the close: the click stores the
+  // prompt and closes the dialog; the finalFocus callback then inserts it
+  // and returns false so the composer keeps the focus (see header note).
+  const pendingHandoffPromptRef = useRef<string | null>(null);
+  const askInChat = (prompt: string): void => {
+    pendingHandoffPromptRef.current = prompt;
+    onOpenChange(false);
+  };
+  const handleFinalFocus = (): boolean => {
+    const prompt = pendingHandoffPromptRef.current;
+    if (prompt === null) {
+      return true; // normal close — default focus restore
+    }
+    pendingHandoffPromptRef.current = null;
+    handOffPromptToComposer(prompt);
+    return false;
+  };
+
   return (
     <Dialog open={isOpen} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-xl" data-testid="persona-recommendations">
+      <DialogContent
+        className="sm:max-w-xl"
+        finalFocus={handleFinalFocus}
+        data-testid="persona-recommendations"
+      >
         <DialogHeader>
           <DialogTitle>Recommendations</DialogTitle>
           <DialogDescription>
@@ -125,8 +156,10 @@ export function PersonaRecommendationsDialog({
           )}
         </div>
         {/* FIXED height (owner ask): tab switches change the list contents,
-            never the modal dimensions — the list is the scrollable region. */}
-        <div className="flex h-[55vh] max-h-[560px] flex-col gap-2 overflow-y-auto">
+            never the modal dimensions — the list is the scrollable region.
+            One fixed value (not viewport-relative): tall enough for 2-3 rows,
+            scroll takes over beyond that, and no dead area with one row. */}
+        <div className="flex h-[400px] flex-col gap-2 overflow-y-auto">
           {findingRows === undefined ? (
             <p className="py-6 text-center text-xs text-muted-foreground">
               Loading recommendations…
@@ -136,7 +169,9 @@ export function PersonaRecommendationsDialog({
               No recommendations here yet — they appear as agents review your edits.
             </p>
           ) : (
-            visibleRows.map((row) => <RecommendationRow key={row.findingId} row={row} />)
+            visibleRows.map((row) => (
+              <RecommendationRow key={row.findingId} row={row} onAskInChat={askInChat} />
+            ))
           )}
         </div>
       </DialogContent>
@@ -207,7 +242,13 @@ export function formatRelativeTime({ atMs, nowMs }: { atMs: number; nowMs: numbe
   return elapsedDays === 1 ? "1 day ago" : `${elapsedDays} days ago`;
 }
 
-function RecommendationRow({ row }: { row: FindingHistoryRow }) {
+function RecommendationRow({
+  row,
+  onAskInChat,
+}: {
+  row: FindingHistoryRow;
+  onAskInChat: (prompt: string) => void;
+}) {
   const dismissFinding = useMutation(api.personaFindings.dismissFinding);
   // Recency is captured at row mount (dialog open) — purity over ticking.
   const [mountedAtMs] = useState(() => Date.now());
@@ -257,6 +298,22 @@ function RecommendationRow({ row }: { row: FindingHistoryRow }) {
             data-testid="recommendation-dismiss"
           >
             Dismiss
+          </Button>
+        )}
+        {/* Pending op-less advice with a handoff prompt: the cards' "Ask in
+            chat" affordance — close the modal, land in the composer. Older
+            rows without the field simply show no CTA. */}
+        {row.status === "open" && !row.isActionable && row.suggestedPrompt !== undefined && (
+          <Button
+            type="button"
+            variant="ghost"
+            size="xs"
+            className="shrink-0 text-muted-foreground"
+            onClick={() => onAskInChat(row.suggestedPrompt!)}
+            data-testid="recommendation-ask-in-chat"
+          >
+            <MessageSquarePlusIcon className="size-3" />
+            Ask in chat
           </Button>
         )}
       </div>

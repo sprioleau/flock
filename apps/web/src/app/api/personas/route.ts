@@ -111,6 +111,7 @@ Rules for every persona:
 - In title, description, and targetBlockNames, refer to content ONLY by what the user can see ("the heading 'Spring sale'", "the button labeled 'Buy now'") — internal block ids must never appear in that prose. Put ids only in targetBlockIds and proposedEdits.blockId, copied exactly from the outline.
 - Keep those visible-content quotes SHORT: when a label or heading is long, quote just its first few words followed by an ellipsis ("the button labeled 'Join thousands of happy…'").
 - When the fix is a change to block properties (colors, alignment, sizes, a button label), include proposedEdits with the exact property values. When the fix is rewording copy, put the suggested rewrite in the description instead and omit proposedEdits.
+- Whenever you OMIT proposedEdits, ALSO fill suggestedPrompt: a short ready-to-send message (1-3 sentences) the user could send to their email-editing assistant to resolve the finding. Write it in the user's first-person voice ("Replace the hero image's placeholder link — help me pick a real image URL from my website."), name the content by its visible text, and make it actionable. Omit suggestedPrompt whenever proposedEdits is present.
 - Findings must be about the document as it is NOW (the outline below is current).`;
 
 // ---------------------------------------------------------------------------
@@ -158,6 +159,13 @@ interface RunnerFinding {
   targetBlockIds: string[];
   /** Dry-run-validated updateBlockProperties ops; empty = informational. */
   ops: Operation[];
+  /**
+   * Main-agent handoff (op-less findings only): a ready-to-send chat prompt,
+   * in the user's voice, that asks the chat agent to resolve the finding. The
+   * card/modal "Ask in chat" button inserts it into the composer — never
+   * auto-sent. Absent on findings that carry ops (Apply covers those).
+   */
+  suggestedPrompt?: string;
 }
 
 function failureResponse({ message, status }: { message: string; status: number }): Response {
@@ -415,6 +423,14 @@ export async function POST(request: Request) {
         finding.proposedEdits !== undefined && finding.proposedEdits.length > 0
           ? composeFindingOps({ doc, proposedEdits: finding.proposedEdits })
           : [];
+      // The handoff prompt rides along ONLY while the finding is op-less
+      // (informational — including the dry-run-failed degradation): a finding
+      // with live ops is served by Apply, and the two CTAs never coexist.
+      const validatedOps = ops ?? [];
+      const suggestedPrompt =
+        validatedOps.length === 0 && finding.suggestedPrompt !== undefined
+          ? finding.suggestedPrompt
+          : undefined;
       findings.push({
         personaSlug: persona.slug,
         personaName: persona.name,
@@ -424,7 +440,8 @@ export async function POST(request: Request) {
         targetBlockNames: finding.targetBlockNames,
         targetBlockIds: knownTargetBlockIds,
         // ops === null → the dry-run failed → informational fallback.
-        ops: ops ?? [],
+        ops: validatedOps,
+        ...(suggestedPrompt !== undefined ? { suggestedPrompt } : {}),
       });
     }
 
@@ -458,6 +475,9 @@ export async function POST(request: Request) {
             targetBlockNames: finding.targetBlockNames,
             targetBlockIds: finding.targetBlockIds,
             ops: finding.ops,
+            ...(finding.suggestedPrompt !== undefined
+              ? { suggestedPrompt: finding.suggestedPrompt }
+              : {}),
             targetSnapshots: Object.fromEntries(
               [...snapshotBlockIds].map((blockId) => [
                 blockId,

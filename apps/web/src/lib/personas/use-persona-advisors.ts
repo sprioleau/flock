@@ -134,6 +134,7 @@ function toPersonaSuggestion(row: FindingRow): PersonaSuggestion {
     targetBlockNames: row.targetBlockNames,
     targetBlockIds: row.targetBlockIds as PersonaSuggestion["targetBlockIds"],
     ops: row.ops as Operation[],
+    ...(row.suggestedPrompt !== undefined ? { suggestedPrompt: row.suggestedPrompt } : {}),
   };
 }
 
