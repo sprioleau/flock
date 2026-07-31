@@ -57,7 +57,10 @@ export function EditorCanvas() {
       // ONE scroll region. Pointer/persona cursor overlays live in content
       // space inside, so they scroll with the email and clip at that outer
       // scrollport instead.
-      className="email-canvas bg-neutral-200/70"
+      // Matches the frames surface (DraftFramesCanvas): darker-than-panels
+      // chrome in dark mode; email pixels inside come from document inline
+      // styles and never react to the app theme.
+      className="email-canvas bg-neutral-200/70 dark:bg-black/40"
       onClick={() => selectBlock(null)}
       data-testid="editor-canvas"
     >

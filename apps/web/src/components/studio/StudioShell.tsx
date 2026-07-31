@@ -8,7 +8,13 @@ import type { EmailDocument } from "@tandem/email-sdk";
 import { api } from "@convex/_generated/api";
 import type { Id } from "@convex/_generated/dataModel";
 import { Button } from "@/components/ui/button";
-import { useEditorStore } from "@/lib/editor-store";
+import {
+  acquireEditorStore,
+  peekEditorStore,
+  releaseEditorStore,
+  setActiveEditorStore,
+  useEditorStore,
+} from "@/lib/editor-store";
 import { PresenceProvider } from "@/lib/presence";
 import { getOrCreateSessionId } from "@/lib/session";
 import { ChatPanel } from "./chat/ChatPanel";
@@ -36,12 +42,24 @@ import { StudioToolbar } from "./StudioToolbar";
  * dropdown, or a nav arrow): pushes the new ?doc= via the native history API
  * (Next syncs useSearchParams with pushState — a SHALLOW navigation, no
  * server round-trip, back/forward walks drafts), the query re-subscribes,
- * and when the new draft's first snapshot arrives the store is reset +
- * reconnected in ONE synchronous batch — the shell (chat panel, presence
+ * and when the new draft's first snapshot arrives its store is connected +
+ * made ACTIVE in ONE synchronous batch — the shell (chat panel, presence
  * provider) never unmounts and no loading gate flashes; the active frame
  * simply moves. "Last frame clicked" = the store-connected document = what
  * the preview toggle, HTML export, history, presence, and chat all target.
  * `isDocumentReady` only gates the INITIAL load.
+ *
+ * Store LIFECYCLE (drafts v2, the per-document factory): this shell is the
+ * lifecycle owner. Each snapshot's document gets THE store instance for its
+ * id from the refcounted registry (acquireEditorStore); the instance is
+ * connected once, fed every snapshot, and swapped in as the ACTIVE store —
+ * the one `useEditorStore`'s compat surface (shell chrome, chat, panels)
+ * resolves to. On a draft switch the shell releases its hold on the outgoing
+ * instance: with no other holder it is disposed (sibling frame previews read
+ * Convex queries directly, not stores), matching the old reset semantics;
+ * when another holder retains it (a chat turn pinned to that draft), the
+ * instance — overlay, selection, in-flight ops — survives and is simply
+ * re-fed snapshots when the draft is reactivated.
  */
 export function StudioShell() {
   const router = useRouter();
@@ -99,33 +117,59 @@ export function StudioShell() {
   const authorId = useEditorStore((state) => state.authorId);
   const isDocumentReady = useEditorStore((state) => state.isDocumentReady);
 
-  // Feed every snapshot into the store (connect on the first one; reset +
-  // reconnect when the snapshot is a DIFFERENT draft — i.e. a tab switch).
+  // The document this shell currently holds a registry reference for.
+  const heldDocumentIdRef = useRef<Id<"documents"> | null>(null);
+
+  // Feed every snapshot into ITS document's store instance (acquire + connect
+  // on first sight; on a draft switch, activate the incoming instance and
+  // release the outgoing one). Connect + snapshot + active-swap run in one
+  // synchronous effect, so consumers see the incoming draft fully ready in a
+  // single render batch — `isDocumentReady` never flickers false.
   useEffect(() => {
     if (snapshot === undefined || snapshot === null) {
       return;
     }
-    const store = useEditorStore.getState();
-    if (store.documentId !== snapshot.documentId) {
-      if (store.documentId !== null) {
-        // Draft switch: drop the outgoing draft's pending overlay, selection,
-        // and notices so nothing replays onto the incoming draft. The reset
-        // and the snapshot below land in one render batch (this effect is
-        // synchronous), so `isDocumentReady` never flickers false.
-        store.resetDocumentState();
-      }
-      store.connectDocument({
+    const previousDocumentId = heldDocumentIdRef.current;
+    const isDraftSwitch = previousDocumentId !== snapshot.documentId;
+    // `peek ?? acquire` on the non-switch path is a backstop (e.g. the hold
+    // was torn down by a StrictMode unmount between snapshots).
+    const store = isDraftSwitch
+      ? acquireEditorStore(snapshot.documentId)
+      : (peekEditorStore(snapshot.documentId) ?? acquireEditorStore(snapshot.documentId));
+    if (store.getState().documentId !== snapshot.documentId) {
+      store.getState().connectDocument({
         convexClient,
         documentId: snapshot.documentId,
         canvasId: snapshot.canvasId,
         authorId: getOrCreateSessionId(),
       });
     }
-    store.applyServerSnapshot({
+    store.getState().applyServerSnapshot({
       doc: snapshot.doc as EmailDocument,
       headVersion: snapshot.headVersion,
     });
+    // Activate BEFORE releasing the outgoing hold: swap-surviving
+    // subscriptions (persona advisors, suggestions) re-attach to the ready
+    // incoming instance and never observe the outgoing instance's disposal.
+    setActiveEditorStore(store);
+    if (isDraftSwitch) {
+      heldDocumentIdRef.current = snapshot.documentId;
+      if (previousDocumentId !== null) {
+        releaseEditorStore(previousDocumentId);
+      }
+    }
   }, [snapshot, convexClient]);
+
+  // Drop the shell's registry hold on unmount (leaving /studio).
+  useEffect(
+    () => () => {
+      if (heldDocumentIdRef.current !== null) {
+        releaseEditorStore(heldDocumentIdRef.current);
+        heldDocumentIdRef.current = null;
+      }
+    },
+    [],
+  );
 
   /** Drafts-bar switch: shallow ?doc= update; the snapshot effect does the rest. */
   const switchToDraft = (nextDocumentId: Id<"documents">): void => {

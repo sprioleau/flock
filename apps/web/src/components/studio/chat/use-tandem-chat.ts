@@ -8,15 +8,11 @@ import {
   lastAssistantMessageIsCompleteWithApprovalResponses,
   lastAssistantMessageIsCompleteWithToolCalls,
 } from "ai";
-import { useConvex, type ConvexReactClient } from "convex/react";
 import {
-  dispatchContentAction,
   emailActionRegistry,
   type ActionContext,
   type ActionDispatchError,
   type ActionFailureKind,
-  type BlockId,
-  type EmailDocument,
   type GenerateImageCommand,
 } from "@tandem/email-sdk";
 import type { Id } from "@convex/_generated/dataModel";
@@ -28,7 +24,14 @@ import {
   type TandemChatMessage,
   type TandemChatTools,
 } from "@/lib/chat-contract";
-import { submitOperationToConvex, useEditorStore, type DispatchableOp } from "@/lib/editor-store";
+import {
+  acquireEditorStore,
+  peekEditorStore,
+  releaseEditorStore,
+  useEditorStore,
+  type DispatchableOp,
+  type EditorStoreApi,
+} from "@/lib/editor-store";
 
 /**
  * The Phase 3 chat brain: wires AI SDK v7 `useChat` to the editor store.
@@ -85,7 +88,7 @@ interface TandemChatController {
   setIsMockEnabled: (isMockEnabled: boolean) => void;
 }
 
-function createTandemChatController(convexClient: ConvexReactClient): TandemChatController {
+function createTandemChatController(): TandemChatController {
   // toolCallIds already applied / commands already executed (same-id stream
   // rewrites and repeated deliveries must not double-apply).
   const appliedToolCallIds = new Set<string>();
@@ -95,23 +98,42 @@ function createTandemChatController(convexClient: ConvexReactClient): TandemChat
   // (including auto-continuation rounds) shares it, so Phase 4 can revert the
   // whole AI turn in one step.
   //
-  // documentId / docAfterLastOp / selectedBlockId pin the turn to the
-  // document it STARTED in (the mid-turn draft-switch fix): the drafts bar
-  // can retarget the store while a turn is still streaming, and without the
-  // pin the turn's remaining ops would apply to whichever draft is active.
-  // `docAfterLastOp` is the turn document's shadow — the doc at turn start,
-  // advanced by every tool op this turn applied — used as the dispatch base
-  // and the continuation request body once the turn document is inactive.
-  // (Human edits landing between the last tool op and the switch are not in
-  // the shadow; the server validates authoritatively on submit.)
+  // `documentId` pins the turn to the document it STARTED in (the mid-turn
+  // draft-switch fix): the drafts bar can retarget the active store while a
+  // turn is still streaming, and without the pin the turn's remaining ops
+  // would apply to whichever draft is active. The pin is backed by a
+  // REGISTRY HOLD (drafts v2 per-document store factory): beginUserTurn
+  // acquires the turn document's store instance, so a draft switch cannot
+  // dispose it — the turn's remaining ops dispatch into that retained
+  // instance (full local-overlay semantics, including human edits made
+  // before the switch), and the draft simply shows them when reactivated.
+  // The hold is released when the NEXT user turn begins.
   const turnState = {
     isMockEnabled: false,
     batchId: crypto.randomUUID(),
     autoContinuationCount: 0,
     documentId: null as Id<"documents"> | null,
-    docAfterLastOp: null as EmailDocument | null,
-    selectedBlockId: null as BlockId | null,
   };
+
+  let heldTurnDocumentId: Id<"documents"> | null = null;
+
+  /** Swap the chat's registry hold from the previous turn's doc to `documentId`. */
+  const holdTurnDocument = (documentId: Id<"documents"> | null): void => {
+    if (documentId === heldTurnDocumentId) {
+      return;
+    }
+    if (documentId !== null) {
+      acquireEditorStore(documentId);
+    }
+    if (heldTurnDocumentId !== null) {
+      releaseEditorStore(heldTurnDocumentId);
+    }
+    heldTurnDocumentId = documentId;
+  };
+
+  /** The turn document's retained store instance (null only if never pinned). */
+  const getTurnDocumentStore = (): EditorStoreApi | null =>
+    turnState.documentId !== null ? peekEditorStore(turnState.documentId) : null;
 
   /**
    * True while the USER is still on the turn's own document. The ?doc= param
@@ -139,19 +161,16 @@ function createTandemChatController(convexClient: ConvexReactClient): TandemChat
     headers: (): Record<string, string> =>
       turnState.isMockEnabled ? { [MOCK_MODEL_HEADER]: "1" } : {},
     // Resolved per request → the CURRENT document + selection at send time —
-    // unless a mid-turn draft switch disconnected the turn's document, in
+    // unless a mid-turn draft switch deactivated the turn's document, in
     // which case continuation rounds (tool results, approval resubmits — the
     // approved sendTestEmail renders the REQUEST's document) keep describing
-    // the document the turn started in via its shadow.
+    // the turn document via its RETAINED store instance (the chat's registry
+    // hold keeps it alive across the switch).
     body: () => {
-      if (getIsTurnDocumentActive()) {
-        const { doc, selectedBlockId } = useEditorStore.getState();
-        return { document: doc, selectedBlockId: selectedBlockId ?? undefined };
-      }
-      return {
-        document: turnState.docAfterLastOp ?? useEditorStore.getState().doc,
-        selectedBlockId: turnState.selectedBlockId ?? undefined,
-      };
+      const store = getIsTurnDocumentActive()
+        ? useEditorStore.getState()
+        : (getTurnDocumentStore()?.getState() ?? useEditorStore.getState());
+      return { document: store.doc, selectedBlockId: store.selectedBlockId ?? undefined };
     },
   });
 
@@ -182,8 +201,9 @@ function createTandemChatController(convexClient: ConvexReactClient): TandemChat
         return;
       }
 
-      // Mid-turn draft switch: the store now renders a DIFFERENT document, so
-      // this op must bypass it and land in the turn's own document directly.
+      // Mid-turn draft switch: the ACTIVE store now renders a DIFFERENT
+      // document, so this op must land in the turn document's own retained
+      // store instance instead.
       if (!getIsTurnDocumentActive()) {
         applyOpToInactiveTurnDocument({ toolName, toolCallId, operation: validation.operation });
         return;
@@ -205,9 +225,6 @@ function createTandemChatController(convexClient: ConvexReactClient): TandemChat
         });
         return;
       }
-      // Advance the turn-document shadow (the full store doc, so concurrent
-      // human edits up to this op ride along) — see turnState.
-      turnState.docAfterLastOp = result.doc;
       void chat.addToolOutput({
         tool: toolName,
         toolCallId,
@@ -307,58 +324,27 @@ function createTandemChatController(convexClient: ConvexReactClient): TandemChat
       threadId: chat.id,
     };
     if (getIsTurnDocumentActive()) {
-      const result = useEditorStore.getState().dispatch(operation, context);
-      if (result.isOk) {
-        turnState.docAfterLastOp = result.doc;
-      }
+      useEditorStore.getState().dispatch(operation, context);
       return;
     }
-    // Mid-turn draft switch: land the op in the turn's own document (shadow
-    // dry-run + direct Convex submit — the same routing as content ops after
-    // a switch). No tool output to report: the editor tool already returned
-    // its result server-side.
-    const turnDocumentId = turnState.documentId;
-    const shadowDoc = turnState.docAfterLastOp;
-    if (turnDocumentId === null || shadowDoc === null) {
-      return;
-    }
-    const localResult = dispatchContentAction({
-      registry: emailActionRegistry,
-      doc: shadowDoc,
-      name: operation.name,
-      input: operation,
-      context,
-    });
-    if (!localResult.isOk) {
-      return;
-    }
-    turnState.docAfterLastOp = localResult.doc;
-    submitOperationToConvex({
-      convexClient,
-      documentId: turnDocumentId,
-      op: localResult.logEntry.op,
-      styleTextSpanIntent: null,
-      context,
-    }).catch(() => {
-      // The turn document's server snapshot stays authoritative; a failed
-      // submit here just means the generated image never landed — visible
-      // when the draft is reactivated.
-    });
+    // Mid-turn draft switch: land the op in the turn document's RETAINED
+    // store instance (same path as content ops after a switch — the store's
+    // own overlay submits and reconciles). No tool output to report: the
+    // editor tool already returned its result server-side. A missing store
+    // means the turn was never pinned — nothing to commit into.
+    getTurnDocumentStore()?.getState().dispatch(operation, context);
   }
 
   /**
    * Apply one content op to the turn's document AFTER a mid-turn draft
-   * switch: dry-run against the turn-document shadow (same SDK action layer
-   * the store uses — validation, failureKind classification, and intent
-   * resolution included), advance the shadow, then submit the settled op
-   * straight to Convex via the SAME mutation routing as the store's outbound
-   * overlay (submitOperationToConvex). The turn document's live query
-   * subscriptions — its drafts-bar frame preview, and the store itself when
-   * the draft is re-activated — pick the change up from the server snapshot.
-   *
-   * Unlike the active path (optimistic: output reported before the ack), the
-   * tool output here waits for the server verdict — there is no local
-   * overlay to roll back, so the server is the only truth worth reporting.
+   * switch: dispatch into the turn document's RETAINED store instance (the
+   * chat's registry hold keeps it alive) — the exact same validated dispatch
+   * path as the active branch, overlay/submit/reconciliation included, and
+   * with any human edits made before the switch already in the store's doc.
+   * When the draft is reactivated, StudioShell re-feeds the same instance
+   * with snapshots and the overlay rebases — the turn's ops are simply
+   * there. The op is reported exactly like the active path (optimistic:
+   * local apply result; the overlay drops-and-notices on a server reject).
    */
   function applyOpToInactiveTurnDocument({
     toolName,
@@ -369,18 +355,11 @@ function createTandemChatController(convexClient: ConvexReactClient): TandemChat
     toolCallId: string;
     operation: DispatchableOp;
   }): void {
-    const turnDocumentId = turnState.documentId;
-    const shadowDoc = turnState.docAfterLastOp;
-    const context: ActionContext = {
-      caller: "tool",
-      author: "agent",
-      authorId: chat.id,
-      batchId: turnState.batchId,
-      threadId: chat.id,
-    };
-    if (turnDocumentId === null || shadowDoc === null) {
-      // Unreachable in practice (both are captured at turn start); reported
-      // rather than thrown so a bad state never kills the stream handler.
+    const turnStore = getTurnDocumentStore();
+    if (turnStore === null) {
+      // Unreachable in practice (the pin + hold are taken at turn start);
+      // reported rather than thrown so a bad state never kills the stream
+      // handler.
       void chat.addToolOutput({
         state: "output-error",
         tool: toolName,
@@ -398,78 +377,40 @@ function createTandemChatController(convexClient: ConvexReactClient): TandemChat
       return;
     }
 
-    const localResult = dispatchContentAction({
-      registry: emailActionRegistry,
-      doc: shadowDoc,
-      name: operation.name,
-      input: operation,
-      context,
+    const result = turnStore.getState().dispatch(operation, {
+      caller: "tool",
+      author: "agent",
+      authorId: chat.id,
+      batchId: turnState.batchId,
+      threadId: chat.id,
     });
-    if (!localResult.isOk) {
+    if (!result.isOk) {
       void chat.addToolOutput({
         state: "output-error",
         tool: toolName,
         toolCallId,
-        errorText: serializeApplyFailure(localResult),
+        errorText: serializeApplyFailure(result),
       });
       return;
     }
-    turnState.docAfterLastOp = localResult.doc;
-
-    submitOperationToConvex({
-      convexClient,
-      documentId: turnDocumentId,
-      op: localResult.logEntry.op,
-      styleTextSpanIntent: operation.name === "styleTextSpan" ? operation : null,
-      context,
-    })
-      .then((serverResult) => {
-        if (!serverResult.isOk) {
-          void chat.addToolOutput({
-            state: "output-error",
-            tool: toolName,
-            toolCallId,
-            errorText: JSON.stringify({
-              status: "failed",
-              errors: serverResult.errors.map(({ code, message }) => ({ code, message })),
-            }),
-          });
-          return;
-        }
-        void chat.addToolOutput({
-          tool: toolName,
-          toolCallId,
-          output: { status: "applied", batchId: turnState.batchId } as never,
-        });
-      })
-      .catch(() => {
-        void chat.addToolOutput({
-          state: "output-error",
-          tool: toolName,
-          toolCallId,
-          errorText: JSON.stringify({
-            status: "failed",
-            errors: [
-              {
-                code: "network_error",
-                message: "The edit could not be saved (connection error).",
-              },
-            ],
-          }),
-        });
-      });
+    void chat.addToolOutput({
+      tool: toolName,
+      toolCallId,
+      output: { status: "applied", batchId: turnState.batchId } as never,
+    });
   }
 
   return {
     chat,
     beginUserTurn: () => {
-      const { documentId, doc, selectedBlockId } = useEditorStore.getState();
+      const { documentId } = useEditorStore.getState();
       turnState.batchId = crypto.randomUUID();
       turnState.autoContinuationCount = 0;
-      // Pin this turn to the document it starts in (see turnState).
+      // Pin this turn to the document it starts in, and take a registry
+      // hold so a mid-turn draft switch cannot dispose its store instance
+      // (see turnState). The previous turn's hold is released here.
       turnState.documentId = documentId;
-      turnState.docAfterLastOp = doc;
-      turnState.selectedBlockId = selectedBlockId;
+      holdTurnDocument(documentId);
     },
     setIsMockEnabled: (isMockEnabled) => {
       turnState.isMockEnabled = isMockEnabled;
@@ -525,9 +466,8 @@ export interface TandemChat {
 }
 
 export function useTandemChat(): TandemChat {
-  const convexClient = useConvex();
-  // The client is provider-stable; the controller is created once per mount.
-  const [controller] = useState(() => createTandemChatController(convexClient));
+  // The controller is created once per mount.
+  const [controller] = useState(() => createTandemChatController());
   const [isMockEnabled, setIsMockEnabledState] = useState(false);
 
   const chat = useChat<TandemChatMessage>({ chat: controller.chat });

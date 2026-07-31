@@ -7,7 +7,12 @@ import type { EmailDocument } from "@tandem/email-sdk";
 import { api } from "@convex/_generated/api";
 import type { Id } from "@convex/_generated/dataModel";
 import { Button } from "@/components/ui/button";
-import { useEditorStore } from "@/lib/editor-store";
+import {
+  EditorStoreProvider,
+  getActiveEditorStore,
+  peekEditorStore,
+  useEditorStore,
+} from "@/lib/editor-store";
 import { cn } from "@/lib/utils";
 import { useCanvasDragStore } from "../dnd/drag-drop-store";
 import { EditorCanvas } from "../EditorCanvas";
@@ -169,6 +174,13 @@ function ActiveDraftFrame({
   // Drops only land here: while a drag is live the active frame gets a
   // subtle ring (and siblings dim) so the legal target reads at a glance.
   const isDragActive = useCanvasDragStore((state) => state.dragSource !== null);
+  // Per-document store wiring (drafts v2 factory): scope this frame's editor
+  // subtree to ITS document's store instance. Frame roles key off the store-
+  // connected documentId, so the active frame's instance is exactly the
+  // active one — the provider makes the binding explicit and is the seam
+  // future editable sibling frames reuse with their own instances. (The
+  // active fallback covers the unreachable no-registry-entry edge.)
+  const frameStore = peekEditorStore(draft._id) ?? getActiveEditorStore();
   return (
     <div
       ref={registerFrameRef}
@@ -194,7 +206,9 @@ function ActiveDraftFrame({
           isDragActive && "ring-2 ring-ring/50",
         )}
       >
-        <EditorCanvas />
+        <EditorStoreProvider value={frameStore}>
+          <EditorCanvas />
+        </EditorStoreProvider>
       </div>
     </div>
   );

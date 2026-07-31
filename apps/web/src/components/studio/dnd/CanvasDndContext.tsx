@@ -252,7 +252,7 @@ function CanvasDragOverlay() {
         <PaletteDragChip item={dragSource.item} />
       ) : doc[dragSource.blockId] !== undefined ? (
         <div
-          className="email-canvas cursor-grabbing overflow-hidden rounded-sm bg-white/95 opacity-90 shadow-2xl ring-2 ring-sky-400"
+          className="email-canvas cursor-grabbing overflow-hidden rounded-sm bg-background/95 opacity-90 shadow-2xl ring-2 ring-sky-400"
           data-testid="drag-overlay-ghost"
         >
           <DragGhost blockId={dragSource.blockId} doc={doc} globals={globals} />
@@ -288,7 +288,9 @@ function DropIndicatorLine() {
   return (
     <div
       className={cn(
-        "pointer-events-none fixed z-50 rounded-full bg-sky-500 shadow-[0_0_0_1px_rgba(255,255,255,0.8)]",
+        // The 1px halo separates the line from busy content beneath; the
+        // background token keeps it chrome-colored in both themes.
+        "pointer-events-none fixed z-50 rounded-full bg-sky-500 shadow-[0_0_0_1px_var(--background)]",
         isVertical ? "w-1 -translate-x-1/2" : "h-1 -translate-y-1/2",
       )}
       style={{
