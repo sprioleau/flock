@@ -14,7 +14,11 @@ import {
 } from "@/lib/suggestions/dismissals";
 import { serializeBlock } from "@/lib/suggestions/serialize-block";
 import type { PersonaSuggestion } from "@/lib/suggestions/types";
-import { useEnabledPersonaSlugs } from "./enabled-personas";
+import {
+  getArePersonasPaused,
+  useArePersonasPaused,
+  useEnabledPersonaSlugs,
+} from "./enabled-personas";
 
 /**
  * Multi-agent canvas — the client half of the reactive advisory runner
@@ -254,8 +258,11 @@ export function usePersonaAdvisors(): PersonaAdvisorsController {
   // PRESENCE keep-alive for enabled personas
   // -------------------------------------------------------------------------
   const enabledKey = [...enabledSlugs].sort().join(",");
+  const arePersonasPaused = useArePersonasPaused();
   useEffect(() => {
-    if (documentId === null || enabledKey.length === 0) {
+    // While paused the heartbeat stops too, so persona avatars/cursors go
+    // idle (explicitly fine per the pause design) and resume on unpause.
+    if (documentId === null || enabledKey.length === 0 || arePersonasPaused) {
       return;
     }
     const slugs = enabledKey.split(",");
@@ -269,7 +276,7 @@ export function usePersonaAdvisors(): PersonaAdvisorsController {
     beat();
     const intervalId = setInterval(beat, PRESENCE_HEARTBEAT_MS);
     return () => clearInterval(intervalId);
-  }, [convexClient, documentId, enabledKey]);
+  }, [convexClient, documentId, enabledKey, arePersonasPaused]);
 
   // -------------------------------------------------------------------------
   // WATCH + RUN (findings land in Convex — nothing card-shaped comes back)
@@ -280,6 +287,12 @@ export function usePersonaAdvisors(): PersonaAdvisorsController {
     }
 
     const runAdvisors = async (page: OperationsPage): Promise<void> => {
+      // Paused = ZERO /api/personas requests (credit conservation). Checked
+      // LIVE here too — a debounce armed just before pausing must not fire.
+      if (getArePersonasPaused()) {
+        tracePersonas({ step: "skip-paused" });
+        return;
+      }
       const runner = runnerRef.current;
       const rows = personaRowsRef.current;
       if (rows === undefined || runner.isRunInFlight) {
@@ -377,6 +390,11 @@ export function usePersonaAdvisors(): PersonaAdvisorsController {
         return;
       }
       if (enabledSlugsRef.current.length === 0) {
+        return;
+      }
+      // Gate at the TRIGGER while paused: no debounce armed, no request made.
+      if (getArePersonasPaused()) {
+        tracePersonas({ step: "skip-paused" });
         return;
       }
       // Trailing debounce: an editing burst coalesces into one run.

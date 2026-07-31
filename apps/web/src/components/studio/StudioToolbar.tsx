@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { selectCanRedo, selectCanUndo, useEditorStore } from "@/lib/editor-store";
 import { BrandKitPanel } from "./brand-kit/BrandKitPanel";
 import { OpInspector } from "./inspector/OpInspector";
+import { AgentCollaboratorsButton } from "./personas/AgentCollaboratorsButton";
 import { PresenceFacepile } from "./presence/PresenceFacepile";
 import { ReplayPanel } from "./replay/ReplayPanel";
 import { ThemeMenu } from "./theme/ThemeMenu";
@@ -41,6 +42,9 @@ export function StudioToolbar({
 
       <div className="flex items-center gap-1.5">
         <PresenceFacepile />
+        {/* AI collaborators sit WITH the human avatars (owner decision) —
+            the button opens the agent collaborators modal. */}
+        <AgentCollaboratorsButton />
         <Button
           variant="ghost"
           size="icon-sm"

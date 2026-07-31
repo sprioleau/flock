@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery } from "convex/react";
-import { ChevronDownIcon } from "lucide-react";
+import { ChevronDownIcon, PauseIcon, PlayIcon } from "lucide-react";
 import { api } from "@convex/_generated/api";
 import { Button } from "@/components/ui/button";
 import {
@@ -19,6 +19,8 @@ import { Textarea } from "@/components/ui/textarea";
 import {
   replaceEnabledPersonaSlug,
   setPersonaEnabled,
+  setPersonasPaused,
+  useArePersonasPaused,
   useEnabledPersonaSlugs,
 } from "@/lib/personas/enabled-personas";
 import {
@@ -79,7 +81,7 @@ export function PersonaPickerDialog({ isOpen, onOpenChange }: PersonaPickerDialo
 
   return (
     <Dialog open={isOpen} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-md" data-testid="persona-picker">
+      <DialogContent className="sm:max-w-xl" data-testid="persona-picker">
         <DialogHeader>
           <DialogTitle>Agents</DialogTitle>
           <DialogDescription>
@@ -87,6 +89,7 @@ export function PersonaPickerDialog({ isOpen, onOpenChange }: PersonaPickerDialo
             the document&apos;s facepile while you work.
           </DialogDescription>
         </DialogHeader>
+        <PersonasPausedToggle />
         <div className="flex max-h-[60vh] flex-col gap-2 overflow-y-auto">
           {personas === undefined || sessionId === null ? (
             <p className="py-4 text-center text-xs text-muted-foreground">Loading agents…</p>
@@ -105,6 +108,47 @@ export function PersonaPickerDialog({ isOpen, onOpenChange }: PersonaPickerDialo
         </div>
       </DialogContent>
     </Dialog>
+  );
+}
+
+/**
+ * The credit-conservation pause: stops the persona watcher from calling
+ * /api/personas at all (zero Gemini spend — for demos especially) WITHOUT
+ * disabling any personas. Enablement, open findings, and editing stay fully
+ * functional; presence just goes idle. Persisted per browser beside the
+ * enablement list.
+ */
+function PersonasPausedToggle() {
+  const arePersonasPaused = useArePersonasPaused();
+  return (
+    <div
+      className={cn(
+        "flex items-center justify-between gap-3 rounded-md border px-3 py-2",
+        arePersonasPaused && "border-amber-500/40 bg-amber-500/10",
+      )}
+      data-testid="personas-paused-toggle"
+    >
+      <div className="min-w-0">
+        <p className="text-xs font-medium">
+          {arePersonasPaused ? "Recommendations paused" : "Recommendations active"}
+        </p>
+        <p className="text-[11px] text-muted-foreground">
+          {arePersonasPaused
+            ? "Agents stay enabled but make no API calls until you resume."
+            : "Pause to conserve API credits — agents stay enabled, nothing runs."}
+        </p>
+      </div>
+      <Button
+        variant="outline"
+        size="xs"
+        className="shrink-0 gap-1"
+        onClick={() => setPersonasPaused(!arePersonasPaused)}
+        data-testid="personas-paused-button"
+      >
+        {arePersonasPaused ? <PlayIcon /> : <PauseIcon />}
+        {arePersonasPaused ? "Resume" : "Pause"}
+      </Button>
+    </div>
   );
 }
 

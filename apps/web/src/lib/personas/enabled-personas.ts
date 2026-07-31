@@ -14,6 +14,8 @@ import { useSyncExternalStore } from "react";
  */
 
 const ENABLED_PERSONAS_STORAGE_KEY = "tandem_enabled_agents";
+/** Pause flag ("1" = paused) — persisted beside the enablement list. */
+const PERSONAS_PAUSED_STORAGE_KEY = "tandem_agents_paused";
 
 /** Stable snapshot (useSyncExternalStore requires reference equality). */
 let cachedSlugs: readonly string[] = [];
@@ -107,6 +109,89 @@ export function replaceEnabledPersonaSlug({
     // In-memory enablement still applies for this tab.
   }
   notifyListeners();
+}
+
+// ---------------------------------------------------------------------------
+// Pause flag (credit conservation)
+// ---------------------------------------------------------------------------
+
+/**
+ * "Recommendations paused" — a browser-session flag that stops the persona
+ * watcher from calling /api/personas AT ALL (zero Gemini spend; the gate
+ * lives at the trigger in use-persona-advisors.ts) WITHOUT touching which
+ * personas are enabled. Open findings stay visible and actionable while
+ * paused; unpausing resumes normal triggering. Persisted beside the
+ * enablement list so it survives reload.
+ */
+
+let cachedIsPaused = false;
+let hasReadPausedStorage = false;
+
+const pausedListeners = new Set<() => void>();
+
+function readIsPausedFromStorage(): boolean {
+  try {
+    return window.localStorage.getItem(PERSONAS_PAUSED_STORAGE_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+
+function getPausedSnapshot(): boolean {
+  if (!hasReadPausedStorage) {
+    cachedIsPaused = readIsPausedFromStorage();
+    hasReadPausedStorage = true;
+  }
+  return cachedIsPaused;
+}
+
+function getPausedServerSnapshot(): boolean {
+  return false;
+}
+
+function subscribePaused(listener: () => void): () => void {
+  pausedListeners.add(listener);
+  const handleStorage = (event: StorageEvent): void => {
+    if (event.key === PERSONAS_PAUSED_STORAGE_KEY || event.key === null) {
+      cachedIsPaused = readIsPausedFromStorage();
+      for (const pausedListener of pausedListeners) {
+        pausedListener();
+      }
+    }
+  };
+  window.addEventListener("storage", handleStorage);
+  return () => {
+    pausedListeners.delete(listener);
+    window.removeEventListener("storage", handleStorage);
+  };
+}
+
+/** Reactive: are persona recommendations paused for this browser session? */
+export function useArePersonasPaused(): boolean {
+  return useSyncExternalStore(subscribePaused, getPausedSnapshot, getPausedServerSnapshot);
+}
+
+/** Non-reactive read for dispatch-time gates (never render-stale). */
+export function getArePersonasPaused(): boolean {
+  return getPausedSnapshot();
+}
+
+/** Pause or resume persona recommendations (best-effort persistence). */
+export function setPersonasPaused(isPaused: boolean): void {
+  cachedIsPaused = isPaused;
+  hasReadPausedStorage = true;
+  try {
+    if (isPaused) {
+      window.localStorage.setItem(PERSONAS_PAUSED_STORAGE_KEY, "1");
+    } else {
+      window.localStorage.removeItem(PERSONAS_PAUSED_STORAGE_KEY);
+    }
+  } catch {
+    // In-memory pause still applies for this tab's lifetime.
+  }
+  for (const pausedListener of pausedListeners) {
+    pausedListener();
+  }
 }
 
 /** Enable or disable one persona for this browser session (best-effort persistence). */
