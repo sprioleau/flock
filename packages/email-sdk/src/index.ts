@@ -101,7 +101,12 @@ export type {
 } from "./schema/blocks";
 
 // --- Flat store (store/document) ----------------------------------------------
-export { emailDocumentSchema, createEmptyDocument, createSampleDocument } from "./store/document";
+export {
+  emailDocumentSchema,
+  createEmptyDocument,
+  createSampleDocument,
+  createStarterDocument,
+} from "./store/document";
 export type { EmailDocument } from "./store/document";
 
 // --- Tree derivation (store/tree) ------------------------------------------------
@@ -246,6 +251,9 @@ export {
   showPreviewCommandSchema,
   sendTestEmailInputSchema,
   sendTestEmailCommandSchema,
+  GENERATE_IMAGE_MAX_PROMPT_LENGTH,
+  generateImageInputSchema,
+  generateImageCommandSchema,
   editorCommandSchema,
 } from "./actions/editor-commands";
 export type {
@@ -254,6 +262,8 @@ export type {
   ShowPreviewCommand,
   SendTestEmailInput,
   SendTestEmailCommand,
+  GenerateImageInput,
+  GenerateImageCommand,
   EditorCommand,
 } from "./actions/editor-commands";
 
@@ -291,6 +301,7 @@ export {
   contentEmailActions,
   showPreviewAction,
   sendTestEmailAction,
+  generateImageAction,
   editorEmailActions,
   emailActionRegistry,
 } from "./actions/builtins";

@@ -34,6 +34,172 @@ export function createEmptyDocument(): EmailDocument {
 }
 
 /**
+ * The designed starter document seeded into every NEW document and NEW draft
+ * (convex createDocument's default). Modeled on Resend / react-email's
+ * out-of-the-box welcome templates: brand-bar logo, a left-aligned heading +
+ * short intro, one clear CTA button, then a divider and muted small-print
+ * footer (company line + unsubscribe merge tag).
+ *
+ *   root
+ *   ├─ sec_hdr1 (header)  → img_lg01 (logo placeholder)
+ *   ├─ sec_body (body)    → txt_wc01 (h1 + intro), btn_ct01 (CTA)
+ *   └─ sec_ftr1 (footer)  → div_ft01, txt_ft01 (small-print links/address/unsubscribe)
+ *
+ * Design discipline (same as the section templates): structural knobs only —
+ * no colors, fonts, or padding overrides — so the whole email inherits
+ * DEFAULT_GLOBAL_STYLES and restyles cleanly on a theme switch. QA-clean by
+ * construction: every image has alt text, every link/button href is a real
+ * absolute URL or merge tag, and the footer carries address + unsubscribe.
+ * Ids are stable across calls (each document owns its id namespace).
+ */
+export function createStarterDocument(): EmailDocument {
+  const footerFontSize = { type: "textStyle" as const, attrs: { fontSize: "12px" } };
+  return {
+    root: {
+      id: "root",
+      type: "root",
+      parentId: null,
+      childrenIds: ["sec_hdr1", "sec_body", "sec_ftr1"],
+      properties: { globals: {} },
+    },
+    sec_hdr1: {
+      id: "sec_hdr1",
+      type: "section",
+      parentId: "root",
+      childrenIds: ["img_lg01"],
+      properties: {},
+    },
+    img_lg01: {
+      id: "img_lg01",
+      type: "image",
+      parentId: "sec_hdr1",
+      childrenIds: [],
+      properties: {
+        src: "https://placehold.co/280x80.png",
+        alt: "Acme logo",
+        width: 140,
+        align: "left",
+      },
+    },
+    sec_body: {
+      id: "sec_body",
+      type: "section",
+      parentId: "root",
+      childrenIds: ["txt_wc01", "btn_ct01"],
+      properties: {},
+    },
+    txt_wc01: {
+      id: "txt_wc01",
+      type: "text",
+      parentId: "sec_body",
+      childrenIds: [],
+      properties: {
+        text: {
+          type: "doc",
+          content: [
+            {
+              type: "heading",
+              attrs: { level: 1 },
+              content: [{ type: "text", text: "Welcome to Acme" }],
+            },
+            {
+              type: "paragraph",
+              content: [
+                {
+                  type: "text",
+                  text: "Thanks for signing up — we're glad you're here. It takes about two minutes to finish setting up your account, and then you're ready to go.",
+                },
+              ],
+            },
+          ],
+        },
+      },
+    },
+    btn_ct01: {
+      id: "btn_ct01",
+      type: "button",
+      parentId: "sec_body",
+      childrenIds: [],
+      properties: {
+        label: "Get started",
+        href: "https://example.com/get-started",
+        align: "left",
+      },
+    },
+    sec_ftr1: {
+      id: "sec_ftr1",
+      type: "section",
+      parentId: "root",
+      childrenIds: ["div_ft01", "txt_ft01"],
+      properties: {},
+    },
+    div_ft01: {
+      id: "div_ft01",
+      type: "divider",
+      parentId: "sec_ftr1",
+      childrenIds: [],
+      properties: {},
+    },
+    txt_ft01: {
+      id: "txt_ft01",
+      type: "text",
+      parentId: "sec_ftr1",
+      childrenIds: [],
+      properties: {
+        textAlign: "center",
+        text: {
+          type: "doc",
+          content: [
+            {
+              type: "paragraph",
+              content: [
+                {
+                  type: "text",
+                  text: "Privacy",
+                  marks: [
+                    { type: "link", attrs: { href: "https://example.com/privacy" } },
+                    footerFontSize,
+                  ],
+                },
+                { type: "text", text: "   ·   ", marks: [footerFontSize] },
+                {
+                  type: "text",
+                  text: "Terms",
+                  marks: [
+                    { type: "link", attrs: { href: "https://example.com/terms" } },
+                    footerFontSize,
+                  ],
+                },
+              ],
+            },
+            {
+              type: "paragraph",
+              content: [
+                {
+                  type: "text",
+                  text: "Acme Inc. · 123 Market Street, Suite 400, San Francisco, CA",
+                  marks: [footerFontSize],
+                },
+              ],
+            },
+            {
+              type: "paragraph",
+              content: [
+                {
+                  type: "text",
+                  text: "Unsubscribe",
+                  marks: [{ type: "link", attrs: { href: "*|UNSUB|*" } }, footerFontSize],
+                },
+              ],
+            },
+          ],
+        },
+      },
+    },
+  };
+}
+
+/**
  * A small, deterministic sample document exercising every block type:
  *
  *   root

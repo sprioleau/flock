@@ -1,7 +1,7 @@
 import {
   applyOperations as applyOperationsToDocument,
-  createEmptyDocument,
   createSampleDocument,
+  createStarterDocument,
   type Operation,
 } from "@tandem/email-sdk";
 import { v } from "convex/values";
@@ -57,7 +57,10 @@ export const createDocument = mutation({
     name: v.optional(v.string()),
     /** Title for the canvas, used only when `canvasId` is omitted. */
     canvasTitle: v.optional(v.string()),
-    /** Seed the deterministic email-sdk sample document instead of an empty one. */
+    /**
+     * Seed the deterministic every-block-type sample document (tests/demos)
+     * instead of the default designed starter email.
+     */
     shouldSeedSample: v.optional(v.boolean()),
   },
   returns: v.object({ documentId: v.id("documents"), canvasId: v.id("canvases") }),
@@ -77,7 +80,10 @@ export const createDocument = mutation({
         throw new Error(`Canvas ${canvasId} does not exist.`);
       }
     }
-    const doc = args.shouldSeedSample === true ? createSampleDocument() : createEmptyDocument();
+    // Every new document/draft opens on the designed starter email (Resend-
+    // welcome-style; see createStarterDocument) — never empty. The sample is
+    // the deterministic every-block-type fixture, kept for tests and demos.
+    const doc = args.shouldSeedSample === true ? createSampleDocument() : createStarterDocument();
     const documentId = await ctx.db.insert("documents", {
       canvasId,
       sessionId: args.sessionId,

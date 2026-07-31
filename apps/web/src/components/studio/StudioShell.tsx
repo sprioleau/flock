@@ -24,7 +24,8 @@ import { StudioToolbar } from "./StudioToolbar";
  *
  * Document lifecycle: `/studio?doc=<id>` loads that document (the id is the
  * capability). No param → create one for this browser's anonymous session
- * (seeded sample, "Draft 1") and replaceState the URL so a reload restores
+ * (seeded with the designed starter email, "Draft 1") and replaceState the
+ * URL so a reload restores
  * it. An invalid or deleted id → a clean error state with a create-new
  * action. The reactive `getDocumentByKey` subscription is THE live feed:
  * every snapshot (own ops confirming, other tabs, agent edits) flows into
@@ -63,7 +64,6 @@ export function StudioShell() {
       .mutation(api.documents.createDocument, {
         sessionId: getOrCreateSessionId(),
         name: "Draft 1",
-        shouldSeedSample: true,
       })
       .then(({ documentId }) => {
         window.history.replaceState(null, "", `/studio?doc=${documentId}`);
