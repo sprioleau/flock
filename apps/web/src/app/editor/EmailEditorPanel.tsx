@@ -33,7 +33,7 @@ export function EmailEditorPanel() {
           type="button"
           onClick={handleExport}
           disabled={isExporting}
-          className="rounded border px-3 py-1 text-xs font-medium uppercase tracking-wide hover:bg-neutral-100 disabled:opacity-50 dark:hover:bg-neutral-800"
+          className="rounded border px-3 py-1 text-xs font-medium uppercase tracking-wide hover:bg-accent disabled:opacity-50"
         >
           {isExporting ? "Exporting…" : "Export →"}
         </button>
@@ -59,7 +59,7 @@ export function EmailEditorPanel() {
           <summary className="cursor-pointer font-medium">
             Exported email HTML ({exportedHtml.length.toLocaleString()} chars)
           </summary>
-          <pre className="mt-2 whitespace-pre-wrap break-all text-neutral-500">
+          <pre className="mt-2 whitespace-pre-wrap break-all text-muted-foreground">
             {exportedHtml}
           </pre>
         </details>
