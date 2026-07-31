@@ -19,14 +19,17 @@ import { useEditorStore } from "@/lib/editor-store";
 import { cn } from "@/lib/utils";
 
 /**
- * One tool call rendered as a compact chip: "updateBlockProperties · button"
- * plus a state affordance (streaming spinner → applied check, or Approve/Deny
- * buttons for approval-gated tools like sendTestEmail). Failed calls
- * (output-error) render as a friendly error card instead — see
- * {@link FailedToolPart}.
+ * One tool call rendered as a compact chip: "updating · button" plus a state
+ * affordance (streaming spinner → applied check, or Approve/Deny buttons for
+ * approval-gated tools like sendTestEmail). Failed calls (output-error)
+ * render as a friendly error card instead — see {@link FailedToolPart}.
  *
- * Block ids are NEVER user-facing: when an op targets a block, the chip shows
- * the block's TYPE (looked up live from the document), not its raw id.
+ * Nothing internal is user-facing here (owner principle): when an op targets
+ * a block, the chip shows the block's TYPE (looked up live from the
+ * document), never its raw id — and the chip label is a human ACTIVITY word
+ * ({@link TOOL_ACTIVITY_LABELS}), never the internal tool name. Raw names
+ * stay confined to data-* attributes and the failed card's collapsed
+ * "Details" disclosure.
  */
 
 type TandemToolPart = ToolUIPart<TandemChatTools>;
@@ -35,6 +38,38 @@ const READ_ONLY_TOOL_NAMES = new Set(["getBlockDetails", "fetchWebContent"]);
 
 function getToolName(part: TandemToolPart): string {
   return part.type.slice("tool-".length);
+}
+
+/** Internal tool name → the human activity word the chip shows. */
+const TOOL_ACTIVITY_LABELS: Readonly<Record<string, string>> = {
+  updateBlockProperties: "styling",
+  replaceBlockProperties: "styling",
+  updateDocumentSettings: "updating styles",
+  applyTheme: "applying theme",
+  addBlock: "adding",
+  addSection: "adding section",
+  scaffoldSection: "adding section",
+  restoreBlocks: "restoring",
+  removeBlock: "removing",
+  moveBlock: "moving",
+  reorderChildren: "reordering",
+  updateText: "editing text",
+  styleTextSpan: "styling text",
+  showPreview: "switching preview",
+  sendTestEmail: "test email",
+  generateImage: "generating image",
+};
+
+/**
+ * The chip's user-facing label. Unmapped (future) tool names degrade to their
+ * camelCase words — "someNewTool" → "some new tool" — so a raw internal
+ * identifier can never leak by omission.
+ */
+function getToolActivityLabel(toolName: string): string {
+  return (
+    TOOL_ACTIVITY_LABELS[toolName] ??
+    toolName.replace(/([a-z0-9])([A-Z])/g, "$1 $2").toLowerCase()
+  );
 }
 
 /** The op's target blockId, if its input carries one (not user-facing). */
@@ -205,7 +240,7 @@ export function ToolPartChip({ part, onApprovalResponse, isRetryPending = false 
       <div className="flex items-center gap-1.5">
         {getToolIcon(part)}
         <span className="font-mono">
-          {isReadOnlyTool ? "reading" : toolName}
+          {isReadOnlyTool ? "reading" : getToolActivityLabel(toolName)}
           {targetLabel !== undefined && (
             <span className="text-muted-foreground"> · {targetLabel}</span>
           )}

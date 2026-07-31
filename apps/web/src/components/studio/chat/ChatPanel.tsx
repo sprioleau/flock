@@ -11,6 +11,8 @@ import {
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { useEditorStore } from "@/lib/editor-store";
+import { usePersonaAdvisors } from "@/lib/personas/use-persona-advisors";
+import { useSuggestions } from "@/lib/suggestions/use-suggestions";
 import { cn } from "@/lib/utils";
 import { DemoQueueButton } from "../demo/DemoQueueButton";
 import { SettingsFab } from "../demo/SettingsFab";
@@ -41,6 +43,16 @@ const COLLAPSED_WIDTH_PX = 48;
 export function ChatPanel() {
   const [isExpanded, setIsExpanded] = useState(true);
   const [draftText, setDraftText] = useState("");
+  // Suggestion controllers live HERE (not in SuggestionCard): the collapsed
+  // rail's notification badge needs the pending count, and each hook must
+  // mount exactly once (usePersonaAdvisors hosts the persona presence
+  // heartbeat + the batched runner). ChatPanel always mounts, collapsed or
+  // not, so hosting here preserves the always-on behavior.
+  const suggestions = useSuggestions();
+  const personaAdvisors = usePersonaAdvisors();
+  const pendingRecommendationCount =
+    personaAdvisors.cards.filter((card) => card.appliedState === null).length +
+    (suggestions.visibleSuggestion !== null ? 1 : 0);
   const {
     messages,
     status,
@@ -145,12 +157,33 @@ export function ChatPanel() {
         <Button
           variant="ghost"
           size="icon-sm"
-          aria-label="Expand chat panel"
+          aria-label={
+            pendingRecommendationCount > 0
+              ? `Expand chat panel (${pendingRecommendationCount} suggestions pending)`
+              : "Expand chat panel"
+          }
           title="Chat"
           tabIndex={isExpanded ? -1 : 0}
           onClick={() => setIsExpanded(true)}
+          className="relative"
         >
           <MessagesSquareIcon />
+          {/* Pending-recommendation badge: suggestion cards live inside the
+              panel, so while collapsed this is their only signal. Reactive by
+              construction (the count derives from the live controllers);
+              renders nothing at zero. */}
+          {pendingRecommendationCount > 0 && (
+            <span
+              className={cn(
+                "absolute -top-1 -right-1 flex h-4 min-w-4 items-center justify-center",
+                "rounded-full bg-primary px-1 text-[10px] font-medium text-primary-foreground",
+              )}
+              data-testid="chat-rail-recommendation-badge"
+              aria-hidden
+            >
+              {pendingRecommendationCount > 9 ? "9+" : pendingRecommendationCount}
+            </span>
+          )}
         </Button>
       </div>
 
@@ -202,10 +235,14 @@ export function ChatPanel() {
           isPanelExpanded={isExpanded}
         />
 
-        {/* Phase 7.3 proactive suggestions: one quiet, dismissible card above
-            the composer. Fully self-contained (its hook watches the op log);
+        {/* Phase 7.3 proactive suggestions: quiet, dismissible cards above
+            the composer (controllers owned above — see the hooks note);
             renders null when nothing is suggested. */}
-        <SuggestionCard isPanelExpanded={isExpanded} />
+        <SuggestionCard
+          isPanelExpanded={isExpanded}
+          suggestions={suggestions}
+          personaAdvisors={personaAdvisors}
+        />
 
         {/* §10.2 frames UX: which draft the agent will edit — activation IS
             retargeting (ops go to the store-connected document); this makes

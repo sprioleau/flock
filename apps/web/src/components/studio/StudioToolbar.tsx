@@ -33,15 +33,34 @@ export function StudioToolbar({
   const canRedo = useEditorStore(selectCanRedo);
 
   return (
-    <header className="flex h-12 shrink-0 items-center justify-between gap-2 border-b bg-background px-3">
-      <div className="flex items-center gap-2">
+    // Narrow-width containment (owner report: header content spilled across
+    // the property panel): BOTH groups carry min-w-0 so their truncatable
+    // children (the draft-name trigger, the facepile wrapper below) actually
+    // shrink instead of forcing the row wider than the canvas column, and
+    // overflow-hidden is the backstop — nothing in this header may ever
+    // paint over the sidebar.
+    <header className="flex h-12 shrink-0 items-center justify-between gap-2 overflow-hidden border-b bg-background px-3">
+      {/* overflow-hidden on the group too: if space runs out below every
+          child's minimum, the group CLIPS at its own edge instead of painting
+          underneath the action cluster to its right. Natural flex basis (no
+          flex-1) on purpose: the group keeps its content size and only gives
+          way under real pressure — a zero basis let an oversized right
+          cluster starve it to nothing. */}
+      <div className="flex min-w-0 shrink items-center gap-2 overflow-hidden">
         {leading}
         <ThemeMenu />
         <BrandKitPanel />
       </div>
 
-      <div className="flex items-center gap-1.5">
-        <PresenceFacepile />
+      <div className="flex min-w-0 items-center gap-1.5">
+        {/* Constrained from the OUTSIDE (facepile internals belong to the
+            presence workstream): the avatar stack lives in a HARD-CAPPED
+            slot (max-w-40) that also shrinks first when the row tightens —
+            so even a misbehaving facepile can never starve the rest of the
+            header or cross into the property panel. */}
+        <div className="max-w-40 min-w-0 shrink overflow-hidden">
+          <PresenceFacepile />
+        </div>
         {/* AI collaborators sit WITH the human avatars (owner decision) —
             the button opens the agent collaborators modal. */}
         <AgentCollaboratorsButton />

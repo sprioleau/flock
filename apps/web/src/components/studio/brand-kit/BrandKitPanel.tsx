@@ -148,11 +148,21 @@ export function BrandKitPanel() {
   return (
     <Dialog open={isOpen} onOpenChange={handleOpenChange}>
       <DialogTrigger
-        render={<Button variant="outline" size="sm" className="gap-1.5" />}
+        render={
+          <Button
+            variant="outline"
+            size="sm"
+            className="gap-1.5"
+            aria-label="Brand kit"
+            title="Brand kit"
+          />
+        }
         data-testid="brand-kit-open-button"
       >
         <PaletteIcon className="size-4" />
-        Brand kit
+        {/* Narrow-width degradation: icon-only below xl (the header must
+            never crowd into the property panel). */}
+        <span className="hidden xl:inline">Brand kit</span>
       </DialogTrigger>
       <DialogContent className="sm:max-w-xl" data-testid="brand-kit-panel">
         <DialogHeader>

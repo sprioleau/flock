@@ -78,7 +78,11 @@ export function ThemeMenu() {
         data-testid="theme-menu-trigger"
       >
         <ThemeSwatch globals={currentGlobals} />
-        <span className="max-w-28 truncate">{activeVariation?.name ?? "Custom"}</span>
+        {/* Narrow-width degradation: the swatch alone identifies the control
+            below xl — the name label is the first thing to go. */}
+        <span className="hidden max-w-28 truncate xl:inline">
+          {activeVariation?.name ?? "Custom"}
+        </span>
         <ChevronDownIcon className="text-muted-foreground" />
       </DropdownMenuTrigger>
       <DropdownMenuContent align="start" sideOffset={6} className="w-56">

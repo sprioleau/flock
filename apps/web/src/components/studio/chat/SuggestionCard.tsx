@@ -1,9 +1,9 @@
 "use client";
 
-import { useState } from "react";
-import { CheckIcon, SparklesIcon, Undo2Icon, XIcon } from "lucide-react";
-import { usePersonaAdvisors, type PersonaCard } from "@/lib/personas/use-persona-advisors";
-import { useSuggestions } from "@/lib/suggestions/use-suggestions";
+import { useState, useSyncExternalStore } from "react";
+import { CheckIcon, ChevronDownIcon, SparklesIcon, Undo2Icon, XIcon } from "lucide-react";
+import type { PersonaAdvisorsController, PersonaCard } from "@/lib/personas/use-persona-advisors";
+import type { SuggestionsController } from "@/lib/suggestions/use-suggestions";
 import type { Suggestion, SuggestionRungId } from "@/lib/suggestions/types";
 import { cn } from "@/lib/utils";
 
@@ -26,13 +26,24 @@ import { cn } from "@/lib/utils";
  * color, stacked above the rule card. A finding with pre-validated ops gets
  * one-click Apply (same instant dispatch + revert path, `persona:<slug>`
  * provenance); a finding without ops is informational with dismiss only.
- * This component always mounts while the studio is open, so it is also the
- * host of {@link usePersonaAdvisors} — the hook that keeps enabled personas
- * on the facepile and fires the batched runner after settled user gestures.
+ *
+ * Both controllers are OWNED by ChatPanel (which always mounts, collapsed or
+ * not) and passed down: ChatPanel also needs the pending-recommendation count
+ * for the collapsed rail's notification badge, and the hooks must mount
+ * exactly once (usePersonaAdvisors hosts the presence heartbeat + runner).
+ *
+ * "Dismiss all" (shown from 2 pending cards up) routes every card through
+ * the SAME per-card dismiss paths — persona rows get their Convex status
+ * update (cross-tab convergence), the rule card its local/localStorage
+ * dismissal.
  */
 export interface SuggestionCardProps {
   /** Keeps the card's controls out of the tab order while the panel is collapsed. */
   isPanelExpanded: boolean;
+  /** The rule-suggestion controller (owned by ChatPanel — see above). */
+  suggestions: SuggestionsController;
+  /** The persona-findings controller (owned by ChatPanel — see above). */
+  personaAdvisors: PersonaAdvisorsController;
 }
 
 const quietButtonClassName = cn(
@@ -40,17 +51,128 @@ const quietButtonClassName = cn(
   "text-muted-foreground hover:bg-muted hover:text-foreground",
 );
 
-export function SuggestionCard({ isPanelExpanded }: SuggestionCardProps) {
-  const { visibleSuggestion, appliedState, applyRung, dismiss, revertApplied } = useSuggestions();
-  const personaAdvisors = usePersonaAdvisors();
+/**
+ * Collapsed/expanded tray preference — a tiny module-level store exposed via
+ * useSyncExternalStore (the app-settings.ts pattern): SSR/first paint see the
+ * expanded default, the stored value applies right after mount, no hydration
+ * mismatch, no setState-in-effect.
+ */
+const TRAY_COLLAPSED_STORAGE_KEY = "tandem_suggestions_tray_collapsed";
+let cachedIsTrayCollapsed = false;
+let hasReadTrayStorage = false;
+const trayListeners = new Set<() => void>();
+
+function getTrayCollapsedSnapshot(): boolean {
+  if (!hasReadTrayStorage) {
+    try {
+      cachedIsTrayCollapsed = window.localStorage.getItem(TRAY_COLLAPSED_STORAGE_KEY) === "1";
+    } catch {
+      cachedIsTrayCollapsed = false;
+    }
+    hasReadTrayStorage = true;
+  }
+  return cachedIsTrayCollapsed;
+}
+
+function subscribeTrayCollapsed(listener: () => void): () => void {
+  trayListeners.add(listener);
+  return () => {
+    trayListeners.delete(listener);
+  };
+}
+
+function setIsTrayCollapsed(isCollapsed: boolean): void {
+  cachedIsTrayCollapsed = isCollapsed;
+  hasReadTrayStorage = true;
+  try {
+    if (isCollapsed) {
+      window.localStorage.setItem(TRAY_COLLAPSED_STORAGE_KEY, "1");
+    } else {
+      window.localStorage.removeItem(TRAY_COLLAPSED_STORAGE_KEY);
+    }
+  } catch {
+    // Storage unavailable — session-only preference.
+  }
+  for (const listener of trayListeners) {
+    listener();
+  }
+}
+
+export function SuggestionCard({ isPanelExpanded, suggestions, personaAdvisors }: SuggestionCardProps) {
+  const { visibleSuggestion, appliedState, applyRung, dismiss, revertApplied } = suggestions;
+
+  const isTrayCollapsed = useSyncExternalStore(
+    subscribeTrayCollapsed,
+    getTrayCollapsedSnapshot,
+    () => false,
+  );
+  const toggleTrayCollapsed = (): void => {
+    setIsTrayCollapsed(!isTrayCollapsed);
+  };
 
   if (visibleSuggestion === null && appliedState === null && personaAdvisors.cards.length === 0) {
     return null;
   }
   const tabIndex = isPanelExpanded ? 0 : -1;
 
+  // Every card a single click could dismiss right now (applied cards are in
+  // their transient revert state — not dismissible, not counted).
+  const dismissiblePersonaCards = personaAdvisors.cards.filter((card) => card.appliedState === null);
+  const dismissibleCount = dismissiblePersonaCards.length + (visibleSuggestion !== null ? 1 : 0);
+  const visibleCardCount =
+    personaAdvisors.cards.length + (visibleSuggestion !== null || appliedState !== null ? 1 : 0);
+
+  const dismissAll = (): void => {
+    for (const card of dismissiblePersonaCards) {
+      personaAdvisors.dismissSuggestion(card.suggestion.id);
+    }
+    if (visibleSuggestion !== null) {
+      dismiss();
+    }
+  };
+
   return (
     <div className="flex shrink-0 flex-col gap-2 border-t px-3 py-2" data-testid="suggestion-card">
+      {/* Tray header — always present: the count (live while collapsed) and
+          the collapse/expand toggle; Dismiss all only in the expanded state
+          (from 2 dismissible cards up). */}
+      <div className="flex items-center justify-between">
+        <button
+          type="button"
+          tabIndex={tabIndex}
+          onClick={toggleTrayCollapsed}
+          aria-expanded={!isTrayCollapsed}
+          className={cn(
+            "flex cursor-pointer items-center gap-1 text-[10px] font-medium tracking-wide",
+            "text-muted-foreground uppercase hover:text-foreground",
+          )}
+          data-testid="suggestions-tray-toggle"
+        >
+          <ChevronDownIcon
+            className={cn("size-3 transition-transform", isTrayCollapsed && "-rotate-90")}
+          />
+          Suggestions · {visibleCardCount}
+        </button>
+        {!isTrayCollapsed && dismissibleCount >= 2 && (
+          <button
+            type="button"
+            tabIndex={tabIndex}
+            onClick={dismissAll}
+            className="cursor-pointer text-[11px] text-muted-foreground hover:text-foreground"
+            data-testid="suggestions-dismiss-all"
+          >
+            Dismiss all
+          </button>
+        )}
+      </div>
+      {/* The tray body: height-capped with internal scrolling so open cards
+          never crowd out the conversation (the chat stays the dominant
+          surface); collapsed = just the header row above "Editing:". */}
+      {!isTrayCollapsed && (
+      <div
+        className="flex max-h-40 flex-col gap-2 overflow-y-auto"
+        data-testid="suggestions-tray"
+      >
       {personaAdvisors.cards.map((card) => (
         <PersonaFindingCard
           key={card.suggestion.id}
@@ -99,6 +221,8 @@ export function SuggestionCard({ isPanelExpanded }: SuggestionCardProps) {
             dismiss={dismiss}
           />
         ) : null}
+      </div>
+      )}
       </div>
       )}
     </div>

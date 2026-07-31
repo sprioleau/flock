@@ -65,11 +65,13 @@ export function validatePersonaMarkdown(personaMarkdown: string): string | null 
   if (trimmed.startsWith(FRONTMATTER_FENCE)) {
     const closeIndex = trimmed.indexOf(`\n${FRONTMATTER_FENCE}`, FRONTMATTER_FENCE.length);
     if (closeIndex === -1) {
-      return "The frontmatter block starts with --- but is never closed with a matching --- line.";
+      // User-facing copy (persona editor): "settings header", never the
+      // internal term "frontmatter".
+      return "The settings header starts with --- but is never closed with a matching --- line.";
     }
     const body = trimmed.slice(closeIndex + 1 + FRONTMATTER_FENCE.length).trim();
     if (body.length === 0) {
-      return "Add behavior text below the frontmatter — the body is what shapes the persona.";
+      return "Add behavior text below the settings header — it's what shapes the persona.";
     }
   }
   return null;

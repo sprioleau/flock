@@ -90,7 +90,7 @@ export function HtmlPreviewDialog({ isIconTrigger = false }: { isIconTrigger?: b
         <DialogHeader>
           <DialogTitle>Email HTML</DialogTitle>
           <DialogDescription>
-            renderToHTML output — previewed in a sandboxed iframe.
+            The email as it will be sent — a safe preview of the exported HTML.
           </DialogDescription>
         </DialogHeader>
         {renderState.status === "ok" ? (
