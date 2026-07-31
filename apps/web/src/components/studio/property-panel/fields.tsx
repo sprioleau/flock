@@ -9,7 +9,7 @@ import { Label } from "@/components/ui/label";
 import { Slider } from "@/components/ui/slider";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { cn } from "@/lib/utils";
-import { BrandColorSwatches } from "./BrandColorSwatches";
+import { ColorPickerPopover } from "./ColorPickerPopover";
 import { useEndCoalescing } from "./usePanelDispatch";
 import { useLiveDraft } from "./useLiveDraft";
 
@@ -325,22 +325,14 @@ export function ColorField({
   return (
     <FieldShell inputId={inputId} label={label} helpText={helpText}>
       <div className="flex items-center gap-1.5">
-        {/* The native swatch fills the WHOLE rounded control: zero padding on
-            the input and its WebKit wrapper, no inner swatch border, and
-            overflow-hidden lets rounded-md clip the swatch's corners. */}
-        <input
-          type="color"
-          aria-label={`${label} color swatch`}
-          value={swatchHex}
-          onChange={(event) => setDraft(event.target.value)}
-          onFocus={handleFocus}
-          onBlur={handleBlur}
-          className={cn(
-            "size-8 shrink-0 cursor-pointer overflow-hidden rounded-md border border-input bg-transparent p-0",
-            "[&::-webkit-color-swatch-wrapper]:p-0",
-            "[&::-webkit-color-swatch]:border-0",
-            "[&::-moz-color-swatch]:border-0",
-          )}
+        {/* Item 24: the swatch opens the app's color-picker popover
+            (saturation/hue, eyedropper, hex/RGB, brand palette) instead of
+            the native input. Picks live-commit through the same draft. */}
+        <ColorPickerPopover
+          color={swatchHex}
+          ariaLabel={`${label} color swatch`}
+          onPick={setDraft}
+          onGestureEnd={endCoalescing}
         />
         <Input
           id={inputId}
@@ -364,15 +356,6 @@ export function ColorField({
           </Button>
         ) : null}
       </div>
-      {/* Item 23: the active kit's palette under every color picker. A pick
-          runs the field's normal live-commit (instant apply) and closes the
-          gesture so the click is exactly one undo step. */}
-      <BrandColorSwatches
-        onPick={(color) => {
-          setDraft(color);
-          endCoalescing();
-        }}
-      />
     </FieldShell>
   );
 }

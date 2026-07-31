@@ -284,24 +284,37 @@ export interface BrandPaletteSwatch {
   label: string;
 }
 
-/** Small on purpose: the swatch row must stay one glanceable strip. */
-export const MAX_BRAND_PALETTE_SWATCHES = 10;
+/** Small on purpose (owner, item 24): "the most prominent, their primary colors". */
+export const MAX_BRAND_PALETTE_SWATCHES = 6;
 
 /**
- * Which globals carry the brand's palette, in display priority: the
- * signature accent first (buttons/links are where the scraper's accentColor
- * lands), then surfaces, then text. Labels are user-facing tooltip words.
+ * Which globals carry brand color, with a PROMINENCE weight: the roles a
+ * brand's primary colors occupy (accent/link/heading) rank far above
+ * chrome-ish roles (divider, button label). Labels are user-facing tooltip
+ * words. Frequency does the rest — a color repeated across variations and
+ * roles accumulates weight.
  */
-const PALETTE_ROLES: ReadonlyArray<{ key: keyof GlobalStyles; label: string }> = [
-  { key: "buttonBackgroundColor", label: "Accent" },
-  { key: "linkTextColor", label: "Link" },
-  { key: "contentBackgroundColor", label: "Content background" },
-  { key: "emailBackgroundColor", label: "Email background" },
-  { key: "heading1TextColor", label: "Heading text" },
-  { key: "paragraphTextColor", label: "Body text" },
-  { key: "buttonTextColor", label: "Button text" },
-  { key: "dividerColor", label: "Divider" },
+const PALETTE_ROLES: ReadonlyArray<{ key: keyof GlobalStyles; label: string; weight: number }> = [
+  { key: "buttonBackgroundColor", label: "Accent", weight: 5 },
+  { key: "linkTextColor", label: "Link", weight: 4 },
+  { key: "heading1TextColor", label: "Heading text", weight: 3 },
+  { key: "heading2TextColor", label: "Heading text", weight: 2 },
+  { key: "heading3TextColor", label: "Heading text", weight: 2 },
+  { key: "paragraphTextColor", label: "Body text", weight: 2 },
+  { key: "contentBackgroundColor", label: "Content background", weight: 2 },
+  { key: "emailBackgroundColor", label: "Email background", weight: 1.5 },
+  { key: "buttonTextColor", label: "Button text", weight: 1 },
+  { key: "buttonBorderColor", label: "Button border", weight: 0.5 },
+  { key: "dividerColor", label: "Divider", weight: 0.5 },
 ];
+
+/**
+ * Two colors closer than this (RGB Euclidean distance) are near-duplicates —
+ * tints of the same brand color, not distinct palette entries. 36 merges
+ * near-black navies with near-blacks and off-whites with whites while
+ * keeping genuinely different hues apart.
+ */
+const NEAR_DUPLICATE_RGB_DISTANCE = 36;
 
 /** Normalize any hex form to #rrggbb, or null for non-hex values. */
 function normalizeHexColor(color: string): string | null {
@@ -312,33 +325,96 @@ function normalizeHexColor(color: string): string | null {
   return `#${rgb.map((component) => component.toString(16).padStart(2, "0")).join("")}`;
 }
 
+function getRgbDistance(colorA: string, colorB: string): number {
+  const rgbA = parseHexColor(colorA);
+  const rgbB = parseHexColor(colorB);
+  if (rgbA === null || rgbB === null) {
+    return Number.POSITIVE_INFINITY;
+  }
+  return Math.hypot(rgbA[0] - rgbB[0], rgbA[1] - rgbB[1], rgbA[2] - rgbB[2]);
+}
+
+interface ScoredPaletteColor {
+  color: string;
+  label: string;
+  /** Prominence: sum of role weights across every occurrence in the kit. */
+  score: number;
+  /** Weight of the occurrence that named this color (labels follow rank). */
+  labelWeight: number;
+}
+
 /**
- * The kit's distinct palette as ordered, labeled swatches — what the color
- * pickers render as the "Brand colors" row. Deduped across variations
- * (accent roles win the label when a color repeats in later roles), capped
- * at {@link MAX_BRAND_PALETTE_SWATCHES}.
+ * The kit's palette as prominence-ranked, labeled swatches — the "Brand
+ * colors" row inside the color-picker popover (item 24 rework):
+ *
+ * 1. The SIGNATURE ACCENT (first variation's button background — where the
+ *    scraper's accentColor lands) is always first.
+ * 2. Everything else ranks by prominence: role weight × frequency across
+ *    every variation's globals.
+ * 3. Near-duplicate tints (small RGB distance) merge into the stronger
+ *    color rather than crowding the row.
+ * 4. Capped at {@link MAX_BRAND_PALETTE_SWATCHES}.
  */
 export function getBrandKitPalette(brandKit: BrandKit): BrandPaletteSwatch[] {
-  const swatches: BrandPaletteSwatch[] = [];
-  const seenColors = new Set<string>();
-  for (const { key, label } of PALETTE_ROLES) {
-    for (const variation of brandKit.variations) {
-      if (swatches.length >= MAX_BRAND_PALETTE_SWATCHES) {
-        return swatches;
-      }
+  // 1. Score every occurrence.
+  const scoredByColor = new Map<string, ScoredPaletteColor>();
+  for (const variation of brandKit.variations) {
+    for (const { key, label, weight } of PALETTE_ROLES) {
       const rawValue = variation.globals[key];
       if (typeof rawValue !== "string") {
         continue;
       }
       const color = normalizeHexColor(rawValue);
-      if (color === null || seenColors.has(color)) {
+      if (color === null) {
         continue;
       }
-      seenColors.add(color);
-      swatches.push({ color, label: `${label} — ${variation.name}` });
+      const existing = scoredByColor.get(color);
+      if (existing === undefined) {
+        scoredByColor.set(color, {
+          color,
+          label: `${label} — ${variation.name}`,
+          score: weight,
+          labelWeight: weight,
+        });
+      } else {
+        existing.score += weight;
+        if (weight > existing.labelWeight) {
+          existing.label = `${label} — ${variation.name}`;
+          existing.labelWeight = weight;
+        }
+      }
     }
   }
-  return swatches;
+
+  // 2. The signature accent pins the front of the ranking.
+  const firstVariation = brandKit.variations[0];
+  const signatureAccent =
+    firstVariation === undefined ||
+    typeof firstVariation.globals.buttonBackgroundColor !== "string"
+      ? null
+      : normalizeHexColor(firstVariation.globals.buttonBackgroundColor);
+
+  const ranked = [...scoredByColor.values()].sort((a, b) => {
+    if (a.color === signatureAccent) return -1;
+    if (b.color === signatureAccent) return 1;
+    return b.score - a.score;
+  });
+
+  // 3. Greedy near-duplicate clustering: walking in rank order, a color too
+  //    close to an already-kept one is a tint of it — skipped.
+  const kept: ScoredPaletteColor[] = [];
+  for (const candidate of ranked) {
+    if (kept.length >= MAX_BRAND_PALETTE_SWATCHES) {
+      break;
+    }
+    const isNearDuplicate = kept.some(
+      ({ color }) => getRgbDistance(color, candidate.color) < NEAR_DUPLICATE_RGB_DISTANCE,
+    );
+    if (!isNearDuplicate) {
+      kept.push(candidate);
+    }
+  }
+  return kept.map(({ color, label }) => ({ color, label }));
 }
 
 // ---------------------------------------------------------------------------

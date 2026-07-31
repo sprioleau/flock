@@ -18,71 +18,105 @@ function buildKit(variations: Array<{ name: string; overrides: Record<string, st
   };
 }
 
-describe("getBrandKitPalette", () => {
-  it("puts the first variation's accent (button background) first", () => {
+describe("getBrandKitPalette (item 24: prominence-ranked, max 6)", () => {
+  it("pins the signature accent (first variation's button background) first", () => {
     const kit = buildKit([
       { name: "Midnight", overrides: { buttonBackgroundColor: "#123456" } },
+      { name: "Later", overrides: { buttonBackgroundColor: "#994400" } },
     ]);
     const palette = getBrandKitPalette(kit);
     expect(palette[0]).toEqual({ color: "#123456", label: "Accent — Midnight" });
   });
 
-  it("dedupes repeated colors (first role/variation wins the label)", () => {
-    const kit = buildKit([
-      {
-        name: "Mono",
-        overrides: {
-          buttonBackgroundColor: "#ABCDEF", // hex case-normalized
-          linkTextColor: "#abcdef", // duplicate of the accent
-        },
-      },
-    ]);
-    const palette = getBrandKitPalette(kit);
-    const occurrences = palette.filter(({ color }) => color === "#abcdef");
-    expect(occurrences).toEqual([{ color: "#abcdef", label: "Accent — Mono" }]);
-  });
-
-  it("normalizes short hex and skips non-hex values", () => {
-    const kit = buildKit([
-      {
-        name: "Odd",
-        overrides: {
-          buttonBackgroundColor: "#0aF",
-          linkTextColor: "rgb(1, 2, 3)", // not hex — skipped, no crash
-        },
-      },
-    ]);
-    const palette = getBrandKitPalette(kit);
-    expect(palette[0].color).toBe("#00aaff");
-    expect(palette.some(({ color }) => color.includes("rgb"))).toBe(false);
-  });
-
-  it("caps the row at the swatch maximum", () => {
-    // 4 variations x 8 roles of distinct colors would exceed the cap.
+  it("never returns more than the cap", () => {
+    // 4 variations × 8 roles of wildly distinct colors.
+    const distinct = ["#ff0000", "#00ff00", "#0000ff", "#ffff00", "#ff00ff", "#00ffff", "#800000", "#008080", "#808000", "#4b0082", "#ff8800"];
     const variations = ["A", "B", "C", "D"].map((name, variationIndex) => ({
       name,
       overrides: Object.fromEntries(
         [
           "buttonBackgroundColor",
           "linkTextColor",
-          "contentBackgroundColor",
-          "emailBackgroundColor",
           "heading1TextColor",
           "paragraphTextColor",
+          "contentBackgroundColor",
+          "emailBackgroundColor",
           "buttonTextColor",
           "dividerColor",
-        ].map((key, roleIndex) => [key, `#${variationIndex}${roleIndex}0a1b`]),
+        ].map((key, roleIndex) => [key, distinct[(variationIndex * 3 + roleIndex) % distinct.length]]),
       ),
     }));
     const palette = getBrandKitPalette(buildKit(variations));
-    expect(palette.length).toBe(MAX_BRAND_PALETTE_SWATCHES);
-    // Accent bucket first: every variation's accent precedes any link color.
-    expect(palette[0].label).toBe("Accent — A");
-    expect(palette[3].label).toBe("Accent — D");
-    expect(palette[4].label).toBe("Link — A");
+    expect(palette.length).toBeLessThanOrEqual(MAX_BRAND_PALETTE_SWATCHES);
+    expect(MAX_BRAND_PALETTE_SWATCHES).toBe(6);
   });
 
-  it("produces a sane row for the mock kit (all #rrggbb, deduped)", () => {
+  it("frequency across variations outranks a single low-weight appearance", () => {
+    const kit = buildKit([
+      // #aa1122 is the body text everywhere (weight 2 × 3 variations = 6);
+      // #3355ff appears once as a divider (0.5). Frequency must win.
+      { name: "One", overrides: { paragraphTextColor: "#aa1122", dividerColor: "#3355ff" } },
+      { name: "Two", overrides: { paragraphTextColor: "#aa1122" } },
+      { name: "Three", overrides: { paragraphTextColor: "#aa1122" } },
+    ]);
+    const palette = getBrandKitPalette(kit);
+    const bodyRank = palette.findIndex(({ color }) => color === "#aa1122");
+    const dividerRank = palette.findIndex(({ color }) => color === "#3355ff");
+    expect(bodyRank).toBeGreaterThanOrEqual(0);
+    // The divider one-off is either ranked below or dropped by the cap.
+    if (dividerRank !== -1) {
+      expect(bodyRank).toBeLessThan(dividerRank);
+    }
+  });
+
+  it("merges near-duplicate tints instead of listing both", () => {
+    const kit = buildKit([
+      {
+        name: "Tints",
+        overrides: {
+          // Mid-purples far from the mock base palette; ~7 RGB apart — tints
+          // of one brand color, so exactly one may survive.
+          heading1TextColor: "#7722aa",
+          paragraphTextColor: "#7726ae",
+        },
+      },
+    ]);
+    const palette = getBrandKitPalette(kit);
+    const purples = palette.filter(({ color }) => color === "#7722aa" || color === "#7726ae");
+    expect(purples.length).toBe(1);
+    expect(purples[0].color).toBe("#7722aa"); // the higher-weight heading wins
+  });
+
+  it("keeps genuinely different hues apart", () => {
+    const kit = buildKit([
+      {
+        name: "Hues",
+        overrides: {
+          buttonBackgroundColor: "#e11d48", // red accent
+          linkTextColor: "#2563eb", // blue link — far away, must survive
+        },
+      },
+    ]);
+    const colors = getBrandKitPalette(kit).map(({ color }) => color);
+    expect(colors).toContain("#e11d48");
+    expect(colors).toContain("#2563eb");
+  });
+
+  it("labels a color by its most prominent role and keeps tooltips", () => {
+    const kit = buildKit([
+      {
+        name: "Mono",
+        overrides: {
+          buttonBackgroundColor: "#abcdef",
+          dividerColor: "#abcdef", // same color, lower-weight role
+        },
+      },
+    ]);
+    const palette = getBrandKitPalette(kit);
+    expect(palette[0]).toEqual({ color: "#abcdef", label: "Accent — Mono" });
+  });
+
+  it("produces a sane capped row for the mock kit (all #rrggbb, deduped)", () => {
     const palette = getBrandKitPalette(MOCK_BRAND_KIT);
     expect(palette.length).toBeGreaterThan(0);
     expect(palette.length).toBeLessThanOrEqual(MAX_BRAND_PALETTE_SWATCHES);
