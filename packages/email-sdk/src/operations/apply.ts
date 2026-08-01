@@ -447,11 +447,14 @@ function applyInsertSubtree({
   blocks,
   parentId,
   index,
+  previousWidths,
 }: {
   document: EmailDocument;
   blocks: Block[];
   parentId: BlockId;
   index: number;
+  /** Sibling column widths to re-set after the insert (restoreBlocks only). */
+  previousWidths?: PreviousColumnWidth[];
 }): PerOpResult {
   const parent = document[parentId];
   if (parent === undefined) {
@@ -521,7 +524,31 @@ function applyInsertSubtree({
     ...parent,
     childrenIds: insertAt({ items: parent.childrenIds as BlockId[], index, item: subtreeRoot.id }),
   } as Block;
-  return ok(nextDocument, { name: "removeBlock", blockId: subtreeRoot.id });
+  // Re-set the sibling column widths a cascading removal stripped, so ONE
+  // restoreBlocks (one undo step) puts back the subtree AND the row's exact
+  // previous width split.
+  for (const { columnId, widthPercent } of previousWidths ?? []) {
+    const column = nextDocument[columnId];
+    if (column === undefined || column.type !== "column") {
+      return fail({
+        code: "target_not_found",
+        message: `Column "${columnId}" in previousWidths does not exist in the document (or is not a column).`,
+        blockId: columnId,
+      });
+    }
+    nextDocument[columnId] = {
+      ...column,
+      properties: { ...(column.properties as Record<string, unknown>), widthPercent },
+    } as Block;
+  }
+  const hasRestoredWidths = previousWidths !== undefined && previousWidths.length > 0;
+  return ok(nextDocument, {
+    name: "removeBlock",
+    blockId: subtreeRoot.id,
+    // Redo must re-strip the widths this restore put back, so the redo
+    // document stays deep-equal to the original cascading removal's result.
+    ...(hasRestoredWidths ? { shouldRemoveEmptyAncestors: true } : {}),
+  });
 }
 
 function applyAddSection(document: EmailDocument, op: AddSectionOperation): PerOpResult {
@@ -534,9 +561,30 @@ function applyAddSection(document: EmailDocument, op: AddSectionOperation): PerO
 }
 
 function applyRestoreBlocks(document: EmailDocument, op: RestoreBlocksOperation): PerOpResult {
-  return applyInsertSubtree({ document, blocks: op.blocks, parentId: op.parentId, index: op.index });
+  return applyInsertSubtree({
+    document,
+    blocks: op.blocks,
+    parentId: op.parentId,
+    index: op.index,
+    previousWidths: op.previousWidths,
+  });
 }
 
+/**
+ * removeBlock — cascading delete of one subtree.
+ *
+ * With `shouldRemoveEmptyAncestors` (set on every live removal path via
+ * withRemoveBlockCascadeDefault; absent on historical logged ops so their
+ * replay is byte-identical), empty containers never persist: the removal
+ * root ESCALATES while it is its parent column's or row's only child — so
+ * deleting a column's last block deletes the column, and deleting a row's
+ * last column deletes the whole row. When a column leaves a row that still
+ * has other columns, those survivors' explicit widthPercent values are
+ * stripped (the placeBlockBeside equal-split convention: no widths = equal
+ * shares) and ride on the inverse. The inverse stays ONE restoreBlocks — one
+ * delete gesture, one history row, one undo restoring the block, its
+ * containers, their position, and the row's exact previous widths.
+ */
 function applyRemoveBlock(document: EmailDocument, op: RemoveBlockOperation): PerOpResult {
   if (op.blockId === ROOT_BLOCK_ID) {
     return fail({
@@ -553,25 +601,48 @@ function applyRemoveBlock(document: EmailDocument, op: RemoveBlockOperation): Pe
       blockId: op.blockId,
     });
   }
-  const parentId = block.parentId as BlockId | null;
+
+  // Escalate the removal root while removing it would leave an empty column
+  // (then an empty row). Sections and the root never collapse.
+  let removalRootId = op.blockId;
+  if (op.shouldRemoveEmptyAncestors === true) {
+    let current: Block = block;
+    while (current.parentId !== null && current.parentId !== undefined) {
+      const ancestor = document[current.parentId as BlockId];
+      if (ancestor === undefined) {
+        break;
+      }
+      const isCollapsibleContainer = ancestor.type === "column" || ancestor.type === "row";
+      const isOnlyChild =
+        ancestor.childrenIds.length === 1 && ancestor.childrenIds[0] === current.id;
+      if (!isCollapsibleContainer || !isOnlyChild) {
+        break;
+      }
+      removalRootId = ancestor.id;
+      current = ancestor;
+    }
+  }
+
+  const removalRoot = document[removalRootId]!;
+  const parentId = removalRoot.parentId as BlockId | null;
   const parent = parentId === null ? undefined : document[parentId];
   if (parentId === null || parent === undefined) {
     return fail({
       code: "target_not_found",
-      message: `Block "${op.blockId}" has no existing parent ("${String(parentId)}"); the document is structurally unsound.`,
-      blockId: op.blockId,
+      message: `Block "${removalRootId}" has no existing parent ("${String(parentId)}"); the document is structurally unsound.`,
+      blockId: removalRootId,
     });
   }
-  const removedIndex = (parent.childrenIds as BlockId[]).indexOf(op.blockId);
+  const removedIndex = (parent.childrenIds as BlockId[]).indexOf(removalRootId);
   if (removedIndex === -1) {
     return fail({
       code: "target_not_found",
-      message: `Parent "${parentId}" does not list "${op.blockId}" as a child; the document is structurally unsound.`,
-      blockId: op.blockId,
+      message: `Parent "${parentId}" does not list "${removalRootId}" as a child; the document is structurally unsound.`,
+      blockId: removalRootId,
       relatedBlockId: parentId,
     });
   }
-  const removedIds = getSubtreeIds(document, op.blockId);
+  const removedIds = getSubtreeIds(document, removalRootId);
   const removedBlocks = removedIds.map((removedId) => document[removedId]!);
   const nextDocument: EmailDocument = { ...document };
   for (const removedId of removedIds) {
@@ -579,13 +650,43 @@ function applyRemoveBlock(document: EmailDocument, op: RemoveBlockOperation): Pe
   }
   nextDocument[parentId] = {
     ...parent,
-    childrenIds: (parent.childrenIds as BlockId[]).filter((childId) => childId !== op.blockId),
+    childrenIds: (parent.childrenIds as BlockId[]).filter((childId) => childId !== removalRootId),
   } as Block;
+
+  // Equal-split redistribution: a column leaving a row resets the survivors
+  // to the no-explicit-widths equal split. Stripped values ride on the
+  // inverse so one undo restores the exact previous layout.
+  const previousWidths: PreviousColumnWidth[] = [];
+  if (
+    op.shouldRemoveEmptyAncestors === true &&
+    removalRoot.type === "column" &&
+    parent.type === "row"
+  ) {
+    for (const columnId of parent.childrenIds as BlockId[]) {
+      if (columnId === removalRootId) {
+        continue;
+      }
+      const column = nextDocument[columnId];
+      if (column === undefined || column.type !== "column") {
+        continue; // unreachable in a sound document; integrity re-checks anyway
+      }
+      const { widthPercent } = column.properties as { widthPercent?: number };
+      if (widthPercent === undefined) {
+        continue;
+      }
+      previousWidths.push({ columnId, widthPercent });
+      const strippedProperties = { ...(column.properties as Record<string, unknown>) };
+      delete strippedProperties.widthPercent;
+      nextDocument[columnId] = { ...column, properties: strippedProperties } as Block;
+    }
+  }
+
   return ok(nextDocument, {
     name: "restoreBlocks",
     blocks: structuredClone(removedBlocks),
     parentId,
     index: removedIndex,
+    ...(previousWidths.length > 0 ? { previousWidths } : {}),
   });
 }
 

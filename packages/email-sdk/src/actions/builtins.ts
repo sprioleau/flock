@@ -14,6 +14,7 @@ import {
   updateBlockPropertiesOperationSchema,
   updateDocumentSettingsOperationSchema,
   updateTextOperationSchema,
+  withRemoveBlockCascadeDefault,
   type Operation,
 } from "../operations/ops";
 import { defineEmailAction, type ContentEmailAction } from "./define";
@@ -130,10 +131,23 @@ export const restoreBlocksAction = defineContentOperationAction({
   parallelSafe: false, // structural: sibling indices shift
 });
 
-export const removeBlockAction = defineContentOperationAction({
+/**
+ * removeBlock is the one content op with a resolveOperation hook on an
+ * Operation-shaped input: live removals default `shouldRemoveEmptyAncestors`
+ * to true (empty columns/rows collapse, sibling widths re-equalize — one op,
+ * one undo). The RESOLVED, explicit flag is what reaches the op log, so
+ * historical un-flagged operations keep replaying without the cascade.
+ */
+export const removeBlockAction = defineEmailAction({
   name: "removeBlock",
+  description: removeBlockOperationSchema.description ?? "",
+  kind: "content",
   schema: removeBlockOperationSchema,
+  readOnly: false,
   parallelSafe: false, // structural: cascades and shifts sibling indices
+  needsApproval: false,
+  resolveOperation: (_doc, op) => ({ isOk: true, op: withRemoveBlockCascadeDefault(op) }),
+  run: (doc, op) => applyOperation(doc, op as Operation),
 });
 
 export const moveBlockAction = defineContentOperationAction({

@@ -3,6 +3,7 @@ import {
   createEmptyDocument,
   createSampleDocument,
   createStarterDocument,
+  withRemoveBlockCascadeDefault,
   type Operation,
 } from "@tandem/email-sdk";
 import { v } from "convex/values";
@@ -397,12 +398,24 @@ export const applyOperations = mutation({
       };
     }
 
+    // Live-entry normalization: a removeBlock with no explicit cascade choice
+    // collapses emptied columns/rows (withRemoveBlockCascadeDefault). Applied
+    // HERE — where new ops enter the log — and never to stored ops/inverses,
+    // so historical rows replay with their original semantics. Frontend ops
+    // arrive already normalized by the SDK action registry (identical result);
+    // this catches raw http/cli/mcp callers.
+    // (Null-safe: malformed payload elements pass through untouched so the
+    // SDK's Zod validation can reject them with a structured error.)
+    const ops = (args.ops as Operation[]).map((op) =>
+      op !== null && typeof op === "object" ? withRemoveBlockCascadeDefault(op) : op,
+    );
+
     // All-or-nothing SDK apply. The SDK Zod-validates each op envelope and
     // re-validates schema + referential integrity of every intermediate doc —
     // no additional integrity pass is needed here. On failure the head is
     // untouched and the structured errors go back to the caller (LLM repair
     // loop / user), NOT thrown.
-    const result = applyOperationsToDocument(state.doc, args.ops as Operation[]);
+    const result = applyOperationsToDocument(state.doc, ops);
     if (!result.isOk) {
       return {
         isOk: false as const,
@@ -412,9 +425,9 @@ export const applyOperations = mutation({
     }
 
     // `result.inverses` is in REVERSE order: inverses[0] undoes the LAST op.
-    const entries: CommitEntry[] = (args.ops as Operation[]).map((op, opIndex) => ({
+    const entries: CommitEntry[] = ops.map((op, opIndex) => ({
       op,
-      inverse: result.inverses[args.ops.length - 1 - opIndex]!,
+      inverse: result.inverses[ops.length - 1 - opIndex]!,
       kind: "edit" as const,
     }));
     const commit = await commitVersions({

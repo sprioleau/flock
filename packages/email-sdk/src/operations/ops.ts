@@ -190,6 +190,20 @@ export const addSectionOperationSchema = z
 
 export type AddSectionOperation = z.infer<typeof addSectionOperationSchema>;
 
+/** One column's previous explicit width, restored by unplaceBlockBeside / restoreBlocks. */
+export const previousColumnWidthSchema = z
+  .strictObject({
+    columnId: columnBlockIdSchema.describe("Id of the column whose width to restore."),
+    widthPercent: z
+      .number()
+      .min(1)
+      .max(100)
+      .describe("The widthPercent to set back on the column."),
+  })
+  .describe("One column's previous explicit widthPercent, re-set after the column is removed.");
+
+export type PreviousColumnWidth = z.infer<typeof previousColumnWidthSchema>;
+
 /** Re-insert a previously removed subtree (inverse of removeBlock). */
 export const restoreBlocksOperationSchema = z
   .strictObject({
@@ -204,9 +218,15 @@ export const restoreBlocksOperationSchema = z
       "Id of the container to re-attach the subtree root under. Its type must accept the subtree root's type.",
     ),
     index: insertionIndexSchema,
+    previousWidths: z
+      .array(previousColumnWidthSchema)
+      .optional()
+      .describe(
+        "Column-subtree case only: explicit widthPercent values a cascading removal stripped from the destination row's OTHER columns, re-set after the subtree is re-inserted so one undo restores the row's exact previous widths. Primarily generated on inverses of removeBlock with shouldRemoveEmptyAncestors.",
+      ),
   })
   .describe(
-    "Re-inserts a whole subtree (a block and all its descendants) under a parent at the given position. Primarily generated as the inverse of removeBlock, but valid to call directly.",
+    "Re-inserts a whole subtree (a block and all its descendants) under a parent at the given position, optionally restoring sibling column widths a cascading removal stripped. Primarily generated as the inverse of removeBlock, but valid to call directly.",
   );
 
 export type RestoreBlocksOperation = z.infer<typeof restoreBlocksOperationSchema>;
@@ -218,9 +238,15 @@ export const removeBlockOperationSchema = z
     blockId: blockIdSchema.describe(
       "Id of the block to remove. All of its descendants are removed with it. The root block cannot be removed.",
     ),
+    shouldRemoveEmptyAncestors: z
+      .boolean()
+      .optional()
+      .describe(
+        "When true, empty containers never persist: removing a column's last remaining child removes the column too (surviving sibling columns reset to an equal width split), and removing a row's last remaining column removes the whole row. Every live removal path sets this (see withRemoveBlockCascadeDefault); operations logged before the field existed omit it and replay without the cascade.",
+      ),
   })
   .describe(
-    "Removes a block and every block beneath it (cascading delete). The inverse is a restoreBlocks operation carrying the entire removed subtree.",
+    "Removes a block and every block beneath it (cascading delete). With shouldRemoveEmptyAncestors, a column emptied by the removal collapses — and an emptied row with it — while surviving sibling columns re-equalize; still ONE operation and ONE undo step. The inverse is a restoreBlocks operation carrying the entire removed subtree (plus any stripped sibling widths).",
   );
 
 export type RemoveBlockOperation = z.infer<typeof removeBlockOperationSchema>;
@@ -329,20 +355,6 @@ export const placeBlockBesideOperationSchema = z
   );
 
 export type PlaceBlockBesideOperation = z.infer<typeof placeBlockBesideOperationSchema>;
-
-/** One column's previous explicit width, restored by unplaceBlockBeside. */
-export const previousColumnWidthSchema = z
-  .strictObject({
-    columnId: columnBlockIdSchema.describe("Id of the column whose width to restore."),
-    widthPercent: z
-      .number()
-      .min(1)
-      .max(100)
-      .describe("The widthPercent to set back on the column."),
-  })
-  .describe("One column's previous explicit widthPercent, re-set after the column is removed.");
-
-export type PreviousColumnWidth = z.infer<typeof previousColumnWidthSchema>;
 
 /** Undo a placeBlockBeside: dissolve the created column (and row, if wrapped). */
 export const unplaceBlockBesideOperationSchema = z
@@ -476,3 +488,20 @@ export const OPERATION_NAMES = [
 ] as const satisfies readonly Operation["name"][];
 
 export type OperationName = (typeof OPERATION_NAMES)[number];
+
+/**
+ * Entry-point default for removeBlock's empty-container cascade: a removeBlock
+ * that does not state a `shouldRemoveEmptyAncestors` choice gets `true`, so
+ * every LIVE removal path (toolbar delete, agent-issued ops, raw API callers)
+ * collapses emptied columns/rows. Applied where operations ENTER the system
+ * (the action registry's resolveOperation and Convex applyOperations) — the
+ * explicit flag is what reaches the op log, so historical operations that
+ * predate the field keep replaying with their original no-cascade semantics.
+ * Non-removeBlock operations pass through untouched.
+ */
+export function withRemoveBlockCascadeDefault(operation: Operation): Operation {
+  if (operation.name !== "removeBlock" || operation.shouldRemoveEmptyAncestors !== undefined) {
+    return operation;
+  }
+  return { ...operation, shouldRemoveEmptyAncestors: true };
+}

@@ -206,6 +206,7 @@ export {
   unplaceBlockBesideOperationSchema,
   previousColumnWidthSchema,
   updateTextOperationSchema,
+  withRemoveBlockCascadeDefault,
 } from "./operations/ops";
 export type {
   Operation,

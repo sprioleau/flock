@@ -154,6 +154,38 @@ describe("emailActionRegistry", () => {
     expect(undone.doc).toEqual(doc);
   });
 
+  it("dispatching removeBlock defaults the empty-container cascade and logs the explicit flag", () => {
+    const doc = createSampleDocument();
+    const result = dispatchContentAction({
+      registry: emailActionRegistry,
+      doc,
+      name: "removeBlock",
+      // The caller states no cascade choice — the registry resolves it to true.
+      input: { name: "removeBlock", blockId: "txt_r7s8" },
+      context: agentContext,
+    });
+    expect(result.isOk).toBe(true);
+    if (!result.isOk) return;
+    // txt_r7s8 was col_m3n4's only block: the column collapses with it and
+    // the surviving column resets to the equal split (width stripped).
+    expect(result.doc.col_m3n4).toBeUndefined();
+    expect(result.doc.row_k1l2!.childrenIds).toEqual(["col_p5q6"]);
+    expect(
+      (result.doc.col_p5q6!.properties as { widthPercent?: number }).widthPercent,
+    ).toBeUndefined();
+    // The RESOLVED op (explicit flag) is what reaches the replayable log.
+    expect(result.logEntry.op).toEqual({
+      name: "removeBlock",
+      blockId: "txt_r7s8",
+      shouldRemoveEmptyAncestors: true,
+    });
+    // Still one undo step: the single inverse restores the doc exactly.
+    const undone = applyOperation(result.doc, result.inverse);
+    expect(undone.isOk).toBe(true);
+    if (!undone.isOk) return;
+    expect(undone.doc).toEqual(doc);
+  });
+
   it("surfaces 1.3 repair hints through dispatch (root removal is retryable)", () => {
     const result = dispatchContentAction({
       registry: emailActionRegistry,
