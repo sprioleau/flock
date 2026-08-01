@@ -12,6 +12,7 @@ import {
   DropdownMenuContent,
   DropdownMenuGroup,
   DropdownMenuLabel,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import {
@@ -124,19 +125,25 @@ export function ThemeMenu() {
           <TooltipContent side="bottom">Email theme</TooltipContent>
         </Tooltip>
       </TooltipProvider>
-        <DropdownMenuContent align="start" sideOffset={6} className="w-56">
+        {/* Roomier than the menu defaults on purpose (owner feedback: "let
+            the themes breathe") — same spacing/typography treatment as the
+            Brand kit modal's theme rows so the two surfaces read as one
+            system: a real heading, then generous py-2.5 rows. */}
+        <DropdownMenuContent align="start" sideOffset={6} className="w-64 p-1.5">
           <DropdownMenuGroup>
-            <DropdownMenuLabel>
+            <DropdownMenuLabel className="px-2 pt-1.5 pb-2 text-sm font-semibold text-foreground">
               Theme
-              <span className="block text-xs font-normal text-muted-foreground">
+              <span className="mt-0.5 block text-xs font-normal text-muted-foreground">
                 {brandKit.name}
               </span>
             </DropdownMenuLabel>
+            <DropdownMenuSeparator className="mx-0 mb-1.5" />
             {brandKit.variations.map((variation) => (
               <DropdownMenuCheckboxItem
                 key={variation.id}
                 checked={activeVariation?.id === variation.id}
                 onCheckedChange={() => applyVariation(variation)}
+                className="gap-3 px-2 py-2.5"
                 data-testid={`theme-option-${variation.id}`}
               >
                 <ThemeSwatch globals={variation.globals} />

@@ -3,9 +3,10 @@
 import { useState } from "react";
 import { useMutation, useQuery } from "convex/react";
 import { ConvexError } from "convex/values";
-import { CheckIcon, Loader2Icon, PaletteIcon, SparklesIcon } from "lucide-react";
+import { CheckIcon, Loader2Icon, PaletteIcon, SparklesIcon, ZoomInIcon } from "lucide-react";
 import { api } from "@convex/_generated/api";
 import { Button } from "@/components/ui/button";
+import { ImageLightbox } from "@/components/ui/image-lightbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
@@ -338,18 +339,115 @@ export function BrandKitPanel() {
           <TooltipContent side="bottom">Brand kit</TooltipContent>
         </Tooltip>
       </TooltipProvider>
-      <DialogContent className="sm:max-w-xl" data-testid="brand-kit-panel">
+      <DialogContent className="gap-5 p-6 sm:max-w-xl" data-testid="brand-kit-panel">
         <DialogHeader>
-          <DialogTitle>Brand kit</DialogTitle>
+          <DialogTitle className="text-lg font-semibold">Brand kit</DialogTitle>
           <DialogDescription>
             Your kit is saved per browser. Choose it for a canvas and everyone there shares its
             themes.
           </DialogDescription>
         </DialogHeader>
 
-        <div className="flex max-h-[70vh] min-h-0 flex-col gap-4 overflow-y-auto">
-          <section className="flex flex-col gap-2">
-            <h3 className="text-xs font-medium text-muted-foreground">Active kit</h3>
+        <div className="-mr-2 flex max-h-[70vh] min-h-0 flex-col gap-6 overflow-y-auto pr-2">
+          {/* The generate flow LEADS the modal (owner call): the URL scrape is
+              what creates the kit, so it reads as the primary entry point,
+              with its Preview directly below and the active kit after. */}
+          <section className="flex flex-col gap-3">
+            <Label htmlFor="brand-kit-url" className="text-sm leading-none font-semibold">
+              Create from website URL
+            </Label>
+            <p className="text-xs text-muted-foreground">
+              We&apos;ll scan the site for its colors and fonts, then build email-safe theme
+              variations you can preview before saving.
+            </p>
+            <form
+              className="flex items-center gap-2"
+              onSubmit={(event) => {
+                event.preventDefault();
+                void generateFromUrl();
+              }}
+            >
+              {/* type=text on purpose: scheme-less addresses ("cnn.com") are
+                  welcome — the backend normalizes them to https://. Native
+                  type=url validation would reject exactly those. */}
+              <Input
+                id="brand-kit-url"
+                type="text"
+                inputMode="url"
+                autoComplete="off"
+                spellCheck={false}
+                placeholder="your-brand.com"
+                value={websiteUrl}
+                onChange={(event) => setWebsiteUrl(event.target.value)}
+                disabled={isGenerating}
+                data-testid="brand-kit-url-input"
+              />
+              {/* Filled PRIMARY on purpose (owner call): the panel's main
+                  action. Default size = h-8, matching the input beside it. */}
+              <Button
+                type="submit"
+                className="shrink-0"
+                disabled={isGenerating || websiteUrl.trim().length === 0}
+                data-testid="brand-kit-generate-button"
+              >
+                {isGenerating ? <Loader2Icon className="animate-spin" /> : <SparklesIcon />}
+                {isGenerating ? "Generating…" : "Generate"}
+              </Button>
+            </form>
+            {generateErrorMessage !== null && (
+              <p className="text-sm text-destructive" data-testid="brand-kit-generate-error">
+                {generateErrorMessage}
+              </p>
+            )}
+          </section>
+
+          {previewKit !== null && (
+            <section className="flex flex-col gap-3 border-t pt-5" data-testid="brand-kit-preview">
+              <h3 className="text-sm leading-none font-semibold">Preview</h3>
+              <BrandKitSummary
+                brandKit={previewKit}
+                isDefaultKit={false}
+                onNameCommit={(name) =>
+                  setPreviewKit((current) => (current === null ? null : { ...current, name }))
+                }
+              />
+              <p className="text-xs text-muted-foreground">
+                The name and images are suggestions from the site — edit the name freely; save the
+                kit, then confirm its logo and social card to keep them.
+              </p>
+              {saveErrorMessage !== null && (
+                <p className="text-sm text-destructive" data-testid="brand-kit-save-error">
+                  {saveErrorMessage}
+                </p>
+              )}
+              <div className="flex items-center gap-2">
+                <Button
+                  size="sm"
+                  onClick={() => void savePreviewKit()}
+                  disabled={isSaving || sessionId === null}
+                  data-testid="brand-kit-save-button"
+                >
+                  {isSaving && <Loader2Icon className="animate-spin" />}
+                  Save as my brand kit
+                </Button>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => {
+                    setPreviewKit(null);
+                    setSaveErrorMessage(null);
+                  }}
+                  disabled={isSaving}
+                  data-testid="brand-kit-discard-button"
+                >
+                  Discard
+                </Button>
+              </div>
+            </section>
+          )}
+
+          <section className="flex flex-col gap-3 border-t pt-5">
+            <h3 className="text-sm leading-none font-semibold">Active kit</h3>
             <BrandKitSummary
               brandKit={activeBrandKit}
               isDefaultKit={!hasSavedKit}
@@ -365,7 +463,7 @@ export function BrandKitPanel() {
               }
             />
             {assetErrorMessage !== null && (
-              <p className="text-xs text-destructive" data-testid="brand-kit-asset-error">
+              <p className="text-sm text-destructive" data-testid="brand-kit-asset-error">
                 {assetErrorMessage}
               </p>
             )}
@@ -385,13 +483,13 @@ export function BrandKitPanel() {
           </section>
 
           <section
-            className="flex flex-col gap-2 border-t pt-4"
+            className="flex flex-col gap-3 border-t pt-5"
             data-testid="brand-kit-canvas-section"
           >
-            <h3 className="text-xs font-medium text-muted-foreground">This canvas</h3>
+            <h3 className="text-sm leading-none font-semibold">This canvas</h3>
             {canvasBinding === null ? (
               <>
-                <p className="text-xs text-muted-foreground">
+                <p className="text-sm text-muted-foreground">
                   No brand chosen for this canvas yet. Choosing one doesn&apos;t restyle anything —
                   you pick which drafts update.
                 </p>
@@ -407,14 +505,14 @@ export function BrandKitPanel() {
                   Use this kit for the canvas
                 </Button>
                 {!hasSavedKit && (
-                  <p className="text-[11px] text-muted-foreground">
+                  <p className="text-xs text-muted-foreground">
                     Save a kit first, then choose it here.
                   </p>
                 )}
               </>
             ) : (
               <>
-                <p className="text-xs text-muted-foreground" data-testid="brand-kit-binding-label">
+                <p className="text-sm text-muted-foreground" data-testid="brand-kit-binding-label">
                   Uses{" "}
                   <span className="font-medium text-foreground">
                     &ldquo;{canvasBinding.name}&rdquo;
@@ -458,105 +556,11 @@ export function BrandKitPanel() {
               </>
             )}
             {bindingErrorMessage !== null && (
-              <p className="text-xs text-destructive" data-testid="brand-kit-binding-error">
+              <p className="text-sm text-destructive" data-testid="brand-kit-binding-error">
                 {bindingErrorMessage}
               </p>
             )}
           </section>
-
-          <section className="flex flex-col gap-2 border-t pt-4">
-            <Label htmlFor="brand-kit-url" className="text-xs font-medium text-muted-foreground">
-              Create from website URL
-            </Label>
-            <form
-              className="flex items-center gap-1.5"
-              onSubmit={(event) => {
-                event.preventDefault();
-                void generateFromUrl();
-              }}
-            >
-              {/* type=text on purpose: scheme-less addresses ("cnn.com") are
-                  welcome — the backend normalizes them to https://. Native
-                  type=url validation would reject exactly those. */}
-              <Input
-                id="brand-kit-url"
-                type="text"
-                inputMode="url"
-                autoComplete="off"
-                spellCheck={false}
-                placeholder="your-brand.com"
-                value={websiteUrl}
-                onChange={(event) => setWebsiteUrl(event.target.value)}
-                disabled={isGenerating}
-                data-testid="brand-kit-url-input"
-              />
-              {/* Filled PRIMARY on purpose (owner call): the panel's main
-                  action. Default size = h-8, matching the input beside it. */}
-              <Button
-                type="submit"
-                className="shrink-0"
-                disabled={isGenerating || websiteUrl.trim().length === 0}
-                data-testid="brand-kit-generate-button"
-              >
-                {isGenerating ? <Loader2Icon className="animate-spin" /> : <SparklesIcon />}
-                {isGenerating ? "Generating…" : "Generate"}
-              </Button>
-            </form>
-            <p className="text-xs text-muted-foreground">
-              We&apos;ll scan the site for its colors and fonts, then build email-safe theme
-              variations you can preview before saving.
-            </p>
-            {generateErrorMessage !== null && (
-              <p className="text-xs text-destructive" data-testid="brand-kit-generate-error">
-                {generateErrorMessage}
-              </p>
-            )}
-          </section>
-
-          {previewKit !== null && (
-            <section className="flex flex-col gap-2" data-testid="brand-kit-preview">
-              <h3 className="text-xs font-medium text-muted-foreground">Preview</h3>
-              <BrandKitSummary
-                brandKit={previewKit}
-                isDefaultKit={false}
-                onNameCommit={(name) =>
-                  setPreviewKit((current) => (current === null ? null : { ...current, name }))
-                }
-              />
-              <p className="text-xs text-muted-foreground">
-                The name and images are suggestions from the site — edit the name freely; save the
-                kit, then confirm its logo and social card to keep them.
-              </p>
-              {saveErrorMessage !== null && (
-                <p className="text-xs text-destructive" data-testid="brand-kit-save-error">
-                  {saveErrorMessage}
-                </p>
-              )}
-              <div className="flex items-center gap-1.5">
-                <Button
-                  size="sm"
-                  onClick={() => void savePreviewKit()}
-                  disabled={isSaving || sessionId === null}
-                  data-testid="brand-kit-save-button"
-                >
-                  {isSaving && <Loader2Icon className="animate-spin" />}
-                  Save as my brand kit
-                </Button>
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => {
-                    setPreviewKit(null);
-                    setSaveErrorMessage(null);
-                  }}
-                  disabled={isSaving}
-                  data-testid="brand-kit-discard-button"
-                >
-                  Discard
-                </Button>
-              </div>
-            </section>
-          )}
         </div>
       </DialogContent>
       </Dialog>
@@ -570,13 +574,17 @@ interface BrandKitAssetActions {
   onRemove: (kind: BrandKitAssetKind) => void;
 }
 
+/** Sub-label style shared by the card's inner groups (Fonts/Images/Themes). */
+const KIT_GROUP_LABEL_CLASSNAME = "text-xs font-medium tracking-wide text-muted-foreground";
+
 /**
  * One kit rendered as a card: the name (editable when `onNameCommit` is
  * given — the extracted name is only a suggestion), a "Default" badge for
- * the mock fallback, source URL, the heading/body font stacks (each shown
- * in itself), the confirmable logo/social-card asset rows, and every
- * variation as a ThemeSwatch row — the same Aa+circles cue the theme
- * dropdown uses. `assetActions` present = the saved-kit context
+ * the mock fallback, source URL, then labeled groups — the heading/body
+ * font stacks (each shown in itself), the confirmable logo/social-card
+ * asset squares (uniform 1:1 tiles; click to enlarge in a lightbox), social
+ * links, and every variation as a ThemeSwatch row — the same Aa+circles cue
+ * the theme dropdown uses. `assetActions` present = the saved-kit context
  * (Confirm & save / Remove buttons); absent = preview/default context
  * (chips only — decision 4 keeps unconfirmed suggestions display-only
  * everywhere regardless).
@@ -592,84 +600,127 @@ function BrandKitSummary({
   onNameCommit?: (name: string) => void;
   assetActions?: BrandKitAssetActions;
 }) {
+  // ONE lightbox per card, pointed at whichever asset square was clicked.
+  const [enlargedAsset, setEnlargedAsset] = useState<{ url: string; label: string } | null>(null);
+  const hasAnyAsset = brandKit.logoUrl !== undefined || brandKit.socialImageUrl !== undefined;
+
   return (
-    <div className="flex flex-col gap-3 rounded-lg border p-3">
-      <div className="flex min-w-0 items-center gap-2">
-        {onNameCommit === undefined ? (
-          <span className="min-w-0 truncate text-sm font-medium" data-testid="brand-kit-name">
-            {brandKit.name}
-          </span>
-        ) : (
-          // Uncontrolled + keyed by the current name: reactive updates (e.g.
-          // a rename from another tab) reset the field; commits happen on
-          // blur or Enter.
-          <Input
-            key={brandKit.name}
-            type="text"
-            defaultValue={brandKit.name}
-            aria-label="Brand kit name"
-            className="h-8 min-w-0 text-sm font-medium"
-            onBlur={(event) => onNameCommit(event.target.value)}
-            onKeyDown={(event) => {
-              if (event.key === "Enter") {
-                event.currentTarget.blur();
-              }
-            }}
-            data-testid="brand-kit-name-input"
-          />
-        )}
-        {isDefaultKit && (
-          <span className="shrink-0 rounded-full border bg-muted px-1.5 py-px text-[10px] font-medium text-muted-foreground">
-            Default
-          </span>
+    <div className="flex flex-col gap-4 rounded-lg border p-4">
+      <ImageLightbox
+        isOpen={enlargedAsset !== null}
+        onOpenChange={(isLightboxOpen) => {
+          if (!isLightboxOpen) {
+            setEnlargedAsset(null);
+          }
+        }}
+        imageUrl={enlargedAsset?.url ?? null}
+        title={enlargedAsset?.label ?? ""}
+      />
+      <div className="flex min-w-0 flex-col gap-1">
+        <div className="flex min-w-0 items-center gap-2">
+          {onNameCommit === undefined ? (
+            <span className="min-w-0 truncate text-sm font-medium" data-testid="brand-kit-name">
+              {brandKit.name}
+            </span>
+          ) : (
+            // Uncontrolled + keyed by the current name: reactive updates (e.g.
+            // a rename from another tab) reset the field; commits happen on
+            // blur or Enter.
+            <Input
+              key={brandKit.name}
+              type="text"
+              defaultValue={brandKit.name}
+              aria-label="Brand kit name"
+              className="h-9 min-w-0 text-sm font-medium"
+              onBlur={(event) => onNameCommit(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter") {
+                  event.currentTarget.blur();
+                }
+              }}
+              data-testid="brand-kit-name-input"
+            />
+          )}
+          {isDefaultKit && (
+            <span className="shrink-0 rounded-full border bg-muted px-2 py-0.5 text-[11px] font-medium text-muted-foreground">
+              Default
+            </span>
+          )}
+        </div>
+        {brandKit.sourceUrl !== undefined && (
+          <a
+            href={brandKit.sourceUrl}
+            target="_blank"
+            rel="noreferrer"
+            className="truncate text-xs text-muted-foreground hover:underline"
+          >
+            {brandKit.sourceUrl}
+          </a>
         )}
       </div>
-      {brandKit.sourceUrl !== undefined && (
-        <a
-          href={brandKit.sourceUrl}
-          target="_blank"
-          rel="noreferrer"
-          className="-mt-2 truncate text-xs text-muted-foreground hover:underline"
-        >
-          {brandKit.sourceUrl}
-        </a>
-      )}
-      <dl className="flex flex-col gap-1 text-xs">
-        <div className="flex items-baseline gap-2">
-          <dt className="w-14 shrink-0 text-muted-foreground">Heading</dt>
-          <dd className="min-w-0 truncate" style={{ fontFamily: brandKit.fonts.heading }}>
-            {brandKit.fonts.heading}
-          </dd>
+      <div className="flex flex-col gap-1.5">
+        <span className={KIT_GROUP_LABEL_CLASSNAME}>Fonts</span>
+        <dl className="flex flex-col gap-1.5">
+          <div className="flex items-baseline gap-3">
+            <dt className="w-16 shrink-0 text-xs text-muted-foreground">Heading</dt>
+            <dd
+              className="min-w-0 truncate text-sm"
+              style={{ fontFamily: brandKit.fonts.heading }}
+            >
+              {brandKit.fonts.heading}
+            </dd>
+          </div>
+          <div className="flex items-baseline gap-3">
+            <dt className="w-16 shrink-0 text-xs text-muted-foreground">Body</dt>
+            <dd className="min-w-0 truncate text-sm" style={{ fontFamily: brandKit.fonts.body }}>
+              {brandKit.fonts.body}
+            </dd>
+          </div>
+        </dl>
+      </div>
+      {hasAnyAsset && (
+        <div className="flex flex-col gap-1.5">
+          <span className={KIT_GROUP_LABEL_CLASSNAME}>Images</span>
+          <div className="grid grid-cols-2 gap-3">
+            {brandKit.logoUrl !== undefined && (
+              <BrandAssetCard
+                kind="logo"
+                label="Logo"
+                url={brandKit.logoUrl}
+                isConfirmed={brandKit.logoConfirmedAtMs !== undefined}
+                assetActions={assetActions}
+                onEnlarge={() =>
+                  setEnlargedAsset(
+                    brandKit.logoUrl === undefined
+                      ? null
+                      : { url: brandKit.logoUrl, label: "Logo" },
+                  )
+                }
+              />
+            )}
+            {brandKit.socialImageUrl !== undefined && (
+              <BrandAssetCard
+                kind="socialCard"
+                label="Social card"
+                url={brandKit.socialImageUrl}
+                isConfirmed={brandKit.socialImageConfirmedAtMs !== undefined}
+                assetActions={assetActions}
+                onEnlarge={() =>
+                  setEnlargedAsset(
+                    brandKit.socialImageUrl === undefined
+                      ? null
+                      : { url: brandKit.socialImageUrl, label: "Social card" },
+                  )
+                }
+              />
+            )}
+          </div>
         </div>
-        <div className="flex items-baseline gap-2">
-          <dt className="w-14 shrink-0 text-muted-foreground">Body</dt>
-          <dd className="min-w-0 truncate" style={{ fontFamily: brandKit.fonts.body }}>
-            {brandKit.fonts.body}
-          </dd>
-        </div>
-      </dl>
-      {brandKit.logoUrl !== undefined && (
-        <BrandAssetRow
-          kind="logo"
-          label="Logo"
-          url={brandKit.logoUrl}
-          isConfirmed={brandKit.logoConfirmedAtMs !== undefined}
-          assetActions={assetActions}
-        />
-      )}
-      {brandKit.socialImageUrl !== undefined && (
-        <BrandAssetRow
-          kind="socialCard"
-          label="Social card"
-          url={brandKit.socialImageUrl}
-          isConfirmed={brandKit.socialImageConfirmedAtMs !== undefined}
-          assetActions={assetActions}
-        />
       )}
       {brandKit.socialLinks !== undefined && brandKit.socialLinks.length > 0 && (
-        <div className="flex flex-col gap-1" data-testid="brand-kit-social-links">
-          <span className="text-[10px] font-medium text-muted-foreground">Social links</span>
-          <div className="flex flex-wrap items-center gap-1">
+        <div className="flex flex-col gap-1.5" data-testid="brand-kit-social-links">
+          <span className={KIT_GROUP_LABEL_CLASSNAME}>Social links</span>
+          <div className="flex flex-wrap items-center gap-1.5">
             {brandKit.socialLinks.map(({ platform, url }) => (
               <a
                 key={platform}
@@ -677,7 +728,7 @@ function BrandKitSummary({
                 target="_blank"
                 rel="noreferrer"
                 title={url}
-                className="rounded-full border bg-muted px-1.5 py-px text-[10px] font-medium text-muted-foreground hover:text-foreground"
+                className="rounded-full border bg-muted px-2 py-0.5 text-[11px] font-medium text-muted-foreground hover:text-foreground"
                 data-testid={`brand-kit-social-link-${platform}`}
               >
                 {getSocialPlatformLabel(platform)}
@@ -686,18 +737,21 @@ function BrandKitSummary({
           </div>
         </div>
       )}
-      <ul className="flex flex-col gap-1.5">
-        {brandKit.variations.map((variation) => (
-          <li
-            key={variation.id}
-            className="flex items-center gap-2"
-            data-testid={`brand-kit-variation-${variation.id}`}
-          >
-            <ThemeSwatch globals={variation.globals} />
-            <span className="min-w-0 truncate text-xs">{variation.name}</span>
-          </li>
-        ))}
-      </ul>
+      <div className="flex flex-col gap-1">
+        <span className={KIT_GROUP_LABEL_CLASSNAME}>Themes</span>
+        <ul className="flex flex-col">
+          {brandKit.variations.map((variation) => (
+            <li
+              key={variation.id}
+              className="flex items-center gap-3 py-2.5"
+              data-testid={`brand-kit-variation-${variation.id}`}
+            >
+              <ThemeSwatch globals={variation.globals} />
+              <span className="min-w-0 truncate text-sm">{variation.name}</span>
+            </li>
+          ))}
+        </ul>
+      </div>
     </div>
   );
 }
@@ -718,85 +772,101 @@ function describeAssetSource({ url, isConfirmed }: { url: string; isConfirmed: b
 }
 
 /**
- * One confirmable asset (§8.1): thumbnail + source + Suggested/Saved chip;
- * in the saved-kit context also [Confirm & save] / [Remove]. Unconfirmed
- * suggestions never leave this UI (owner decision 4).
+ * One confirmable asset (§8.1) as a uniform grid tile: a 1:1 muted square
+ * with the image contain-fit inside (the wide social card letterboxes, the
+ * square-ish logo fills — the tiles stay identical side by side), then the
+ * label + Suggested/Saved chip and the source line; in the saved-kit context
+ * also [Confirm & save] / [Remove]. Clicking the square opens the card's
+ * lightbox. Unconfirmed suggestions never leave this UI (owner decision 4).
  */
-function BrandAssetRow({
+function BrandAssetCard({
   kind,
   label,
   url,
   isConfirmed,
   assetActions,
+  onEnlarge,
 }: {
   kind: BrandKitAssetKind;
   label: string;
   url: string;
   isConfirmed: boolean;
   assetActions?: BrandKitAssetActions;
+  onEnlarge: () => void;
 }) {
   const isBusy = assetActions?.busyKind === kind;
   const isAnotherAssetBusy =
     assetActions !== undefined && assetActions.busyKind !== null && !isBusy;
   return (
-    <div className="flex items-center gap-2" data-testid={`brand-kit-asset-${kind}`}>
-      {/* Plain <img> on purpose: the source is an arbitrary external host
-          (or a data:image/svg+xml URI) — next/image can't optimize either. */}
-      {/* eslint-disable-next-line @next/next/no-img-element */}
-      <img
-        src={url}
-        alt=""
-        className={
-          kind === "logo"
-            ? "size-8 shrink-0 rounded border bg-white object-contain p-0.5"
-            : "h-8 w-14 shrink-0 rounded border object-cover"
-        }
-        data-testid={`brand-kit-asset-${kind}-image`}
-      />
-      <div className="flex min-w-0 flex-col">
-        <span className="text-xs font-medium">{label}</span>
-        <span className="truncate text-[11px] text-muted-foreground">
+    <div
+      className="flex min-w-0 flex-col overflow-hidden rounded-lg border"
+      data-testid={`brand-kit-asset-${kind}`}
+    >
+      <button
+        type="button"
+        onClick={onEnlarge}
+        aria-label={`View ${label.toLowerCase()} larger`}
+        className="group relative flex aspect-square w-full cursor-zoom-in items-center justify-center overflow-hidden bg-muted p-4 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset"
+      >
+        {/* Plain <img> on purpose: the source is an arbitrary external host
+            (or a data:image/svg+xml URI) — next/image can't optimize either. */}
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img
+          src={url}
+          alt=""
+          className="size-full object-contain"
+          data-testid={`brand-kit-asset-${kind}-image`}
+        />
+        <span className="absolute right-2 bottom-2 flex size-6 items-center justify-center rounded-md bg-background/80 text-muted-foreground opacity-0 backdrop-blur-sm transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100">
+          <ZoomInIcon className="size-3.5" />
+        </span>
+      </button>
+      <div className="flex min-w-0 flex-col gap-1 border-t p-3">
+        <div className="flex items-center justify-between gap-2">
+          <span className="truncate text-sm font-medium">{label}</span>
+          <span
+            className={
+              isConfirmed
+                ? "flex shrink-0 items-center gap-1 rounded-full border border-success/40 bg-success/10 px-2 py-0.5 text-[11px] font-medium text-success"
+                : "shrink-0 rounded-full border bg-muted px-2 py-0.5 text-[11px] font-medium text-muted-foreground"
+            }
+            data-testid={`brand-kit-asset-${kind}-chip`}
+          >
+            {isConfirmed && <CheckIcon className="size-3" />}
+            {isConfirmed ? "Saved" : "Suggested"}
+          </span>
+        </div>
+        <span className="truncate text-xs text-muted-foreground">
           {describeAssetSource({ url, isConfirmed })}
         </span>
-      </div>
-      <span
-        className={
-          isConfirmed
-            ? "ml-auto flex shrink-0 items-center gap-1 rounded-full border border-emerald-300 bg-emerald-50 px-1.5 py-px text-[10px] font-medium text-emerald-700"
-            : "ml-auto shrink-0 rounded-full border bg-muted px-1.5 py-px text-[10px] font-medium text-muted-foreground"
-        }
-        data-testid={`brand-kit-asset-${kind}-chip`}
-      >
-        {isConfirmed && <CheckIcon className="size-2.5" />}
-        {isConfirmed ? "Saved" : "Suggested"}
-      </span>
-      {assetActions !== undefined && (
-        <div className="flex shrink-0 items-center gap-1">
-          {!isConfirmed && (
+        {assetActions !== undefined && (
+          <div className="mt-1 flex items-center gap-1">
+            {!isConfirmed && (
+              <Button
+                variant="outline"
+                size="sm"
+                className="h-7 px-2 text-xs"
+                onClick={() => assetActions.onConfirm(kind)}
+                disabled={isBusy || isAnotherAssetBusy}
+                data-testid={`brand-kit-asset-${kind}-confirm`}
+              >
+                {isBusy && <Loader2Icon className="animate-spin" />}
+                Confirm &amp; save
+              </Button>
+            )}
             <Button
-              variant="outline"
+              variant="ghost"
               size="sm"
-              className="h-6 px-2 text-[11px]"
-              onClick={() => assetActions.onConfirm(kind)}
+              className="h-7 px-2 text-xs text-muted-foreground"
+              onClick={() => assetActions.onRemove(kind)}
               disabled={isBusy || isAnotherAssetBusy}
-              data-testid={`brand-kit-asset-${kind}-confirm`}
+              data-testid={`brand-kit-asset-${kind}-remove`}
             >
-              {isBusy && <Loader2Icon className="animate-spin" />}
-              Confirm &amp; save
+              Remove
             </Button>
-          )}
-          <Button
-            variant="ghost"
-            size="sm"
-            className="h-6 px-2 text-[11px] text-muted-foreground"
-            onClick={() => assetActions.onRemove(kind)}
-            disabled={isBusy || isAnotherAssetBusy}
-            data-testid={`brand-kit-asset-${kind}-remove`}
-          >
-            Remove
-          </Button>
-        </div>
-      )}
+          </div>
+        )}
+      </div>
     </div>
   );
 }
