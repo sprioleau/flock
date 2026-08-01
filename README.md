@@ -1,8 +1,8 @@
 # Tandem
 
-![Screenshot 2026-08-01 at 1 01 42 AM](apps/web/public/screenshots/flock-app-dark-mode.png)
-
-![Screenshot 2026-08-01 at 1 03 51 AM](apps/web/public/screenshots/flock-app-light-mode.png)
+| Dark | Light |
+|--------|-------|
+| ![Screenshot 2026-08-01 at 1 01 42 AM](apps/web/public/screenshots/flock-app-dark-mode.png) | ![Screenshot 2026-08-01 at 1 03 51 AM](apps/web/public/screenshots/flock-app-light-mode.png) |
 
 **What email creation looks like when humans and agents are the same kind of collaborator.**
 
