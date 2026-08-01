@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useConvex } from "convex/react";
 import {
   CheckIcon,
@@ -13,7 +13,9 @@ import {
   LinkIcon,
   PencilLineIcon,
   PlusIcon,
+  SparklesIcon,
   Trash2Icon,
+  WandSparklesIcon,
 } from "lucide-react";
 import { api } from "@convex/_generated/api";
 import type { Id } from "@convex/_generated/dataModel";
@@ -45,6 +47,13 @@ import {
 import { useEditorStore } from "@/lib/editor-store";
 import { getOrCreateSessionId } from "@/lib/session";
 import { cn } from "@/lib/utils";
+import { useIsAgentBusy } from "../chat/agent-status";
+import { sendPromptThroughComposer } from "../chat/composer-handoff";
+import {
+  buildDesignVariationPrompt,
+  buildDraftOutline,
+  buildIdeateDraftPrompt,
+} from "./draft-generation";
 import { computeNextDraftName, useCanvasDrafts, type DraftListEntry } from "./use-canvas-drafts";
 
 /**
@@ -69,6 +78,38 @@ export function DraftSelector({
   const [isDeleteDialogOpen, setIsDeleteDialogOpen] = useState(false);
   const [isDeletePending, setIsDeletePending] = useState(false);
   const [isPromotePending, setIsPromotePending] = useState(false);
+  const [isGenerationPending, setIsGenerationPending] = useState(false);
+  // An AI generation waiting for its freshly created draft to become ACTIVE
+  // (store-connected). The prompt must not send earlier: the chat pins each
+  // turn to the document that is active at send time, so sending before the
+  // switch completes would stream the sections into the SOURCE draft. A ref,
+  // not state — it never drives rendering, only the activation effect below.
+  const pendingGenerationSendRef = useRef<{
+    sourceDocumentId: Id<"documents">;
+    targetDocumentId: Id<"documents">;
+    prompt: string;
+  } | null>(null);
+  const isAgentBusy = useIsAgentBusy();
+
+  // Fire the held prompt the moment the generated draft is active — through
+  // the chat panel's own send path (composer-handoff SEND), so the request is
+  // visible in the thread and the turn pins to the NEW draft (ops keep
+  // landing there even if the user switches away mid-stream). Activating any
+  // OTHER draft first cancels the handoff — never surprise-send later.
+  useEffect(() => {
+    const pendingSend = pendingGenerationSendRef.current;
+    if (pendingSend === null || activeDocumentId === null) {
+      return;
+    }
+    if (activeDocumentId === pendingSend.targetDocumentId) {
+      pendingGenerationSendRef.current = null;
+      sendPromptThroughComposer(pendingSend.prompt);
+      return;
+    }
+    if (activeDocumentId !== pendingSend.sourceDocumentId) {
+      pendingGenerationSendRef.current = null;
+    }
+  }, [activeDocumentId]);
 
   if (drafts === undefined || drafts.length === 0) {
     return null;
@@ -222,6 +263,53 @@ export function DraftSelector({
       });
   };
 
+  /**
+   * The AI generation actions: create an EMPTY sibling draft, activate it,
+   * and hand a composed prompt to the chat (sent by the effect above once the
+   * new draft is store-connected). "ideate" asks for a fresh concept; a
+   * design variation asks for a new take on the ACTIVE draft's content. Both
+   * carry the source outline in the prompt — the request body only ever
+   * describes the new blank draft — and both leave theme choice to the agent.
+   */
+  const startAiGeneration = (mode: "ideate" | "designVariation"): void => {
+    if (activeDraft === null || isGenerationPending || isAgentBusy) {
+      return;
+    }
+    const sourceOutline = buildDraftOutline(useEditorStore.getState().doc);
+    const promptInput = { sourceDraftName: activeDraft.name, sourceOutline };
+    const prompt =
+      mode === "ideate"
+        ? buildIdeateDraftPrompt(promptInput)
+        : buildDesignVariationPrompt(promptInput);
+    const name =
+      mode === "designVariation"
+        ? `${activeDraft.name} (variation)`
+        : computeNextDraftName(drafts);
+    setIsGenerationPending(true);
+    convexClient
+      .mutation(api.documents.createDocument, {
+        sessionId: getOrCreateSessionId(),
+        canvasId: activeDraft.canvasId,
+        name,
+        shouldSeedEmpty: true,
+      })
+      .then(({ documentId }) => {
+        pendingGenerationSendRef.current = {
+          sourceDocumentId: activeDraft._id,
+          targetDocumentId: documentId,
+          prompt,
+        };
+        onActivateDraft(documentId);
+      })
+      .catch((error: unknown) => {
+        console.error("createDocument (AI generation) failed", error);
+        useEditorStore.getState().showNotice("Couldn't start the AI draft (connection error).");
+      })
+      .finally(() => {
+        setIsGenerationPending(false);
+      });
+  };
+
   const createDraft = (): void => {
     const canvasId = activeDraft?.canvasId ?? drafts[0]!.canvasId;
     if (isCreatePending) {
@@ -369,6 +457,32 @@ export function DraftSelector({
             <DropdownMenuItem disabled={isCreatePending} onClick={createDraft}>
               <PlusIcon /> New draft
             </DropdownMenuItem>
+            <TooltipProvider>
+              <MaybeDisabledTooltip
+                isDisabled={isAgentBusy}
+                message="Tandem is busy with another request — try again when it finishes."
+              >
+                <DropdownMenuItem
+                  disabled={isAgentBusy || isGenerationPending}
+                  onClick={() => startAiGeneration("ideate")}
+                  data-testid="draft-menu-generate"
+                >
+                  <SparklesIcon /> Ideate with AI
+                </DropdownMenuItem>
+              </MaybeDisabledTooltip>
+              <MaybeDisabledTooltip
+                isDisabled={isAgentBusy}
+                message="Tandem is busy with another request — try again when it finishes."
+              >
+                <DropdownMenuItem
+                  disabled={isAgentBusy || isGenerationPending}
+                  onClick={() => startAiGeneration("designVariation")}
+                  data-testid="draft-menu-design-variation"
+                >
+                  <WandSparklesIcon /> Add design variation
+                </DropdownMenuItem>
+              </MaybeDisabledTooltip>
+            </TooltipProvider>
           </DropdownMenuContent>
         </DropdownMenu>
       )}

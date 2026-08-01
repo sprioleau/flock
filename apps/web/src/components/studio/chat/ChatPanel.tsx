@@ -20,6 +20,7 @@ import { SettingsFab } from "../demo/SettingsFab";
 import { ActiveDraftIndicator } from "../drafts/ActiveDraftIndicator";
 import { updatePanelPreferences, usePanelPreferences } from "../panel-preferences";
 import { ShortcutKbd } from "../shortcuts/ShortcutKbd";
+import { publishAgentBusyState } from "./agent-status";
 import { ChatMessageList } from "./ChatMessageList";
 import { registerComposerHandoffHandlers } from "./composer-handoff";
 import { QueuedMessageList } from "./QueuedMessageList";
@@ -63,6 +64,13 @@ export function ChatPanel() {
   // refreshed every render so a queued-vs-direct decision never goes stale).
   const submitPromptTextRef = useRef<(text: string) => void>(() => {});
 
+  // SEND + SETTLEMENT bookkeeping (comments-mode fix dispatch): callbacks
+  // queued by the handoff fire when the agent NEXT returns to full idle
+  // (ready + empty queue + no pending approval) after having been busy; an
+  // error pause DROPS them (no "agent responded" note for a failed turn).
+  const settlementCallbacksRef = useRef<Array<() => void>>([]);
+  const hasBeenBusySinceSettlementDispatchRef = useRef(false);
+
   // The composer-handoff seam (composer-handoff.ts): INSERT — persona finding
   // cards and the recommendations modal insert a ready-to-send prompt HERE —
   // focused, caret at the end, editable, never auto-sent. SEND — the
@@ -90,6 +98,11 @@ export function ChatPanel() {
       focusComposer: () => {
         setIsExpanded(true);
         requestAnimationFrame(() => composerTextareaRef.current?.focus());
+      },
+      sendPromptWithSettlement: ({ prompt, onTurnSettled }) => {
+        setIsExpanded(true);
+        settlementCallbacksRef.current.push(onTurnSettled);
+        submitPromptTextRef.current(prompt);
       },
     });
   }, [setIsExpanded]);
@@ -134,6 +147,11 @@ export function ChatPanel() {
 
   const isAgentBusy = status === "submitted" || status === "streaming" || hasPendingApproval;
   const isErrorPaused = status === "error";
+  // Broadcast for surfaces outside this panel (drafts menu AI items) —
+  // see agent-status.ts.
+  useEffect(() => {
+    publishAgentBusyState(isAgentBusy);
+  }, [isAgentBusy]);
   // Queues are scoped per document: the panel survives drafts-bar switches,
   // so an unscoped queue would fire into whichever draft is active when the
   // agent goes idle (see use-message-queue.ts).
@@ -165,6 +183,35 @@ export function ChatPanel() {
   };
   useEffect(() => {
     submitPromptTextRef.current = submitPromptText;
+  });
+
+  // The settlement watcher (see settlementCallbacksRef): observes every
+  // render (no dep array — the flags it reads are plain derivations), fires
+  // pending callbacks on the busy→fully-idle edge, drops them on error. The
+  // "has been busy" latch keeps the idle render BETWEEN dispatch and the
+  // turn's first "submitted" status from settling instantly.
+  useEffect(() => {
+    if (settlementCallbacksRef.current.length === 0) {
+      return;
+    }
+    if (isErrorPaused) {
+      settlementCallbacksRef.current = [];
+      hasBeenBusySinceSettlementDispatchRef.current = false;
+      return;
+    }
+    if (isAgentBusy || hasQueuedMessages) {
+      hasBeenBusySinceSettlementDispatchRef.current = true;
+      return;
+    }
+    if (!hasBeenBusySinceSettlementDispatchRef.current) {
+      return;
+    }
+    const callbacks = settlementCallbacksRef.current;
+    settlementCallbacksRef.current = [];
+    hasBeenBusySinceSettlementDispatchRef.current = false;
+    for (const callback of callbacks) {
+      callback();
+    }
   });
 
   const submitDraft = (): void => {

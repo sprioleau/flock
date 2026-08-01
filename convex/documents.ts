@@ -1,5 +1,6 @@
 import {
   applyOperations as applyOperationsToDocument,
+  createEmptyDocument,
   createSampleDocument,
   createStarterDocument,
   type Operation,
@@ -68,6 +69,12 @@ export const createDocument = mutation({
      * instead of the default designed starter email.
      */
     shouldSeedSample: v.optional(v.boolean()),
+    /**
+     * Seed a childless root (no sections) instead of the starter email —
+     * the AI draft-generation flow composes the whole email from blank, so
+     * starter sections would only pollute the generated result.
+     */
+    shouldSeedEmpty: v.optional(v.boolean()),
   },
   returns: v.object({ documentId: v.id("documents"), canvasId: v.id("canvases") }),
   handler: async (ctx, args) => {
@@ -87,9 +94,15 @@ export const createDocument = mutation({
       }
     }
     // Every new document/draft opens on the designed starter email (Resend-
-    // welcome-style; see createStarterDocument) — never empty. The sample is
-    // the deterministic every-block-type fixture, kept for tests and demos.
-    const doc = args.shouldSeedSample === true ? createSampleDocument() : createStarterDocument();
+    // welcome-style; see createStarterDocument) — never empty. Two exceptions:
+    // the deterministic every-block-type sample (tests/demos) and the blank
+    // seed the AI draft-generation flow composes into.
+    const doc =
+      args.shouldSeedSample === true
+        ? createSampleDocument()
+        : args.shouldSeedEmpty === true
+          ? createEmptyDocument()
+          : createStarterDocument();
     const documentId = await ctx.db.insert("documents", {
       canvasId,
       sessionId: args.sessionId,
