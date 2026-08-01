@@ -114,6 +114,199 @@ export const generateImageCommandSchema = z
 
 export type GenerateImageCommand = z.infer<typeof generateImageCommandSchema>;
 
+// --- openPanel -----------------------------------------------------------------
+
+/**
+ * The UI surfaces the agent can open on the user's behalf — one enum value per
+ * named surface in the studio (dialogs, the history sheet, the right-rail
+ * tabs). The client's ui-surfaces module store maps each value to the actual
+ * open mechanism; extend BOTH ends when adding a surface.
+ */
+export const UI_PANELS = [
+  "theme",
+  "brand-kit",
+  "library",
+  "agents",
+  "recommendations",
+  "history",
+  "blocks",
+  "properties",
+  "send-test",
+] as const;
+
+export const uiPanelSchema = z
+  .enum(UI_PANELS)
+  .describe(
+    'UI surface to open: "theme" (theme picker), "brand-kit", "library" (saved sections + images), ' +
+      '"agents" (advisory persona picker), "recommendations" (persona recommendations history), ' +
+      '"history" (version history), "blocks" (add-blocks tab), "properties" (selected-block properties tab), ' +
+      'or "send-test" (send-test-email dialog).',
+  );
+
+export type UiPanel = z.infer<typeof uiPanelSchema>;
+
+export const openPanelInputSchema = z
+  .strictObject({
+    panel: uiPanelSchema,
+  })
+  .describe("Opens one of the editor's UI panels or dialogs for the user.");
+
+export type OpenPanelInput = z.infer<typeof openPanelInputSchema>;
+
+export const openPanelCommandSchema = z
+  .strictObject({
+    type: z.literal("openPanel").describe("Command discriminator."),
+    panel: uiPanelSchema,
+  })
+  .describe("Client command: open a named editor UI surface.");
+
+export type OpenPanelCommand = z.infer<typeof openPanelCommandSchema>;
+
+// --- undo / redo ---------------------------------------------------------------
+
+export const undoInputSchema = z
+  .strictObject({})
+  .describe("Undoes the most recent change to the email document, exactly like the toolbar's Undo button.");
+
+export type UndoInput = z.infer<typeof undoInputSchema>;
+
+export const undoCommandSchema = z
+  .strictObject({
+    type: z.literal("undo").describe("Command discriminator."),
+  })
+  .describe("Client command: undo the most recent document change (the toolbar Undo path).");
+
+export type UndoCommand = z.infer<typeof undoCommandSchema>;
+
+export const redoInputSchema = z
+  .strictObject({})
+  .describe("Reapplies the most recently undone change, exactly like the toolbar's Redo button.");
+
+export type RedoInput = z.infer<typeof redoInputSchema>;
+
+export const redoCommandSchema = z
+  .strictObject({
+    type: z.literal("redo").describe("Command discriminator."),
+  })
+  .describe("Client command: redo the most recently undone change (the toolbar Redo path).");
+
+export type RedoCommand = z.infer<typeof redoCommandSchema>;
+
+// --- goToVersion ---------------------------------------------------------------
+
+export const goToVersionInputSchema = z
+  .strictObject({
+    version: z
+      .int()
+      .min(0)
+      .describe("The version number to restore, as shown in the version history panel."),
+  })
+  .describe(
+    "Restores the email document to an earlier version from the version history. " +
+      "The restore itself becomes a new history entry (nothing is lost). Requires human approval.",
+  );
+
+export type GoToVersionInput = z.infer<typeof goToVersionInputSchema>;
+
+export const goToVersionCommandSchema = z
+  .strictObject({
+    type: z.literal("goToVersion").describe("Command discriminator."),
+    version: z.int().min(0).describe("The version number being restored."),
+  })
+  .describe("Client command: restore the document to a numbered history version.");
+
+export type GoToVersionCommand = z.infer<typeof goToVersionCommandSchema>;
+
+// --- createDraft ---------------------------------------------------------------
+
+/** Ceiling on drafts created by one createDraft call. */
+export const MAX_CREATE_DRAFT_COUNT = 5;
+
+export const createDraftInputSchema = z
+  .strictObject({
+    count: z
+      .int()
+      .min(1)
+      .max(MAX_CREATE_DRAFT_COUNT)
+      .optional()
+      .describe(`How many drafts to create (default 1, max ${MAX_CREATE_DRAFT_COUNT}).`),
+  })
+  .describe(
+    "Creates one or more new starter drafts in the drafts bar alongside the current one. " +
+      "The user's current draft stays active; the new drafts appear ready to open.",
+  );
+
+export type CreateDraftInput = z.infer<typeof createDraftInputSchema>;
+
+export const createDraftCommandSchema = z
+  .strictObject({
+    type: z.literal("createDraft").describe("Command discriminator."),
+    count: z
+      .int()
+      .min(1)
+      .max(MAX_CREATE_DRAFT_COUNT)
+      .describe("Resolved number of drafts to create."),
+  })
+  .describe("Client command: add new starter drafts to the drafts bar.");
+
+export type CreateDraftCommand = z.infer<typeof createDraftCommandSchema>;
+
+// --- createPersona -------------------------------------------------------------
+
+export const PERSONA_NAME_MAX_LENGTH = 60;
+export const PERSONA_DESCRIPTION_MAX_LENGTH = 300;
+export const PERSONA_BEHAVIOR_MAX_LENGTH = 4000;
+
+export const createPersonaInputSchema = z
+  .strictObject({
+    name: z
+      .string()
+      .min(1)
+      .max(PERSONA_NAME_MAX_LENGTH)
+      .describe('Short display name for the persona (e.g. "Accessibility Advocate").'),
+    description: z
+      .string()
+      .min(1)
+      .max(PERSONA_DESCRIPTION_MAX_LENGTH)
+      .describe("One sentence describing what the persona reviews or advocates for."),
+    behavior: z
+      .string()
+      .min(1)
+      .max(PERSONA_BEHAVIOR_MAX_LENGTH)
+      .optional()
+      .describe(
+        "Detailed behavior instructions: what the persona watches for in the email and how it phrases its recommendations. Defaults to the description.",
+      ),
+  })
+  .describe(
+    "Creates a new advisory persona (a specialized reviewer agent) for this session. " +
+      "The persona reviews the email as the user works and leaves recommendations — it can never edit the document.",
+  );
+
+export type CreatePersonaInput = z.infer<typeof createPersonaInputSchema>;
+
+/**
+ * Like generateImage, this command travels in two states: `run` produces the
+ * UNFULFILLED intent (name/description/behavior); the app-side executor
+ * creates the session-owned persona row (server-enforced advisory capability
+ * + quota) and streams the FULFILLED command with the new `slug`, which the
+ * client uses to enable the persona locally.
+ */
+export const createPersonaCommandSchema = z
+  .strictObject({
+    type: z.literal("createPersona").describe("Command discriminator."),
+    name: z.string().min(1).describe("The persona's display name."),
+    description: z.string().min(1).describe("What the persona reviews or advocates for."),
+    behavior: z.string().optional().describe("Detailed behavior instructions, when provided."),
+    slug: z
+      .string()
+      .optional()
+      .describe("The created persona's slug (present once the executor has created it)."),
+  })
+  .describe("Client command: a created advisory persona (slug present once fulfilled).");
+
+export type CreatePersonaCommand = z.infer<typeof createPersonaCommandSchema>;
+
 // --- Union -------------------------------------------------------------------
 
 /** Any editor command — the versioned Zod contract for the data-parts channel. */
@@ -122,6 +315,12 @@ export const editorCommandSchema = z
     showPreviewCommandSchema,
     sendTestEmailCommandSchema,
     generateImageCommandSchema,
+    openPanelCommandSchema,
+    undoCommandSchema,
+    redoCommandSchema,
+    goToVersionCommandSchema,
+    createDraftCommandSchema,
+    createPersonaCommandSchema,
   ])
   .describe("Any editor UI command, discriminated by its type field.");
 

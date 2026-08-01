@@ -1,4 +1,6 @@
 import {
+  contentEmailActions,
+  createActionRegistry,
   createSampleDocument,
   emailActionRegistry,
   SECTION_TEMPLATES,
@@ -92,6 +94,26 @@ describe("buildToolGuidance (layer b — cacheable per registry)", () => {
 
   it("omits the getBlockDetails hint until that tool is registered", () => {
     expect(guidance).not.toContain("getBlockDetails");
+  });
+
+  it("summarizes capability categories when the agent-parity UI actions are registered", () => {
+    expect(guidance).toContain("## What you can do (capability summary)");
+    // Every capability CATEGORY is named in plain language (the "what can you
+    // do?" answer): document edits, images, test sends, preview, UI surfaces,
+    // history, drafts, personas.
+    expect(guidance).toContain("generate AI images");
+    expect(guidance).toContain("send a test email (with the user's approval)");
+    expect(guidance).toContain("open the editor's panels");
+    expect(guidance).toContain("undo and redo changes");
+    expect(guidance).toContain("restore an earlier version");
+    expect(guidance).toContain("create new drafts");
+    expect(guidance).toContain("create advisory reviewer personas");
+    expect(guidance).toContain("never list internal tool names");
+  });
+
+  it("omits the capability summary for a registry without the parity actions", () => {
+    const contentOnlyGuidance = buildToolGuidance(createActionRegistry([...contentEmailActions]));
+    expect(contentOnlyGuidance).not.toContain("## What you can do");
   });
 
   it("lists the compact section catalog: one id + useWhen line per template", () => {

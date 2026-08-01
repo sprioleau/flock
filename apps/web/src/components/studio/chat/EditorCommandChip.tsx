@@ -1,6 +1,17 @@
 "use client";
 
-import { ImageIcon, MailIcon, MonitorIcon, SmartphoneIcon } from "lucide-react";
+import {
+  BotIcon,
+  FilePlusIcon,
+  HistoryIcon,
+  ImageIcon,
+  MailIcon,
+  MonitorIcon,
+  PanelRightOpenIcon,
+  RedoIcon,
+  SmartphoneIcon,
+  UndoIcon,
+} from "lucide-react";
 import type { EditorCommandDataPart } from "@/lib/chat-contract";
 
 /**
@@ -9,6 +20,19 @@ import type { EditorCommandDataPart } from "@/lib/chat-contract";
  */
 
 const MAX_PROMPT_CHIP_LENGTH = 60;
+
+/** openPanel enum value → the human surface name in the confirmation chip. */
+const PANEL_CHIP_LABELS: Readonly<Record<string, string>> = {
+  theme: "theme picker",
+  "brand-kit": "brand kit",
+  library: "library",
+  agents: "agent personas",
+  recommendations: "recommendations history",
+  history: "version history",
+  blocks: "blocks tab",
+  properties: "properties tab",
+  "send-test": "send-test dialog",
+};
 
 function toChipContent(command: EditorCommandDataPart["command"]): {
   icon: React.ReactNode;
@@ -37,6 +61,30 @@ function toChipContent(command: EditorCommandDataPart["command"]): {
         label: `Generated image: “${truncatedPrompt}”`,
       };
     }
+    case "openPanel":
+      return {
+        icon: <PanelRightOpenIcon className="size-3" />,
+        label: `Opened the ${PANEL_CHIP_LABELS[command.panel] ?? command.panel}`,
+      };
+    case "undo":
+      return { icon: <UndoIcon className="size-3" />, label: "Undid the last change" };
+    case "redo":
+      return { icon: <RedoIcon className="size-3" />, label: "Redid the last change" };
+    case "goToVersion":
+      return {
+        icon: <HistoryIcon className="size-3" />,
+        label: `Restored version ${command.version}`,
+      };
+    case "createDraft":
+      return {
+        icon: <FilePlusIcon className="size-3" />,
+        label: command.count === 1 ? "Created a new draft" : `Created ${command.count} new drafts`,
+      };
+    case "createPersona":
+      return {
+        icon: <BotIcon className="size-3" />,
+        label: `Created persona “${command.name}”`,
+      };
   }
 }
 

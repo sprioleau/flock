@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { useEditorStore } from "@/lib/editor-store";
 import { getAncestorIds } from "@/lib/get-ancestor-ids";
+import { useUiSurfaceOpenRequest } from "@/lib/ui-surfaces";
 import { cn } from "@/lib/utils";
 import { AddBlocksPanel } from "./add-blocks/AddBlocksPanel";
 import { useCanvasDragStore } from "./dnd/drag-drop-store";
@@ -46,6 +47,15 @@ export function PropertyPanelSlot() {
   const setIsExpanded = (nextIsExpanded: boolean): void => {
     updatePanelPreferences({ isRightRailExpanded: nextIsExpanded });
   };
+
+  // Agent-parity: openPanel("blocks"/"properties") activates the tab AND
+  // expands the rail — "open the blocks tab" must end with it on screen.
+  const openRailTab = (tab: RightRailTab): void => {
+    setActiveTab(tab);
+    setIsExpanded(true);
+  };
+  useUiSurfaceOpenRequest("blocks", () => openRailTab("blocks"));
+  useUiSurfaceOpenRequest("properties", () => openRailTab("properties"));
 
   // Adjust-state-during-render (the React "derive from props" pattern, no
   // effect): a NEW selection flips the rail to Properties, and a DESELECT

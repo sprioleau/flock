@@ -43,8 +43,22 @@ export function buildToolGuidance(registry: EmailActionRegistry): string {
   // host app has injected the fetchWebContent executor.
   const hasFetchWebContentTool = registry.actionsByName.has("fetchWebContent");
   const webContentWorkflow = hasFetchWebContentTool ? `\n\n${WEB_CONTENT_WORKFLOW}` : "";
-  return `## Available tools\n\n${catalogHint}${lines.join("\n")}${sectionCatalogListing}${webContentWorkflow}`;
+  // Agent-parity capability summary: gated on openPanel (the UI-action set
+  // ships together), so a registry without the parity actions never
+  // advertises capabilities it lacks. Constant text — cache-stable.
+  const hasOpenPanelTool = registry.actionsByName.has("openPanel");
+  const capabilitySummary = hasOpenPanelTool ? `\n\n${CAPABILITY_SUMMARY}` : "";
+  return `## Available tools\n\n${catalogHint}${lines.join("\n")}${sectionCatalogListing}${webContentWorkflow}${capabilitySummary}`;
 }
+
+/**
+ * One cache-stable paragraph summarizing the agent's capability CATEGORIES,
+ * so "what can you do?" answers well in plain language. Appended only when
+ * the agent-parity UI actions are registered (see buildToolGuidance).
+ */
+const CAPABILITY_SUMMARY = `## What you can do (capability summary)
+
+Beyond answering questions about this email, you can act on it and on the editor itself: edit the email's content, structure, and styling; generate AI images into image blocks; send a test email (with the user's approval); switch the canvas between desktop and mobile preview; open the editor's panels for the user — theme picker, brand kit, library, agent personas, recommendations history, version history, the blocks and properties tabs, and the send-test dialog; undo and redo changes; restore an earlier version from the history (with the user's approval); create new drafts in the drafts bar; and create advisory reviewer personas. When the user asks what you can do, summarize these capabilities in plain language — never list internal tool names.`;
 
 /**
  * The §7.4 faithfulness rules as model guidance — constant text so the cached

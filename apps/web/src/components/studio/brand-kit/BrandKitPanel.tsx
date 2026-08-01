@@ -9,6 +9,12 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
+import {
   Dialog,
   DialogContent,
   DialogDescription,
@@ -19,6 +25,7 @@ import {
 import type { BrandKit, BrandKitAssetKind, BrandKitGenerateResult } from "@/lib/brand-kit";
 import { SOCIAL_PLATFORM_LABELS, type SocialPlatform } from "@/lib/social-links";
 import { useEditorStore } from "@/lib/editor-store";
+import { useUiSurfaceOpenRequest } from "@/lib/ui-surfaces";
 
 /** Chip label for a stored platform key (tolerates unknown/legacy keys). */
 function getSocialPlatformLabel(platform: string): string {
@@ -83,6 +90,10 @@ export function BrandKitPanel() {
       setAssetErrorMessage(null);
     }
   };
+
+  // Agent-parity: the chat's openPanel("brand-kit") command opens this dialog
+  // through the same reset-on-open path as a human click.
+  useUiSurfaceOpenRequest("brand-kit", () => handleOpenChange(true));
 
   const generateFromUrl = async (): Promise<void> => {
     const url = websiteUrl.trim();
@@ -235,23 +246,28 @@ export function BrandKitPanel() {
 
   return (
     <Dialog open={isOpen} onOpenChange={handleOpenChange}>
-      <DialogTrigger
-        render={
-          <Button
-            variant="outline"
-            size="sm"
-            className="gap-1.5"
-            aria-label="Brand kit"
-            title="Brand kit"
+      {/* Tooltip + dialog trigger on ONE element (base-ui render composition)
+          — below xl the trigger is icon-only, so hover carries the label. */}
+      <TooltipProvider>
+        <Tooltip>
+          <TooltipTrigger
+            render={
+              <DialogTrigger
+                render={
+                  <Button variant="outline" size="sm" className="gap-1.5" aria-label="Brand kit" />
+                }
+                data-testid="brand-kit-open-button"
+              >
+                <PaletteIcon className="size-4" />
+                {/* Narrow-width degradation: icon-only below xl (the header
+                    must never crowd into the property panel). */}
+                <span className="hidden xl:inline">Brand kit</span>
+              </DialogTrigger>
+            }
           />
-        }
-        data-testid="brand-kit-open-button"
-      >
-        <PaletteIcon className="size-4" />
-        {/* Narrow-width degradation: icon-only below xl (the header must
-            never crowd into the property panel). */}
-        <span className="hidden xl:inline">Brand kit</span>
-      </DialogTrigger>
+          <TooltipContent side="bottom">Brand kit</TooltipContent>
+        </Tooltip>
+      </TooltipProvider>
       <DialogContent className="sm:max-w-xl" data-testid="brand-kit-panel">
         <DialogHeader>
           <DialogTitle>Brand kit</DialogTitle>

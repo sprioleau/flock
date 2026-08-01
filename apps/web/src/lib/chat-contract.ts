@@ -17,9 +17,15 @@ import {
   type AddSectionOperation,
   type ApplyThemeOperation,
   type BlockId,
+  type CreateDraftInput,
+  type CreatePersonaInput,
   type EditorCommand,
+  type GoToVersionInput,
   type MoveBlockOperation,
+  type OpenPanelInput,
   type Operation,
+  type RedoInput,
+  type UndoInput,
   type GenerateImageInput,
   type RemoveBlockOperation,
   type ReorderChildrenOperation,
@@ -185,6 +191,12 @@ export type TandemChatTools = {
   showPreview: { input: ShowPreviewInput; output: EditorToolOutput };
   sendTestEmail: { input: SendTestEmailInput; output: EditorToolOutput };
   generateImage: { input: GenerateImageInput; output: EditorToolOutput };
+  openPanel: { input: OpenPanelInput; output: EditorToolOutput };
+  undo: { input: UndoInput; output: EditorToolOutput };
+  redo: { input: RedoInput; output: EditorToolOutput };
+  goToVersion: { input: GoToVersionInput; output: EditorToolOutput };
+  createDraft: { input: CreateDraftInput; output: EditorToolOutput };
+  createPersona: { input: CreatePersonaInput; output: EditorToolOutput };
   getBlockDetails: { input: { blockId: BlockId }; output: GetBlockDetailsToolOutput };
   fetchWebContent: { input: { url: string }; output: FetchWebContentToolOutput };
 };

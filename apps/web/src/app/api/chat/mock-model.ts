@@ -1,8 +1,15 @@
 import type {
   BlockId,
+  CreateDraftInput,
+  CreatePersonaInput,
+  GoToVersionInput,
+  OpenPanelInput,
+  RedoInput,
   ScaffoldSectionInput,
   SendTestEmailInput,
   ShowPreviewInput,
+  UiPanel,
+  UndoInput,
   UpdateBlockPropertiesOperation,
 } from "@tandem/email-sdk";
 import { simulateReadableStream } from "ai";
@@ -72,9 +79,42 @@ interface MockToolCallPlan {
     | SendTestEmailInput
     | ScaffoldSectionInput
     | UpdateBlockPropertiesOperation
+    | OpenPanelInput
+    | UndoInput
+    | RedoInput
+    | GoToVersionInput
+    | CreateDraftInput
+    | CreatePersonaInput
     | { url: string };
   acknowledgementText: string;
 }
+
+/**
+ * openPanel keyword table for the scripted mock: first phrase found in the
+ * user message wins (order matters — "recommendations history" must match
+ * before "history"). Names mirror the human words for each surface.
+ */
+const MOCK_PANEL_KEYWORDS: readonly { pattern: RegExp; panel: UiPanel; label: string }[] = [
+  { pattern: /\btheme\b/i, panel: "theme", label: "theme picker" },
+  { pattern: /\bbrand\b/i, panel: "brand-kit", label: "brand kit" },
+  { pattern: /\blibrary|content studio\b/i, panel: "library", label: "library" },
+  { pattern: /\bpersonas?\b|\bagents?\b/i, panel: "agents", label: "agent personas" },
+  { pattern: /\brecommendations?\b/i, panel: "recommendations", label: "recommendations history" },
+  { pattern: /\bhistory\b|\bversions?\b/i, panel: "history", label: "version history" },
+  { pattern: /\bblocks?\b/i, panel: "blocks", label: "blocks tab" },
+  { pattern: /\bpropert/i, panel: "properties", label: "properties tab" },
+  { pattern: /\bsend[ -]?test\b|\btest email\b/i, panel: "send-test", label: "send-test dialog" },
+];
+
+/** English count words the createDraft script understands, beyond digits. */
+const MOCK_COUNT_WORDS: Readonly<Record<string, number>> = {
+  one: 1,
+  a: 1,
+  two: 2,
+  three: 3,
+  four: 4,
+  five: 5,
+};
 
 /** Catalog templateIds the mock recognizes by keyword in the user message. */
 const MOCK_SCAFFOLD_TEMPLATE_IDS = [
@@ -105,6 +145,71 @@ function planMockToolCall({
         properties: { label: "Addressed reviewer feedback" },
       },
       acknowledgementText: "Addressing the reviewer feedback on the canvas now.",
+    };
+  }
+  // Agent-parity scripts (checked before the preview/test-email intents so
+  // "open the test email dialog" opens the dialog rather than sending):
+  const hasOpenIntent = /\bopen\b|\bshow me\b/i.test(lastUserText);
+  if (hasOpenIntent) {
+    const panelMatch = MOCK_PANEL_KEYWORDS.find(({ pattern }) => pattern.test(lastUserText));
+    if (panelMatch !== undefined) {
+      return {
+        toolName: "openPanel",
+        input: { panel: panelMatch.panel },
+        acknowledgementText: `Opening the ${panelMatch.label} for you.`,
+      };
+    }
+  }
+  if (/\bundo\b/i.test(lastUserText)) {
+    return {
+      toolName: "undo",
+      input: {},
+      acknowledgementText: "Undoing the last change.",
+    };
+  }
+  if (/\bredo\b/i.test(lastUserText)) {
+    return {
+      toolName: "redo",
+      input: {},
+      acknowledgementText: "Redoing the change.",
+    };
+  }
+  const versionMatch = lastUserText.match(
+    /\b(?:go (?:back )?to|restore|roll ?back(?: to)?)\b[\s\S]*\bversion\s*#?(\d+)/i,
+  );
+  if (versionMatch !== null) {
+    const version = Number(versionMatch[1]);
+    return {
+      toolName: "goToVersion",
+      input: { version },
+      acknowledgementText: `Restoring version ${version} — approve to continue.`,
+    };
+  }
+  const draftMatch = lastUserText.match(/\b(?:create|make|start|new)\b[\s\S]*?\b(?:(\d+)|(\w+))?\s*(?:new\s+|blank\s+)?drafts?\b/i);
+  if (draftMatch !== null) {
+    const count =
+      draftMatch[1] !== undefined
+        ? Number(draftMatch[1])
+        : (MOCK_COUNT_WORDS[draftMatch[2]?.toLowerCase() ?? ""] ?? 1);
+    return {
+      toolName: "createDraft",
+      input: count === 1 ? {} : { count },
+      acknowledgementText:
+        count === 1 ? "Creating a new draft." : `Creating ${count} new drafts.`,
+    };
+  }
+  if (/\b(?:create|make|add)\b[\s\S]*\bpersona\b/i.test(lastUserText)) {
+    const name =
+      lastUserText.match(/persona\s+(?:named|called)\s+["“']?([^"”'.,]+)["”']?/i)?.[1]?.trim() ??
+      "Accessibility Advocate";
+    return {
+      toolName: "createPersona",
+      input: {
+        name,
+        description: `Reviews the email as a ${name.toLowerCase()}.`,
+        behavior: `You are the ${name}. Review each change to the email and leave short, specific recommendations from your specialty's point of view.`,
+      },
+      acknowledgementText: `Creating the "${name}" persona.`,
     };
   }
   const hasPreviewIntent = /\b(preview|mobile|desktop|viewport)\b/i.test(lastUserText);

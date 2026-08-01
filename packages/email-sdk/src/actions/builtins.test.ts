@@ -4,11 +4,17 @@ import { OPERATION_NAMES } from "../operations/ops";
 import { createSampleDocument } from "../store/document";
 import {
   contentEmailActions,
+  createDraftAction,
+  createPersonaAction,
   editorEmailActions,
   emailActionRegistry,
   generateImageAction,
+  goToVersionAction,
+  openPanelAction,
+  redoAction,
   sendTestEmailAction,
   showPreviewAction,
+  undoAction,
 } from "./builtins";
 import type { ActionContext } from "./context";
 import {
@@ -56,43 +62,76 @@ describe("built-in content actions", () => {
 });
 
 describe("built-in editor actions", () => {
-  it("ships the two §3.4 stubs plus generateImage", () => {
+  it("ships the §3.4 stubs, generateImage, and the agent-parity UI actions", () => {
     expect(editorEmailActions.map((action) => action.name)).toEqual([
       "showPreview",
       "sendTestEmail",
       "generateImage",
+      "openPanel",
+      "undo",
+      "redo",
+      "goToVersion",
+      "createDraft",
+      "createPersona",
     ]);
-    expect(showPreviewAction.kind).toBe("editor");
-    expect(sendTestEmailAction.kind).toBe("editor");
-    expect(generateImageAction.kind).toBe("editor");
+    for (const action of editorEmailActions) {
+      expect(action.kind).toBe("editor");
+    }
   });
 
-  it("gates sendTestEmail behind approval, but not showPreview or generateImage", () => {
-    expect(sendTestEmailAction.needsApproval).toBe(true);
-    expect(showPreviewAction.needsApproval).toBe(false);
-    expect(generateImageAction.needsApproval).toBe(false);
+  it("gates exactly sendTestEmail and goToVersion behind approval", () => {
+    const approvalGatedNames = editorEmailActions
+      .filter((action) => action.needsApproval !== false)
+      .map((action) => action.name);
+    expect(approvalGatedNames.sort()).toEqual(["goToVersion", "sendTestEmail"]);
   });
 
   it("keeps generateImage sequential (one billed model call at a time)", () => {
     expect(generateImageAction.parallelSafe).toBe(false);
     expect(generateImageAction.readOnly).toBe(false);
   });
+
+  it("keeps every agent-parity UI action sequential and non-readOnly", () => {
+    const parityActions = [
+      openPanelAction,
+      undoAction,
+      redoAction,
+      goToVersionAction,
+      createDraftAction,
+      createPersonaAction,
+    ];
+    for (const action of parityActions) {
+      expect(action.parallelSafe).toBe(false);
+      expect(action.readOnly).toBe(false);
+    }
+  });
 });
 
+/** 11 op-mirroring content + styleTextSpan + scaffoldSection + 9 editor actions. */
+const BUILTIN_ACTION_COUNT = 22;
+
 describe("emailActionRegistry", () => {
-  it("registers all 16 built-ins and looks them up by name", () => {
-    expect(emailActionRegistry.actions).toHaveLength(16);
+  it(`registers all ${BUILTIN_ACTION_COUNT} built-ins and looks them up by name`, () => {
+    expect(emailActionRegistry.actions).toHaveLength(BUILTIN_ACTION_COUNT);
     expect(getAction(emailActionRegistry, "updateText")?.kind).toBe("content");
     expect(getAction(emailActionRegistry, "styleTextSpan")?.kind).toBe("content");
     expect(getAction(emailActionRegistry, "scaffoldSection")?.kind).toBe("content");
     expect(getAction(emailActionRegistry, "sendTestEmail")?.kind).toBe("editor");
     expect(getAction(emailActionRegistry, "generateImage")?.kind).toBe("editor");
+    expect(getAction(emailActionRegistry, "openPanel")?.kind).toBe("editor");
+    expect(getAction(emailActionRegistry, "undo")?.kind).toBe("editor");
+    expect(getAction(emailActionRegistry, "redo")?.kind).toBe("editor");
+    expect(getAction(emailActionRegistry, "goToVersion")?.kind).toBe("editor");
+    expect(getAction(emailActionRegistry, "createDraft")?.kind).toBe("editor");
+    expect(getAction(emailActionRegistry, "createPersona")?.kind).toBe("editor");
   });
 
   it("generates a tool definition for every action", () => {
     const definitions = toAISDKToolDefinitions(emailActionRegistry);
-    expect(definitions).toHaveLength(16);
-    expect(new Set(definitions.map((definition) => definition.name)).size).toBe(16);
+    expect(definitions).toHaveLength(BUILTIN_ACTION_COUNT);
+    expect(new Set(definitions.map((definition) => definition.name)).size).toBe(
+      BUILTIN_ACTION_COUNT,
+    );
   });
 
   it("dispatches a content action end to end and its inverse restores the doc", () => {
@@ -203,5 +242,109 @@ describe("emailActionRegistry", () => {
     if (withEmptyPrompt.isOk) return;
     expect(withEmptyPrompt.failureKind).toBe("retryable");
     expect(withEmptyPrompt.errors[0]!.code).toBe("op_validation_failed");
+  });
+
+  it("dispatches openPanel into a typed command and rejects unknown panels", () => {
+    const opened = dispatchEditorAction({
+      registry: emailActionRegistry,
+      name: "openPanel",
+      input: { panel: "theme" },
+      context: agentContext,
+    });
+    expect(opened.isOk).toBe(true);
+    if (!opened.isOk) return;
+    expect(opened.command).toEqual({ type: "openPanel", panel: "theme" });
+    expect(opened.isApprovalRequired).toBe(false);
+
+    const unknownPanel = dispatchEditorAction({
+      registry: emailActionRegistry,
+      name: "openPanel",
+      input: { panel: "settings" },
+      context: agentContext,
+    });
+    expect(unknownPanel.isOk).toBe(false);
+    if (unknownPanel.isOk) return;
+    expect(unknownPanel.failureKind).toBe("retryable");
+    expect(unknownPanel.errors[0]!.code).toBe("op_validation_failed");
+  });
+
+  it("dispatches undo/redo (empty input) into their typed commands", () => {
+    const undone = dispatchEditorAction({
+      registry: emailActionRegistry,
+      name: "undo",
+      input: {},
+      context: agentContext,
+    });
+    expect(undone.isOk).toBe(true);
+    if (!undone.isOk) return;
+    expect(undone.command).toEqual({ type: "undo" });
+
+    const redone = dispatchEditorAction({
+      registry: emailActionRegistry,
+      name: "redo",
+      input: {},
+      context: agentContext,
+    });
+    expect(redone.isOk).toBe(true);
+    if (!redone.isOk) return;
+    expect(redone.command).toEqual({ type: "redo" });
+  });
+
+  it("dispatches goToVersion with the approval gate resolved true", () => {
+    const result = dispatchEditorAction({
+      registry: emailActionRegistry,
+      name: "goToVersion",
+      input: { version: 12 },
+      context: agentContext,
+    });
+    expect(result.isOk).toBe(true);
+    if (!result.isOk) return;
+    expect(result.command).toEqual({ type: "goToVersion", version: 12 });
+    expect(result.isApprovalRequired).toBe(true);
+  });
+
+  it("resolves createDraft's count (default 1) and caps it at 5", () => {
+    const withDefault = dispatchEditorAction({
+      registry: emailActionRegistry,
+      name: "createDraft",
+      input: {},
+      context: agentContext,
+    });
+    expect(withDefault.isOk).toBe(true);
+    if (!withDefault.isOk) return;
+    expect(withDefault.command).toEqual({ type: "createDraft", count: 1 });
+
+    const overCap = dispatchEditorAction({
+      registry: emailActionRegistry,
+      name: "createDraft",
+      input: { count: 9 },
+      context: agentContext,
+    });
+    expect(overCap.isOk).toBe(false);
+    if (overCap.isOk) return;
+    expect(overCap.failureKind).toBe("retryable");
+  });
+
+  it("dispatches createPersona into the unfulfilled intent command (no slug yet)", () => {
+    const result = dispatchEditorAction({
+      registry: emailActionRegistry,
+      name: "createPersona",
+      input: {
+        name: "Accessibility Advocate",
+        description: "Reviews the email for accessibility problems.",
+        behavior: "Watch for missing alt text and low-contrast color pairs.",
+      },
+      context: agentContext,
+    });
+    expect(result.isOk).toBe(true);
+    if (!result.isOk) return;
+    // No slug yet — the app executor fulfills it after the Convex insert.
+    expect(result.command).toEqual({
+      type: "createPersona",
+      name: "Accessibility Advocate",
+      description: "Reviews the email for accessibility problems.",
+      behavior: "Watch for missing alt text and low-contrast color pairs.",
+    });
+    expect(result.isApprovalRequired).toBe(false);
   });
 });

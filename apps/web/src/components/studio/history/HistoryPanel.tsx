@@ -13,7 +13,14 @@ import {
   SheetTitle,
   SheetTrigger,
 } from "@/components/ui/sheet";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { useEditorStore } from "@/lib/editor-store";
+import { useUiSurfaceOpenRequest } from "@/lib/ui-surfaces";
 import { cn } from "@/lib/utils";
 import {
   buildHistoryGroups,
@@ -90,6 +97,10 @@ export function HistoryPanel() {
     }
   };
 
+  // Agent-parity: the chat's openPanel("history") command opens this drawer
+  // through the same anchor-on-open path as a human click.
+  useUiSurfaceOpenRequest("history", () => handleOpenChange(true));
+
   // The live newest-first feed: fixed anchor, reactive — new ops stream in.
   const headPage = useQuery(
     api.documents.getOperations,
@@ -132,13 +143,24 @@ export function HistoryPanel() {
 
   return (
     <Sheet open={isOpen} onOpenChange={handleOpenChange} modal={false}>
-      <SheetTrigger
-        render={<Button variant="outline" size="sm" className="gap-1.5" />}
-        data-testid="history-open-button"
-      >
-        <ClockIcon className="size-4" />
-        History
-      </SheetTrigger>
+      {/* Tooltip + sheet trigger on ONE element (base-ui render composition)
+          — full header hover coverage (item 32). */}
+      <TooltipProvider>
+        <Tooltip>
+          <TooltipTrigger
+            render={
+              <SheetTrigger
+                render={<Button variant="outline" size="sm" className="gap-1.5" />}
+                data-testid="history-open-button"
+              >
+                <ClockIcon className="size-4" />
+                History
+              </SheetTrigger>
+            }
+          />
+          <TooltipContent side="bottom">Edit history &amp; versions</TooltipContent>
+        </Tooltip>
+      </TooltipProvider>
       <SheetContent
         side="right"
         hasOverlay={false}

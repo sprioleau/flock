@@ -14,8 +14,15 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
 import { useEditorStore } from "@/lib/editor-store";
+import { useUiSurfaceOpenRequest } from "@/lib/ui-surfaces";
 import { scrollBlockIntoView } from "../add-blocks/scroll-block-into-view";
 import { formatRelativeTime } from "../history/history-grouping";
 import { buildLibraryInsertPlan } from "./library-insert";
@@ -91,6 +98,10 @@ export function LibraryPanel() {
     }
   };
 
+  // Agent-parity: the chat's openPanel("library") command opens this dialog
+  // through the same reset-on-open path as a human click.
+  useUiSurfaceOpenRequest("library", () => handleOpenChange(true));
+
   const insertAsset = (asset: LibraryAsset): void => {
     const editorStore = useEditorStore.getState();
     const plan = buildLibraryInsertPlan({
@@ -115,22 +126,28 @@ export function LibraryPanel() {
 
   return (
     <Dialog open={isOpen} onOpenChange={handleOpenChange}>
-      <DialogTrigger
-        render={
-          <Button
-            variant="outline"
-            size="sm"
-            className="gap-1.5"
-            aria-label="Library"
-            title="Library"
+      {/* Tooltip + dialog trigger on ONE element (base-ui render composition)
+          — below xl the trigger is icon-only, so hover carries the label. */}
+      <TooltipProvider>
+        <Tooltip>
+          <TooltipTrigger
+            render={
+              <DialogTrigger
+                render={
+                  <Button variant="outline" size="sm" className="gap-1.5" aria-label="Library" />
+                }
+                data-testid="library-open-button"
+              >
+                <ImagesIcon className="size-4" />
+                {/* Narrow-width degradation: icon-only below xl, matching
+                    Brand kit. */}
+                <span className="hidden xl:inline">Library</span>
+              </DialogTrigger>
+            }
           />
-        }
-        data-testid="library-open-button"
-      >
-        <ImagesIcon className="size-4" />
-        {/* Narrow-width degradation: icon-only below xl, matching Brand kit. */}
-        <span className="hidden xl:inline">Library</span>
-      </DialogTrigger>
+          <TooltipContent side="bottom">Library</TooltipContent>
+        </Tooltip>
+      </TooltipProvider>
       <DialogContent className="sm:max-w-xl" data-testid="library-panel">
         <DialogHeader>
           <DialogTitle>Library</DialogTitle>

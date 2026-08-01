@@ -16,12 +16,24 @@ import {
 } from "../operations/ops";
 import { defineEmailAction, type ContentEmailAction } from "./define";
 import {
+  createDraftInputSchema,
+  createPersonaInputSchema,
   generateImageInputSchema,
+  goToVersionInputSchema,
+  openPanelInputSchema,
+  redoInputSchema,
   sendTestEmailInputSchema,
   showPreviewInputSchema,
+  undoInputSchema,
+  type CreateDraftCommand,
+  type CreatePersonaCommand,
   type GenerateImageCommand,
+  type GoToVersionCommand,
+  type OpenPanelCommand,
+  type RedoCommand,
   type SendTestEmailCommand,
   type ShowPreviewCommand,
+  type UndoCommand,
 } from "./editor-commands";
 import { createActionRegistry } from "./registry";
 import { scaffoldSectionAction } from "./scaffold-section";
@@ -210,11 +222,114 @@ export const generateImageAction = defineEmailAction({
   }),
 });
 
+// --- Agent-parity UI actions -----------------------------------------------------
+//
+// "Anything the human can do and refer to in the UI should be doable by the
+// agent" (owner directive). Each of these is a pure editor action whose `run`
+// produces a typed command; the client executes it against the SAME machinery
+// the human's own controls use (panel open states, the toolbar undo/redo, the
+// history panel's restore, the drafts bar's createDocument, the persona
+// picker's createPersona mutation).
+
+export const openPanelAction = defineEmailAction({
+  name: "openPanel",
+  description:
+    "Open one of the editor's UI panels or dialogs for the user (theme picker, brand kit, library, agent personas, recommendations history, version history, blocks tab, properties tab, or the send-test dialog). A UI command — the email document is unchanged.",
+  kind: "editor",
+  schema: openPanelInputSchema,
+  readOnly: false, // changes what's on the user's screen
+  parallelSafe: false, // last surface wins; concurrent opens are meaningless
+  needsApproval: false,
+  run: (input): OpenPanelCommand => ({ type: "openPanel", panel: input.panel }),
+});
+
+export const undoAction = defineEmailAction({
+  name: "undo",
+  description:
+    "Undo the most recent change to the email document — the same single history step as the toolbar's Undo button. Use when the user asks to undo, revert, or take back the last change.",
+  kind: "editor",
+  schema: undoInputSchema,
+  readOnly: false, // steps the document's history back
+  parallelSafe: false, // history steps are strictly ordered
+  needsApproval: false,
+  run: (): UndoCommand => ({ type: "undo" }),
+});
+
+export const redoAction = defineEmailAction({
+  name: "redo",
+  description:
+    "Redo the most recently undone change to the email document — the same single history step as the toolbar's Redo button.",
+  kind: "editor",
+  schema: redoInputSchema,
+  readOnly: false, // steps the document's history forward
+  parallelSafe: false, // history steps are strictly ordered
+  needsApproval: false,
+  run: (): RedoCommand => ({ type: "redo" }),
+});
+
+/**
+ * Approval-gated like sendTestEmail: a restore rewrites the working document
+ * wholesale (destructive-feeling even though the restore is itself one more
+ * history entry), so the human confirms via the approval chip first.
+ */
+export const goToVersionAction = defineEmailAction({
+  name: "goToVersion",
+  description:
+    "Restore the email document to an earlier numbered version from the version history. The restore is applied as a new history entry (nothing is lost). Requires human approval before executing.",
+  kind: "editor",
+  schema: goToVersionInputSchema,
+  readOnly: false, // rewrites the working document to a past state
+  parallelSafe: false,
+  needsApproval: true,
+  run: (input): GoToVersionCommand => ({ type: "goToVersion", version: input.version }),
+});
+
+export const createDraftAction = defineEmailAction({
+  name: "createDraft",
+  description:
+    "Create one or more new starter drafts in the drafts bar (max 5 per call). The user's current draft stays active; each new draft starts from the standard starter email.",
+  kind: "editor",
+  schema: createDraftInputSchema,
+  readOnly: false, // adds drafts to the user's canvas
+  parallelSafe: false, // draft names are allocated sequentially
+  needsApproval: false,
+  run: (input): CreateDraftCommand => ({ type: "createDraft", count: input.count ?? 1 }),
+});
+
+/**
+ * Like generateImage, `run` produces the UNFULFILLED intent; the app executor
+ * creates the session-owned persona row server-side (advisory capability and
+ * per-session quota are enforced by the Convex mutation) and streams the
+ * fulfilled command carrying the new slug.
+ */
+export const createPersonaAction = defineEmailAction({
+  name: "createPersona",
+  description:
+    "Create a new advisory persona (a specialized reviewer agent, e.g. an accessibility advocate) for this session. The persona reviews the email as the user works and leaves recommendations; it can never edit the document. Give it a short name, a one-sentence description, and optionally detailed behavior instructions.",
+  kind: "editor",
+  schema: createPersonaInputSchema,
+  readOnly: false, // creates a session-owned persona row
+  parallelSafe: false, // per-session quota + slug allocation are sequential
+  needsApproval: false,
+  run: (input): CreatePersonaCommand => ({
+    type: "createPersona",
+    name: input.name,
+    description: input.description,
+    ...(input.behavior === undefined ? {} : { behavior: input.behavior }),
+  }),
+});
+
 /** Every built-in editor action. */
 export const editorEmailActions = [
   showPreviewAction,
   sendTestEmailAction,
   generateImageAction,
+  openPanelAction,
+  undoAction,
+  redoAction,
+  goToVersionAction,
+  createDraftAction,
+  createPersonaAction,
 ] as const;
 
 /**

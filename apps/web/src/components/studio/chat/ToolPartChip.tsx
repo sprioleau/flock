@@ -1,14 +1,20 @@
 "use client";
 
 import {
+  BotIcon,
   CheckIcon,
+  FilePlusIcon,
+  HistoryIcon,
   LoaderCircleIcon,
   MailIcon,
   MonitorIcon,
+  PanelRightOpenIcon,
   PencilIcon,
+  RedoIcon,
   SearchIcon,
   SmartphoneIcon,
   TriangleAlertIcon,
+  UndoIcon,
   XIcon,
 } from "lucide-react";
 import type { ToolUIPart } from "ai";
@@ -58,6 +64,25 @@ const TOOL_ACTIVITY_LABELS: Readonly<Record<string, string>> = {
   showPreview: "switching preview",
   sendTestEmail: "test email",
   generateImage: "generating image",
+  openPanel: "opening panel",
+  undo: "undoing",
+  redo: "redoing",
+  goToVersion: "restoring version",
+  createDraft: "creating draft",
+  createPersona: "creating persona",
+};
+
+/** openPanel enum value → the human surface name shown after "opening panel ·". */
+const PANEL_TARGET_LABELS: Readonly<Record<string, string>> = {
+  theme: "theme",
+  "brand-kit": "brand kit",
+  library: "library",
+  agents: "agent personas",
+  recommendations: "recommendations",
+  history: "version history",
+  blocks: "blocks tab",
+  properties: "properties tab",
+  "send-test": "send test",
 };
 
 /**
@@ -78,7 +103,7 @@ function getTargetBlockId(part: TandemToolPart): BlockId | undefined {
   return typeof input?.blockId === "string" ? (input.blockId as BlockId) : undefined;
 }
 
-/** Human-readable non-block target: a recipient, a viewport mode… */
+/** Human-readable non-block target: a recipient, a viewport mode, a panel… */
 function getNonBlockTargetLabel(part: TandemToolPart): string | undefined {
   const input = part.input as Record<string, unknown> | undefined;
   if (input === undefined || input === null) {
@@ -89,6 +114,19 @@ function getNonBlockTargetLabel(part: TandemToolPart): string | undefined {
   }
   if (typeof input.to === "string") {
     return input.to;
+  }
+  if (typeof input.panel === "string") {
+    return PANEL_TARGET_LABELS[input.panel] ?? input.panel;
+  }
+  if (typeof input.version === "number") {
+    return `version ${input.version}`;
+  }
+  if (typeof input.count === "number" && input.count > 1) {
+    return `${input.count} drafts`;
+  }
+  // createPersona: the persona's display name is the target.
+  if (typeof input.name === "string" && getToolName(part) === "createPersona") {
+    return input.name;
   }
   return undefined;
 }
@@ -108,6 +146,24 @@ function getToolIcon(part: TandemToolPart): React.ReactNode {
   }
   if (toolName === "sendTestEmail") {
     return <MailIcon className="size-3" />;
+  }
+  if (toolName === "openPanel") {
+    return <PanelRightOpenIcon className="size-3" />;
+  }
+  if (toolName === "undo") {
+    return <UndoIcon className="size-3" />;
+  }
+  if (toolName === "redo") {
+    return <RedoIcon className="size-3" />;
+  }
+  if (toolName === "goToVersion") {
+    return <HistoryIcon className="size-3" />;
+  }
+  if (toolName === "createDraft") {
+    return <FilePlusIcon className="size-3" />;
+  }
+  if (toolName === "createPersona") {
+    return <BotIcon className="size-3" />;
   }
   return <PencilIcon className="size-3" />;
 }

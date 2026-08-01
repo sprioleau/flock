@@ -14,6 +14,7 @@ import {
   type TandemChatMessage,
 } from "@/lib/chat-contract";
 import { generateAndStoreImage } from "../generate-image/generation";
+import { createPersonaForSession } from "./create-persona";
 import { toModelInputSchema } from "./model-schema";
 import { chatActionRegistry } from "./registry";
 import { sendTestEmailWithResend } from "./send-test-email";
@@ -179,6 +180,21 @@ export function buildChatTools({
               );
             }
             command = { ...command, src: outcome.src, alt: outcome.alt };
+          }
+          // createPersona is fulfilled HERE too (agent-parity actions): the
+          // session-owned Convex mutation runs server-side — its markdown
+          // validation, per-session quota, and advisory-only capability are
+          // the trust boundary — and the FULFILLED command (slug present)
+          // streams to the client, which enables the persona locally exactly
+          // like the picker's own create form.
+          if (command.type === "createPersona") {
+            const outcome = await createPersonaForSession({ command, sessionId });
+            if (!outcome.isOk) {
+              // Retryable: the model sees the clean sentence on the next step
+              // (e.g. the per-session quota message) and relays it.
+              throw new Error(`The persona "${command.name}" wasn't created: ${outcome.message}`);
+            }
+            command = outcome.command;
           }
           // The Phase 3.4 editor-operations channel: one typed data part per
           // dispatched command. id = toolCallId so re-writes reconcile.

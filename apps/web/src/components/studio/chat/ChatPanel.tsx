@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   MessagesSquareIcon,
+  MicIcon,
   MousePointerClickIcon,
   PanelLeftCloseIcon,
   SendIcon,
@@ -27,6 +28,7 @@ import { QueuedMessageList } from "./QueuedMessageList";
 import { SuggestionCard } from "./SuggestionCard";
 import { useMessageQueue } from "./use-message-queue";
 import { usePromptHistory } from "./use-prompt-history";
+import { useSpeechInput } from "./use-speech-input";
 import { useTandemChat } from "./use-tandem-chat";
 
 const EXPANDED_WIDTH_PX = 360;
@@ -214,6 +216,15 @@ export function ChatPanel() {
     }
   });
 
+  // Voice input (Web Speech API, feature-detected — the mic renders only in
+  // supporting browsers): toggle-to-record from the button ONLY, so the
+  // single-key studio shortcuts never trip a recording; dictation streams
+  // into the draft appended after whatever was typed, stays editable, and is
+  // NEVER auto-sent. Stops on toggle, on silence (single-utterance mode), or
+  // on Escape below.
+  const { isSpeechSupported, isListening, speechErrorMessage, stopListening, toggleListening } =
+    useSpeechInput({ onTranscriptChange: setDraftText });
+
   const submitDraft = (): void => {
     if (draftText.trim().length === 0) {
       return;
@@ -223,6 +234,11 @@ export function ChatPanel() {
   };
 
   const handleComposerKeyDown = (event: React.KeyboardEvent<HTMLTextAreaElement>): void => {
+    if (event.key === "Escape" && isListening) {
+      event.preventDefault();
+      stopListening();
+      return;
+    }
     if (event.key === "Enter" && !event.shiftKey) {
       event.preventDefault();
       submitDraft();
@@ -383,65 +399,100 @@ export function ChatPanel() {
             button sits beside it, bottom-aligned. Without a chip the box is
             exactly 36px (size-9) single-line — py-1.75 + one text-sm line +
             1px borders — matching the size-9 send button. */}
-        <div className="flex shrink-0 items-end gap-2 border-t p-3">
-          <div
-            className={cn(
-              "flex min-w-0 flex-1 flex-col rounded-lg border border-input transition-colors",
-              "focus-within:border-ring focus-within:ring-3 focus-within:ring-ring/50",
-            )}
-          >
-            {selectedBlockType !== undefined && (
-              <div className="flex px-1.5 pt-1.5">
-                <span
-                  className={cn(
-                    "inline-flex items-center gap-1 rounded-md bg-muted px-1.5 py-0.5",
-                    "text-[10px] font-medium text-muted-foreground",
-                  )}
-                  data-testid="composer-selection-chip"
-                >
-                  <MousePointerClickIcon className="size-3" />
-                  <span className="capitalize">{selectedBlockType}</span>
-                  <button
-                    type="button"
-                    aria-label="Clear selected block context"
-                    tabIndex={isExpanded ? 0 : -1}
-                    onClick={() => selectBlock(null)}
-                    className="cursor-pointer rounded-sm hover:text-foreground"
-                  >
-                    <XIcon className="size-3" />
-                  </button>
-                </span>
-              </div>
-            )}
-            <Textarea
-              ref={composerTextareaRef}
-              value={draftText}
-              onChange={(event) => setDraftText(event.target.value)}
-              onKeyDown={handleComposerKeyDown}
-              placeholder={
-                isAgentBusy || hasQueuedMessages
-                  ? "Queue a message…"
-                  : selectedBlockType !== undefined
-                    ? `Describe a change to this ${selectedBlockType}…`
-                    : "Describe your email…"
-              }
+        <div className="shrink-0 border-t p-3">
+          {speechErrorMessage !== null && (
+            <p className="pb-2 text-xs text-destructive" data-testid="composer-speech-error">
+              {speechErrorMessage}
+            </p>
+          )}
+          <div className="flex items-end gap-2">
+            <div
               className={cn(
-                "min-h-9 resize-none border-0 bg-transparent py-1.75",
-                "focus-visible:ring-0 dark:bg-transparent",
+                "flex min-w-0 flex-1 flex-col rounded-lg border border-input transition-colors",
+                "focus-within:border-ring focus-within:ring-3 focus-within:ring-ring/50",
               )}
-              aria-label="Chat message"
+            >
+              {(selectedBlockType !== undefined || isListening) && (
+                <div className="flex items-center gap-1.5 px-1.5 pt-1.5">
+                  {selectedBlockType !== undefined && (
+                    <span
+                      className={cn(
+                        "inline-flex items-center gap-1 rounded-md bg-muted px-1.5 py-0.5",
+                        "text-[10px] font-medium text-muted-foreground",
+                      )}
+                      data-testid="composer-selection-chip"
+                    >
+                      <MousePointerClickIcon className="size-3" />
+                      <span className="capitalize">{selectedBlockType}</span>
+                      <button
+                        type="button"
+                        aria-label="Clear selected block context"
+                        tabIndex={isExpanded ? 0 : -1}
+                        onClick={() => selectBlock(null)}
+                        className="cursor-pointer rounded-sm hover:text-foreground"
+                      >
+                        <XIcon className="size-3" />
+                      </button>
+                    </span>
+                  )}
+                  {isListening && (
+                    <span
+                      className="inline-flex items-center gap-1 text-[10px] font-medium text-destructive"
+                      data-testid="composer-listening-indicator"
+                      role="status"
+                    >
+                      <span className="size-1.5 animate-pulse rounded-full bg-destructive" />
+                      Listening…
+                    </span>
+                  )}
+                </div>
+              )}
+              <Textarea
+                ref={composerTextareaRef}
+                value={draftText}
+                onChange={(event) => setDraftText(event.target.value)}
+                onKeyDown={handleComposerKeyDown}
+                placeholder={
+                  isListening
+                    ? "Listening…"
+                    : isAgentBusy || hasQueuedMessages
+                      ? "Queue a message…"
+                      : selectedBlockType !== undefined
+                        ? `Describe a change to this ${selectedBlockType}…`
+                        : "Describe your email…"
+                }
+                className={cn(
+                  "min-h-9 resize-none border-0 bg-transparent py-1.75",
+                  "focus-visible:ring-0 dark:bg-transparent",
+                )}
+                aria-label="Chat message"
+                tabIndex={isExpanded ? 0 : -1}
+              />
+            </div>
+            {isSpeechSupported && (
+              <Button
+                variant="ghost"
+                size="icon-lg"
+                aria-label={isListening ? "Stop voice input" : "Start voice input"}
+                aria-pressed={isListening}
+                data-testid="composer-mic-button"
+                tabIndex={isExpanded ? 0 : -1}
+                onClick={() => toggleListening(draftText)}
+                className={cn(isListening && "text-destructive hover:text-destructive")}
+              >
+                <MicIcon className={cn(isListening && "animate-pulse")} />
+              </Button>
+            )}
+            <Button
+              disabled={draftText.trim().length === 0}
+              size="icon-lg"
+              aria-label={isAgentBusy || hasQueuedMessages ? "Queue message" : "Send message"}
               tabIndex={isExpanded ? 0 : -1}
-            />
+              onClick={submitDraft}
+            >
+              <SendIcon />
+            </Button>
           </div>
-          <Button
-            disabled={draftText.trim().length === 0}
-            size="icon-lg"
-            aria-label={isAgentBusy || hasQueuedMessages ? "Queue message" : "Send message"}
-            tabIndex={isExpanded ? 0 : -1}
-            onClick={submitDraft}
-          >
-            <SendIcon />
-          </Button>
         </div>
       </div>
 

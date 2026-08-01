@@ -1,0 +1,128 @@
+import { createSampleDocument } from "@tandem/email-sdk";
+import type { UIMessageStreamWriter } from "ai";
+import { describe, expect, it } from "vitest";
+import type { TandemChatMessage } from "@/lib/chat-contract";
+import { MOCK_MODEL_ID } from "./constants";
+import { createMockChatModel } from "./mock-model";
+import { runChatPipeline } from "./pipeline";
+
+/**
+ * Agent-parity UI actions through the REAL pipeline (streamText → editor
+ * dispatch → data-editor-command writes), driven by the scripted mock:
+ *
+ * - openPanel / undo / redo / createDraft execute server-side and write one
+ *   typed `data-editor-command` part for the client dispatcher.
+ * - goToVersion is approval-gated: the turn halts with a tool-approval
+ *   request and NO command is written until the human approves.
+ *
+ * (createPersona's executor needs a Convex deployment, so its dispatch is
+ * covered by the SDK builtins tests + browser verification instead.)
+ */
+
+interface PipelineProbeResult {
+  /** Every part the pipeline wrote directly (data-editor-command, errors). */
+  writtenParts: { type: string; data?: unknown }[];
+  /** Every chunk type on the merged UI-message stream. */
+  streamedChunkTypes: string[];
+}
+
+async function runPipelineProbe(lastUserText: string): Promise<PipelineProbeResult> {
+  const writtenParts: { type: string; data?: unknown }[] = [];
+  let mergedStream: ReadableStream<unknown> | null = null;
+
+  const writer = {
+    write: (part: { type: string; data?: unknown }) => {
+      writtenParts.push(part);
+    },
+    merge: (stream: ReadableStream<unknown>) => {
+      mergedStream = stream;
+    },
+    onError: undefined,
+  } as unknown as UIMessageStreamWriter<TandemChatMessage>;
+
+  const messages: TandemChatMessage[] = [
+    { id: "msg-1", role: "user", parts: [{ type: "text", text: lastUserText }] },
+  ];
+
+  await runChatPipeline({
+    model: createMockChatModel({ lastUserText }),
+    modelId: MOCK_MODEL_ID,
+    isUsingMockModel: true,
+    messages,
+    doc: createSampleDocument(),
+    sessionId: null,
+    writer,
+  });
+
+  expect(mergedStream).not.toBeNull();
+  const streamedChunkTypes: string[] = [];
+  const reader = (mergedStream as unknown as ReadableStream<unknown>).getReader();
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) {
+      break;
+    }
+    streamedChunkTypes.push((value as { type: string }).type);
+  }
+  return { writtenParts, streamedChunkTypes };
+}
+
+function getEditorCommands(result: PipelineProbeResult): unknown[] {
+  return result.writtenParts
+    .filter((part) => part.type === "data-editor-command")
+    .map((part) => (part.data as { command: unknown }).command);
+}
+
+describe("agent-parity UI actions through the chat pipeline", () => {
+  it("openPanel executes server-side and streams the typed command", async () => {
+    const result = await runPipelineProbe("Please open the theme picker.");
+    expect(getEditorCommands(result)).toEqual([{ type: "openPanel", panel: "theme" }]);
+    expect(result.streamedChunkTypes).toContain("tool-output-available");
+  });
+
+  it("maps each panel keyword script to its enum value", async () => {
+    const casesByText: Record<string, string> = {
+      "Open the brand kit": "brand-kit",
+      "Open my library": "library",
+      "Open the version history": "history",
+      "Show me the recommendations": "recommendations",
+      "Open the properties tab": "properties",
+    };
+    for (const [text, panel] of Object.entries(casesByText)) {
+      const result = await runPipelineProbe(text);
+      expect(getEditorCommands(result)).toEqual([{ type: "openPanel", panel }]);
+    }
+  });
+
+  it("undo and redo stream their commands (empty-input tools)", async () => {
+    const undone = await runPipelineProbe("Undo that last change please");
+    expect(getEditorCommands(undone)).toEqual([{ type: "undo" }]);
+
+    const redone = await runPipelineProbe("Actually, redo it");
+    expect(getEditorCommands(redone)).toEqual([{ type: "redo" }]);
+  });
+
+  it("goToVersion halts for approval — no command until the human approves", async () => {
+    const result = await runPipelineProbe("Roll back to version 3");
+    expect(getEditorCommands(result)).toEqual([]);
+    expect(result.streamedChunkTypes).toContain("tool-approval-request");
+  });
+
+  it("createDraft resolves its count and streams the command", async () => {
+    const single = await runPipelineProbe("Create a new draft");
+    expect(getEditorCommands(single)).toEqual([{ type: "createDraft", count: 1 }]);
+
+    const several = await runPipelineProbe("Create 3 new drafts to compare");
+    expect(getEditorCommands(several)).toEqual([{ type: "createDraft", count: 3 }]);
+  });
+
+  it("createPersona without a Convex deployment fails the tool call, not the turn", async () => {
+    const result = await runPipelineProbe('Create a persona called "Tone Checker"');
+    // The executor refused (no session/deployment in tests) → tool error
+    // round-trips to the model; no command part is written and the turn
+    // still finishes (the mock's continuation step closes it).
+    expect(getEditorCommands(result)).toEqual([]);
+    expect(result.streamedChunkTypes).toContain("tool-output-error");
+    expect(result.streamedChunkTypes).toContain("finish");
+  });
+});

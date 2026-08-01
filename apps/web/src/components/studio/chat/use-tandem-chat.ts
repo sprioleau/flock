@@ -8,7 +8,7 @@ import {
   lastAssistantMessageIsCompleteWithApprovalResponses,
   lastAssistantMessageIsCompleteWithToolCalls,
 } from "ai";
-import { useMutation, useQuery } from "convex/react";
+import { useConvex, useMutation, useQuery } from "convex/react";
 import {
   emailActionRegistry,
   isSavedSectionTemplateId,
@@ -39,7 +39,11 @@ import {
   type DispatchableOp,
   type EditorStoreApi,
 } from "@/lib/editor-store";
+import { setPersonaEnabled } from "@/lib/personas/enabled-personas";
+import { getOrCreateSessionId } from "@/lib/session";
+import { requestUiSurfaceOpen } from "@/lib/ui-surfaces";
 import { scrollBlockIntoView } from "../add-blocks/scroll-block-into-view";
+import { computeNextDraftName } from "../drafts/draft-naming";
 
 /**
  * The Phase 3 chat brain: wires AI SDK v7 `useChat` to the editor store.
@@ -101,6 +105,12 @@ interface TandemChatController {
    * per-section streaming order.
    */
   setSavedSectionsRuntime: (runtime: SavedSectionsRuntime) => void;
+  /**
+   * Inject the createDraft command's executor (agent parity): the hook owns
+   * the Convex client, so it builds the drafts-machinery loop and hands it
+   * to the controller's onData closure here.
+   */
+  setCreateBlankDrafts: (createBlankDrafts: (count: number) => Promise<void>) => void;
 }
 
 interface SavedSectionsRuntime {
@@ -142,6 +152,10 @@ function createTandemChatController(): TandemChatController {
   // saved scaffold calls resolve against it synchronously — never an async
   // fetch that could reorder a per-section streaming turn's inserts.
   let savedSectionsRuntime: SavedSectionsRuntime = { rows: [], recordUse: () => {} };
+
+  // The createDraft command executor (injected by the hook — it owns the
+  // Convex client). No-op until injected; the hook wires it on mount.
+  let createBlankDrafts: (count: number) => Promise<void> = async () => {};
 
   /** Swap the chat's registry hold from the previous turn's doc to `documentId`. */
   const holdTurnDocument = (documentId: Id<"documents"> | null): void => {
@@ -305,6 +319,51 @@ function createTandemChatController(): TandemChatController {
         applyGeneratedImageCommand(command);
         return;
       }
+      // createPersona / createDraft are SESSION-level commands (personas and
+      // drafts belong to the browser session/canvas, not to one draft), so a
+      // mid-turn draft switch never drops them. createPersona was already
+      // executed server-side; the client's only job is to enable the new
+      // persona locally — exactly what the picker's create form does.
+      if (command.type === "createPersona") {
+        if (command.slug !== undefined) {
+          setPersonaEnabled({ slug: command.slug, isEnabled: true });
+        }
+        return;
+      }
+      if (command.type === "createDraft") {
+        void createBlankDrafts(command.count);
+        return;
+      }
+      // undo / redo / goToVersion are DOCUMENT commands pinned to the turn's
+      // origin draft (the generateImage routing rule): they ride the exact
+      // store machinery the toolbar buttons and the history panel's restore
+      // use — acting on the user's behalf per their request — against the
+      // active store, or the turn document's retained instance after a
+      // mid-turn draft switch.
+      if (
+        command.type === "undo" ||
+        command.type === "redo" ||
+        command.type === "goToVersion"
+      ) {
+        const store = getIsTurnDocumentActive()
+          ? useEditorStore.getState()
+          : getTurnDocumentStore()?.getState();
+        if (store === undefined) {
+          return;
+        }
+        if (command.type === "undo") {
+          store.undo();
+        } else if (command.type === "redo") {
+          store.redo();
+        } else {
+          void store.restoreVersion(command.version).then((result) => {
+            if (!result.isOk) {
+              store.showNotice(result.message);
+            }
+          });
+        }
+        return;
+      }
       // Mid-turn draft switch (owner decision, follow-on to the op pinning):
       // editor commands act on the ACTIVE canvas — the viewport is ONE store
       // field bound to the active draft (DraftFrameToolbar renders only on
@@ -312,15 +371,20 @@ function createTandemChatController(): TandemChatController {
       // a view command from a turn pinned to a now-inactive draft is DROPPED
       // outright: never flip a different draft's viewport. (Marked executed
       // above on purpose — the command belonged to that moment of the turn,
-      // not to whenever its draft is next activated.)
+      // not to whenever its draft is next activated.) openPanel follows the
+      // same rule: a panel opened for a draft the user has left behind would
+      // be noise, not help.
       if (!getIsTurnDocumentActive()) {
         return;
       }
       if (command.type === "showPreview") {
         useEditorStore.getState().setViewport(command.mode);
       }
-      // sendTestEmail: the actual send is a Phase 8 stub — nothing to run
-      // client-side; the tool output renders as a "queued" chip.
+      if (command.type === "openPanel") {
+        requestUiSurfaceOpen(command.panel);
+      }
+      // sendTestEmail: the real send already happened server-side (Phase
+      // 8.1) — nothing to run client-side; the chip renders the result.
     },
 
     sendAutomaticallyWhen: ({ messages }) => {
@@ -560,6 +624,9 @@ function createTandemChatController(): TandemChatController {
     setSavedSectionsRuntime: (runtime) => {
       savedSectionsRuntime = runtime;
     },
+    setCreateBlankDrafts: (nextCreateBlankDrafts) => {
+      createBlankDrafts = nextCreateBlankDrafts;
+    },
   };
 }
 
@@ -636,6 +703,38 @@ export function useTandemChat(): TandemChat {
       },
     });
   }, [controller, savedSections, recordSavedSectionUse, sessionId]);
+
+  // The createDraft command executor (agent parity): the DraftSelector's own
+  // machinery — documents.createDocument on the active canvas, starter-seeded,
+  // "Draft N" names — WITHOUT activating the new drafts (the user's current
+  // draft stays where they are; the drafts bar updates reactively).
+  const convexClient = useConvex();
+  useEffect(() => {
+    controller.setCreateBlankDrafts(async (count) => {
+      const { canvasId } = useEditorStore.getState();
+      if (canvasId === null) {
+        return;
+      }
+      try {
+        const drafts = await convexClient.query(api.documents.listDocumentsByCanvas, {
+          canvasId,
+        });
+        const existingNames = drafts.map((draft) => draft.name);
+        for (let created = 0; created < count; created++) {
+          const name = computeNextDraftName({ existingNames });
+          existingNames.push(name);
+          await convexClient.mutation(api.documents.createDocument, {
+            sessionId: getOrCreateSessionId(),
+            canvasId,
+            name,
+          });
+        }
+      } catch (error) {
+        console.error("createDocument (agent createDraft) failed", error);
+        useEditorStore.getState().showNotice("Couldn't create the draft (connection error).");
+      }
+    });
+  }, [controller, convexClient]);
 
   const sendUserMessage = (text: string): void => {
     const trimmedText = text.trim();

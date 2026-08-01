@@ -10,6 +10,7 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import { useArePersonasPaused } from "@/lib/personas/enabled-personas";
+import { useUiSurfaceOpenRequest } from "@/lib/ui-surfaces";
 import { PersonaPickerDialog } from "./PersonaPickerDialog";
 import { PersonaRecommendationsDialog } from "./PersonaRecommendationsDialog";
 
@@ -29,6 +30,12 @@ export function AgentCollaboratorsButton() {
   // a slashed, dimmed bot with an explanatory tooltip — the pause/resume
   // control itself lives in the modal's header.
   const arePersonasPaused = useArePersonasPaused();
+
+  // Agent-parity: openPanel("agents") opens the persona picker and
+  // openPanel("recommendations") opens the history modal — same state the
+  // two header buttons set.
+  useUiSurfaceOpenRequest("agents", () => setIsPickerOpen(true));
+  useUiSurfaceOpenRequest("recommendations", () => setIsRecommendationsOpen(true));
 
   return (
     <>
