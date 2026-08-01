@@ -4,6 +4,7 @@ import { Fragment, useState } from "react";
 import { PanelRightCloseIcon, PanelRightOpenIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { getBlockDisplayLabel } from "@/lib/block-display-label";
 import { useEditorStore } from "@/lib/editor-store";
 import { getAncestorIds } from "@/lib/get-ancestor-ids";
 import { useUiSurfaceOpenRequest } from "@/lib/ui-surfaces";
@@ -221,22 +222,30 @@ function PropertiesTab() {
             className="flex min-w-0 items-baseline"
             data-testid="panel-breadcrumb"
           >
-            {getAncestorIds({ doc, blockId: selectedBlockId }).map((ancestorId) => (
-              <Fragment key={ancestorId}>
-                <button
-                  type="button"
-                  onClick={() => selectBlock(ancestorId)}
-                  className="cursor-pointer text-xs capitalize text-muted-foreground hover:text-foreground hover:underline"
-                >
-                  {doc[ancestorId]?.type}
-                </button>
-                <span aria-hidden className="px-1 text-xs text-muted-foreground/60">
-                  ›
-                </span>
-              </Fragment>
-            ))}
-            {/* Block ids are internal — the header shows only the type. */}
-            <h2 className="text-sm font-semibold capitalize">{selectedBlock.type}</h2>
+            {getAncestorIds({ doc, blockId: selectedBlockId }).map((ancestorId) => {
+              const ancestorBlock = doc[ancestorId];
+              if (ancestorBlock === undefined) {
+                return null;
+              }
+              return (
+                <Fragment key={ancestorId}>
+                  <button
+                    type="button"
+                    onClick={() => selectBlock(ancestorId)}
+                    className="cursor-pointer text-xs capitalize text-muted-foreground hover:text-foreground hover:underline"
+                  >
+                    {getBlockDisplayLabel({ block: ancestorBlock })}
+                  </button>
+                  <span aria-hidden className="px-1 text-xs text-muted-foreground/60">
+                    ›
+                  </span>
+                </Fragment>
+              );
+            })}
+            {/* Block ids are internal — the header shows only the display label. */}
+            <h2 className="text-sm font-semibold capitalize">
+              {getBlockDisplayLabel({ block: selectedBlock })}
+            </h2>
           </nav>
         ) : (
           <>

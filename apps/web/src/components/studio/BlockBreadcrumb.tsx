@@ -1,24 +1,10 @@
 "use client";
 
 import type { MouseEvent } from "react";
-import type { BlockId, BlockType } from "@tandem/email-sdk";
+import type { BlockId } from "@tandem/email-sdk";
+import { getBlockDisplayLabel } from "@/lib/block-display-label";
 import { useEditorStore } from "@/lib/editor-store";
 import { getAncestorIds } from "@/lib/get-ancestor-ids";
-
-/** Chip labels — always full words, never abbreviated or truncated. */
-const BLOCK_TYPE_LABELS: Record<BlockType, string> = {
-  root: "Email",
-  section: "Section",
-  row: "Row",
-  column: "Column",
-  text: "Text",
-  button: "Button",
-  image: "Image",
-  divider: "Divider",
-  link: "Link",
-  code: "Code",
-  spacer: "Spacer",
-};
 
 export interface BlockBreadcrumbProps {
   /** The selected block — the stack's FIRST (top) chip. */
@@ -69,8 +55,8 @@ export function BlockBreadcrumb({ blockId }: BlockBreadcrumbProps) {
       onDoubleClick={(event) => event.stopPropagation()}
     >
       {trailIds.map((trailId) => {
-        const blockType = doc[trailId]?.type;
-        if (blockType === undefined) {
+        const trailBlock = doc[trailId];
+        if (trailBlock === undefined) {
           return null;
         }
         const isCurrent = trailId === blockId;
@@ -80,7 +66,7 @@ export function BlockBreadcrumb({ blockId }: BlockBreadcrumbProps) {
             aria-current="true"
             className="select-none rounded border border-sky-500 bg-sky-500 px-1.5 py-0.5 font-mono text-[10px] font-semibold uppercase leading-none tracking-wide text-white shadow-sm"
           >
-            {BLOCK_TYPE_LABELS[blockType]}
+            {getBlockDisplayLabel({ block: trailBlock })}
           </span>
         ) : (
           <button
@@ -89,7 +75,7 @@ export function BlockBreadcrumb({ blockId }: BlockBreadcrumbProps) {
             onClick={selectAncestor(trailId)}
             className="cursor-pointer rounded border bg-background/95 px-1.5 py-0.5 font-mono text-[10px] font-medium uppercase leading-none tracking-wide text-muted-foreground shadow-sm hover:bg-accent hover:text-foreground"
           >
-            {BLOCK_TYPE_LABELS[blockType]}
+            {getBlockDisplayLabel({ block: trailBlock })}
           </button>
         );
       })}

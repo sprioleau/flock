@@ -6,6 +6,7 @@ import { Loader2Icon } from "lucide-react";
 import { ROOT_BLOCK_ID, type EmailDocument } from "@tandem/email-sdk";
 import { api } from "@convex/_generated/api";
 import { cn } from "@/lib/utils";
+import { DraftBrandPill } from "../brand-kit/DraftBrandPill";
 import type { DraftListEntry } from "./use-canvas-drafts";
 
 /**
@@ -182,6 +183,7 @@ export function DraftFrameLabel({
       >
         {draft.name}
       </button>
+      <DraftBrandPill documentId={draft._id} />
     </div>
   );
 }
