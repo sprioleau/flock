@@ -18,6 +18,7 @@ export const STUDIO_SHORTCUTS = {
   redo: { combo: "mod+shift+z", label: "Redo" },
   cycleTheme: { combo: "mod+shift+l", label: "Switch theme" },
   quickAddBlock: { combo: "a", label: "Quick-add a block (hold + hover the draft)" },
+  toggleCommentsMode: { combo: "c", label: "Toggle comment mode" },
 } as const satisfies Record<string, { combo: string; label: string }>;
 
 export type StudioShortcutId = keyof typeof STUDIO_SHORTCUTS;

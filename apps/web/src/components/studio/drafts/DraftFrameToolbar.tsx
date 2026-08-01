@@ -5,15 +5,18 @@ import type { PreviewMode } from "@tandem/email-sdk";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { useEditorStore } from "@/lib/editor-store";
 import { HtmlPreviewDialog } from "../HtmlPreviewDialog";
+import { SendTestEmailDialog } from "../SendTestEmailDialog";
 
 /**
  * §10.2 frames UX — the small floating vertical toolbar attached alongside
  * the ACTIVE frame (rendered only there, so it follows activation). Holds
  * the per-draft surfaces that used to live in the studio header: the
- * desktop/mobile preview toggle and the HTML export dialog. Both read the
- * editor store — the store is bound to the active draft, so activating draft
- * B makes these B's controls by construction. History stays in the header
- * (its drawer already follows the active document).
+ * desktop/mobile preview toggle, the HTML export dialog, and the test-send
+ * dialog (a test sends ONE draft — the active one — so it belongs on the
+ * frame). All read the editor store — the store is bound to the active
+ * draft, so activating draft B makes these B's controls by construction.
+ * History stays in the header (its drawer already follows the active
+ * document).
  */
 export function DraftFrameToolbar() {
   const viewport = useEditorStore((state) => state.viewport);
@@ -46,6 +49,8 @@ export function DraftFrameToolbar() {
       </ToggleGroup>
       <div className="h-px w-5 bg-border" aria-hidden />
       <HtmlPreviewDialog isIconTrigger />
+      <div className="h-px w-5 bg-border" aria-hidden />
+      <SendTestEmailDialog isIconTrigger />
     </div>
   );
 }

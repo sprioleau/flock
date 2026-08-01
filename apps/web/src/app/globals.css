@@ -175,6 +175,47 @@
 }
 
 /*
+ * EXPERIMENTAL generation glow (item 28 — owner explicitly wants to try it):
+ * the animated border around the draft frame an AI generation streams into.
+ * A conic gradient whose start angle rotates (via a registered @property so
+ * the custom property interpolates) plus a soft opacity pulse. Vivid
+ * mid-scale colors on purpose — they read against both the light and dark
+ * canvas chrome. Browsers without @property support just show a static
+ * pulsing gradient ring (graceful).
+ */
+@property --generation-glow-angle {
+  syntax: "<angle>";
+  inherits: false;
+  initial-value: 0deg;
+}
+@keyframes generation-glow-rotate {
+  to {
+    --generation-glow-angle: 360deg;
+  }
+}
+@keyframes generation-glow-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.55;
+  }
+}
+@utility generation-glow {
+  background: conic-gradient(
+    from var(--generation-glow-angle),
+    var(--color-sky-500),
+    var(--color-violet-500),
+    var(--color-fuchsia-500),
+    var(--color-sky-500)
+  );
+  animation:
+    generation-glow-rotate 3s linear infinite,
+    generation-glow-pulse 2.4s ease-in-out infinite;
+}
+
+/*
  * Editor-canvas fixes for React Email markup rendered inside the app page.
  *
  * 1. Tailwind Preflight resets `margin: 0` on every element, which overrides

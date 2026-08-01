@@ -21,6 +21,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useEditorStore } from "@/lib/editor-store";
+import { useUiSurfaceOpenRequest } from "@/lib/ui-surfaces";
 import { useCanvasDrafts } from "./drafts/use-canvas-drafts";
 
 /**
@@ -60,7 +61,16 @@ type SendState =
   | { status: "sent"; recipient: string }
   | { status: "error"; message: string; isRecipientInvalid: boolean };
 
-export function SendTestEmailDialog() {
+export function SendTestEmailDialog({
+  isIconTrigger = false,
+}: {
+  /**
+   * The compact icon-only trigger used by the floating per-frame toolbar
+   * (§10.2 frames UX — a test sends ONE draft, so the entry point rides the
+   * frame); default is the labeled header-style button.
+   */
+  isIconTrigger?: boolean;
+}) {
   const [isOpen, setIsOpen] = useState(false);
   const [recipient, setRecipient] = useState("");
   const [sendState, setSendState] = useState<SendState>({ status: "idle" });
@@ -85,6 +95,10 @@ export function SendTestEmailDialog() {
       requestIdRef.current += 1;
     }
   };
+
+  // Agent-parity: the chat's openPanel("send-test") command opens this dialog
+  // through the same reset-and-prefill path as a human click.
+  useUiSurfaceOpenRequest("send-test", () => handleOpenChange(true));
 
   const handleSubmit = (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -148,23 +162,39 @@ export function SendTestEmailDialog() {
 
   return (
     <Dialog open={isOpen} onOpenChange={handleOpenChange}>
-      {/* Icon-only below xl (header containment discipline): the label span
-          hides and the width collapses to match the icon buttons beside it. */}
-      <DialogTrigger
-        render={
-          <Button
-            variant="ghost"
-            size="sm"
-            className="gap-1.5 max-xl:w-7 max-xl:px-0"
-            aria-label="Send a test email"
-            title="Send test"
-          />
-        }
-        data-testid="send-test-email-trigger"
-      >
-        <SendIcon className="size-3.5" />
-        <span className="hidden xl:inline">Send test</span>
-      </DialogTrigger>
+      {isIconTrigger ? (
+        <DialogTrigger
+          render={
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              aria-label="Send a test email"
+              title="Send test email"
+            />
+          }
+          data-testid="send-test-email-trigger"
+        >
+          <SendIcon className="size-4" />
+        </DialogTrigger>
+      ) : (
+        /* Icon-only below xl (header containment discipline): the label span
+           hides and the width collapses to match the icon buttons beside it. */
+        <DialogTrigger
+          render={
+            <Button
+              variant="ghost"
+              size="sm"
+              className="gap-1.5 max-xl:w-7 max-xl:px-0"
+              aria-label="Send a test email"
+              title="Send test"
+            />
+          }
+          data-testid="send-test-email-trigger"
+        >
+          <SendIcon className="size-3.5" />
+          <span className="hidden xl:inline">Send test</span>
+        </DialogTrigger>
+      )}
       <DialogContent className="sm:max-w-md">
         <DialogHeader>
           <DialogTitle>Send a test email</DialogTitle>

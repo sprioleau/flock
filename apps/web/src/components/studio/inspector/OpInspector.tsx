@@ -18,6 +18,12 @@ import {
   SheetTitle,
   SheetTrigger,
 } from "@/components/ui/sheet";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { useEditorStore } from "@/lib/editor-store";
 import { cn } from "@/lib/utils";
 import { useAppSettings } from "../demo/app-settings";
@@ -218,12 +224,23 @@ export function OpInspector() {
     // disablePointerDismissal: a console should keep streaming while the
     // user edits the canvas — close is the header chevron or Escape.
     <Sheet open={isOpen} onOpenChange={handleOpenChange} modal={false} disablePointerDismissal>
-      <SheetTrigger
-        render={<Button variant="ghost" size="icon-sm" aria-label="Op inspector" />}
-        data-testid="inspector-open-button"
-      >
-        <SquareTerminalIcon />
-      </SheetTrigger>
+      {/* Tooltip + sheet trigger on ONE element (base-ui render composition)
+          — icon-only, so hover must say what it opens. */}
+      <TooltipProvider>
+        <Tooltip>
+          <TooltipTrigger
+            render={
+              <SheetTrigger
+                render={<Button variant="ghost" size="icon-sm" aria-label="Op inspector" />}
+                data-testid="inspector-open-button"
+              >
+                <SquareTerminalIcon />
+              </SheetTrigger>
+            }
+          />
+          <TooltipContent side="bottom">Op inspector</TooltipContent>
+        </Tooltip>
+      </TooltipProvider>
       <SheetContent
         side="bottom"
         hasOverlay={false}

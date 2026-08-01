@@ -2,27 +2,34 @@
 
 import { Redo2Icon, Undo2Icon } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { selectCanRedo, selectCanUndo, useEditorStore } from "@/lib/editor-store";
 import { BrandKitPanel } from "./brand-kit/BrandKitPanel";
-import { CommentsModeToggle } from "./comments/CommentsModeToggle";
-import { CommentsReviewDialog } from "./comments/CommentsReviewDialog";
+import { CommentsControl } from "./comments/CommentsControl";
+import { useAppSettings } from "./demo/app-settings";
 import { OpInspector } from "./inspector/OpInspector";
 import { LibraryPanel } from "./library/LibraryPanel";
 import { AgentCollaboratorsButton } from "./personas/AgentCollaboratorsButton";
 import { PresenceFacepile } from "./presence/PresenceFacepile";
 import { ReplayPanel } from "./replay/ReplayPanel";
-import { SendTestEmailDialog } from "./SendTestEmailDialog";
+import { ShortcutKbd } from "./shortcuts/ShortcutKbd";
 import { ThemeMenu } from "./theme/ThemeMenu";
 
 /**
  * Slim canvas toolbar: the `leading` slot (the drafts selector, mounted by
  * StudioShell), theme selector, the brand kit panel trigger (right next to
- * the theme menu it feeds), undo/redo (disabled states from stack depth),
- * the read-only power lenses over the op-log spine (time-travel replay, op
- * inspector), and the History drawer trigger (children slot). The
- * desktop/mobile viewport toggle and the HTML export moved to the floating
- * per-frame toolbar (§10.2 frames UX — they are per-draft surfaces); History
- * stays here because its drawer already follows the active document.
+ * the theme menu it feeds), and the right-hand action cluster. The
+ * desktop/mobile viewport toggle, the HTML export, and the test-send dialog
+ * live on the floating per-frame toolbar (§10.2 frames UX — they are
+ * per-draft surfaces).
+ *
+ * STANDING PRINCIPLE (owner, item 32 — the header keeps growing): the right
+ * cluster groups like-with-like, separated by vertical dividers, left to
+ * right: presence avatars | AGENT surfaces (AI collaborators +
+ * recommendation history + the comments combo, whose review panel dispatches
+ * AI fixes) | HISTORY (undo/redo, the History drawer, and the settings-gated
+ * time-travel replay) | remaining settings-gated debug lenses (op
+ * inspector).
  */
 export function StudioToolbar({
   leading,
@@ -35,6 +42,9 @@ export function StudioToolbar({
   const redo = useEditorStore((state) => state.redo);
   const canUndo = useEditorStore(selectCanUndo);
   const canRedo = useEditorStore(selectCanRedo);
+  // The op inspector gates itself off this same flag (returns null) — read
+  // it here too so its group divider never strands when the lens is hidden.
+  const { isOpInspectorEnabled } = useAppSettings();
 
   return (
     // Narrow-width containment (owner report: header content spilled across
@@ -60,47 +70,80 @@ export function StudioToolbar({
       </div>
 
       <div className="flex min-w-0 items-center gap-1.5">
-        {/* Constrained from the OUTSIDE (facepile internals belong to the
-            presence workstream): the avatar stack lives in a HARD-CAPPED
-            slot (max-w-40) that also shrinks first when the row tightens —
-            so even a misbehaving facepile can never starve the rest of the
-            header or cross into the property panel. */}
+        {/* PRESENCE. Constrained from the OUTSIDE (facepile internals belong
+            to the presence workstream): the avatar stack lives in a
+            HARD-CAPPED slot (max-w-40) that also shrinks first when the row
+            tightens — so even a misbehaving facepile can never starve the
+            rest of the header or cross into the property panel. */}
         <div className="max-w-40 min-w-0 shrink overflow-hidden">
           <PresenceFacepile />
         </div>
-        {/* AI collaborators sit WITH the human avatars (owner decision) —
-            the button opens the agent collaborators modal. */}
+
+        <ToolbarGroupDivider />
+
+        {/* AGENT surfaces — their own space, separate from the human avatars
+            (owner decision): the AI collaborators sheet + recommendation
+            history, and the comments combo (its review panel dispatches
+            AI fixes). */}
         <AgentCollaboratorsButton />
-        {/* Comments mode (click-anywhere canvas comments) + the review
-            panel, beside the presence cluster: commenting is a collaboration
-            surface like the avatars next to it. */}
-        <CommentsModeToggle />
-        <CommentsReviewDialog />
-        <Button
-          variant="ghost"
-          size="icon-sm"
-          aria-label="Undo"
-          disabled={!canUndo}
-          onClick={undo}
-        >
-          <Undo2Icon />
-        </Button>
-        <Button
-          variant="ghost"
-          size="icon-sm"
-          aria-label="Redo"
-          disabled={!canRedo}
-          onClick={redo}
-        >
-          <Redo2Icon />
-        </Button>
-        <ReplayPanel />
-        <OpInspector />
-        {/* Test-send stays in the header (not the per-frame toolbar): it acts
-            on the ACTIVE draft via the store, like History beside it. */}
-        <SendTestEmailDialog />
+        <CommentsControl />
+
+        <ToolbarGroupDivider />
+
+        {/* HISTORY — everything on the one history spine sits adjacent:
+            undo/redo, the History drawer (children slot), and time-travel
+            replay when the settings toggle enables it. */}
+        <TooltipProvider>
+          <Tooltip>
+            <TooltipTrigger
+              render={
+                <Button
+                  variant="ghost"
+                  size="icon-sm"
+                  aria-label="Undo"
+                  disabled={!canUndo}
+                  onClick={undo}
+                />
+              }
+            >
+              <Undo2Icon />
+            </TooltipTrigger>
+            <TooltipContent side="bottom" className="flex items-center gap-1.5">
+              Undo <ShortcutKbd shortcutId="undo" />
+            </TooltipContent>
+          </Tooltip>
+          <Tooltip>
+            <TooltipTrigger
+              render={
+                <Button
+                  variant="ghost"
+                  size="icon-sm"
+                  aria-label="Redo"
+                  disabled={!canRedo}
+                  onClick={redo}
+                />
+              }
+            >
+              <Redo2Icon />
+            </TooltipTrigger>
+            <TooltipContent side="bottom" className="flex items-center gap-1.5">
+              Redo <ShortcutKbd shortcutId="redo" />
+            </TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
         {children}
+        <ReplayPanel />
+
+        {/* Settings-gated debug lenses (divider gated on the same flag so it
+            never strands alone). */}
+        {isOpInspectorEnabled && <ToolbarGroupDivider />}
+        <OpInspector />
       </div>
     </header>
   );
+}
+
+/** The like-with-like group separator (item 32 standing principle). */
+function ToolbarGroupDivider() {
+  return <div className="h-4 w-px shrink-0 bg-border" aria-hidden />;
 }

@@ -64,27 +64,23 @@ export function PresenceFacepile() {
   };
   return (
     <TooltipProvider>
-      {/* ONE flex root (avatar stack + divider side by side) so the facepile
-          behaves in any parent — the toolbar wraps it in a plain
-          overflow-hidden slot, where two sibling divs would stack vertically
-          and break the row's centering. */}
-      <div className="flex items-center">
-        <div className="flex items-center -space-x-1.5" data-testid="presence-facepile">
-          {onlineMembers.map((entry) =>
-            entry.isSelf ? (
-              <SelfAvatar key={entry.userId} entry={entry} />
-            ) : isPersonaEntry(entry) ? (
-              <PersonaAvatar
-                key={entry.userId}
-                entry={entry}
-                onOpenRecommendations={openRecommendationsForSlug}
-              />
-            ) : (
-              <MemberAvatar key={entry.userId} entry={entry} />
-            ),
-          )}
-        </div>
-        <div className="mx-1 h-5 w-px shrink-0 bg-border" aria-hidden />
+      {/* No intrinsic trailing divider (owner, item 32): the header owns ALL
+          group separators, so the avatar stack renders bare like every other
+          toolbar control. */}
+      <div className="flex items-center -space-x-1.5" data-testid="presence-facepile">
+        {onlineMembers.map((entry) =>
+          entry.isSelf ? (
+            <SelfAvatar key={entry.userId} entry={entry} />
+          ) : isPersonaEntry(entry) ? (
+            <PersonaAvatar
+              key={entry.userId}
+              entry={entry}
+              onOpenRecommendations={openRecommendationsForSlug}
+            />
+          ) : (
+            <MemberAvatar key={entry.userId} entry={entry} />
+          ),
+        )}
       </div>
       <PersonaRecommendationsDialog
         isOpen={isRecommendationsOpen}

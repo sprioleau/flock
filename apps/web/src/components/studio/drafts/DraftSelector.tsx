@@ -47,14 +47,15 @@ import {
 import { useEditorStore } from "@/lib/editor-store";
 import { getOrCreateSessionId } from "@/lib/session";
 import { cn } from "@/lib/utils";
-import { useIsAgentBusy } from "../chat/agent-status";
+import { publishGenerationTargetDocument, useIsAgentBusy } from "../chat/agent-status";
 import { sendPromptThroughComposer } from "../chat/composer-handoff";
 import {
   buildDesignVariationPrompt,
   buildDraftOutline,
   buildIdeateDraftPrompt,
 } from "./draft-generation";
-import { computeNextDraftName, useCanvasDrafts, type DraftListEntry } from "./use-canvas-drafts";
+import { computeNextDraftName, computeVariationDraftName } from "./draft-naming";
+import { useCanvasDrafts, type DraftListEntry } from "./use-canvas-drafts";
 
 /**
  * §10.2 frames UX — the compact toolbar control that replaced the v1 chip
@@ -103,7 +104,14 @@ export function DraftSelector({
     }
     if (activeDocumentId === pendingSend.targetDocumentId) {
       pendingGenerationSendRef.current = null;
-      sendPromptThroughComposer(pendingSend.prompt);
+      // Mark the frame the generation streams into BEFORE the send, so the
+      // working state (spinner/glow/lock in DraftFramesCanvas) is up the
+      // moment the turn starts. agent-status clears it when the turn
+      // settles; an unmounted composer means nothing was sent — clear now.
+      publishGenerationTargetDocument(pendingSend.targetDocumentId);
+      if (!sendPromptThroughComposer(pendingSend.prompt)) {
+        publishGenerationTargetDocument(null);
+      }
       return;
     }
     if (activeDocumentId !== pendingSend.sourceDocumentId) {
@@ -281,10 +289,14 @@ export function DraftSelector({
       mode === "ideate"
         ? buildIdeateDraftPrompt(promptInput)
         : buildDesignVariationPrompt(promptInput);
+    // Naming rules live in draft-naming.ts: variations carry exactly ONE
+    // "(variation N)" marker (a marked source increments, never stacks) and
+    // both paths dedupe against the live canvas draft list.
+    const existingNames = drafts.map((draft) => draft.name);
     const name =
       mode === "designVariation"
-        ? `${activeDraft.name} (variation)`
-        : computeNextDraftName(drafts);
+        ? computeVariationDraftName({ sourceName: activeDraft.name, existingNames })
+        : computeNextDraftName({ existingNames });
     setIsGenerationPending(true);
     convexClient
       .mutation(api.documents.createDocument, {
@@ -320,7 +332,7 @@ export function DraftSelector({
       .mutation(api.documents.createDocument, {
         sessionId: getOrCreateSessionId(),
         canvasId,
-        name: computeNextDraftName(drafts),
+        name: computeNextDraftName({ existingNames: drafts.map((draft) => draft.name) }),
       })
       .then(({ documentId }) => {
         onActivateDraft(documentId);
@@ -335,20 +347,30 @@ export function DraftSelector({
 
   return (
     <div className="flex items-center gap-0.5" data-testid="draft-selector">
-      <Button
-        variant="ghost"
-        size="icon-sm"
-        aria-label="Previous draft"
-        disabled={previousDraft === null}
-        // On the first draft this must READ disabled at a glance (owner
-        // emphasis) — the base button's 50%-opacity alone is too subtle for
-        // a bare ghost chevron, so drop to washed-out muted (same below).
-        className="disabled:text-muted-foreground disabled:opacity-30"
-        onClick={() => previousDraft !== null && onActivateDraft(previousDraft._id)}
-        data-testid="draft-selector-prev"
-      >
-        <ChevronLeftIcon />
-      </Button>
+      <TooltipProvider>
+        <Tooltip>
+          <TooltipTrigger
+            render={
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                aria-label="Previous draft"
+                disabled={previousDraft === null}
+                // On the first draft this must READ disabled at a glance (owner
+                // emphasis) — the base button's 50%-opacity alone is too subtle
+                // for a bare ghost chevron, so drop to washed-out muted (same
+                // below).
+                className="disabled:text-muted-foreground disabled:opacity-30"
+                onClick={() => previousDraft !== null && onActivateDraft(previousDraft._id)}
+                data-testid="draft-selector-prev"
+              />
+            }
+          >
+            <ChevronLeftIcon />
+          </TooltipTrigger>
+          <TooltipContent side="bottom">Previous draft</TooltipContent>
+        </Tooltip>
+      </TooltipProvider>
 
       {isRenaming ? (
         <input
@@ -487,17 +509,26 @@ export function DraftSelector({
         </DropdownMenu>
       )}
 
-      <Button
-        variant="ghost"
-        size="icon-sm"
-        aria-label="Next draft"
-        disabled={nextDraft === null}
-        className="disabled:text-muted-foreground disabled:opacity-30"
-        onClick={() => nextDraft !== null && onActivateDraft(nextDraft._id)}
-        data-testid="draft-selector-next"
-      >
-        <ChevronRightIcon />
-      </Button>
+      <TooltipProvider>
+        <Tooltip>
+          <TooltipTrigger
+            render={
+              <Button
+                variant="ghost"
+                size="icon-sm"
+                aria-label="Next draft"
+                disabled={nextDraft === null}
+                className="disabled:text-muted-foreground disabled:opacity-30"
+                onClick={() => nextDraft !== null && onActivateDraft(nextDraft._id)}
+                data-testid="draft-selector-next"
+              />
+            }
+          >
+            <ChevronRightIcon />
+          </TooltipTrigger>
+          <TooltipContent side="bottom">Next draft</TooltipContent>
+        </Tooltip>
+      </TooltipProvider>
 
       <Dialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
         <DialogContent className="max-w-sm" data-testid="draft-delete-dialog">

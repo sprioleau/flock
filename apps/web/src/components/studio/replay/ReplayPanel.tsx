@@ -11,6 +11,12 @@ import {
   SheetTitle,
   SheetTrigger,
 } from "@/components/ui/sheet";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { useEditorStore } from "@/lib/editor-store";
 import { cn } from "@/lib/utils";
 import { useAppSettings } from "../demo/app-settings";
@@ -170,12 +176,23 @@ export function ReplayPanel() {
     // disablePointerDismissal: replaying continues while the user clicks
     // around the live canvas (and other panels) — close is the X or Escape.
     <Sheet open={isOpen} onOpenChange={handleOpenChange} modal={false} disablePointerDismissal>
-      <SheetTrigger
-        render={<Button variant="ghost" size="icon-sm" aria-label="Time-travel replay" />}
-        data-testid="replay-open-button"
-      >
-        <PlayIcon />
-      </SheetTrigger>
+      {/* Tooltip + sheet trigger on ONE element (base-ui render composition)
+          — icon-only, so hover must say what it opens. */}
+      <TooltipProvider>
+        <Tooltip>
+          <TooltipTrigger
+            render={
+              <SheetTrigger
+                render={<Button variant="ghost" size="icon-sm" aria-label="Time-travel replay" />}
+                data-testid="replay-open-button"
+              >
+                <PlayIcon />
+              </SheetTrigger>
+            }
+          />
+          <TooltipContent side="bottom">Time-travel replay</TooltipContent>
+        </Tooltip>
+      </TooltipProvider>
       <SheetContent
         side="left"
         hasOverlay={false}

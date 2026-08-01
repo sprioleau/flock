@@ -5,6 +5,7 @@ import { useTheme } from "next-themes";
 import { useHotkeys } from "react-hotkeys-hook";
 import { selectCanRedo, selectCanUndo, useEditorStore } from "@/lib/editor-store";
 import { focusChatComposer } from "../chat/composer-handoff";
+import { useCommentsModeStore } from "../comments/comments-mode-store";
 import { getPanelPreferences, updatePanelPreferences } from "../panel-preferences";
 import { QuickAddLayer } from "./QuickAddLayer";
 import { QuickPromptOverlay } from "./QuickPromptOverlay";
@@ -25,7 +26,8 @@ import { useHoldToQuickAdd } from "./use-hold-to-quick-add";
  *   the inline text editor owns ⌘-combos (⌘B = bold).
  * - UNDO/REDO fire only outside all text-editing contexts: form fields keep
  *   native text undo, the inline editor keeps its collab undo.
- * - SINGLE-KEY gestures ("/", hold-A) fire only outside all typing contexts.
+ * - SINGLE-KEY gestures ("/", hold-A, "c") fire only outside all typing
+ *   contexts.
  */
 export function StudioShortcuts() {
   const [isQuickPromptOpen, setIsQuickPromptOpen] = useState(false);
@@ -95,6 +97,18 @@ export function StudioShortcuts() {
     STUDIO_SHORTCUTS.quickPrompt.combo,
     () => {
       setIsQuickPromptOpen(true);
+    },
+    { preventDefault: true },
+  );
+
+  // Single-key "c" — like "/" above, the library's default guards keep it
+  // silent while typing (form fields and contenteditable both excluded).
+  useHotkeys(
+    STUDIO_SHORTCUTS.toggleCommentsMode.combo,
+    () => {
+      const { isCommentsModeActive, setIsCommentsModeActive } =
+        useCommentsModeStore.getState();
+      setIsCommentsModeActive(!isCommentsModeActive);
     },
     { preventDefault: true },
   );

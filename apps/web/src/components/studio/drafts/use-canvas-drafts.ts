@@ -40,14 +40,3 @@ export function useCanvasDrafts(): CanvasDrafts {
       : drafts.findIndex((draft) => draft._id === activeDocumentId);
   return { drafts, activeDocumentId, activeIndex, canvasId };
 }
-
-/** Smallest unused "Draft N" so new-draft names stay unique per canvas. */
-export function computeNextDraftName(drafts: DraftListEntry[]): string {
-  const takenNames = new Set(drafts.map((draft) => draft.name));
-  for (let candidate = drafts.length + 1; ; candidate++) {
-    const name = `Draft ${candidate}`;
-    if (!takenNames.has(name)) {
-      return name;
-    }
-  }
-}

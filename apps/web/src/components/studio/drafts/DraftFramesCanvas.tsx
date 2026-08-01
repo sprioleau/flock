@@ -9,7 +9,8 @@ import {
 } from "react";
 import { useConvex, useQuery } from "convex/react";
 import { BanIcon, ChevronLeftIcon, ChevronRightIcon, Loader2Icon } from "lucide-react";
-import type { EmailDocument } from "@tandem/email-sdk";
+import { useStore } from "zustand";
+import { ROOT_BLOCK_ID, type EmailDocument } from "@tandem/email-sdk";
 import { api } from "@convex/_generated/api";
 import type { Id } from "@convex/_generated/dataModel";
 import { Button } from "@/components/ui/button";
@@ -20,6 +21,7 @@ import {
   useEditorStore,
 } from "@/lib/editor-store";
 import { cn } from "@/lib/utils";
+import { useGenerationTargetDocumentId } from "../chat/agent-status";
 import { useCanvasDragStore } from "../dnd/drag-drop-store";
 import { EditorCanvas } from "../EditorCanvas";
 import { ReadOnlyEmailPreview } from "../history/ReadOnlyEmailPreview";
@@ -59,6 +61,18 @@ const ACTIVE_FRAME_MOBILE_WIDTH_PX = 375;
 const PREVIEW_FRAME_WIDTH_PX = 384;
 /** Max sibling previews mounted with live subscriptions (demo scale ≤ 8 drafts/canvas). */
 const MAX_LIVE_SIBLING_PREVIEWS = 8;
+/**
+ * Min height for a frame whose document has NO root sections — 2× the h-40
+ * (10rem) baseline the placeholder/loading frames use, so a freshly created
+ * blank draft (the AI-generation flows create one and stream into it) reads
+ * as a real frame instead of a short strip (owner feedback, item 28a).
+ */
+const EMPTY_FRAME_MIN_HEIGHT_CLASS = "min-h-80";
+
+/** Whether `doc` has no top-level sections yet (a blank/just-created draft). */
+function getIsDocEmpty(doc: EmailDocument): boolean {
+  return (doc[ROOT_BLOCK_ID]?.childrenIds.length ?? 0) === 0;
+}
 
 export function DraftFramesCanvas({
   onActivateDraft,
@@ -67,6 +81,9 @@ export function DraftFramesCanvas({
 }) {
   const { drafts, activeDocumentId, activeIndex } = useCanvasDrafts();
   const viewport = useEditorStore((state) => state.viewport);
+  // The document a live AI generation streams into (drafts menu flows) —
+  // only THAT frame shows the working state; clears when the turn settles.
+  const generationTargetDocumentId = useGenerationTargetDocumentId();
   const frameRefsById = useRef(new Map<string, HTMLDivElement>());
   const lastScrolledDocumentIdRef = useRef<string | null>(null);
 
@@ -158,6 +175,7 @@ export function DraftFramesCanvas({
               frameRefsById.current.set(draft._id, element);
             }
           };
+          const isGenerationTarget = draft._id === generationTargetDocumentId;
           if (isActive) {
             return (
               <ActiveDraftFrame
@@ -168,6 +186,7 @@ export function DraftFramesCanvas({
                     ? ACTIVE_FRAME_MOBILE_WIDTH_PX
                     : ACTIVE_FRAME_DESKTOP_WIDTH_PX
                 }
+                isGenerationTarget={isGenerationTarget}
                 registerFrameRef={registerFrameRef}
               />
             );
@@ -177,6 +196,7 @@ export function DraftFramesCanvas({
               key={draft._id}
               draft={draft}
               shouldMountLivePreview={liveSiblingPreviewIds.has(draft._id)}
+              isGenerationTarget={isGenerationTarget}
               onActivate={() => onActivateDraft(draft._id)}
               registerFrameRef={registerFrameRef}
             />
@@ -200,10 +220,12 @@ export function DraftFramesCanvas({
 function ActiveDraftFrame({
   draft,
   frameWidthPx,
+  isGenerationTarget,
   registerFrameRef,
 }: {
   draft: DraftListEntry;
   frameWidthPx: number;
+  isGenerationTarget: boolean;
   registerFrameRef: (element: HTMLDivElement | null) => void;
 }) {
   // Drops only land here: while a drag is live the active frame gets a
@@ -216,6 +238,10 @@ function ActiveDraftFrame({
   // future editable sibling frames reuse with their own instances. (The
   // active fallback covers the unreachable no-registry-entry edge.)
   const frameStore = peekEditorStore(draft._id) ?? getActiveEditorStore();
+  // Empty = no root sections yet. Drives the taller blank-frame minimum and,
+  // during a generation turn, the "first section landed" handover: the
+  // spinner/status overlay yields to the streaming content, the glow stays.
+  const isDocEmpty = useStore(frameStore, (state) => getIsDocEmpty(state.doc));
   return (
     <div
       ref={registerFrameRef}
@@ -224,6 +250,7 @@ function ActiveDraftFrame({
       data-testid="draft-frame"
       data-active="true"
       data-document-id={draft._id}
+      data-generation-target={isGenerationTarget || undefined}
     >
       <DraftFrameLabel draft={draft} isActive />
       {/* Floating per-frame toolbar: STICKY against the frames surface (the
@@ -232,20 +259,97 @@ function ActiveDraftFrame({
       <div className="sticky top-2 z-10 h-0 self-end overflow-visible pr-2">
         <DraftFrameToolbar />
       </div>
-      {/* Height follows content (owner decision): no inner max-height or
-          scroll region — the email defines the frame's height and the frames
-          surface does all scrolling. */}
-      <div
-        className={cn(
-          "flex flex-col overflow-hidden rounded-lg border bg-background shadow-md ring-1 ring-black/5 dark:ring-white/10",
-          isDragActive && "ring-2 ring-ring/50",
-        )}
-      >
-        <EditorStoreProvider value={frameStore}>
-          <EditorCanvas />
-        </EditorStoreProvider>
+      {/* Positioning wrapper so the generation glow can ring the content box
+          (it sits OUTSIDE the box's overflow-hidden clip) without including
+          the label row above. */}
+      <div className="relative flex min-h-0 flex-1 flex-col">
+        {isGenerationTarget && <GenerationGlowBorder />}
+        {/* Height follows content (owner decision): no inner max-height or
+            scroll region — the email defines the frame's height and the frames
+            surface does all scrolling. `inert` while a generation streams in:
+            the frame is display-only (no pointer, no focus) until the turn
+            settles — every OTHER frame keeps normal interaction. */}
+        <div
+          inert={isGenerationTarget || undefined}
+          className={cn(
+            "relative flex flex-col overflow-hidden rounded-lg border bg-background shadow-md ring-1 ring-black/5 dark:ring-white/10",
+            isDragActive && "ring-2 ring-ring/50",
+            isDocEmpty && EMPTY_FRAME_MIN_HEIGHT_CLASS,
+          )}
+        >
+          <EditorStoreProvider value={frameStore}>
+            <EditorCanvas />
+          </EditorStoreProvider>
+          {isGenerationTarget && isDocEmpty && <GenerationWorkingOverlay />}
+        </div>
       </div>
     </div>
+  );
+}
+
+/**
+ * Rotating stage lines under the generation spinner — deliberately GENERIC
+ * working words (honest presentation: no fake specific claims), cycled on a
+ * timer until the first section lands and the overlay unmounts.
+ */
+const GENERATION_STAGE_LINES = [
+  "Finding relevant sections…",
+  "Updating content…",
+  "Adjusting the styles…",
+] as const;
+
+/** How long each stage line holds before rotating to the next. */
+const GENERATION_STAGE_ROTATION_MS = 2200;
+
+/**
+ * The in-frame working state while a generation turn targets a still-empty
+ * draft: centered spinner + message + rotating stage lines. Unmounts the
+ * moment the first section lands (content takes over); the glow border and
+ * the edit lock stay until the turn settles.
+ */
+function GenerationWorkingOverlay() {
+  const [stageIndex, setStageIndex] = useState(0);
+  useEffect(() => {
+    const intervalId = setInterval(() => {
+      setStageIndex((index) => (index + 1) % GENERATION_STAGE_LINES.length);
+    }, GENERATION_STAGE_ROTATION_MS);
+    return () => clearInterval(intervalId);
+  }, []);
+  return (
+    <div
+      className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-2 bg-background/85"
+      data-testid="generation-working-overlay"
+    >
+      <Loader2Icon className="size-5 animate-spin text-muted-foreground" aria-hidden />
+      <p className="text-sm font-medium">Tandem is ideating…</p>
+      <p className="text-xs text-muted-foreground" aria-live="polite">
+        {GENERATION_STAGE_LINES[stageIndex]}
+      </p>
+    </div>
+  );
+}
+
+/**
+ * EXPERIMENTAL (owner explicitly wants to try it): an animated glowing
+ * border around the frame a generation turn streams into — a rotating
+ * conic-gradient ring (crisp layer) plus a blurred halo, pulsing softly.
+ * Vivid mid-scale colors read on both themes; keyframes in globals.css
+ * (`generation-glow`). Rendered BEFORE the content box, which is positioned
+ * and opaque, so only the ring around its edges shows.
+ */
+function GenerationGlowBorder() {
+  return (
+    <>
+      <div
+        aria-hidden
+        className="generation-glow pointer-events-none absolute -inset-1.5 rounded-xl opacity-60 blur-md"
+      />
+      <div
+        aria-hidden
+        className="generation-glow pointer-events-none absolute -inset-0.5 rounded-[10px]"
+        data-testid="generation-glow-border"
+      />
+    </>
   );
 }
 
@@ -253,11 +357,13 @@ function ActiveDraftFrame({
 function SiblingDraftFrame({
   draft,
   shouldMountLivePreview,
+  isGenerationTarget,
   onActivate,
   registerFrameRef,
 }: {
   draft: DraftListEntry;
   shouldMountLivePreview: boolean;
+  isGenerationTarget: boolean;
   onActivate: () => void;
   registerFrameRef: (element: HTMLDivElement | null) => void;
 }) {
@@ -274,8 +380,15 @@ function SiblingDraftFrame({
       data-testid="draft-frame"
       data-active="false"
       data-document-id={draft._id}
+      data-generation-target={isGenerationTarget || undefined}
     >
       <DraftFrameLabel draft={draft} isActive={false} onActivate={onActivate} />
+      {/* Positioning wrapper for the generation glow (switch-away-mid-
+          generation: ops keep landing in the target draft even as a sibling,
+          so the glow follows the frame; activation stays enabled — the frame
+          is read-only here anyway). */}
+      <div className="relative flex min-h-0 flex-1 flex-col">
+      {isGenerationTarget && <GenerationGlowBorder />}
       {/* div-with-button-semantics: the preview markup contains links/buttons
           (inert via pointer-events-none), which must not nest inside a real
           <button> (invalid interactive-content nesting → React dev warning). */}
@@ -312,19 +425,26 @@ function SiblingDraftFrame({
           </div>
         )}
         {shouldMountLivePreview ? (
-          <LiveSiblingPreview documentId={draft._id} />
+          <LiveSiblingPreview documentId={draft._id} isGenerationTarget={isGenerationTarget} />
         ) : (
           <div className="flex h-40 items-center justify-center rounded-lg border bg-background text-xs text-muted-foreground">
             Click to open this draft
           </div>
         )}
       </div>
+      </div>
     </div>
   );
 }
 
 /** Reactive read-only preview: collaborators' edits to the sibling appear live. */
-function LiveSiblingPreview({ documentId }: { documentId: Id<"documents"> }) {
+function LiveSiblingPreview({
+  documentId,
+  isGenerationTarget,
+}: {
+  documentId: Id<"documents">;
+  isGenerationTarget: boolean;
+}) {
   const snapshot = useQuery(api.documents.getDocument, { documentId });
   if (snapshot === undefined || snapshot === null) {
     return (
@@ -333,7 +453,13 @@ function LiveSiblingPreview({ documentId }: { documentId: Id<"documents"> }) {
       </div>
     );
   }
-  return <ReadOnlyEmailPreview doc={snapshot.doc as EmailDocument} />;
+  const isDocEmpty = getIsDocEmpty(snapshot.doc as EmailDocument);
+  return (
+    <div className={cn("relative flex flex-col", isDocEmpty && EMPTY_FRAME_MIN_HEIGHT_CLASS)}>
+      <ReadOnlyEmailPreview doc={snapshot.doc as EmailDocument} />
+      {isGenerationTarget && isDocEmpty && <GenerationWorkingOverlay />}
+    </div>
+  );
 }
 
 /**

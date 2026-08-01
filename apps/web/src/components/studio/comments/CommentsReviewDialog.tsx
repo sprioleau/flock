@@ -13,6 +13,12 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { useEditorStore } from "@/lib/editor-store";
 import { cn } from "@/lib/utils";
 import { getLocalCommentAuthorName } from "./comment-author";
@@ -35,7 +41,12 @@ import { useCommentFixDispatch } from "./use-comment-fix-dispatch";
  * responded" entry when it settles — still open, awaiting the human's
  * resolve.
  */
-export function CommentsReviewDialog() {
+export function CommentsReviewDialog({
+  triggerClassName,
+}: {
+  /** Extra classes for the trigger button (the header combo control squares it off). */
+  triggerClassName?: string;
+}) {
   const [isOpen, setIsOpen] = useState(false);
   const canvasId = useEditorStore((state) => state.canvasId);
   const activeDocumentId = useEditorStore((state) => state.documentId);
@@ -68,37 +79,47 @@ export function CommentsReviewDialog() {
     }
   };
 
+  const reviewLabel =
+    openComments.length > 0 ? `Review comments (${openComments.length} open)` : "Review comments";
+
   return (
     <Dialog open={isOpen} onOpenChange={setIsOpen}>
-      <DialogTrigger
-        render={
-          <Button
-            variant="ghost"
-            size="icon-sm"
-            aria-label={
-              openComments.length > 0
-                ? `Review comments (${openComments.length} open)`
-                : "Review comments"
+      {/* Tooltip + dialog trigger on ONE element (base-ui render composition)
+          — the trigger is icon-only, so hover must say what it opens. */}
+      <TooltipProvider>
+        <Tooltip>
+          <TooltipTrigger
+            render={
+              <DialogTrigger
+                render={
+                  <Button
+                    variant="ghost"
+                    size="icon-sm"
+                    aria-label={reviewLabel}
+                    className={cn("relative", triggerClassName)}
+                    data-testid="comments-review-trigger"
+                  />
+                }
+              >
+                <MessagesSquareIcon />
+                {openComments.length > 0 && (
+                  <span
+                    className={cn(
+                      "absolute -top-1 -right-1 flex h-4 min-w-4 items-center justify-center",
+                      "rounded-full bg-sky-500 px-1 text-[10px] font-medium text-white",
+                    )}
+                    data-testid="comments-open-count-badge"
+                    aria-hidden
+                  >
+                    {openComments.length > 9 ? "9+" : openComments.length}
+                  </span>
+                )}
+              </DialogTrigger>
             }
-            className="relative"
-            data-testid="comments-review-trigger"
           />
-        }
-      >
-        <MessagesSquareIcon />
-        {openComments.length > 0 && (
-          <span
-            className={cn(
-              "absolute -top-1 -right-1 flex h-4 min-w-4 items-center justify-center",
-              "rounded-full bg-sky-500 px-1 text-[10px] font-medium text-white",
-            )}
-            data-testid="comments-open-count-badge"
-            aria-hidden
-          >
-            {openComments.length > 9 ? "9+" : openComments.length}
-          </span>
-        )}
-      </DialogTrigger>
+          <TooltipContent side="bottom">{reviewLabel}</TooltipContent>
+        </Tooltip>
+      </TooltipProvider>
       <DialogContent className="sm:max-w-xl" data-testid="comments-review-dialog">
         <DialogHeader>
           <DialogTitle>Comments</DialogTitle>

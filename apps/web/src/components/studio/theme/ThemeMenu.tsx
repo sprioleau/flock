@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import { ChevronDownIcon } from "lucide-react";
 import { resolveGlobalStyles, ROOT_BLOCK_ID } from "@tandem/email-sdk";
 import { Button } from "@/components/ui/button";
@@ -11,8 +12,15 @@ import {
   DropdownMenuLabel,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { findMatchingVariation, type ThemeVariation } from "@/lib/brand-kit";
 import { useEditorStore } from "@/lib/editor-store";
+import { useUiSurfaceOpenRequest } from "@/lib/ui-surfaces";
 import { useActiveBrandKit } from "../brand-kit/useActiveBrandKit";
 import { ThemeSwatch } from "./ThemeSwatch";
 
@@ -36,6 +44,10 @@ export function ThemeMenu() {
   const { brandKit } = useActiveBrandKit();
   const dispatch = useEditorStore((state) => state.dispatch);
   const isDocumentReady = useEditorStore((state) => state.isDocumentReady);
+  // Controlled ONLY so the agent's openPanel("theme") command can open it —
+  // human interaction flows through onOpenChange exactly as before.
+  const [isOpen, setIsOpen] = useState(false);
+  useUiSurfaceOpenRequest("theme", () => setIsOpen(true));
   const rawGlobals = useEditorStore((state) => {
     const root = state.doc[ROOT_BLOCK_ID];
     return root !== undefined && root.type === "root" ? root.properties.globals : undefined;
@@ -65,26 +77,38 @@ export function ThemeMenu() {
   };
 
   return (
-    <DropdownMenu>
-      <DropdownMenuTrigger
-        render={
-          <Button
-            variant="outline"
-            size="sm"
-            aria-label="Email theme"
-            disabled={!isDocumentReady}
+    <DropdownMenu open={isOpen} onOpenChange={setIsOpen}>
+      {/* Tooltip + menu trigger on ONE element (base-ui render composition):
+          below xl the trigger is swatch-only, so the hover label carries the
+          control's name (item 32 — every header control shows what it does). */}
+      <TooltipProvider>
+        <Tooltip>
+          <TooltipTrigger
+            render={
+              <DropdownMenuTrigger
+                render={
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    aria-label="Email theme"
+                    disabled={!isDocumentReady}
+                  />
+                }
+                data-testid="theme-menu-trigger"
+              >
+                <ThemeSwatch globals={currentGlobals} />
+                {/* Narrow-width degradation: the swatch alone identifies the
+                    control below xl — the name label is the first thing to go. */}
+                <span className="hidden max-w-28 truncate xl:inline">
+                  {activeVariation?.name ?? "Custom"}
+                </span>
+                <ChevronDownIcon className="text-muted-foreground" />
+              </DropdownMenuTrigger>
+            }
           />
-        }
-        data-testid="theme-menu-trigger"
-      >
-        <ThemeSwatch globals={currentGlobals} />
-        {/* Narrow-width degradation: the swatch alone identifies the control
-            below xl — the name label is the first thing to go. */}
-        <span className="hidden max-w-28 truncate xl:inline">
-          {activeVariation?.name ?? "Custom"}
-        </span>
-        <ChevronDownIcon className="text-muted-foreground" />
-      </DropdownMenuTrigger>
+          <TooltipContent side="bottom">Email theme</TooltipContent>
+        </Tooltip>
+      </TooltipProvider>
       <DropdownMenuContent align="start" sideOffset={6} className="w-56">
         <DropdownMenuGroup>
           <DropdownMenuLabel>
