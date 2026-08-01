@@ -1,5 +1,9 @@
 # Tandem
 
+![Screenshot 2026-08-01 at 1 01 42 AM](apps/web/public/screenshots/flock-app-dark-mode.png)
+
+![Screenshot 2026-08-01 at 1 03 51 AM](apps/web/public/screenshots/flock-app-light-mode.png)
+
 **What email creation looks like when humans and agents are the same kind of collaborator.**
 
 Tandem is a collaborative email studio where you don't just get an AI assistant bolted onto an editor — you get a room. You edit on a live canvas; a copilot builds alongside you from plain language; a crew of advisory agents reads your drafts on a cadence and leaves reviewable recommendations; and other humans (and their agents) can be in the document at the same time, cursors and all. Every change — human click, copilot edit, agent suggestion — flows through the same validated, invertible operations, so you can see who did what, apply anything with one click, and revert anything just as fast.
