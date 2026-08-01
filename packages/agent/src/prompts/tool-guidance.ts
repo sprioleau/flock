@@ -48,7 +48,12 @@ export function buildToolGuidance(registry: EmailActionRegistry): string {
   // advertises capabilities it lacks. Constant text — cache-stable.
   const hasOpenPanelTool = registry.actionsByName.has("openPanel");
   const capabilitySummary = hasOpenPanelTool ? `\n\n${CAPABILITY_SUMMARY}` : "";
-  return `## Available tools\n\n${catalogHint}${lines.join("\n")}${sectionCatalogListing}${webContentWorkflow}${capabilitySummary}`;
+  // Generative-UI widget routing: gated on askForClarification (the widget
+  // action set ships together — see widget-actions.ts). Constant text —
+  // cache-stable.
+  const hasWidgetTools = registry.actionsByName.has("askForClarification");
+  const widgetGuidance = hasWidgetTools ? `\n\n${WIDGET_GUIDANCE}` : "";
+  return `## Available tools\n\n${catalogHint}${lines.join("\n")}${sectionCatalogListing}${webContentWorkflow}${capabilitySummary}${widgetGuidance}`;
 }
 
 /**
@@ -65,6 +70,17 @@ Beyond answering questions about this email, you can act on it and on the editor
  * prefix stays byte-identical. Appended only when fetchWebContent is
  * registered (see buildToolGuidance).
  */
+/**
+ * Routing rules for the generative-UI widget tools — constant text so the
+ * cached prefix stays byte-identical. Appended only when the widget actions
+ * are registered (see buildToolGuidance).
+ */
+const WIDGET_GUIDANCE = `## In-chat widgets
+
+- When a request is too vague to act on confidently (like "make it pop"), call askForClarification with one short question and 2-4 concrete options instead of guessing — then stop and wait for the answer.
+- When the user asks for variations, options, or alternatives for a section, call proposeSectionVariations with 2-4 meaningfully different takes — never scaffold the candidates into the email; the user picks one from the chat.
+- When the user asks how to improve the email (feedback, review, suggestions) without asking you to change it, call proposeEdits — the suggestions render as Apply cards; do not also apply them yourself.`;
+
 const WEB_CONTENT_WORKFLOW = `## Building from a web page (fetchWebContent)
 
 When the user shares a URL and asks you to build content from it, call fetchWebContent FIRST — never write about a page you have not fetched in this conversation.

@@ -8,11 +8,17 @@ import { useEditorStore } from "@/lib/editor-store";
 import { cn } from "@/lib/utils";
 import { EditorCommandChip } from "./EditorCommandChip";
 import { ToolPartChip } from "./ToolPartChip";
+import { ChatTableWidget } from "./widgets/ChatTableWidget";
+import { ClarificationWidget } from "./widgets/ClarificationWidget";
+import { EditSuggestionsWidget } from "./widgets/EditSuggestionsWidget";
+import { SectionVariationsWidget } from "./widgets/SectionVariationsWidget";
 
 /**
  * The scrollable transcript: user/assistant text bubbles, tool-call chips,
- * editor-command chips, and a distinct error bubble for terminal stream
- * failures. Auto-scrolls to the newest content.
+ * editor-command chips, interactive widget parts (clarification questions,
+ * section-variation pickers, apply-able suggestions, compact tables), and a
+ * distinct error bubble for terminal stream failures. Auto-scrolls to the
+ * newest content.
  */
 
 /**
@@ -77,7 +83,14 @@ function getPartToolCallId(part: TandemChatMessage["parts"][number]): string | n
   if (isStaticToolUIPart(part)) {
     return part.toolCallId;
   }
-  if (part.type === "data-editor-command") {
+  // Widget data parts carry their tool call's id so the LATEST part for a
+  // toolCallId — the widget, written after the chip's part — wins rendering.
+  if (
+    part.type === "data-editor-command" ||
+    part.type === "data-section-variations" ||
+    part.type === "data-edit-suggestions" ||
+    part.type === "data-table"
+  ) {
     return part.data.toolCallId;
   }
   return null;
@@ -228,12 +241,15 @@ function AssistantMessageParts({
   message,
   latestToolPartKeys,
   isRetryPending,
+  hasLaterUserMessage,
   onApprovalResponse,
 }: {
   message: TandemChatMessage;
   latestToolPartKeys: Map<string, string>;
   /** True while this message's turn is still in flight (a retry may follow). */
   isRetryPending: boolean;
+  /** True when any user message follows this one (locks stale clarifications). */
+  hasLaterUserMessage: boolean;
   onApprovalResponse: (input: { approvalId: string; isApproved: boolean }) => void;
 }) {
   const appliedBatchIds = getAppliedBatchIds({ message, latestToolPartKeys });
@@ -260,6 +276,19 @@ function AssistantMessageParts({
             </p>
           );
         }
+        // askForClarification has no server execute: the validated call IS
+        // the widget (the turn ended on it; the user's click answers it).
+        // While the input is still streaming, the generic chip spins below.
+        if (part.type === "tool-askForClarification" && part.state === "input-available") {
+          return (
+            <ClarificationWidget
+              key={key}
+              question={part.input.question}
+              options={[...part.input.options]}
+              hasBeenAnswered={hasLaterUserMessage}
+            />
+          );
+        }
         // The registry only produces statically-typed tools; dynamic tool
         // parts do not occur on this route.
         if (isStaticToolUIPart(part)) {
@@ -274,6 +303,15 @@ function AssistantMessageParts({
         }
         if (part.type === "data-editor-command") {
           return <EditorCommandChip key={key} data={part.data} />;
+        }
+        if (part.type === "data-section-variations") {
+          return <SectionVariationsWidget key={key} data={part.data} />;
+        }
+        if (part.type === "data-edit-suggestions") {
+          return <EditSuggestionsWidget key={key} data={part.data} />;
+        }
+        if (part.type === "data-table") {
+          return <ChatTableWidget key={key} data={part.data} />;
         }
         return null;
       })}
@@ -334,7 +372,7 @@ export function ChatMessageList({
   return (
     <div ref={scrollContainerRef} className="flex-1 overflow-y-auto">
       <div className="flex flex-col gap-3 p-3">
-        {messages.map((message) =>
+        {messages.map((message, messageIndex) =>
           message.role === "user" ? (
             <div
               key={message.id}
@@ -354,6 +392,10 @@ export function ChatMessageList({
               message={message}
               latestToolPartKeys={latestToolPartKeys}
               isRetryPending={isTurnInProgress && message.id === messages.at(-1)?.id}
+              hasLaterUserMessage={messages.some(
+                (laterMessage, laterIndex) =>
+                  laterIndex > messageIndex && laterMessage.role === "user",
+              )}
               onApprovalResponse={onApprovalResponse}
             />
           ),

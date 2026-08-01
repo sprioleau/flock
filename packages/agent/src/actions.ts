@@ -8,6 +8,7 @@ import {
 import { z } from "zod";
 import { describeBlock, type BlockDetails } from "./describe-block";
 import { defineFetchWebContentAction, type FetchWebArticleFn } from "./fetch-web-content";
+import { widgetActions } from "./widget-actions";
 
 /**
  * Agent-level action definitions (plan §9.4 item 1 — the catalog-lookup tool).
@@ -56,6 +57,15 @@ export interface BuildAgentActionRegistryOptions {
    * tool and its guidance are absent — the registry stays purely local.
    */
   fetchWebArticle?: FetchWebArticleFn;
+  /**
+   * Register the generative-UI widget actions (askForClarification,
+   * proposeSectionVariations, proposeEdits, listAssets — see
+   * widget-actions.ts). Only a host that renders chat widgets AND fulfills
+   * the host-side executions (schema-only clarification, data-part writes,
+   * the session-scoped asset listing) should enable this; when omitted, the
+   * tools and their guidance are absent.
+   */
+  shouldIncludeWidgetActions?: boolean;
 }
 
 /**
@@ -72,9 +82,11 @@ export function buildAgentActionRegistry(
     options?.fetchWebArticle === undefined
       ? []
       : [defineFetchWebContentAction({ fetchWebArticle: options.fetchWebArticle })];
+  const optionalWidgetActions = options?.shouldIncludeWidgetActions === true ? widgetActions : [];
   return createActionRegistry([
     ...emailActionRegistry.actions,
     ...agentAnalysisActions,
     ...webContentActions,
+    ...optionalWidgetActions,
   ]);
 }

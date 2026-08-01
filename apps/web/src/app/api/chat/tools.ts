@@ -1,4 +1,10 @@
 import {
+  materializeSectionVariations,
+  proposeEditsInputSchema,
+  proposeSectionVariationsInputSchema,
+  validateEditSuggestions,
+} from "@tandem/agent";
+import {
   dispatchEditorAction,
   getAction,
   toAISDKToolDefinitions,
@@ -6,15 +12,20 @@ import {
   type ActionDispatchError,
   type EmailDocument,
 } from "@tandem/email-sdk";
-import { tool, type ToolApprovalStatus, type ToolSet, type UIMessageStreamWriter } from "ai";
+import { tool, type Tool, type ToolApprovalStatus, type ToolSet, type UIMessageStreamWriter } from "ai";
 import {
+  CHAT_TABLE_MAX_ROWS,
   serializeChatError,
   type AnalysisToolOutput,
   type EditorToolOutput,
+  type ListAssetsToolOutput,
+  type ProposeEditsToolOutput,
+  type ProposeSectionVariationsToolOutput,
   type TandemChatMessage,
 } from "@/lib/chat-contract";
 import { generateAndStoreImage } from "../generate-image/generation";
 import { createPersonaForSession } from "./create-persona";
+import { ASSET_KIND_LABELS, listSessionAssets } from "./list-assets";
 import { toModelInputSchema } from "./model-schema";
 import { chatActionRegistry } from "./registry";
 import { sendTestEmailWithResend } from "./send-test-email";
@@ -86,6 +97,157 @@ export interface BuiltChatTools {
   toolApproval: Record<string, ToolApprovalStatus | ((input: unknown) => ToolApprovalStatus)>;
 }
 
+// ---------------------------------------------------------------------------
+// Generative-UI widget tools (host-side fulfillment — see widget-actions.ts)
+// ---------------------------------------------------------------------------
+
+/**
+ * Format an asset timestamp for the chat table ("Jul 30"). Server-side and
+ * deterministic per run — the table is a snapshot, not a live clock.
+ */
+function formatAssetDate(createdAtMs: number): string {
+  return new Date(createdAtMs).toLocaleDateString("en-US", { month: "short", day: "numeric" });
+}
+
+interface BuildWidgetToolInput {
+  name: string;
+  description: string;
+  modelInputSchema: ReturnType<typeof toModelInputSchema>;
+  writer: UIMessageStreamWriter<TandemChatMessage>;
+  doc: EmailDocument;
+  sessionId: string | null;
+}
+
+/**
+ * The widget tools' host-side executions, or null when `name` is not a
+ * host-fulfilled widget tool. Each execute runs the agent package's pure
+ * computation, writes ONE `data-*` part with `id = toolCallId` (same-id
+ * rewrites reconcile; the transcript's latest-part dedupe supersedes the tool
+ * chip with the widget), and returns a COMPACT model-facing summary — the
+ * full widget payload never rides the model loop. Failures throw, which the
+ * SDK surfaces as a retryable tool error the model sees on the next step.
+ *
+ * askForClarification is NOT here on purpose: it registers schema-only (no
+ * execute) so the turn ends on the call and the user's answer arrives as
+ * their next message through the composer-handoff send seam.
+ */
+function buildWidgetTool({
+  name,
+  description,
+  modelInputSchema,
+  writer,
+  doc,
+  sessionId,
+}: BuildWidgetToolInput): Tool | null {
+  if (name === "proposeSectionVariations") {
+    return tool({
+      description,
+      inputSchema: modelInputSchema,
+      execute: async (input, { toolCallId }): Promise<ProposeSectionVariationsToolOutput> => {
+        const parsedInput = proposeSectionVariationsInputSchema.safeParse(input);
+        if (!parsedInput.success) {
+          throw new Error(
+            `Input for action "proposeSectionVariations" failed validation: ${parsedInput.error.message}`,
+          );
+        }
+        const result = materializeSectionVariations(parsedInput.data);
+        if (result.variations.length === 0) {
+          throw new Error(
+            "No variation could be built — use templateIds from the section catalog listed in your instructions.",
+          );
+        }
+        writer.write({
+          type: "data-section-variations",
+          id: toolCallId,
+          data: {
+            toolCallId,
+            ...(parsedInput.data.intent === undefined ? {} : { intent: parsedInput.data.intent }),
+            variations: result.variations.map((variation, index) => ({
+              id: `v${index + 1}`,
+              title: variation.title,
+              templateId: variation.templateId,
+              blocks: variation.blocks,
+            })),
+          },
+        });
+        return {
+          status: "presented",
+          note: "The variations are on screen as a picker with previews. The user will choose one — do not scaffold or insert any of them yourself.",
+          variationCount: result.variations.length,
+        };
+      },
+    });
+  }
+  if (name === "proposeEdits") {
+    return tool({
+      description,
+      inputSchema: modelInputSchema,
+      execute: async (input, { toolCallId }): Promise<ProposeEditsToolOutput> => {
+        const parsedInput = proposeEditsInputSchema.safeParse(input);
+        if (!parsedInput.success) {
+          throw new Error(
+            `Input for action "proposeEdits" failed validation: ${parsedInput.error.message}`,
+          );
+        }
+        const result = validateEditSuggestions({ doc, input: parsedInput.data });
+        if (result.suggestions.length === 0) {
+          throw new Error(
+            "None of the suggested edits matched the current document — check block ids and property names against the document context, then call proposeEdits again.",
+          );
+        }
+        writer.write({
+          type: "data-edit-suggestions",
+          id: toolCallId,
+          data: {
+            toolCallId,
+            suggestions: result.suggestions,
+            droppedCount: result.droppedCount,
+          },
+        });
+        return {
+          status: "presented",
+          note: "The suggestions are on screen as cards with Apply buttons. The user applies or dismisses each one — do not apply the edits yourself.",
+          suggestionCount: result.suggestions.length,
+          droppedCount: result.droppedCount,
+        };
+      },
+    });
+  }
+  if (name === "listAssets") {
+    return tool({
+      description,
+      inputSchema: modelInputSchema,
+      execute: async (_input, { toolCallId }): Promise<ListAssetsToolOutput> => {
+        const outcome = await listSessionAssets({ sessionId });
+        if (!outcome.isOk) {
+          throw new Error(outcome.message);
+        }
+        const { assets, totalCount } = outcome.result;
+        // An empty library needs no table — the model just says so in prose.
+        if (assets.length > 0) {
+          const rows = assets
+            .slice(0, CHAT_TABLE_MAX_ROWS)
+            .map((asset) => [asset.name, ASSET_KIND_LABELS[asset.kind], formatAssetDate(asset.createdAtMs)]);
+          const moreRowCount = Math.max(0, totalCount - rows.length);
+          writer.write({
+            type: "data-table",
+            id: toolCallId,
+            data: {
+              toolCallId,
+              title: "Images in your library",
+              headers: ["Name", "Type", "Added"],
+              rows,
+              ...(moreRowCount === 0 ? {} : { moreRowCount }),
+            },
+          });
+        }
+        return { isFound: true, data: outcome.result };
+      },
+    });
+  }
+  return null;
+}
+
 /** Build the per-request toolset. The writer is this request's stream writer. */
 export function buildChatTools({
   writer,
@@ -111,7 +273,24 @@ export function buildChatTools({
     });
     schemaOnlyTools[definition.name] = schemaOnlyTool;
 
-    if (action.kind === "editor") {
+    // Widget tools (generative UI) come FIRST: they are registry "analysis"
+    // actions, but their fulfillment is host-side (data-part writes, the
+    // session-scoped asset query) rather than the generic in-loop run.
+    // askForClarification deliberately registers schema-only — the turn must
+    // END on the call so the widget can wait for the user's answer.
+    const widgetTool = buildWidgetTool({
+      name: definition.name,
+      description: definition.description,
+      modelInputSchema,
+      writer,
+      doc,
+      sessionId,
+    });
+    if (definition.name === "askForClarification") {
+      tools[definition.name] = schemaOnlyTool;
+    } else if (widgetTool !== null) {
+      tools[definition.name] = widgetTool;
+    } else if (action.kind === "editor") {
       tools[definition.name] = tool({
         description: definition.description,
         inputSchema: modelInputSchema,

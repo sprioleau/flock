@@ -12,4 +12,9 @@ import { fetchWebArticle } from "@/lib/article-extraction/fetch-web-article";
  * part of the STATIC prompt prefix, so the registry must be identical for
  * every request in a server process (Gemini implicit-caching contract).
  */
-export const chatActionRegistry = buildAgentActionRegistry({ fetchWebArticle });
+export const chatActionRegistry = buildAgentActionRegistry({
+  fetchWebArticle,
+  // Generative-UI widget tools: this app renders the widgets (chat/widgets/)
+  // and fulfills the host-side executions in tools.ts.
+  shouldIncludeWidgetActions: true,
+});

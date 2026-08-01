@@ -29,6 +29,33 @@ export {
 } from "./actions";
 export type { BuildAgentActionRegistryOptions } from "./actions";
 
+// --- Generative-UI widget actions (host fulfills execution — see module doc) ------
+export {
+  askForClarificationAction,
+  askForClarificationInputSchema,
+  listAssetsAction,
+  listAssetsInputSchema,
+  materializeSectionVariations,
+  proposeEditsAction,
+  proposeEditsInputSchema,
+  proposeSectionVariationsAction,
+  proposeSectionVariationsInputSchema,
+  validateEditSuggestions,
+  widgetActions,
+} from "./widget-actions";
+export type {
+  AskForClarificationInput,
+  AssetSummary,
+  ListAssetsInput,
+  ListAssetsResult,
+  ProposeEditsInput,
+  ProposeEditsResult,
+  ProposeSectionVariationsInput,
+  ProposeSectionVariationsResult,
+  SectionVariationPayload,
+  ValidatedEditSuggestion,
+} from "./widget-actions";
+
 // --- Web content ingestion contract (§7.4a — executor injected by the host) ------
 export { defineFetchWebContentAction, fetchWebContentInputSchema } from "./fetch-web-content";
 export type {

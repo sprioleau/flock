@@ -1,4 +1,12 @@
-import type { BlockDetails, FetchWebContentResult } from "@tandem/agent";
+import type {
+  AskForClarificationInput,
+  BlockDetails,
+  FetchWebContentResult,
+  ListAssetsInput,
+  ListAssetsResult,
+  ProposeEditsInput,
+  ProposeSectionVariationsInput,
+} from "@tandem/agent";
 import type { UIMessage } from "ai";
 import { z } from "zod";
 import {
@@ -7,6 +15,8 @@ import {
   editorCommandSchema,
   emailDocumentSchema,
   operationSchema,
+  updateBlockPropertiesOperationSchema,
+  type Block,
   scaffoldSectionInputSchema,
   styleTextSpanInputSchema,
   type ActionDispatchError,
@@ -24,8 +34,10 @@ import {
   type MoveBlockOperation,
   type OpenPanelInput,
   type Operation,
+  type PlaceBlockBesideOperation,
   type RedoInput,
   type UndoInput,
+  type UnplaceBlockBesideOperation,
   type GenerateImageInput,
   type RemoveBlockOperation,
   type ReorderChildrenOperation,
@@ -122,11 +134,93 @@ export type EditorCommandDataPart = z.infer<typeof editorCommandDataPartSchema>;
 /** Wire type of the editor-command data part (`data-${name}`). */
 export const EDITOR_COMMAND_DATA_PART_TYPE = "data-editor-command" as const;
 
+// ---------------------------------------------------------------------------
+// Widget data parts (generative UI — interactive widgets in the transcript)
+// ---------------------------------------------------------------------------
+
+/**
+ * Widget channel contract (same reconciliation seam as `data-editor-command`,
+ * verified against the AI SDK streaming-data docs for ai@7.0.37): the widget
+ * tool's server execute writes ONE `data-*` part with `id = toolCallId`, so
+ * same-id rewrites reconcile in place, and `data.toolCallId` lets the
+ * transcript's latest-part dedupe supersede the tool chip with the widget.
+ * The tool's model-facing output stays COMPACT (a status summary) — the full
+ * widget payload rides only the data part, never the model loop.
+ */
+
+/** Payload of a `data-section-variations` part: the picker widget's options. */
+export const sectionVariationsDataPartSchema = z.object({
+  toolCallId: z.string(),
+  /** One short line describing what the variations explore (optional). */
+  intent: z.string().optional(),
+  variations: z
+    .array(
+      z.object({
+        /** Stable per-call id ("v1", "v2", …) — the widget's choice key. */
+        id: z.string(),
+        title: z.string(),
+        templateId: z.string(),
+        /**
+         * Flat root-first section subtree `[section, ...children]` — the
+         * SavedSectionPreview/restoreBlocks payload shape. Structurally
+         * trusted (the server materialized it from the SDK catalog); inserts
+         * re-validate through the normal dispatch gate anyway.
+         */
+        blocks: z
+          .array(z.custom<Block>((value) => typeof value === "object" && value !== null))
+          .min(1),
+      }),
+    )
+    .min(1),
+});
+
+export type SectionVariationsDataPart = z.infer<typeof sectionVariationsDataPartSchema>;
+
+/** Payload of a `data-edit-suggestions` part: pre-validated Apply cards. */
+export const editSuggestionsDataPartSchema = z.object({
+  toolCallId: z.string(),
+  suggestions: z
+    .array(
+      z.object({
+        /** Stable per-call id ("s1", "s2", …) — the widget's apply/dismiss key. */
+        id: z.string(),
+        title: z.string(),
+        description: z.string().optional(),
+        /** Ops already dry-run against the request document server-side. */
+        ops: z.array(updateBlockPropertiesOperationSchema).min(1),
+      }),
+    )
+    .min(1),
+  /** Suggestions the server dropped (failed validation/dry-run). */
+  droppedCount: z.number().int().min(0),
+});
+
+export type EditSuggestionsDataPart = z.infer<typeof editSuggestionsDataPartSchema>;
+
+/** Compact-table row cap (owner spec: small tables, ~6 rows). */
+export const CHAT_TABLE_MAX_ROWS = 6;
+
+/** Payload of a `data-table` part: one small user-facing table. */
+export const tableDataPartSchema = z.object({
+  toolCallId: z.string(),
+  title: z.string().optional(),
+  /** User-facing column headers (never internal field names). */
+  headers: z.array(z.string()).min(1).max(5),
+  rows: z.array(z.array(z.string())).max(CHAT_TABLE_MAX_ROWS),
+  /** Rows beyond the cap, mentioned as "+N more" by the widget. */
+  moreRowCount: z.number().int().min(0).optional(),
+});
+
+export type TableDataPart = z.infer<typeof tableDataPartSchema>;
+
 /** DATA_PARTS generic for {@link TandemChatMessage}, keyed by part name. */
 // A type alias (not an interface) so it gets an implicit index signature and
 // satisfies the AI SDK's `UIDataTypes` (Record<string, unknown>) constraint.
 export type TandemChatDataParts = {
   "editor-command": EditorCommandDataPart;
+  "section-variations": SectionVariationsDataPart;
+  "edit-suggestions": EditSuggestionsDataPart;
+  table: TableDataPart;
 };
 
 // ---------------------------------------------------------------------------
@@ -167,6 +261,29 @@ export type GetBlockDetailsToolOutput = AnalysisToolOutput<BlockDetails>;
 export type FetchWebContentToolOutput = AnalysisToolOutput<FetchWebContentResult>;
 
 /**
+ * Model-facing output of a widget tool (proposeSectionVariations,
+ * proposeEdits): a COMPACT confirmation that the widget is on screen plus a
+ * behavioral note ("the user picks; don't act yourself") — the full payload
+ * rides the widget's data part, never the model loop.
+ */
+export interface WidgetPresentedOutput {
+  status: "presented";
+  note: string;
+}
+
+export type ProposeSectionVariationsToolOutput = WidgetPresentedOutput & {
+  variationCount: number;
+};
+
+export type ProposeEditsToolOutput = WidgetPresentedOutput & {
+  suggestionCount: number;
+  droppedCount: number;
+};
+
+/** listAssets result data: the session's library, newest first (capped). */
+export type ListAssetsToolOutput = AnalysisToolOutput<ListAssetsResult>;
+
+/**
  * TOOLS generic for {@link TandemChatMessage} — one entry per registry action
  * (tool names match `emailActionRegistry` action names exactly).
  *
@@ -185,6 +302,8 @@ export type TandemChatTools = {
   removeBlock: { input: RemoveBlockOperation; output: never };
   moveBlock: { input: MoveBlockOperation; output: never };
   reorderChildren: { input: ReorderChildrenOperation; output: never };
+  placeBlockBeside: { input: PlaceBlockBesideOperation; output: never };
+  unplaceBlockBeside: { input: UnplaceBlockBesideOperation; output: never };
   updateText: { input: UpdateTextOperation; output: never };
   styleTextSpan: { input: StyleTextSpanInput; output: never };
   scaffoldSection: { input: ScaffoldSectionInput; output: never };
@@ -199,6 +318,15 @@ export type TandemChatTools = {
   createPersona: { input: CreatePersonaInput; output: EditorToolOutput };
   getBlockDetails: { input: { blockId: BlockId }; output: GetBlockDetailsToolOutput };
   fetchWebContent: { input: { url: string }; output: FetchWebContentToolOutput };
+  // Widget tools (generative UI). askForClarification never executes — the
+  // turn ends on the call and the user's answer arrives as their next message.
+  askForClarification: { input: AskForClarificationInput; output: never };
+  proposeSectionVariations: {
+    input: ProposeSectionVariationsInput;
+    output: ProposeSectionVariationsToolOutput;
+  };
+  proposeEdits: { input: ProposeEditsInput; output: ProposeEditsToolOutput };
+  listAssets: { input: ListAssetsInput; output: ListAssetsToolOutput };
 };
 
 /** The typed UI message flowing over /api/chat in both directions. */

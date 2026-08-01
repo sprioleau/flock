@@ -5,14 +5,17 @@ import {
   CheckIcon,
   FilePlusIcon,
   HistoryIcon,
+  LayoutTemplateIcon,
   LoaderCircleIcon,
   MailIcon,
+  MessageCircleQuestionIcon,
   MonitorIcon,
   PanelRightOpenIcon,
   PencilIcon,
   RedoIcon,
   SearchIcon,
   SmartphoneIcon,
+  SparklesIcon,
   TriangleAlertIcon,
   UndoIcon,
   XIcon,
@@ -40,7 +43,7 @@ import { cn } from "@/lib/utils";
 
 type TandemToolPart = ToolUIPart<TandemChatTools>;
 
-const READ_ONLY_TOOL_NAMES = new Set(["getBlockDetails", "fetchWebContent"]);
+const READ_ONLY_TOOL_NAMES = new Set(["getBlockDetails", "fetchWebContent", "listAssets"]);
 
 function getToolName(part: TandemToolPart): string {
   return part.type.slice("tool-".length);
@@ -59,6 +62,8 @@ const TOOL_ACTIVITY_LABELS: Readonly<Record<string, string>> = {
   removeBlock: "removing",
   moveBlock: "moving",
   reorderChildren: "reordering",
+  placeBlockBeside: "making columns",
+  unplaceBlockBeside: "removing column",
   updateText: "editing text",
   styleTextSpan: "styling text",
   showPreview: "switching preview",
@@ -70,6 +75,14 @@ const TOOL_ACTIVITY_LABELS: Readonly<Record<string, string>> = {
   goToVersion: "restoring version",
   createDraft: "creating draft",
   createPersona: "creating persona",
+  // Widget tools: the chip shows only while the call streams in / when no
+  // widget part was written — the widget itself supersedes it otherwise.
+  askForClarification: "asking a question",
+  proposeSectionVariations: "preparing options",
+  proposeEdits: "drafting suggestions",
+  listAssets: "checking your library",
+  getBlockDetails: "reading",
+  fetchWebContent: "reading",
 };
 
 /** openPanel enum value → the human surface name shown after "opening panel ·". */
@@ -164,6 +177,15 @@ function getToolIcon(part: TandemToolPart): React.ReactNode {
   }
   if (toolName === "createPersona") {
     return <BotIcon className="size-3" />;
+  }
+  if (toolName === "askForClarification") {
+    return <MessageCircleQuestionIcon className="size-3" />;
+  }
+  if (toolName === "proposeSectionVariations") {
+    return <LayoutTemplateIcon className="size-3" />;
+  }
+  if (toolName === "proposeEdits") {
+    return <SparklesIcon className="size-3" />;
   }
   return <PencilIcon className="size-3" />;
 }
@@ -296,7 +318,7 @@ export function ToolPartChip({ part, onApprovalResponse, isRetryPending = false 
       <div className="flex items-center gap-1.5">
         {getToolIcon(part)}
         <span className="font-mono">
-          {isReadOnlyTool ? "reading" : getToolActivityLabel(toolName)}
+          {getToolActivityLabel(toolName)}
           {targetLabel !== undefined && (
             <span className="text-muted-foreground"> · {targetLabel}</span>
           )}

@@ -1,4 +1,10 @@
 import type {
+  AskForClarificationInput,
+  ListAssetsInput,
+  ProposeEditsInput,
+  ProposeSectionVariationsInput,
+} from "@tandem/agent";
+import type {
   BlockId,
   CreateDraftInput,
   CreatePersonaInput,
@@ -51,6 +57,10 @@ import { MockLanguageModelV4 } from "ai/test";
  *   even generated" (see pipeline-streaming.test.ts)
  * - asks to add a section (e.g. "add a hero section") → scaffoldSection with
  *   the mentioned catalog templateId (exercises the Phase 7.2 scaffold seam)
+ * - widget scripts (generative UI, one per widget): "clarify"/"make it pop" →
+ *   askForClarification; "variations"/"alternatives" →
+ *   proposeSectionVariations; "improve"/"suggestions"/"feedback"/"review" →
+ *   proposeEdits; "what images…"/"my library" → listAssets
  * - otherwise → updateBlockProperties on the selected block (fallback
  *   btn_t9u0, the sample document's button), setting its label.
  *
@@ -85,6 +95,10 @@ interface MockToolCallPlan {
     | GoToVersionInput
     | CreateDraftInput
     | CreatePersonaInput
+    | AskForClarificationInput
+    | ProposeSectionVariationsInput
+    | ProposeEditsInput
+    | ListAssetsInput
     | { url: string };
   acknowledgementText: string;
 }
@@ -210,6 +224,84 @@ function planMockToolCall({
         behavior: `You are the ${name}. Review each change to the email and leave short, specific recommendations from your specialty's point of view.`,
       },
       acknowledgementText: `Creating the "${name}" persona.`,
+    };
+  }
+  // --- Generative-UI widget scripts (one per widget — quota-free QA) --------
+  // askForClarification: "clarify"-family words or the canonical vague ask.
+  if (/\bclarif\w*\b|\bmake it pop\b/i.test(lastUserText)) {
+    return {
+      toolName: "askForClarification",
+      input: {
+        question: "What kind of “pop” are you going for?",
+        options: [
+          "Bolder colors",
+          "Bigger headline",
+          "More breathing room",
+          "Add an eye-catching image",
+        ],
+      },
+      acknowledgementText: "Happy to — quick question first.",
+    };
+  }
+  // proposeSectionVariations: variations/alternatives asks.
+  if (/\bvariations?\b|\balternatives?\b|\bdifferent takes\b/i.test(lastUserText)) {
+    return {
+      toolName: "proposeSectionVariations",
+      input: {
+        intent: "A few different directions for this section",
+        variations: [
+          {
+            title: "Bold announcement",
+            templateId: "hero",
+            params: { headline: "Big news is on the way" },
+          },
+          {
+            title: "Story first",
+            templateId: "article",
+            params: { headline: "The story behind the launch" },
+          },
+          { title: "Social proof", templateId: "testimonial" },
+        ],
+      },
+      acknowledgementText: "Here are a few directions — pick the one you like.",
+    };
+  }
+  // proposeEdits: improvement/feedback asks (no direct-change verb needed —
+  // the scripted mock keys off the review vocabulary alone).
+  if (/\bimprove\b|\bsuggestions?\b|\bfeedback\b|\breview\b/i.test(lastUserText)) {
+    const suggestionBlockId = selectedBlockId ?? ("btn_t9u0" as BlockId);
+    return {
+      toolName: "proposeEdits",
+      input: {
+        suggestions: [
+          {
+            title: "Stronger call to action",
+            description: "Tell readers exactly what they get when they click.",
+            edits: [
+              { blockId: suggestionBlockId, property: "label", value: "Start your free trial" },
+            ],
+          },
+          {
+            title: "Send clicks somewhere useful",
+            description: "Point the button at your signup page.",
+            edits: [
+              { blockId: suggestionBlockId, property: "href", value: "https://example.com/signup" },
+            ],
+          },
+        ],
+      },
+      acknowledgementText: "A couple of ways to strengthen this email.",
+    };
+  }
+  // listAssets: questions about the session's image library.
+  if (
+    /\b(?:what|which|list|show)\b[\s\S]*\b(?:images?|assets?|photos?)\b/i.test(lastUserText) ||
+    /\bmy library\b/i.test(lastUserText)
+  ) {
+    return {
+      toolName: "listAssets",
+      input: {},
+      acknowledgementText: "Checking your library.",
     };
   }
   const hasPreviewIntent = /\b(preview|mobile|desktop|viewport)\b/i.test(lastUserText);
