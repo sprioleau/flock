@@ -8,6 +8,8 @@ import { useEditorStore } from "@/lib/editor-store";
 import { cn } from "@/lib/utils";
 import { createDefaultSection, generateUniqueBlockId } from "./block-defaults";
 import { CanvasNode } from "./CanvasNode";
+import { CommentPinsOverlay } from "./comments/CommentPinsOverlay";
+import { CommentsModeOverlay } from "./comments/CommentsModeOverlay";
 import { PersonaCursorOverlay } from "./presence/PersonaCursorOverlay";
 import { PointerPresenceOverlay } from "./presence/PointerPresenceOverlay";
 
@@ -99,6 +101,13 @@ export function EditorCanvas() {
             canvas root so cursors live in content space — scrolling and
             scrollport clipping come for free. */}
         <PointerPresenceOverlay />
+        {/* Comments mode: the capture overlay (armed by the header toggle —
+            crosshair, click drops a pin) and the open-comment pins. Same
+            content-space overlay idiom as the cursors above; pins sit ABOVE
+            the capture layer so threads stay clickable while the mode is
+            armed. */}
+        <CommentsModeOverlay />
+        <CommentPinsOverlay />
       </div>
     </div>
   );

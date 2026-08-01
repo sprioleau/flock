@@ -466,6 +466,76 @@ export default defineSchema({
     updatedAtMs: v.number(),
   }).index("by_sessionId", ["sessionId"]),
 
+  /**
+   * Comments mode — click-anywhere review threads on the editor canvas.
+   * One row = one comment THREAD: the placement anchor, the denormalized
+   * anchor context, the conversation entries, and the review status.
+   *
+   * - `anchor` reuses the pointer-presence coordinate model (PresenceData.
+   *   pointer): a block-anchored pin stores 0..1 fractions of that block's
+   *   rect; a pin dropped on empty canvas / a gutter stores `blockId: null`
+   *   with fractions of the canvas root — every client resolves the pin
+   *   against its OWN layout, so positions land on the same content at any
+   *   canvas width.
+   * - `context` is DENORMALIZED AT CREATION (draftName from the documents
+   *   row server-side; breadcrumb/type/snippet from the client's doc at
+   *   click time) so a thread stays readable after its anchor block — or
+   *   the whole layout — changes. Orphanhood is DERIVED client-side (anchor
+   *   blockId no longer in the rendered doc), never written: it converges
+   *   from the document itself with no mutation to race.
+   * - `thread` is a bounded array of entries (user replies + agent
+   *   responses). Comments are shared rows: every tab/collaborator of the
+   *   canvas sees pins, threads, and status flips reactively.
+   * - Lifecycle: open → resolved | dismissed, flipped ONLY by humans.
+   *   Agent fix turns append a thread entry and leave status open — the
+   *   human accepts by resolving (review-workflow invariant).
+   */
+  comments: defineTable({
+    /** Denormalized from the document row for canvas-wide review listing. */
+    canvasId: v.id("canvases"),
+    documentId: v.id("documents"),
+    /** Creator's anonymous session (localStorage id — same key family as canvases). */
+    sessionId: v.string(),
+    anchor: v.object({
+      /** email-sdk block id, or null for a draft-level (canvas-anchored) comment. */
+      blockId: v.union(v.string(), v.null()),
+      /** 0..1 fraction of the anchor rect (block rect, or canvas root when blockId is null). */
+      x: v.number(),
+      y: v.number(),
+    }),
+    /** Placement context frozen at creation (see the table doc note). */
+    context: v.object({
+      /** The draft's user-facing name when the comment was placed. */
+      draftName: v.string(),
+      /** Human-readable ancestor trail, e.g. "Section › Row › Column › Button"; "" for draft-level. */
+      breadcrumb: v.string(),
+      /** User-facing type label of the anchor block ("Button"); absent for draft-level. */
+      blockType: v.optional(v.string()),
+      /** The anchor block's visible text at creation ("Shop now"); absent when it had none. */
+      textSnippet: v.optional(v.string()),
+    }),
+    thread: v.array(
+      v.object({
+        authorKind: v.union(v.literal("user"), v.literal("agent")),
+        /** Present on user entries (the writer's session); absent on agent entries. */
+        authorSessionId: v.optional(v.string()),
+        /** Display name at write time (presence identity / "Tandem" for the agent). */
+        authorName: v.string(),
+        text: v.string(),
+        createdAtMs: v.number(),
+      }),
+    ),
+    status: v.union(v.literal("open"), v.literal("resolved"), v.literal("dismissed")),
+    /** Who closed the thread (resolve or dismiss) and when. */
+    resolvedBySessionId: v.optional(v.string()),
+    resolvedAtMs: v.optional(v.number()),
+    createdAtMs: v.number(),
+    updatedAtMs: v.number(),
+  })
+    .index("by_canvasId", ["canvasId"])
+    .index("by_documentId", ["documentId"])
+    .index("by_documentId_and_status", ["documentId", "status"]),
+
   snapshots: defineTable({
     documentId: v.id("documents"),
     /** The headVersion this snapshot captures (0 = the freshly created document). */

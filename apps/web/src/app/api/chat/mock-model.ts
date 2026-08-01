@@ -28,6 +28,8 @@ import { MockLanguageModelV4 } from "ai/test";
  *   unwrap) plus one with unparseable truncated args (must degrade to a
  *   single failure chip without killing the turn; the repair re-ask against
  *   this mock throws, exercising the repairer's never-throw path)
+ * - mentions "reviewer comment(s)"  → updateBlockProperties acknowledging a
+ *   comments-mode fix turn (the comment-dispatch prompts embed the phrase)
  * - mentions preview/mobile/desktop → showPreview editor tool call
  * - mentions "test email"           → sendTestEmail (exercises approval flow)
  * - contains a URL                  → fetchWebContent with that URL (the
@@ -90,6 +92,21 @@ function planMockToolCall({
   lastUserText,
   selectedBlockId,
 }: CreateMockChatModelInput): MockToolCallPlan {
+  // Comments-mode fix dispatch (checked FIRST: the prompt embeds the
+  // reviewer's own words, which could otherwise trip any keyword below):
+  // both dispatch shapes contain "reviewer comment(s)" by construction
+  // (comment-dispatch.ts). One deterministic content op marks the turn.
+  if (/\breviewer comments?\b/i.test(lastUserText)) {
+    return {
+      toolName: "updateBlockProperties",
+      input: {
+        name: "updateBlockProperties",
+        blockId: selectedBlockId ?? ("btn_t9u0" as BlockId),
+        properties: { label: "Addressed reviewer feedback" },
+      },
+      acknowledgementText: "Addressing the reviewer feedback on the canvas now.",
+    };
+  }
   const hasPreviewIntent = /\b(preview|mobile|desktop|viewport)\b/i.test(lastUserText);
   if (hasPreviewIntent) {
     const mode = /\bdesktop\b/i.test(lastUserText) ? ("desktop" as const) : ("mobile" as const);

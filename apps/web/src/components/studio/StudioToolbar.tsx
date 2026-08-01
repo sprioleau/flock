@@ -4,6 +4,8 @@ import { Redo2Icon, Undo2Icon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { selectCanRedo, selectCanUndo, useEditorStore } from "@/lib/editor-store";
 import { BrandKitPanel } from "./brand-kit/BrandKitPanel";
+import { CommentsModeToggle } from "./comments/CommentsModeToggle";
+import { CommentsReviewDialog } from "./comments/CommentsReviewDialog";
 import { OpInspector } from "./inspector/OpInspector";
 import { LibraryPanel } from "./library/LibraryPanel";
 import { AgentCollaboratorsButton } from "./personas/AgentCollaboratorsButton";
@@ -69,6 +71,11 @@ export function StudioToolbar({
         {/* AI collaborators sit WITH the human avatars (owner decision) —
             the button opens the agent collaborators modal. */}
         <AgentCollaboratorsButton />
+        {/* Comments mode (click-anywhere canvas comments) + the review
+            panel, beside the presence cluster: commenting is a collaboration
+            surface like the avatars next to it. */}
+        <CommentsModeToggle />
+        <CommentsReviewDialog />
         <Button
           variant="ghost"
           size="icon-sm"

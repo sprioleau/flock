@@ -31,7 +31,8 @@ import { deleteBlockSyncDoc } from "./textBlockSync";
  *   5. the transient ghost-session row, if one was stranded (at most one
  *      per document; normally deleted when the ghost run ends)
  *   6. persisted persona findings for the document (advisory suggestion
- *      rows; a handful per document at most)
+ *      rows; a handful per document at most), then the document's comment
+ *      threads (comments mode; bounded per canvas)
  *   7. the document row
  *   8. the parent canvas, iff it now holds no documents (canvases own
  *      documents; an empty canvas of an unclaimed session is dead weight)
@@ -216,6 +217,21 @@ export async function deleteDocumentCascade({
     .withIndex("by_documentId", (q) => q.eq("documentId", documentId))
     .collect();
   for (const row of personaFindingRows) {
+    if (budget.remaining <= 0) {
+      return { isComplete: false };
+    }
+    await ctx.db.delete(row._id);
+    budget.remaining -= 1;
+  }
+
+  // 6b. Comment threads placed on this document (comments mode) — bounded
+  // like findings (a canvas holds at most a couple hundred), and deleted
+  // BEFORE the document row for the same resumability reason.
+  const commentRows = await ctx.db
+    .query("comments")
+    .withIndex("by_documentId", (q) => q.eq("documentId", documentId))
+    .collect();
+  for (const row of commentRows) {
     if (budget.remaining <= 0) {
       return { isComplete: false };
     }

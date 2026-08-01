@@ -12,6 +12,7 @@ import type * as agentText from "../agentText.js";
 import type * as assets from "../assets.js";
 import type * as brandKits from "../brandKits.js";
 import type * as cleanup from "../cleanup.js";
+import type * as comments from "../comments.js";
 import type * as crons from "../crons.js";
 import type * as documents from "../documents.js";
 import type * as files from "../files.js";
@@ -41,6 +42,7 @@ declare const fullApi: ApiFromModules<{
   assets: typeof assets;
   brandKits: typeof brandKits;
   cleanup: typeof cleanup;
+  comments: typeof comments;
   crons: typeof crons;
   documents: typeof documents;
   files: typeof files;

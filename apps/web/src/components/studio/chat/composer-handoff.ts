@@ -2,7 +2,7 @@
 
 /**
  * The composer handoff seam: lets far-away surfaces reach the chat composer
- * without a second chat pipeline. Three modes, one registry:
+ * without a second chat pipeline. Four modes, one registry:
  *
  * - INSERT ({@link handOffPromptToComposer}): persona finding cards and the
  *   recommendations modal insert a ready-to-send prompt — focused and
@@ -13,6 +13,10 @@
  *   panel expands so the user sees their prompt land in the thread.
  * - FOCUS ({@link focusChatComposer}): the focus-chat shortcut expands the
  *   panel and puts the caret in the composer, leaving the draft untouched.
+ * - SEND + SETTLEMENT ({@link sendPromptForSettledTurn}): comments-mode fix
+ *   dispatch sends like SEND and additionally hears back when the turn (and
+ *   anything queued behind it) settles, to append the "agent responded"
+ *   thread entry.
  *
  * Shape: a module-level single-handler registry, not a store. ChatPanel — the
  * one owner of the composer's draft state and send machinery — registers its
@@ -30,6 +34,14 @@ export interface ComposerHandoffHandlers {
   sendPrompt: (prompt: string) => void;
   /** Expand the panel and focus the composer, keeping the current draft. */
   focusComposer: () => void;
+  /**
+   * SEND + SETTLEMENT (comments-mode fix dispatch): submit `prompt` exactly
+   * like sendPrompt, then invoke `onTurnSettled` once the agent NEXT returns
+   * to full idle (turn finished, queue drained, no pending approval). An
+   * error-paused turn does NOT settle — the callback is dropped, so nothing
+   * downstream records a response that never happened.
+   */
+  sendPromptWithSettlement: (input: { prompt: string; onTurnSettled: () => void }) => void;
 }
 
 let activeHandlers: ComposerHandoffHandlers | null = null;
@@ -78,5 +90,22 @@ export function focusChatComposer(): boolean {
     return false;
   }
   activeHandlers.focusComposer();
+  return true;
+}
+
+/**
+ * Send `prompt` as a normal chat message AND get `onTurnSettled` back once
+ * the agent next reaches full idle (see the handler doc). Comments-mode fix
+ * dispatch uses this to append the "agent responded" thread entry after the
+ * fix turn ran. Returns whether a composer was mounted to receive it.
+ */
+export function sendPromptForSettledTurn(input: {
+  prompt: string;
+  onTurnSettled: () => void;
+}): boolean {
+  if (activeHandlers === null) {
+    return false;
+  }
+  activeHandlers.sendPromptWithSettlement(input);
   return true;
 }
