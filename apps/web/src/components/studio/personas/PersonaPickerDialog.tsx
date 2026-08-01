@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery } from "convex/react";
-import { ChevronDownIcon, PauseIcon, PlayIcon } from "lucide-react";
+import { ChevronDownIcon, PauseIcon, PlayIcon, PlusIcon } from "lucide-react";
 import { api } from "@convex/_generated/api";
 import { Button } from "@/components/ui/button";
 import {
@@ -50,6 +50,16 @@ import { cn } from "@/lib/utils";
  * deletes the copy. Either way the enabled slug follows the row that defines
  * the persona (replaceEnabledPersonaSlug), so the runner's next turn reads
  * the saved markdown straight from the registry.
+ *
+ * Create-from-scratch: the "Create agent" affordance opens the SAME
+ * structured form, blank, with placeholder guidance teaching the format's
+ * spirit ("What you watch for" / "How you respond"). Creating inserts a
+ * session-owned advisory row (slug `user/<sessionId>/<slugified-name>`,
+ * server-side collision handling) and enables it for this browser
+ * immediately. Created personas are ordinary registry rows — they join the
+ * facepile, runner, findings, and watch scopes with zero persona-conditional
+ * code — and carry a Delete affordance instead of Reset (no built-in behind
+ * them).
  */
 
 export interface PersonaPickerDialogProps {
@@ -69,6 +79,7 @@ export function PersonaPickerDialog({ isOpen, onOpenChange }: PersonaPickerDialo
   );
   const seedBuiltInPersonas = useMutation(api.personas.seedBuiltInPersonas);
   const enabledSlugs = useEnabledPersonaSlugs();
+  const [isCreateFormOpen, setIsCreateFormOpen] = useState(false);
 
   // Idempotent built-in seed on first open (insert-if-missing; never overwrites).
   useEffect(() => {
@@ -105,6 +116,22 @@ export function PersonaPickerDialog({ isOpen, onOpenChange }: PersonaPickerDialo
               />
             ))
           )}
+          {sessionId !== null &&
+            (isCreateFormOpen ? (
+              <PersonaCreateForm sessionId={sessionId} onClose={() => setIsCreateFormOpen(false)} />
+            ) : (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="gap-1.5 self-start"
+                onClick={() => setIsCreateFormOpen(true)}
+                data-testid="persona-create-button"
+              >
+                <PlusIcon />
+                Create agent
+              </Button>
+            ))}
         </div>
       </DialogContent>
     </Dialog>
@@ -161,6 +188,8 @@ interface PersonaPayload {
   cooldownSeconds: number;
   /** Optional in the payload (see convex/personas.ts); undefined ⇒ built-in. */
   isBuiltIn?: boolean;
+  /** True ⇒ created from scratch by this session (deletable, no built-in behind it). */
+  isUserCreated?: boolean;
 }
 
 interface PersonaRowProps {
@@ -172,7 +201,8 @@ interface PersonaRowProps {
 function PersonaRow({ persona, isEnabled, sessionId }: PersonaRowProps) {
   const [isMarkdownExpanded, setIsMarkdownExpanded] = useState(false);
   const parsed = parsePersonaMarkdown(persona.personaMarkdown);
-  const isCustomized = persona.isBuiltIn === false;
+  const isUserCreated = persona.isUserCreated === true;
+  const isCustomized = persona.isBuiltIn === false && !isUserCreated;
 
   return (
     <div className="rounded-lg border px-3 py-2.5" data-testid={`persona-row-${persona.slug}`}>
@@ -196,6 +226,14 @@ function PersonaRow({ persona, isEnabled, sessionId }: PersonaRowProps) {
                 customized
               </span>
             )}
+            {isUserCreated && (
+              <span
+                className="rounded-full border border-primary/30 bg-primary/10 px-1.5 py-px text-[10px] text-primary"
+                data-testid={`persona-created-badge-${persona.slug}`}
+              >
+                created by you
+              </span>
+            )}
           </div>
           {parsed.description !== null && (
             <p className="mt-0.5 text-xs text-muted-foreground">{parsed.description}</p>
@@ -215,30 +253,32 @@ function PersonaRow({ persona, isEnabled, sessionId }: PersonaRowProps) {
         />
         {isMarkdownExpanded ? "Hide definition" : "View definition"}
       </button>
-      {isMarkdownExpanded && (
-        <PersonaDefinition persona={persona} isCustomized={isCustomized} sessionId={sessionId} />
-      )}
+      {isMarkdownExpanded && <PersonaDefinition persona={persona} sessionId={sessionId} />}
     </div>
   );
 }
 
 interface PersonaDefinitionProps {
   persona: PersonaPayload;
-  isCustomized: boolean;
   sessionId: string;
 }
 
 /**
  * The expanded definition. Read mode renders the parsed behavior text as
  * labeled prose (no frontmatter or fences on screen); edit mode is the
- * structured form. Reset to default (copies only) deletes the session copy
- * and swaps enablement back to the pristine built-in.
+ * structured form. Reset to default (copies of built-ins only) deletes the
+ * session copy and swaps enablement back to the pristine built-in; created
+ * personas get Delete instead (there is no built-in to fall back to).
  */
-function PersonaDefinition({ persona, isCustomized, sessionId }: PersonaDefinitionProps) {
+function PersonaDefinition({ persona, sessionId }: PersonaDefinitionProps) {
   const resetPersonaToBuiltIn = useMutation(api.personas.resetPersonaToBuiltIn);
+  const deletePersona = useMutation(api.personas.deletePersona);
   const [isEditing, setIsEditing] = useState(false);
-  const [isResetting, setIsResetting] = useState(false);
+  const [isRemoving, setIsRemoving] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+
+  const isUserCreated = persona.isUserCreated === true;
+  const isSessionOwned = persona.isBuiltIn === false;
 
   const formModel = useMemo(
     () => parsePersonaMarkdownToForm(persona.personaMarkdown),
@@ -246,7 +286,7 @@ function PersonaDefinition({ persona, isCustomized, sessionId }: PersonaDefiniti
   );
 
   const handleReset = async () => {
-    setIsResetting(true);
+    setIsRemoving(true);
     setErrorMessage(null);
     try {
       const { builtInSlug } = await resetPersonaToBuiltIn({ slug: persona.slug, sessionId });
@@ -254,9 +294,23 @@ function PersonaDefinition({ persona, isCustomized, sessionId }: PersonaDefiniti
     } catch (error: unknown) {
       console.error("[personas] reset to default failed:", error);
       setErrorMessage("Could not reset this persona. Please try again.");
-      setIsResetting(false);
+      setIsRemoving(false);
     }
     // On success this row unmounts (the built-in un-shadows) — no state to restore.
+  };
+
+  const handleDelete = async () => {
+    setIsRemoving(true);
+    setErrorMessage(null);
+    try {
+      await deletePersona({ slug: persona.slug, sessionId });
+      setPersonaEnabled({ slug: persona.slug, isEnabled: false });
+    } catch (error: unknown) {
+      console.error("[personas] delete failed:", error);
+      setErrorMessage("Could not delete this agent. Please try again.");
+      setIsRemoving(false);
+    }
+    // On success this row unmounts (the row is gone) — no state to restore.
   };
 
   if (isEditing) {
@@ -264,7 +318,7 @@ function PersonaDefinition({ persona, isCustomized, sessionId }: PersonaDefiniti
       <PersonaEditForm
         persona={persona}
         initialModel={formModel}
-        isCustomized={isCustomized}
+        isCustomized={isSessionOwned}
         sessionId={sessionId}
         onClose={() => setIsEditing(false)}
       />
@@ -287,16 +341,29 @@ function PersonaDefinition({ persona, isCustomized, sessionId }: PersonaDefiniti
         >
           Edit
         </Button>
-        {isCustomized && (
+        {isSessionOwned && !isUserCreated && (
           <Button
             type="button"
             variant="ghost"
             size="xs"
-            disabled={isResetting}
+            disabled={isRemoving}
             onClick={() => void handleReset()}
             data-testid={`persona-reset-${persona.slug}`}
           >
             Reset to default
+          </Button>
+        )}
+        {isUserCreated && (
+          <Button
+            type="button"
+            variant="ghost"
+            size="xs"
+            className="text-destructive hover:text-destructive"
+            disabled={isRemoving}
+            onClick={() => void handleDelete()}
+            data-testid={`persona-delete-${persona.slug}`}
+          >
+            {isRemoving ? "Deleting…" : "Delete"}
           </Button>
         )}
         {errorMessage !== null && <p className="text-[11px] text-destructive">{errorMessage}</p>}
@@ -430,10 +497,6 @@ function PersonaEditForm({
   const effectiveColor = model.color ?? persona.color;
   const effectiveCooldownSeconds = model.cooldownSeconds ?? persona.cooldownSeconds;
 
-  const swatchColors = PERSONA_COLOR_PALETTE.includes(effectiveColor)
-    ? PERSONA_COLOR_PALETTE
-    : [effectiveColor, ...PERSONA_COLOR_PALETTE];
-
   const fieldIdBase = `persona-form-${persona.slug.replaceAll("/", "-")}`;
 
   const handleSave = async () => {
@@ -497,145 +560,14 @@ function PersonaEditForm({
   return (
     <div className="mt-2 space-y-2.5 rounded-md border bg-muted/30 p-2.5">
       {model.isStructured ? (
-        <>
-          <div className="grid grid-cols-2 gap-2.5">
-            <div className="space-y-1">
-              <Label htmlFor={`${fieldIdBase}-name`} className="text-xs">
-                Name
-              </Label>
-              <Input
-                id={`${fieldIdBase}-name`}
-                value={effectiveName}
-                onChange={(event) => patchModel({ name: event.target.value })}
-                className="h-8 text-xs md:text-xs"
-                data-testid={`persona-form-name-${persona.slug}`}
-              />
-            </div>
-            <div className="space-y-1">
-              <Label className="text-xs">Eagerness</Label>
-              <div className="flex h-8 items-center gap-2">
-                <span className="text-[10px] text-muted-foreground select-none">Relaxed</span>
-                <Slider
-                  value={getEagernessPosition(effectiveCooldownSeconds)}
-                  onValueChange={(position) =>
-                    patchModel({
-                      cooldownSeconds:
-                        EAGERNESS_COOLDOWN_STOPS_SECONDS[position as number] ??
-                        effectiveCooldownSeconds,
-                    })
-                  }
-                  min={0}
-                  max={EAGERNESS_COOLDOWN_STOPS_SECONDS.length - 1}
-                  step={1}
-                  aria-label="Eagerness"
-                  data-testid={`persona-form-eagerness-${persona.slug}`}
-                />
-                <span className="text-[10px] text-muted-foreground select-none">Eager</span>
-              </div>
-              <p className="text-[10px] text-muted-foreground/70">
-                checks every ~{effectiveCooldownSeconds}s
-              </p>
-            </div>
-          </div>
-          <div className="space-y-1">
-            <Label htmlFor={`${fieldIdBase}-description`} className="text-xs">
-              Description
-            </Label>
-            <Input
-              id={`${fieldIdBase}-description`}
-              value={model.description ?? ""}
-              placeholder="One line shown in this list"
-              onChange={(event) =>
-                patchModel({
-                  description: event.target.value.length > 0 ? event.target.value : null,
-                })
-              }
-              className="h-8 text-xs md:text-xs"
-              data-testid={`persona-form-description-${persona.slug}`}
-            />
-          </div>
-          <div className="space-y-1">
-            <Label className="text-xs">Color</Label>
-            <div className="flex items-center gap-1.5" role="radiogroup" aria-label="Accent color">
-              {swatchColors.map((swatchColor) => (
-                <button
-                  key={swatchColor}
-                  type="button"
-                  role="radio"
-                  aria-checked={swatchColor === effectiveColor}
-                  aria-label={`Color ${swatchColor}`}
-                  onClick={() => patchModel({ color: swatchColor })}
-                  className={cn(
-                    "size-5 cursor-pointer rounded-full transition-shadow",
-                    swatchColor === effectiveColor &&
-                      "ring-2 ring-ring ring-offset-2 ring-offset-background",
-                  )}
-                  style={{ backgroundColor: swatchColor }}
-                  data-testid={`persona-form-color-${persona.slug}-${swatchColor.slice(1)}`}
-                />
-              ))}
-            </div>
-          </div>
-          <div className="space-y-1">
-            <Label htmlFor={`${fieldIdBase}-intro`} className="text-xs">
-              Behavior guidelines
-            </Label>
-            <Textarea
-              id={`${fieldIdBase}-intro`}
-              value={model.intro}
-              onChange={(event) => patchModel({ intro: event.target.value })}
-              rows={3}
-              spellCheck={false}
-              className="min-h-16 text-xs leading-relaxed md:text-xs"
-              data-testid={`persona-form-intro-${persona.slug}`}
-            />
-          </div>
-          {model.sections.map((section, sectionIndex) => (
-            <div key={section.heading} className="space-y-1">
-              <Label htmlFor={`${fieldIdBase}-section-${sectionIndex}`} className="text-xs">
-                {section.heading}
-              </Label>
-              <Textarea
-                id={`${fieldIdBase}-section-${sectionIndex}`}
-                value={section.content}
-                onChange={(event) => {
-                  const nextSections = model.sections.map((existing, index) =>
-                    index === sectionIndex
-                      ? { ...existing, content: event.target.value }
-                      : existing,
-                  );
-                  patchModel({ sections: nextSections });
-                }}
-                rows={5}
-                spellCheck={false}
-                className="min-h-24 text-xs leading-relaxed md:text-xs"
-                data-testid={`persona-form-section-${persona.slug}-${sectionIndex}`}
-              />
-            </div>
-          ))}
-          {model.unmappedFrontmatterLines.length > 0 && (
-            <div className="space-y-1">
-              <Label htmlFor={`${fieldIdBase}-advanced`} className="text-xs">
-                Advanced (unmapped settings)
-              </Label>
-              <Textarea
-                id={`${fieldIdBase}-advanced`}
-                value={model.unmappedFrontmatterLines.join("\n")}
-                onChange={(event) =>
-                  patchModel({
-                    unmappedFrontmatterLines: event.target.value
-                      .split("\n")
-                      .filter((line) => line.trim().length > 0),
-                  })
-                }
-                rows={2}
-                spellCheck={false}
-                className="min-h-12 font-mono text-[11px] leading-relaxed md:text-[11px]"
-                data-testid={`persona-form-advanced-${persona.slug}`}
-              />
-            </div>
-          )}
-        </>
+        <StructuredPersonaFields
+          model={model}
+          patchModel={patchModel}
+          effectiveName={effectiveName}
+          effectiveColor={effectiveColor}
+          effectiveCooldownSeconds={effectiveCooldownSeconds}
+          testIdSuffix={persona.slug}
+        />
       ) : (
         <div className="space-y-1">
           <Label htmlFor={`${fieldIdBase}-raw`} className="text-xs">
@@ -697,6 +629,346 @@ function PersonaEditForm({
       {!isCustomized && (
         <p className="text-[10px] text-muted-foreground">
           Built-in agents stay pristine — saving creates your own copy that replaces it here.
+        </p>
+      )}
+    </div>
+  );
+}
+
+/**
+ * Placeholder guidance for the create form's blank fields — teaches the
+ * format's spirit (concrete watch items, concrete response style) without
+ * pre-filling text the user would have to delete.
+ */
+const PERSONA_SECTION_PLACEHOLDERS: Record<string, string> = {
+  "What you watch for":
+    "The concrete, spottable problems this agent scans the email for — e.g. meaningful images missing alt text; link text that just says 'click here'; text too low-contrast to read.",
+  "How you respond":
+    "How findings are worded — e.g. quote the exact content it's about, say why it matters, and offer a concrete fix the user could paste in. At most two findings per pass.",
+};
+
+const PERSONA_INTRO_PLACEHOLDER =
+  "Who is this agent and what is its single job? e.g. \"You are the Accessibility Checker. Your single job is making sure every subscriber can read and use this email.\"";
+
+interface StructuredPersonaFieldsProps {
+  model: PersonaFormModel;
+  patchModel: (patch: Partial<PersonaFormModel>) => void;
+  effectiveName: string;
+  effectiveColor: string;
+  effectiveCooldownSeconds: number;
+  /** Persona slug for edits, "new" for the create form (field ids + testids). */
+  testIdSuffix: string;
+}
+
+/**
+ * The structured form's field set — shared verbatim between editing an
+ * existing persona and creating one from scratch (the owner's "same form,
+ * blank" shape). Purely controlled; save semantics live in the caller.
+ */
+function StructuredPersonaFields({
+  model,
+  patchModel,
+  effectiveName,
+  effectiveColor,
+  effectiveCooldownSeconds,
+  testIdSuffix,
+}: StructuredPersonaFieldsProps) {
+  const fieldIdBase = `persona-form-${testIdSuffix.replaceAll("/", "-")}`;
+  const swatchColors = PERSONA_COLOR_PALETTE.includes(effectiveColor)
+    ? PERSONA_COLOR_PALETTE
+    : [effectiveColor, ...PERSONA_COLOR_PALETTE];
+
+  return (
+    <>
+      <div className="grid grid-cols-2 gap-2.5">
+        <div className="space-y-1">
+          <Label htmlFor={`${fieldIdBase}-name`} className="text-xs">
+            Name
+          </Label>
+          <Input
+            id={`${fieldIdBase}-name`}
+            value={effectiveName}
+            placeholder="Accessibility Checker"
+            onChange={(event) => patchModel({ name: event.target.value })}
+            className="h-8 text-xs md:text-xs"
+            data-testid={`persona-form-name-${testIdSuffix}`}
+          />
+        </div>
+        <div className="space-y-1">
+          <Label className="text-xs">Eagerness</Label>
+          <div className="flex h-8 items-center gap-2">
+            <span className="text-[10px] text-muted-foreground select-none">Relaxed</span>
+            <Slider
+              value={getEagernessPosition(effectiveCooldownSeconds)}
+              onValueChange={(position) =>
+                patchModel({
+                  cooldownSeconds:
+                    EAGERNESS_COOLDOWN_STOPS_SECONDS[position as number] ??
+                    effectiveCooldownSeconds,
+                })
+              }
+              min={0}
+              max={EAGERNESS_COOLDOWN_STOPS_SECONDS.length - 1}
+              step={1}
+              aria-label="Eagerness"
+              data-testid={`persona-form-eagerness-${testIdSuffix}`}
+            />
+            <span className="text-[10px] text-muted-foreground select-none">Eager</span>
+          </div>
+          <p className="text-[10px] text-muted-foreground/70">
+            checks every ~{effectiveCooldownSeconds}s
+          </p>
+        </div>
+      </div>
+      <div className="space-y-1">
+        <Label htmlFor={`${fieldIdBase}-description`} className="text-xs">
+          Description
+        </Label>
+        <Input
+          id={`${fieldIdBase}-description`}
+          value={model.description ?? ""}
+          placeholder="One line shown in this list"
+          onChange={(event) =>
+            patchModel({
+              description: event.target.value.length > 0 ? event.target.value : null,
+            })
+          }
+          className="h-8 text-xs md:text-xs"
+          data-testid={`persona-form-description-${testIdSuffix}`}
+        />
+      </div>
+      <div className="space-y-1">
+        <Label className="text-xs">Color</Label>
+        <div className="flex items-center gap-1.5" role="radiogroup" aria-label="Accent color">
+          {swatchColors.map((swatchColor) => (
+            <button
+              key={swatchColor}
+              type="button"
+              role="radio"
+              aria-checked={swatchColor === effectiveColor}
+              aria-label={`Color ${swatchColor}`}
+              onClick={() => patchModel({ color: swatchColor })}
+              className={cn(
+                "size-5 cursor-pointer rounded-full transition-shadow",
+                swatchColor === effectiveColor &&
+                  "ring-2 ring-ring ring-offset-2 ring-offset-background",
+              )}
+              style={{ backgroundColor: swatchColor }}
+              data-testid={`persona-form-color-${testIdSuffix}-${swatchColor.slice(1)}`}
+            />
+          ))}
+        </div>
+      </div>
+      <div className="space-y-1">
+        <Label htmlFor={`${fieldIdBase}-intro`} className="text-xs">
+          Behavior guidelines
+        </Label>
+        <Textarea
+          id={`${fieldIdBase}-intro`}
+          value={model.intro}
+          placeholder={PERSONA_INTRO_PLACEHOLDER}
+          onChange={(event) => patchModel({ intro: event.target.value })}
+          rows={3}
+          spellCheck={false}
+          className="min-h-16 text-xs leading-relaxed md:text-xs"
+          data-testid={`persona-form-intro-${testIdSuffix}`}
+        />
+      </div>
+      {model.sections.map((section, sectionIndex) => (
+        <div key={section.heading} className="space-y-1">
+          <Label htmlFor={`${fieldIdBase}-section-${sectionIndex}`} className="text-xs">
+            {section.heading}
+          </Label>
+          <Textarea
+            id={`${fieldIdBase}-section-${sectionIndex}`}
+            value={section.content}
+            placeholder={PERSONA_SECTION_PLACEHOLDERS[section.heading]}
+            onChange={(event) => {
+              const nextSections = model.sections.map((existing, index) =>
+                index === sectionIndex
+                  ? { ...existing, content: event.target.value }
+                  : existing,
+              );
+              patchModel({ sections: nextSections });
+            }}
+            rows={5}
+            spellCheck={false}
+            className="min-h-24 text-xs leading-relaxed md:text-xs"
+            data-testid={`persona-form-section-${testIdSuffix}-${sectionIndex}`}
+          />
+        </div>
+      ))}
+      {model.unmappedFrontmatterLines.length > 0 && (
+        <div className="space-y-1">
+          <Label htmlFor={`${fieldIdBase}-advanced`} className="text-xs">
+            Advanced (unmapped settings)
+          </Label>
+          <Textarea
+            id={`${fieldIdBase}-advanced`}
+            value={model.unmappedFrontmatterLines.join("\n")}
+            onChange={(event) =>
+              patchModel({
+                unmappedFrontmatterLines: event.target.value
+                  .split("\n")
+                  .filter((line) => line.trim().length > 0),
+              })
+            }
+            rows={2}
+            spellCheck={false}
+            className="min-h-12 font-mono text-[11px] leading-relaxed md:text-[11px]"
+            data-testid={`persona-form-advanced-${testIdSuffix}`}
+          />
+        </div>
+      )}
+    </>
+  );
+}
+
+/** Defaults for a persona created from scratch. */
+const CREATED_PERSONA_DEFAULT_COLOR = "#c026d3"; // fuchsia — no built-in uses it
+const CREATED_PERSONA_DEFAULT_COOLDOWN_SECONDS = 60; // "Balanced" on the slider
+
+/**
+ * The blank form model behind "Create agent": the built-ins' own structure
+ * (intro + "What you watch for" / "How you respond"), empty, so placeholders
+ * teach the format and the serialized markdown matches the seeded shape.
+ */
+function buildBlankPersonaFormModel(): PersonaFormModel {
+  return {
+    name: "",
+    color: CREATED_PERSONA_DEFAULT_COLOR,
+    cooldownSeconds: CREATED_PERSONA_DEFAULT_COOLDOWN_SECONDS,
+    description: null,
+    intro: "",
+    sections: [
+      { heading: "What you watch for", content: "" },
+      { heading: "How you respond", content: "" },
+    ],
+    unmappedFrontmatterLines: [],
+    hasFrontmatter: true,
+    isStructured: true,
+    rawMarkdown: "",
+  };
+}
+
+interface PersonaCreateFormProps {
+  sessionId: string;
+  onClose: () => void;
+}
+
+/**
+ * Create-from-scratch: the same structured form, blank. Creating inserts a
+ * session-owned advisory row via personas.createPersona (server generates the
+ * `user/<sessionId>/<slugified-name>` slug, collision-suffixed) and enables
+ * it for this browser immediately, so it joins the facepile and the runner's
+ * next pass without any further clicks.
+ */
+function PersonaCreateForm({ sessionId, onClose }: PersonaCreateFormProps) {
+  const createPersona = useMutation(api.personas.createPersona);
+  const [model, setModel] = useState<PersonaFormModel>(buildBlankPersonaFormModel);
+  const [isSaving, setIsSaving] = useState(false);
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+
+  const patchModel = (patch: Partial<PersonaFormModel>) => {
+    setModel((current) => ({ ...current, ...patch }));
+  };
+
+  const effectiveName = model.name ?? "";
+  const effectiveColor = model.color ?? CREATED_PERSONA_DEFAULT_COLOR;
+  const effectiveCooldownSeconds =
+    model.cooldownSeconds ?? CREATED_PERSONA_DEFAULT_COOLDOWN_SECONDS;
+
+  const serialized = useMemo(
+    () => serializePersonaForm({ ...model, name: effectiveName.trim() }),
+    [model, effectiveName],
+  );
+
+  const handleCreate = async () => {
+    if (effectiveName.trim().length === 0) {
+      setErrorMessage("Give the agent a display name.");
+      return;
+    }
+    const hasBehaviorText =
+      model.intro.trim().length > 0 ||
+      model.sections.some((section) => section.content.trim().length > 0);
+    if (!hasBehaviorText) {
+      setErrorMessage("Add behavior text — it's what shapes how this agent reviews.");
+      return;
+    }
+    const validationError = validatePersonaMarkdown(serialized);
+    if (validationError !== null) {
+      setErrorMessage(validationError);
+      return;
+    }
+    setIsSaving(true);
+    setErrorMessage(null);
+    try {
+      const { slug } = await createPersona({
+        sessionId,
+        name: effectiveName.trim(),
+        color: effectiveColor,
+        cooldownSeconds: effectiveCooldownSeconds,
+        personaMarkdown: serialized,
+      });
+      // New agents start enabled for this browser — they join the open
+      // document's facepile and review passes right away.
+      setPersonaEnabled({ slug, isEnabled: true });
+      onClose();
+    } catch (error: unknown) {
+      console.error("[personas] persona create failed:", error);
+      setErrorMessage("Could not create this agent. Please try again.");
+      setIsSaving(false);
+    }
+  };
+
+  return (
+    <div
+      className="space-y-2.5 rounded-lg border bg-muted/30 px-3 py-2.5"
+      data-testid="persona-create-form"
+    >
+      <p className="text-xs font-medium">New agent</p>
+      <StructuredPersonaFields
+        model={model}
+        patchModel={patchModel}
+        effectiveName={effectiveName}
+        effectiveColor={effectiveColor}
+        effectiveCooldownSeconds={effectiveCooldownSeconds}
+        testIdSuffix="new"
+      />
+      <p
+        className={cn(
+          "text-right text-[10px] tabular-nums",
+          serialized.length > MAX_PERSONA_MARKDOWN_LENGTH
+            ? "text-destructive"
+            : "text-muted-foreground",
+        )}
+      >
+        {serialized.length.toLocaleString()} / {MAX_PERSONA_MARKDOWN_LENGTH.toLocaleString()}
+      </p>
+      <div className="flex items-center gap-1.5">
+        <Button
+          type="button"
+          size="xs"
+          disabled={isSaving}
+          onClick={() => void handleCreate()}
+          data-testid="persona-create-save"
+        >
+          {isSaving ? "Creating…" : "Create agent"}
+        </Button>
+        <Button
+          type="button"
+          variant="ghost"
+          size="xs"
+          disabled={isSaving}
+          onClick={onClose}
+          data-testid="persona-create-cancel"
+        >
+          Cancel
+        </Button>
+      </div>
+      {errorMessage !== null && (
+        <p className="text-[11px] text-destructive" data-testid="persona-create-error">
+          {errorMessage}
         </p>
       )}
     </div>

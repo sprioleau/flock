@@ -467,7 +467,9 @@ export const updatePersonaMarkdown = mutation({
 /**
  * Discard a session's copy, un-shadowing the pristine built-in ("reset to
  * default"). Returns the built-in's slug so the client can swap enablement
- * back. Owner-only, copies only — built-ins cannot be deleted.
+ * back. Owner-only, copies only — built-ins cannot be deleted, and a
+ * created-from-scratch persona (no built-in behind it) has nothing to reset
+ * TO (deletePersona is its affordance).
  */
 export const resetPersonaToBuiltIn = mutation({
   args: { slug: v.string(), sessionId: v.string() },
@@ -481,11 +483,173 @@ export const resetPersonaToBuiltIn = mutation({
       throw new Error("Only this session's customized personas can be reset.");
     }
     const builtInSlug = getShadowedBuiltInSlug(row);
-    if (builtInSlug === null) {
-      throw new Error("This persona is not a copy of a built-in.");
+    // getShadowedBuiltInSlug is pure string mechanics — verify the shadowed
+    // built-in actually exists before deleting the only row that defines
+    // this persona (a created-from-scratch persona shadows nothing).
+    const builtInRow = builtInSlug === null ? null : await findPersonaBySlug(ctx, builtInSlug);
+    if (builtInSlug === null || builtInRow === null) {
+      throw new Error("This persona is not a copy of a built-in — delete it instead.");
     }
     await ctx.db.delete(row._id);
     return { builtInSlug };
+  },
+});
+
+// ---------------------------------------------------------------------------
+// Created-from-scratch personas (create + delete; pure registry data)
+// ---------------------------------------------------------------------------
+
+/**
+ * Sanity cap on how many personas one session may create. Well under the
+ * MAX_LISTED_PERSONAS listing bound so a session can never push its own
+ * picker past the page size.
+ */
+const MAX_CREATED_PERSONAS_PER_SESSION = 24;
+
+/** Longest slug base derived from a persona name (before collision suffixes). */
+const MAX_SLUG_BASE_LENGTH = 48;
+
+/** How many collision suffixes to try before giving up (paranoia bound). */
+const MAX_SLUG_COLLISION_ATTEMPTS = 50;
+
+/** Lowercase-hyphen slug base from a display name ("Accessibility Checker" → "accessibility-checker"). */
+function slugifyPersonaName(name: string): string {
+  const base = name
+    .toLowerCase()
+    .normalize("NFKD")
+    // Strip combining diacritics left behind by NFKD ("é" → "e").
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "")
+    .slice(0, MAX_SLUG_BASE_LENGTH)
+    .replace(/-+$/, "");
+  return base.length > 0 ? base : "agent";
+}
+
+/**
+ * First free `user/<sessionId>/<base>` slug for a created persona, suffixing
+ * on collision ("…/reviewer", "…/reviewer-2", …). A base that matches a
+ * built-in's base is ALSO a collision: `user/<sessionId>/<builtInBase>` is
+ * the copy-slug convention (buildSessionCopySlug), and a created persona
+ * squatting on it would shadow the built-in in this session's picker.
+ */
+async function findAvailableCreatedPersonaSlug(
+  ctx: MutationCtx,
+  { sessionId, name }: { sessionId: string; name: string },
+): Promise<string> {
+  const baseName = slugifyPersonaName(name);
+  // Check the fixture list, not just seeded rows — the seed may not have run.
+  const builtInBaseNames = new Set(
+    BUILT_IN_PERSONAS.map((builtIn) => builtIn.slug.slice(builtIn.slug.indexOf("/") + 1)),
+  );
+  for (let attempt = 0; attempt < MAX_SLUG_COLLISION_ATTEMPTS; attempt += 1) {
+    const candidateBase = attempt === 0 ? baseName : `${baseName}-${attempt + 1}`;
+    if (builtInBaseNames.has(candidateBase)) {
+      continue;
+    }
+    const isBuiltInSlugTaken =
+      (await findPersonaBySlug(ctx, `builtin/${candidateBase}`)) !== null;
+    if (isBuiltInSlugTaken) {
+      continue;
+    }
+    const candidateSlug = `user/${sessionId}/${candidateBase}`;
+    if ((await findPersonaBySlug(ctx, candidateSlug)) === null) {
+      return candidateSlug;
+    }
+  }
+  throw new Error("Could not find an available identifier for this persona — try a different name.");
+}
+
+/**
+ * Create a session-owned advisory persona from scratch. Same trust boundary
+ * as updatePersonaMarkdown (markdown size/structure, name, color, cooldown
+ * bounds — the structured form validates first for friendly inline messages).
+ * The new row is an ordinary registry row: capabilityMode is pinned to
+ * "advisory" server-side, and every downstream surface (picker, facepile,
+ * batched runner, findings, watch scopes) treats it as pure data — zero
+ * persona-conditional code. Returns the new slug so the client can enable it.
+ */
+export const createPersona = mutation({
+  args: {
+    sessionId: v.string(),
+    name: v.string(),
+    color: v.string(),
+    cooldownSeconds: v.number(),
+    personaMarkdown: v.string(),
+  },
+  returns: v.object({ slug: v.string() }),
+  handler: async (ctx, args) => {
+    const validationError = validatePersonaMarkdown(args.personaMarkdown);
+    if (validationError !== null) {
+      throw new Error(validationError);
+    }
+    const trimmedName = args.name.trim();
+    if (trimmedName.length === 0) {
+      throw new Error("The persona needs a display name.");
+    }
+    if (!/^#[0-9a-fA-F]{6}$/.test(args.color)) {
+      throw new Error("The color must be a 6-digit hex value like #e11d48.");
+    }
+    if (
+      args.cooldownSeconds < MIN_COOLDOWN_SECONDS ||
+      args.cooldownSeconds > MAX_COOLDOWN_SECONDS
+    ) {
+      throw new Error(
+        `The cooldown must be between ${MIN_COOLDOWN_SECONDS} and ${MAX_COOLDOWN_SECONDS} seconds.`,
+      );
+    }
+    const sessionRows = await ctx.db
+      .query("agents")
+      .withIndex("by_createdBySessionId", (q) => q.eq("createdBySessionId", args.sessionId))
+      .take(MAX_CREATED_PERSONAS_PER_SESSION + 1);
+    if (sessionRows.length > MAX_CREATED_PERSONAS_PER_SESSION) {
+      throw new Error(
+        `This session already has ${MAX_CREATED_PERSONAS_PER_SESSION} personas — delete one before creating another.`,
+      );
+    }
+    const slug = await findAvailableCreatedPersonaSlug(ctx, {
+      sessionId: args.sessionId,
+      name: trimmedName,
+    });
+    const nowMs = Date.now();
+    await ctx.db.insert("agents", {
+      slug,
+      name: trimmedName,
+      color: args.color,
+      capabilityMode: "advisory",
+      personaMarkdown: args.personaMarkdown,
+      cooldownSeconds: args.cooldownSeconds,
+      isBuiltIn: false,
+      createdBySessionId: args.sessionId,
+      createdAtMs: nowMs,
+      updatedAtMs: nowMs,
+    });
+    return { slug };
+  },
+});
+
+/**
+ * Delete a session-owned persona row. Owner-only; built-ins can never be
+ * deleted (reset-only, via resetPersonaToBuiltIn on their copies). Findings
+ * the persona already left carry denormalized identity, so they stay
+ * readable; the client drops the slug from its enablement list.
+ */
+export const deletePersona = mutation({
+  args: { slug: v.string(), sessionId: v.string() },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    const row = await findPersonaBySlug(ctx, args.slug);
+    if (row === null) {
+      throw new Error(`No persona is registered under "${args.slug}".`);
+    }
+    if (row.isBuiltIn !== false) {
+      throw new Error("Built-in agents cannot be deleted.");
+    }
+    if (row.createdBySessionId !== args.sessionId) {
+      throw new Error("This persona belongs to a different session.");
+    }
+    await ctx.db.delete(row._id);
+    return null;
   },
 });
 
@@ -501,6 +665,7 @@ const personaPayloadValidator = v.object({
   personaMarkdown: v.string(),
   cooldownSeconds: v.number(),
   isBuiltIn: v.optional(v.boolean()),
+  isUserCreated: v.optional(v.boolean()),
 });
 
 interface PersonaPayload {
@@ -512,6 +677,12 @@ interface PersonaPayload {
   cooldownSeconds: number;
   /** Optional in the TYPE (not the data) — see the validator note above. */
   isBuiltIn?: boolean;
+  /**
+   * True for a session's created-from-scratch personas (deletable; no
+   * built-in behind them). Populated by listPersonas only — the picker is
+   * the one surface that offers delete vs reset; the runner doesn't care.
+   */
+  isUserCreated?: boolean;
 }
 
 function toPersonaPayload(row: Doc<"agents">): PersonaPayload {
@@ -531,10 +702,12 @@ const MAX_LISTED_PERSONAS = 64;
 
 /**
  * The personas the given session's picker shows: every built-in EXCEPT those
- * shadowed by one of the session's copies, plus the session's copies. A copy
- * sorts where its built-in would (same picker position, deterministic).
- * Without a sessionId (or for sessions with no copies) this is simply the
- * built-ins, ordered by slug.
+ * shadowed by one of the session's copies, plus the session's copies and
+ * created-from-scratch personas. A copy sorts where its built-in would (same
+ * picker position, deterministic); created personas sort after the built-ins
+ * by their own slug ("user/…" > "builtin/…"). Without a sessionId (or for
+ * sessions with no rows of their own) this is simply the built-ins, ordered
+ * by slug.
  */
 export const listPersonas = query({
   args: { sessionId: v.optional(v.string()) },
@@ -554,6 +727,7 @@ export const listPersonas = query({
               q.eq("createdBySessionId", args.sessionId),
             )
             .take(MAX_LISTED_PERSONAS);
+    const builtInSlugs = new Set(builtIns.map((row) => row.slug));
     const shadowedSlugs = new Set(
       sessionCopies
         .map(getShadowedBuiltInSlug)
@@ -564,9 +738,20 @@ export const listPersonas = query({
       ...sessionCopies,
     ];
     return visibleRows
-      .map((row) => ({ row, sortKey: getShadowedBuiltInSlug(row) ?? row.slug }))
+      .map((row) => {
+        // getShadowedBuiltInSlug is pure string mechanics; a session row is a
+        // real shadowing copy only when that built-in actually exists.
+        // Everything else the session owns is a created-from-scratch persona.
+        const shadowedSlug = getShadowedBuiltInSlug(row);
+        const isShadowingCopy = shadowedSlug !== null && builtInSlugs.has(shadowedSlug);
+        return {
+          row,
+          sortKey: isShadowingCopy && shadowedSlug !== null ? shadowedSlug : row.slug,
+          isUserCreated: row.isBuiltIn === false && !isShadowingCopy,
+        };
+      })
       .sort((a, b) => (a.sortKey < b.sortKey ? -1 : 1))
-      .map((entry) => toPersonaPayload(entry.row));
+      .map((entry) => ({ ...toPersonaPayload(entry.row), isUserCreated: entry.isUserCreated }));
   },
 });
 
