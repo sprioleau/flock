@@ -137,7 +137,7 @@ export const UI_PANELS = [
 export const uiPanelSchema = z
   .enum(UI_PANELS)
   .describe(
-    'UI surface to open: "theme" (theme picker), "brand-kit", "library" (saved sections + images), ' +
+    'UI surface to open: "theme" (theme picker), "brand-kit", "library" (the asset library: saved sections + images), ' +
       '"agents" (advisory persona picker), "recommendations" (persona recommendations history), ' +
       '"history" (version history), "blocks" (add-blocks tab), "properties" (selected-block properties tab), ' +
       'or "send-test" (send-test-email dialog).',

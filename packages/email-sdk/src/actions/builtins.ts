@@ -264,7 +264,7 @@ export const generateImageAction = defineEmailAction({
 export const openPanelAction = defineEmailAction({
   name: "openPanel",
   description:
-    "Open one of the editor's UI panels or dialogs for the user (theme picker, brand kit, library, agent personas, recommendations history, version history, blocks tab, properties tab, or the send-test dialog). A UI command — the email document is unchanged.",
+    "Open one of the editor's UI panels or dialogs for the user (theme picker, brand kit, asset library, agent personas, recommendations history, version history, blocks tab, properties tab, or the send-test dialog). A UI command — the email document is unchanged.",
   kind: "editor",
   schema: openPanelInputSchema,
   readOnly: false, // changes what's on the user's screen

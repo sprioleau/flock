@@ -111,7 +111,9 @@ interface MockToolCallPlan {
 const MOCK_PANEL_KEYWORDS: readonly { pattern: RegExp; panel: UiPanel; label: string }[] = [
   { pattern: /\btheme\b/i, panel: "theme", label: "theme picker" },
   { pattern: /\bbrand\b/i, panel: "brand-kit", label: "brand kit" },
-  { pattern: /\blibrary|content studio\b/i, panel: "library", label: "library" },
+  // "content studio" stays as a MATCHED alias (the feature's old name) but
+  // the spoken label is the user-facing one: Asset Library.
+  { pattern: /\blibrary|content studio\b/i, panel: "library", label: "asset library" },
   { pattern: /\bpersonas?\b|\bagents?\b/i, panel: "agents", label: "agent personas" },
   { pattern: /\brecommendations?\b/i, panel: "recommendations", label: "recommendations history" },
   { pattern: /\bhistory\b|\bversions?\b/i, panel: "history", label: "version history" },

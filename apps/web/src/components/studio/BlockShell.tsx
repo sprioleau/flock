@@ -121,7 +121,20 @@ export function BlockShell({ block, children, className }: BlockShellProps) {
         // opaque background). The pseudo-element draws the border within the
         // block bounds, ABOVE the content, unclippable — all four sides
         // visible for every block type, zero layout shift.
-        "after:pointer-events-none after:absolute after:inset-0 after:z-20 after:transition-colors",
+        //
+        // Outline chrome layering (canvas stacking ladder): presence border
+        // z-[5] < OUTLINE ::after z-[6] < selected shell z-10 (carrying the
+        // action row + breadcrumb) < cursors z-20 < bubble menu / dnd chrome
+        // z-50. The outline must stay BELOW 10: a shell without a z-index
+        // creates no stacking context, so its ::after competes canvas-wide —
+        // at the old z-20 a hovered section's (or neighboring block's)
+        // outline painted straight across the selected block's action row
+        // and breadcrumb, which are trapped inside the selected shell's z-10
+        // context. Any value in (5, 10) keeps outlines above block content
+        // and the presence border while every interactive control on the
+        // selected block wins over ALL outline chrome; dialogs/popovers
+        // (z-50, portaled to body) still cover everything here.
+        "after:pointer-events-none after:absolute after:inset-0 after:z-[6] after:transition-colors",
         isSelected
           ? "z-10 after:border-2 after:border-sky-500"
           : "after:border-sky-300 hover:after:border",

@@ -28,9 +28,11 @@ import { formatRelativeTime } from "../history/history-grouping";
 import { buildLibraryInsertPlan } from "./library-insert";
 
 /**
- * Content Studio Stage S — the session's asset library (proposal §8): a
- * header "Library" button beside the Brand kit trigger (both are USER-level
- * surfaces, not draft-level) opening the standard centered modal. Every
+ * Content Studio Stage S — the session's asset library (proposal §8; the
+ * USER-FACING name is "Asset Library", "Library" as the compact button
+ * label — "Content Studio" is the internal stage name and never appears in
+ * UI): a header "Library" button beside the Brand kit trigger (both are
+ * USER-level surfaces, not draft-level) opening the standard centered modal. Every
  * image the session uploads, generates, or confirms from a brand kit lands
  * here automatically at upload time (assets.register — the one seam), so
  * "the image I uploaded yesterday" is one click away in any canvas.
@@ -134,7 +136,7 @@ export function LibraryPanel() {
             render={
               <DialogTrigger
                 render={
-                  <Button variant="outline" size="sm" className="gap-1.5" aria-label="Library" />
+                  <Button variant="outline" size="sm" className="gap-1.5" aria-label="Asset Library" />
                 }
                 data-testid="library-open-button"
               >
@@ -145,12 +147,12 @@ export function LibraryPanel() {
               </DialogTrigger>
             }
           />
-          <TooltipContent side="bottom">Library</TooltipContent>
+          <TooltipContent side="bottom">Asset Library</TooltipContent>
         </Tooltip>
       </TooltipProvider>
       <DialogContent className="sm:max-w-xl" data-testid="library-panel">
         <DialogHeader>
-          <DialogTitle>Library</DialogTitle>
+          <DialogTitle>Asset Library</DialogTitle>
           <DialogDescription>
             Every image you upload or generate, in one place — one library per browser.
           </DialogDescription>

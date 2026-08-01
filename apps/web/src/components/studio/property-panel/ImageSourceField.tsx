@@ -2,13 +2,14 @@
 
 import { useRef, useState } from "react";
 import { useMutation } from "convex/react";
-import { Loader2, Upload } from "lucide-react";
+import { ImagesIcon, Loader2, Upload } from "lucide-react";
 import { api } from "@convex/_generated/api";
 import type { Id } from "@convex/_generated/dataModel";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useEditorStore } from "@/lib/editor-store";
+import { requestUiSurfaceOpen } from "@/lib/ui-surfaces";
 import { useEndCoalescing } from "./usePanelDispatch";
 import { useLiveDraft } from "./useLiveDraft";
 
@@ -22,6 +23,14 @@ import { useLiveDraft } from "./useLiveDraft";
  *     resolves the plain https serving URL) → onCommitSrc(url)
  *
  * Blocks store the plain URL string — no Convex coupling in the SDK.
+ *
+ * Beside Upload, a "From library" CTA opens the asset library through the
+ * agent-parity ui-surfaces seam (requestUiSurfaceOpen("library") — the same
+ * path as the chat's openPanel command). Because this image block is the
+ * current selection, the library's insert flow is already in pick-for-this-
+ * block mode: its button reads "Insert into selected image" and dispatches
+ * ONE updateBlockProperties { src, alt } — the normal property spine, a
+ * single undo step.
  *
  * URL edits follow the panel's live-commit pattern (useLiveDraft) but skip
  * drafts that aren't absolute http(s) URLs — the SDK schema documents that
@@ -141,17 +150,31 @@ export function ImageSourceField({ src, helpText, onCommitSrc }: ImageSourceFiel
           }
         }}
       />
-      <Button
-        type="button"
-        variant="outline"
-        size="sm"
-        className="w-full"
-        disabled={isUploading}
-        onClick={() => fileInputRef.current?.click()}
-      >
-        {isUploading ? <Loader2 className="animate-spin" /> : <Upload />}
-        {isUploading ? "Uploading…" : "Upload image"}
-      </Button>
+      <div className="flex gap-1.5">
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          className="min-w-0 flex-1"
+          disabled={isUploading}
+          onClick={() => fileInputRef.current?.click()}
+        >
+          {isUploading ? <Loader2 className="animate-spin" /> : <Upload />}
+          {isUploading ? "Uploading…" : "Upload image"}
+        </Button>
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          className="min-w-0 flex-1"
+          aria-label="Choose an image from your asset library"
+          data-testid="image-source-from-library"
+          onClick={() => requestUiSurfaceOpen("library")}
+        >
+          <ImagesIcon />
+          From library
+        </Button>
+      </div>
       {uploadError !== null ? (
         <p role="alert" className="text-xs text-destructive">
           {uploadError}

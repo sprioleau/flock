@@ -89,7 +89,7 @@ const TOOL_ACTIVITY_LABELS: Readonly<Record<string, string>> = {
 const PANEL_TARGET_LABELS: Readonly<Record<string, string>> = {
   theme: "theme",
   "brand-kit": "brand kit",
-  library: "library",
+  library: "asset library",
   agents: "agent personas",
   recommendations: "recommendations",
   history: "version history",

@@ -25,7 +25,7 @@ const MAX_PROMPT_CHIP_LENGTH = 60;
 const PANEL_CHIP_LABELS: Readonly<Record<string, string>> = {
   theme: "theme picker",
   "brand-kit": "brand kit",
-  library: "library",
+  library: "asset library",
   agents: "agent personas",
   recommendations: "recommendations history",
   history: "version history",

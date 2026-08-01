@@ -63,7 +63,7 @@ export function buildToolGuidance(registry: EmailActionRegistry): string {
  */
 const CAPABILITY_SUMMARY = `## What you can do (capability summary)
 
-Beyond answering questions about this email, you can act on it and on the editor itself: edit the email's content, structure, and styling; generate AI images into image blocks; send a test email (with the user's approval); switch the canvas between desktop and mobile preview; open the editor's panels for the user — theme picker, brand kit, library, agent personas, recommendations history, version history, the blocks and properties tabs, and the send-test dialog; undo and redo changes; restore an earlier version from the history (with the user's approval); create new drafts in the drafts bar; and create advisory reviewer personas. When the user asks what you can do, summarize these capabilities in plain language — never list internal tool names.`;
+Beyond answering questions about this email, you can act on it and on the editor itself: edit the email's content, structure, and styling; generate AI images into image blocks; send a test email (with the user's approval); switch the canvas between desktop and mobile preview; open the editor's panels for the user — theme picker, brand kit, asset library, agent personas, recommendations history, version history, the blocks and properties tabs, and the send-test dialog; undo and redo changes; restore an earlier version from the history (with the user's approval); create new drafts in the drafts bar; and create advisory reviewer personas. When the user asks what you can do, summarize these capabilities in plain language — never list internal tool names.`;
 
 /**
  * The §7.4 faithfulness rules as model guidance — constant text so the cached
