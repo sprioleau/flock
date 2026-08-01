@@ -345,6 +345,12 @@ export const imageBlockSchema = z
           .describe(
             "Background color filling this image block's bounds around the image — visible through the block padding and wherever the image is narrower than the block. Omit for transparent (the container background shows through).",
           ),
+        role: z
+          .literal("logo")
+          .optional()
+          .describe(
+            'Semantic marker, not a visual property: "logo" tags this image as the brand logo. Brand propagation re-sources role-marked images to the brand kit\'s confirmed logo when the brand is applied or updated. Omit for regular images.',
+          ),
         ...blockPaddingFields("image block"),
       })
       .describe("Image properties. src is required; alt is required (may be empty for decorative images)."),

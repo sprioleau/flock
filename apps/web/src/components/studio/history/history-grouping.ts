@@ -64,6 +64,15 @@ export function describeGroup({
     const targetVersion = group.batchId.slice("rollback:".length);
     return `Restored to version ${targetVersion}`;
   }
+  // Stage M brand propagation: `brand:<kitId>:r<revision>:<documentId>` —
+  // one batch per draft, authored by the confirming user (op-author shows
+  // You/User); the prefix is the machine-readable provenance.
+  if (group.batchId !== null && group.batchId.startsWith("revert:brand:")) {
+    return "Reverted the brand update";
+  }
+  if (group.batchId !== null && group.batchId.startsWith("brand:")) {
+    return "Applied the brand";
+  }
   if (group.batchId !== null && group.batchId.startsWith("revert:")) {
     return "Reverted agent changes";
   }

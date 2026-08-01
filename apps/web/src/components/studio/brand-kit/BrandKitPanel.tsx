@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { useMutation } from "convex/react";
+import { useMutation, useQuery } from "convex/react";
 import { ConvexError } from "convex/values";
 import { CheckIcon, Loader2Icon, PaletteIcon, SparklesIcon } from "lucide-react";
 import { api } from "@convex/_generated/api";
@@ -32,7 +32,8 @@ function getSocialPlatformLabel(platform: string): string {
   return SOCIAL_PLATFORM_LABELS[platform as SocialPlatform] ?? platform;
 }
 import { ThemeSwatch } from "../theme/ThemeSwatch";
-import { useActiveBrandKit } from "./useActiveBrandKit";
+import { BrandApplyDialog } from "./BrandApplyDialog";
+import { useSessionBrandKit } from "./useActiveBrandKit";
 
 /**
  * The brand kit panel: a "Brand kit" toolbar button (next to the theme
@@ -60,11 +61,20 @@ import { useActiveBrandKit } from "./useActiveBrandKit";
  */
 export function BrandKitPanel() {
   const sessionId = useEditorStore((state) => state.authorId);
-  const { brandKit: activeBrandKit, hasSavedKit } = useActiveBrandKit();
+  const canvasId = useEditorStore((state) => state.canvasId);
+  // The panel edits the VIEWER's kit (session-scoped library object); the
+  // canvas binding below decides which kit this canvas USES (Stage M §3.2).
+  const { brandKit: activeBrandKit, hasSavedKit, kitId: sessionKitId } = useSessionBrandKit();
+  const brandStatus = useQuery(
+    api.brandKits.getCanvasBrandStatus,
+    canvasId !== null ? { canvasId } : "skip",
+  );
   const saveBrandKit = useMutation(api.brandKits.saveBrandKit);
   const clearBrandKit = useMutation(api.brandKits.clearBrandKit);
   const renameBrandKit = useMutation(api.brandKits.renameBrandKit);
   const removeBrandKitAsset = useMutation(api.brandKits.removeBrandKitAsset);
+  const bindSessionKitToCanvas = useMutation(api.brandKits.bindSessionKitToCanvas);
+  const unbindCanvasBrandKit = useMutation(api.brandKits.unbindCanvasBrandKit);
 
   const [isOpen, setIsOpen] = useState(false);
   const [websiteUrl, setWebsiteUrl] = useState("");
@@ -76,6 +86,13 @@ export function BrandKitPanel() {
   const [isResetting, setIsResetting] = useState(false);
   const [busyAssetKind, setBusyAssetKind] = useState<BrandKitAssetKind | null>(null);
   const [assetErrorMessage, setAssetErrorMessage] = useState<string | null>(null);
+  const [isBindingBusy, setIsBindingBusy] = useState(false);
+  const [bindingErrorMessage, setBindingErrorMessage] = useState<string | null>(null);
+  const [isApplyPromptOpen, setIsApplyPromptOpen] = useState(false);
+
+  const canvasBinding = brandStatus?.binding ?? null;
+  const isCanvasBoundToMyKit =
+    canvasBinding !== null && sessionKitId !== null && canvasBinding.kitId === sessionKitId;
 
   const handleOpenChange = (nextIsOpen: boolean): void => {
     setIsOpen(nextIsOpen);
@@ -152,6 +169,13 @@ export function BrandKitPanel() {
       // The active-kit card (and every tab's ThemeMenu) updates reactively.
       setPreviewKit(null);
       setWebsiteUrl("");
+      // Stage M §5.2 situation (b): saving the CANVAS-BOUND kit bumps its
+      // revision, so the actor — and only the actor — gets the propagation
+      // prompt. Everyone else sees per-draft pills.
+      if (isCanvasBoundToMyKit) {
+        setIsOpen(false);
+        setIsApplyPromptOpen(true);
+      }
     } catch (error: unknown) {
       // ConvexError.data carries the server's clear rejection message
       // (e.g. a failing contrast pairing); anything else gets a fallback.
@@ -225,6 +249,48 @@ export function BrandKitPanel() {
     }
   };
 
+  /**
+   * Bind the viewer's kit as this canvas's brand (Stage M §3.3): a shared
+   * metadata write that restyles NOTHING — the §5.2 prompt that follows is
+   * where the user chooses which drafts actually update.
+   */
+  const bindKitToCanvas = async (): Promise<void> => {
+    if (canvasId === null || sessionId === null || isBindingBusy) {
+      return;
+    }
+    setIsBindingBusy(true);
+    setBindingErrorMessage(null);
+    try {
+      await bindSessionKitToCanvas({ canvasId, sessionId });
+      setIsOpen(false);
+      setIsApplyPromptOpen(true);
+    } catch (error: unknown) {
+      setBindingErrorMessage(
+        error instanceof ConvexError
+          ? String(error.data)
+          : "Couldn't set the brand for this canvas. Try again.",
+      );
+    } finally {
+      setIsBindingBusy(false);
+    }
+  };
+
+  /** Remove the canvas binding (metadata only — drafts keep their look). */
+  const stopUsingOnCanvas = async (): Promise<void> => {
+    if (canvasId === null || isBindingBusy) {
+      return;
+    }
+    setIsBindingBusy(true);
+    setBindingErrorMessage(null);
+    try {
+      await unbindCanvasBrandKit({ canvasId });
+    } catch {
+      setBindingErrorMessage("Couldn't remove the brand from this canvas. Try again.");
+    } finally {
+      setIsBindingBusy(false);
+    }
+  };
+
   const removeAsset = async (kind: BrandKitAssetKind): Promise<void> => {
     if (sessionId === null || busyAssetKind !== null) {
       return;
@@ -245,7 +311,11 @@ export function BrandKitPanel() {
   };
 
   return (
-    <Dialog open={isOpen} onOpenChange={handleOpenChange}>
+    <>
+      {/* The §5.2 propagation prompt — a SIBLING dialog (the panel closes
+          first): opened after binding a kit here or saving the bound kit. */}
+      <BrandApplyDialog isOpen={isApplyPromptOpen} onOpenChange={setIsApplyPromptOpen} />
+      <Dialog open={isOpen} onOpenChange={handleOpenChange}>
       {/* Tooltip + dialog trigger on ONE element (base-ui render composition)
           — below xl the trigger is icon-only, so hover carries the label. */}
       <TooltipProvider>
@@ -272,7 +342,8 @@ export function BrandKitPanel() {
         <DialogHeader>
           <DialogTitle>Brand kit</DialogTitle>
           <DialogDescription>
-            One kit per browser — every canvas and its theme menu use it.
+            Your kit is saved per browser. Choose it for a canvas and everyone there shares its
+            themes.
           </DialogDescription>
         </DialogHeader>
 
@@ -310,6 +381,86 @@ export function BrandKitPanel() {
                 {isResetting && <Loader2Icon className="animate-spin" />}
                 Reset to default
               </Button>
+            )}
+          </section>
+
+          <section
+            className="flex flex-col gap-2 border-t pt-4"
+            data-testid="brand-kit-canvas-section"
+          >
+            <h3 className="text-xs font-medium text-muted-foreground">This canvas</h3>
+            {canvasBinding === null ? (
+              <>
+                <p className="text-xs text-muted-foreground">
+                  No brand chosen for this canvas yet. Choosing one doesn&apos;t restyle anything —
+                  you pick which drafts update.
+                </p>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="self-start"
+                  onClick={() => void bindKitToCanvas()}
+                  disabled={!hasSavedKit || isBindingBusy || canvasId === null}
+                  data-testid="brand-kit-bind-button"
+                >
+                  {isBindingBusy && <Loader2Icon className="animate-spin" />}
+                  Use this kit for the canvas
+                </Button>
+                {!hasSavedKit && (
+                  <p className="text-[11px] text-muted-foreground">
+                    Save a kit first, then choose it here.
+                  </p>
+                )}
+              </>
+            ) : (
+              <>
+                <p className="text-xs text-muted-foreground" data-testid="brand-kit-binding-label">
+                  Uses{" "}
+                  <span className="font-medium text-foreground">
+                    &ldquo;{canvasBinding.name}&rdquo;
+                  </span>
+                  {isCanvasBoundToMyKit ? " — your kit." : " — a collaborator's kit."}
+                </p>
+                <div className="flex flex-wrap items-center gap-1.5">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      setIsOpen(false);
+                      setIsApplyPromptOpen(true);
+                    }}
+                    data-testid="brand-kit-update-drafts-button"
+                  >
+                    Update drafts…
+                  </Button>
+                  {!isCanvasBoundToMyKit && hasSavedKit && (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => void bindKitToCanvas()}
+                      disabled={isBindingBusy}
+                      data-testid="brand-kit-rebind-button"
+                    >
+                      {isBindingBusy && <Loader2Icon className="animate-spin" />}
+                      Use my kit instead
+                    </Button>
+                  )}
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => void stopUsingOnCanvas()}
+                    disabled={isBindingBusy}
+                    data-testid="brand-kit-unbind-button"
+                  >
+                    Stop using
+                  </Button>
+                </div>
+              </>
+            )}
+            {bindingErrorMessage !== null && (
+              <p className="text-xs text-destructive" data-testid="brand-kit-binding-error">
+                {bindingErrorMessage}
+              </p>
             )}
           </section>
 
@@ -408,7 +559,8 @@ export function BrandKitPanel() {
           )}
         </div>
       </DialogContent>
-    </Dialog>
+      </Dialog>
+    </>
   );
 }
 

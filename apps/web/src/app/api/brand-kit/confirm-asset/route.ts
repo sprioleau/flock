@@ -34,9 +34,10 @@ import { fetchBinaryResource } from "@/lib/brand-kit-extraction/fetch-page";
  * (Content Studio Stage S: the confirmed binary joins the session's asset
  * library as kind "logo"/"social-card" — "any logos that were scraped").
  *
- * Stage M seam (content-studio §7.1): confirmAsset still DELETES the
- * previously confirmed file for the kind — once removal is registry-aware,
- * that site converts to leave replaced files to the library's lifecycle.
+ * Stage M seam (content-studio §7.1) — CONVERTED: kit-side deletes
+ * (replace/clear/remove) now go through deleteStorageFilesUnlessRegistered
+ * (convex/brandKits.ts), so a replaced file that this route registered into
+ * the library is RETAINED and its lifecycle belongs to the registry.
  */
 
 const requestBodySchema = z.object({

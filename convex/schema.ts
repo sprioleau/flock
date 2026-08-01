@@ -73,6 +73,17 @@ export default defineSchema({
     /** Anonymous owner session (localStorage id). Phase 6.1 keys cleanup off this. */
     sessionId: v.string(),
     title: v.optional(v.string()),
+    /**
+     * Stage M (brand-kit architecture §3.2): the brand this canvas uses.
+     * SHARED state — every capability holder resolves the brand THROUGH the
+     * canvas, never through their own session. Any capability holder may
+     * change it (owner decision 1); changing it RESTYLES NOTHING by itself —
+     * restyling is always an explicit applyBrandToDocuments confirm. Absent =
+     * legacy fallback chain (canvas creator-session's kit → MOCK_BRAND_KIT).
+     */
+    brandKitId: v.optional(v.id("brandKits")),
+    /** The kit `revision` observed when the binding was last set (bind-time provenance). */
+    brandKitBoundRevision: v.optional(v.number()),
     createdAtMs: v.number(),
     updatedAtMs: v.number(),
   }).index("by_sessionId", ["sessionId"]),
@@ -101,6 +112,23 @@ export default defineSchema({
     /** Lineage: set when this draft was duplicated from another (Figma-style fork, not a git branch). */
     forkedFromDocumentId: v.optional(v.id("documents")),
     forkedFromVersion: v.optional(v.number()),
+    /**
+     * ADVISORY brand pointer (Stage M, brand-kit architecture §4.3): what
+     * this draft last had applied by brand propagation — written by
+     * applyBrandToDocuments in the same transaction as the op batch. UX
+     * metadata ONLY (staleness pills): rendering truth stays
+     * root.properties.globals, and undo reverts globals without touching this
+     * pointer, so consumers must compose it with payload-equality
+     * (getCanvasBrandStatus does). Worst case of drift is a missing pill,
+     * never a wrong restyle.
+     */
+    brand: v.optional(
+      v.object({
+        kitId: v.id("brandKits"),
+        revision: v.number(),
+        variationId: v.string(),
+      }),
+    ),
     createdAtMs: v.number(),
     updatedAtMs: v.number(),
   })

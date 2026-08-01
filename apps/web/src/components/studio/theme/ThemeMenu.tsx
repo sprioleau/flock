@@ -1,8 +1,10 @@
 "use client";
 
 import { useState } from "react";
+import { useMutation } from "convex/react";
 import { ChevronDownIcon } from "lucide-react";
 import { resolveGlobalStyles, ROOT_BLOCK_ID } from "@tandem/email-sdk";
+import { api } from "@convex/_generated/api";
 import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
@@ -21,6 +23,7 @@ import {
 import { findMatchingVariation, type ThemeVariation } from "@/lib/brand-kit";
 import { useEditorStore } from "@/lib/editor-store";
 import { useUiSurfaceOpenRequest } from "@/lib/ui-surfaces";
+import { DraftBrandPill } from "../brand-kit/DraftBrandPill";
 import { useActiveBrandKit } from "../brand-kit/useActiveBrandKit";
 import { ThemeSwatch } from "./ThemeSwatch";
 
@@ -41,9 +44,11 @@ import { ThemeSwatch } from "./ThemeSwatch";
  * brand kit panel restyles this dropdown in every open tab live.
  */
 export function ThemeMenu() {
-  const { brandKit } = useActiveBrandKit();
+  const { brandKit, isBoundToCanvas } = useActiveBrandKit();
   const dispatch = useEditorStore((state) => state.dispatch);
   const isDocumentReady = useEditorStore((state) => state.isDocumentReady);
+  const documentId = useEditorStore((state) => state.documentId);
+  const recordDocumentBrandPointer = useMutation(api.brandKits.recordDocumentBrandPointer);
   // Controlled ONLY so the agent's openPanel("theme") command can open it —
   // human interaction flows through onOpenChange exactly as before.
   const [isOpen, setIsOpen] = useState(false);
@@ -74,10 +79,20 @@ export function ThemeMenu() {
       return; // Already applied verbatim — don't append a no-op history entry.
     }
     dispatch({ name: "applyTheme", globals: variation.globals });
+    // Stage M (§4.3): applying one of the CANVAS-BOUND kit's variations also
+    // records the advisory brand pointer — it's what preserve-variation
+    // propagation maps into the next kit revision ("midnight stays
+    // midnight"). Fire-and-forget UX metadata; never rendering truth.
+    if (isBoundToCanvas && documentId !== null) {
+      void recordDocumentBrandPointer({ documentId, variationId: variation.id }).catch(
+        () => undefined,
+      );
+    }
   };
 
   return (
-    <DropdownMenu open={isOpen} onOpenChange={setIsOpen}>
+    <>
+      <DropdownMenu open={isOpen} onOpenChange={setIsOpen}>
       {/* Tooltip + menu trigger on ONE element (base-ui render composition):
           below xl the trigger is swatch-only, so the hover label carries the
           control's name (item 32 — every header control shows what it does). */}
@@ -109,27 +124,32 @@ export function ThemeMenu() {
           <TooltipContent side="bottom">Email theme</TooltipContent>
         </Tooltip>
       </TooltipProvider>
-      <DropdownMenuContent align="start" sideOffset={6} className="w-56">
-        <DropdownMenuGroup>
-          <DropdownMenuLabel>
-            Theme
-            <span className="block text-xs font-normal text-muted-foreground">
-              {brandKit.name}
-            </span>
-          </DropdownMenuLabel>
-          {brandKit.variations.map((variation) => (
-            <DropdownMenuCheckboxItem
-              key={variation.id}
-              checked={activeVariation?.id === variation.id}
-              onCheckedChange={() => applyVariation(variation)}
-              data-testid={`theme-option-${variation.id}`}
-            >
-              <ThemeSwatch globals={variation.globals} />
-              <span className="truncate">{variation.name}</span>
-            </DropdownMenuCheckboxItem>
-          ))}
-        </DropdownMenuGroup>
-      </DropdownMenuContent>
-    </DropdownMenu>
+        <DropdownMenuContent align="start" sideOffset={6} className="w-56">
+          <DropdownMenuGroup>
+            <DropdownMenuLabel>
+              Theme
+              <span className="block text-xs font-normal text-muted-foreground">
+                {brandKit.name}
+              </span>
+            </DropdownMenuLabel>
+            {brandKit.variations.map((variation) => (
+              <DropdownMenuCheckboxItem
+                key={variation.id}
+                checked={activeVariation?.id === variation.id}
+                onCheckedChange={() => applyVariation(variation)}
+                data-testid={`theme-option-${variation.id}`}
+              >
+                <ThemeSwatch globals={variation.globals} />
+                <span className="truncate">{variation.name}</span>
+              </DropdownMenuCheckboxItem>
+            ))}
+          </DropdownMenuGroup>
+        </DropdownMenuContent>
+      </DropdownMenu>
+      {/* Stage M: the ACTIVE draft's non-blocking "Updated brand available"
+          pill lives beside the theme control (the sibling-frame pills mount
+          in the frame headers). Renders null while the draft is current. */}
+      {documentId !== null && <DraftBrandPill documentId={documentId} />}
+    </>
   );
 }

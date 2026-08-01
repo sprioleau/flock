@@ -1,11 +1,19 @@
-import { globalStylesSchema } from "@tandem/email-sdk";
+import {
+  applyOperations as applyOperationsToDocument,
+  globalStylesSchema,
+  ROOT_BLOCK_ID,
+  type GlobalStyles,
+  type Operation,
+} from "@tandem/email-sdk";
 import { ConvexError, v, type Infer } from "convex/values";
 import {
+  findMatchingVariation,
   getBrandKitValidationErrors,
+  getConfirmedBrandAssetUrl,
   type BrandKit,
 } from "../apps/web/src/lib/brand-kit";
 import type { Doc, Id } from "./_generated/dataModel";
-import { mutation, query, type MutationCtx } from "./_generated/server";
+import { mutation, query, type MutationCtx, type QueryCtx } from "./_generated/server";
 import {
   collectRowStorageIds,
   getEffectiveRevision,
@@ -13,6 +21,7 @@ import {
   planAssetRemovalPatch,
   planBrandKitSavePatch,
 } from "./model/brandKitAssets";
+import { commitVersions, loadDocumentState, type CommitEntry } from "./model/emailDocuments";
 
 /**
  * Brand kit persistence (brand kit panel): ONE active kit per anonymous
@@ -29,9 +38,18 @@ import {
  * confirm-asset route uploads the binary to Convex storage and `confirmAsset`
  * swaps the row's URL to the durable serving URL. Owner decision 4:
  * unconfirmed suggestions render in kit UI only — nothing downstream may
- * write them into documents. Storage lifecycle (§8.2): replacing or clearing
- * a confirmed asset deletes its storage file (kit files are invisible to the
- * document GC in convex/model/cleanup.ts).
+ * write them into documents. Storage lifecycle (§8.2, Stage M conversion):
+ * replacing or clearing a confirmed asset deletes its storage file ONLY when
+ * the file is not a registered library asset — see
+ * deleteStorageFilesUnlessRegistered (kit files are invisible to the document
+ * GC in convex/model/cleanup.ts).
+ *
+ * Stage M (canvas scoping + propagation) also lives here: the canvas brand
+ * BINDING (canvases.brandKitId — shared state, restyles nothing by itself),
+ * the per-draft staleness status query behind the "Updated brand available"
+ * pills, and applyBrandToDocuments — the ONLY code path that restyles drafts
+ * to a brand, always as explicit per-draft op batches through commitVersions
+ * (the one history spine).
  *
  * Validation policy: the wire shape is Convex-validated below, and the
  * `globals` payloads are runtime-guarded BEFORE any write by (1) the
@@ -71,6 +89,8 @@ export const brandKitValidator = v.object({
  * confirmed-only gate reads them via getConfirmedBrandAssetUrl).
  */
 const activeBrandKitValidator = v.object({
+  /** The stable kit row id — what canvas bindings point at (Stage M). */
+  kitId: v.id("brandKits"),
   name: v.string(),
   sourceUrl: v.optional(v.string()),
   fonts: v.object({ heading: v.string(), body: v.string() }),
@@ -92,6 +112,35 @@ const activeBrandKitValidator = v.object({
 const assetKindValidator = v.union(v.literal("logo"), v.literal("socialCard"));
 
 type BrandKitInput = Infer<typeof brandKitValidator>;
+type ActiveBrandKitPayload = Infer<typeof activeBrandKitValidator>;
+
+/** Project a kit row onto the read wire shape (shared by every kit read). */
+function projectBrandKitRow(row: Doc<"brandKits">): ActiveBrandKitPayload {
+  return {
+    kitId: row._id,
+    name: row.name,
+    ...(row.sourceUrl !== undefined ? { sourceUrl: row.sourceUrl } : {}),
+    fonts: row.fonts,
+    ...(row.logoUrl !== undefined ? { logoUrl: row.logoUrl } : {}),
+    ...(row.socialImageUrl !== undefined ? { socialImageUrl: row.socialImageUrl } : {}),
+    ...(row.socialLinks !== undefined ? { socialLinks: row.socialLinks } : {}),
+    revision: getEffectiveRevision(row),
+    ...(row.logoConfirmedAtMs !== undefined ? { logoConfirmedAtMs: row.logoConfirmedAtMs } : {}),
+    ...(row.socialImageConfirmedAtMs !== undefined
+      ? { socialImageConfirmedAtMs: row.socialImageConfirmedAtMs }
+      : {}),
+    variations: row.variations,
+  };
+}
+
+/**
+ * A kit row as the shared frontend BrandKit contract — safe at runtime
+ * because every stored kit passed assertBrandKitIsValid (strict Zod +
+ * completeness + contrast) before writing.
+ */
+function toBrandKitContract(row: Doc<"brandKits">): BrandKit {
+  return projectBrandKitRow(row) as unknown as BrandKit;
+}
 
 /**
  * The server-side gate every save goes through. Throws a ConvexError with a
@@ -142,9 +191,28 @@ async function requireSessionBrandKitRow(
   return rows[0];
 }
 
-/** Delete kit-owned storage files (best effort; ids may already be gone). */
-async function deleteStorageFiles(ctx: MutationCtx, storageIds: string[]): Promise<void> {
+/**
+ * Delete kit-owned storage files UNLESS the file is a REGISTERED asset
+ * (assets table, by_storageId). Stage M conversion of the Stage S seam
+ * (content-studio proposal §7.1 / confirm-asset route header): the
+ * confirm-asset route registers every confirmed binary into the session's
+ * asset library, so a replaced or cleared kit asset may still be referenced
+ * by the Library — and by drafts that copied its URL. Registered files are
+ * RETAINED (their lifecycle belongs to the registry now); unregistered files
+ * keep the immediate delete. Best effort: ids may already be gone.
+ */
+async function deleteStorageFilesUnlessRegistered(
+  ctx: MutationCtx,
+  storageIds: string[],
+): Promise<void> {
   for (const storageId of storageIds) {
+    const registeredAsset = await ctx.db
+      .query("assets")
+      .withIndex("by_storageId", (q) => q.eq("storageId", storageId as Id<"_storage">))
+      .first();
+    if (registeredAsset !== null) {
+      continue; // The Library owns this file — retain it.
+    }
     await ctx.storage.delete(storageId as Id<"_storage">).catch(() => undefined);
   }
 }
@@ -166,20 +234,7 @@ export const getActiveBrandKit = query({
     if (row === null) {
       return null;
     }
-    return {
-      name: row.name,
-      ...(row.sourceUrl !== undefined ? { sourceUrl: row.sourceUrl } : {}),
-      fonts: row.fonts,
-      ...(row.logoUrl !== undefined ? { logoUrl: row.logoUrl } : {}),
-      ...(row.socialImageUrl !== undefined ? { socialImageUrl: row.socialImageUrl } : {}),
-      ...(row.socialLinks !== undefined ? { socialLinks: row.socialLinks } : {}),
-      revision: getEffectiveRevision(row),
-      ...(row.logoConfirmedAtMs !== undefined ? { logoConfirmedAtMs: row.logoConfirmedAtMs } : {}),
-      ...(row.socialImageConfirmedAtMs !== undefined
-        ? { socialImageConfirmedAtMs: row.socialImageConfirmedAtMs }
-        : {}),
-      variations: row.variations,
-    };
+    return projectBrandKitRow(row);
   },
 });
 
@@ -216,7 +271,7 @@ export const saveBrandKit = mutation({
     // (surrendering their storage files) and patch the primary in place.
     const [primaryRow, ...duplicateRows] = existingRows;
     for (const duplicate of duplicateRows) {
-      await deleteStorageFiles(ctx, collectRowStorageIds(duplicate));
+      await deleteStorageFilesUnlessRegistered(ctx, collectRowStorageIds(duplicate));
       await ctx.db.delete(duplicate._id);
     }
     const { patch, storageIdsToDelete } = planBrandKitSavePatch({
@@ -235,7 +290,7 @@ export const saveBrandKit = mutation({
       updatedAtMs: now,
       ...patch,
     });
-    await deleteStorageFiles(ctx, storageIdsToDelete);
+    await deleteStorageFilesUnlessRegistered(ctx, storageIdsToDelete);
     return null;
   },
 });
@@ -300,7 +355,7 @@ export const confirmAsset = mutation({
       nowMs: Date.now(),
     });
     await ctx.db.patch(row._id, { ...patch, updatedAtMs: Date.now() });
-    await deleteStorageFiles(ctx, storageIdsToDelete);
+    await deleteStorageFilesUnlessRegistered(ctx, storageIdsToDelete);
     return { url: servingUrl };
   },
 });
@@ -316,7 +371,7 @@ export const removeBrandKitAsset = mutation({
     const row = await requireSessionBrandKitRow(ctx, args.sessionId);
     const { patch, storageIdsToDelete } = planAssetRemovalPatch({ existing: row, kind: args.kind });
     await ctx.db.patch(row._id, { ...patch, updatedAtMs: Date.now() });
-    await deleteStorageFiles(ctx, storageIdsToDelete);
+    await deleteStorageFilesUnlessRegistered(ctx, storageIdsToDelete);
     return null;
   },
 });
@@ -332,9 +387,442 @@ export const clearBrandKit = mutation({
   handler: async (ctx, args) => {
     const existingRows = await loadSessionBrandKitRows(ctx, args.sessionId);
     for (const row of existingRows) {
-      await deleteStorageFiles(ctx, collectRowStorageIds(row));
+      await deleteStorageFilesUnlessRegistered(ctx, collectRowStorageIds(row));
       await ctx.db.delete(row._id);
     }
     return null;
+  },
+});
+
+// ---------------------------------------------------------------------------
+// Stage M — canvas-scoped brand binding (proposal §3), staleness (§4.3),
+// and explicit propagation (§5). The binding is shared canvas state any
+// capability holder may change (owner decision 1); it restyles NOTHING by
+// itself. Restyling only ever happens through applyBrandToDocuments — one
+// ordinary op batch per draft through the one history spine, so every
+// restyle is attributable, visible, and revertable per draft.
+// ---------------------------------------------------------------------------
+
+const canvasBrandKitValidator = v.object({
+  kitId: v.id("brandKits"),
+  /** "binding" = canvases.brandKitId; "session" = legacy creator-session fallback. */
+  source: v.union(v.literal("binding"), v.literal("session")),
+  kit: activeBrandKitValidator,
+});
+
+/**
+ * Resolve the brand a canvas uses (proposal §3.2 resolution chain): the
+ * bound kit → the canvas creator-session's kit (legacy fallback; also covers
+ * a dangling binding after clearBrandKit, risk 4) → null (frontend falls
+ * back to MOCK_BRAND_KIT). Every capability holder resolves the brand
+ * THROUGH the canvas — never through their own session — which is what makes
+ * two collaborators' theme menus finally agree.
+ */
+export const getBrandKitForCanvas = query({
+  args: { canvasId: v.id("canvases") },
+  returns: v.union(v.null(), canvasBrandKitValidator),
+  handler: async (ctx, args) => {
+    const canvas = await ctx.db.get(args.canvasId);
+    if (canvas === null) {
+      return null;
+    }
+    if (canvas.brandKitId !== undefined) {
+      const boundKit = await ctx.db.get(canvas.brandKitId);
+      if (boundKit !== null) {
+        return { kitId: boundKit._id, source: "binding" as const, kit: projectBrandKitRow(boundKit) };
+      }
+      // Dangling binding (kit deleted while bound): fall through to legacy chain.
+    }
+    const sessionKit = await ctx.db
+      .query("brandKits")
+      .withIndex("by_sessionId", (q) => q.eq("sessionId", canvas.sessionId))
+      .order("desc")
+      .first();
+    if (sessionKit === null) {
+      return null;
+    }
+    return { kitId: sessionKit._id, source: "session" as const, kit: projectBrandKitRow(sessionKit) };
+  },
+});
+
+/**
+ * Bind the session's saved kit as the canvas's brand. A tiny shared metadata
+ * write — it RESTYLES NOTHING (proposal §3.3): drafts keep their globals and
+ * their pills light up; restyling is always an explicit
+ * applyBrandToDocuments confirm. Any capability holder may bind (owner
+ * decision 1) — the deliberate-action prompt is the guardrail, matching
+ * MERGE-NOTIFY (show, don't lock).
+ */
+export const bindSessionKitToCanvas = mutation({
+  args: { canvasId: v.id("canvases"), sessionId: v.string() },
+  returns: v.object({ kitId: v.id("brandKits"), revision: v.number() }),
+  handler: async (ctx, args) => {
+    const canvas = await ctx.db.get(args.canvasId);
+    if (canvas === null) {
+      throw new ConvexError("That canvas no longer exists.");
+    }
+    const kitRow = await requireSessionBrandKitRow(ctx, args.sessionId);
+    const revision = getEffectiveRevision(kitRow);
+    await ctx.db.patch(canvas._id, {
+      brandKitId: kitRow._id,
+      brandKitBoundRevision: revision,
+      updatedAtMs: Date.now(),
+    });
+    return { kitId: kitRow._id, revision };
+  },
+});
+
+/** Remove the canvas's brand binding (metadata only — drafts keep their look). */
+export const unbindCanvasBrandKit = mutation({
+  args: { canvasId: v.id("canvases") },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    const canvas = await ctx.db.get(args.canvasId);
+    if (canvas === null) {
+      return null;
+    }
+    await ctx.db.patch(canvas._id, {
+      brandKitId: undefined,
+      brandKitBoundRevision: undefined,
+      updatedAtMs: Date.now(),
+    });
+    return null;
+  },
+});
+
+/**
+ * Record the advisory brand pointer (§4.3) when a user applies one of the
+ * BOUND kit's variations through the theme menu. Without this, a draft
+ * switched to "Midnight" via the menu would lose its variation identity the
+ * moment the kit updates (the pointer is what preserve-variation propagation
+ * maps into the new revision). No-ops unless the canvas is bound and the
+ * variation belongs to the bound kit's current payload set. UX metadata only
+ * — never rendering truth.
+ */
+export const recordDocumentBrandPointer = mutation({
+  args: { documentId: v.id("documents"), variationId: v.string() },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    const document = await ctx.db.get(args.documentId);
+    if (document === null) {
+      return null;
+    }
+    const canvas = await ctx.db.get(document.canvasId);
+    if (canvas === null || canvas.brandKitId === undefined) {
+      return null;
+    }
+    const kitRow = await ctx.db.get(canvas.brandKitId);
+    if (kitRow === null) {
+      return null;
+    }
+    const hasVariation = kitRow.variations.some((variation) => variation.id === args.variationId);
+    if (!hasVariation) {
+      return null;
+    }
+    await ctx.db.patch(document._id, {
+      brand: {
+        kitId: kitRow._id,
+        revision: getEffectiveRevision(kitRow),
+        variationId: args.variationId,
+      },
+    });
+    return null;
+  },
+});
+
+/** Per-draft brand freshness (§4.3 pill logic — payload match composed with the pointer). */
+const draftBrandStateValidator = v.union(
+  /** Globals exactly match a variation of the bound kit's current revision. */
+  v.literal("current"),
+  /** Last brand apply was an older revision (or another kit) — show the pill. */
+  v.literal("outdated"),
+  /** Bound brand never applied to this draft — show the pill (§5.2 skipped drafts). */
+  v.literal("never-applied"),
+  /** User hand-edited away AFTER applying the current revision — deliberately detached, no pill. */
+  v.literal("detached"),
+);
+
+const canvasBrandStatusValidator = v.object({
+  binding: v.union(
+    v.null(),
+    v.object({
+      kitId: v.id("brandKits"),
+      revision: v.number(),
+      name: v.string(),
+      hasConfirmedLogo: v.boolean(),
+      firstVariation: v.object({ id: v.string(), name: v.string() }),
+    }),
+  ),
+  drafts: v.array(
+    v.object({
+      documentId: v.id("documents"),
+      name: v.string(),
+      state: draftBrandStateValidator,
+      /** What propagation would apply — the preserve-variation preview (owner decision 2). */
+      targetVariation: v.object({ id: v.string(), name: v.string() }),
+    }),
+  ),
+});
+
+/** A draft's root globals straight from its materialized root block row. */
+async function readDocumentGlobals(
+  ctx: QueryCtx | MutationCtx,
+  documentId: Id<"documents">,
+): Promise<GlobalStyles | undefined> {
+  const rootRow = await ctx.db
+    .query("blocks")
+    .withIndex("by_documentId_and_blockId", (q) =>
+      q.eq("documentId", documentId).eq("blockId", ROOT_BLOCK_ID),
+    )
+    .first();
+  if (rootRow === null) {
+    return undefined;
+  }
+  return rootRow.properties.globals as GlobalStyles | undefined;
+}
+
+/**
+ * PRESERVE-VARIATION (owner decision 2): the variation propagation applies.
+ * Precedence: the payload-matched variation (the draft's CURRENT look wins,
+ * e.g. the user picked it in the menu after a propagation) → the advisory
+ * pointer's variation id, when it survives in the kit ("midnight stays
+ * midnight, just updated") → the kit's first variation.
+ */
+function pickTargetVariation({
+  variations,
+  matchedVariationId,
+  pointerVariationId,
+}: {
+  variations: Doc<"brandKits">["variations"];
+  matchedVariationId: string | undefined;
+  pointerVariationId: string | undefined;
+}): Doc<"brandKits">["variations"][number] {
+  return (
+    variations.find((variation) => variation.id === matchedVariationId) ??
+    variations.find((variation) => variation.id === pointerVariationId) ??
+    variations[0]!
+  );
+}
+
+/**
+ * The single reactive read behind the Figma-style UX (§5.2/§6): the canvas's
+ * binding plus every draft's brand freshness. Payload-equality
+ * (findMatchingVariation over the draft's live root globals) composed with
+ * the advisory pointer — so undo, manual edits, and collaborator restyles
+ * all converge to the right pill state without any client bookkeeping.
+ * Collaborators subscribe to the same query, which is why pills appear for
+ * everyone reactively and nobody ever gets a blocking modal.
+ */
+export const getCanvasBrandStatus = query({
+  args: { canvasId: v.id("canvases") },
+  returns: canvasBrandStatusValidator,
+  handler: async (ctx, args) => {
+    const canvas = await ctx.db.get(args.canvasId);
+    const kitRow =
+      canvas === null || canvas.brandKitId === undefined
+        ? null
+        : await ctx.db.get(canvas.brandKitId);
+    if (canvas === null || kitRow === null || kitRow.variations.length === 0) {
+      return { binding: null, drafts: [] };
+    }
+    const kitId = kitRow._id;
+    const revision = getEffectiveRevision(kitRow);
+    const brandKit = toBrandKitContract(kitRow);
+    const firstVariation = kitRow.variations[0]!;
+    const documents = await ctx.db
+      .query("documents")
+      .withIndex("by_canvasId", (q) => q.eq("canvasId", args.canvasId))
+      .collect();
+    documents.sort((a, b) => a.orderIndex - b.orderIndex);
+    const drafts = [];
+    for (const document of documents) {
+      const globals = await readDocumentGlobals(ctx, document._id);
+      const matched = findMatchingVariation({ brandKit, globals });
+      const pointer = document.brand;
+      const isPointerForCurrentKit = pointer !== undefined && pointer.kitId === kitId;
+      let state: "current" | "outdated" | "never-applied" | "detached";
+      if (matched !== null) {
+        state = "current";
+      } else if (pointer !== undefined && (!isPointerForCurrentKit || pointer.revision < revision)) {
+        state = "outdated";
+      } else if (isPointerForCurrentKit) {
+        state = "detached";
+      } else {
+        state = "never-applied";
+      }
+      const target = pickTargetVariation({
+        variations: kitRow.variations,
+        matchedVariationId: matched?.id,
+        pointerVariationId: pointer?.variationId,
+      });
+      drafts.push({
+        documentId: document._id,
+        name: document.name,
+        state,
+        targetVariation: { id: target.id, name: target.name },
+      });
+    }
+    return {
+      binding: {
+        kitId,
+        revision,
+        name: kitRow.name,
+        hasConfirmedLogo: getConfirmedBrandAssetUrl({ brandKit, kind: "logo" }) !== null,
+        firstVariation: { id: firstVariation.id, name: firstVariation.name },
+      },
+      drafts,
+    };
+  },
+});
+
+const applyBrandResultValidator = v.object({
+  results: v.array(
+    v.object({
+      documentId: v.id("documents"),
+      outcome: v.union(
+        /** Ops committed as one per-draft batch. */
+        v.literal("updated"),
+        /** Nothing to restyle — only the advisory pointer was refreshed. */
+        v.literal("already-current"),
+        v.literal("failed"),
+      ),
+      batchId: v.optional(v.string()),
+      variationId: v.optional(v.string()),
+      message: v.optional(v.string()),
+    }),
+  ),
+});
+
+/**
+ * Propagate the canvas's BOUND brand onto the chosen drafts (§5.1) — the only
+ * code path that restyles drafts to a brand, and it is always somebody's
+ * explicit confirm:
+ *
+ * - N drafts = N per-document spine commits in one transaction; each draft
+ *   gets ONE batch (`brand:<kitId>:r<revision>:<documentId>`) so
+ *   history.revertBatch unwinds one draft's restyle without touching another.
+ * - Ops per draft: one applyTheme with the preserve-variation target's
+ *   complete globals, plus updateBlockProperties re-sourcing every
+ *   role:"logo" image to the kit's CONFIRMED logo (owner decision 4 —
+ *   unconfirmed suggestions never enter documents; no confirmed logo means
+ *   no logo ops).
+ * - `author: "user"`, `authorId` = the confirming session: a deliberate human
+ *   act that belongs in that human's undo stack. The `brand:` batch prefix is
+ *   the machine-readable provenance.
+ * - The advisory pointer (documents.brand) is patched in the same
+ *   transaction; a draft already rendering the target verbatim gets a
+ *   pointer-only refresh instead of a no-op history entry.
+ */
+export const applyBrandToDocuments = mutation({
+  args: {
+    canvasId: v.id("canvases"),
+    /** Explicit list — exactly the drafts the user confirmed in the prompt. */
+    documentIds: v.array(v.id("documents")),
+    /** The confirming author; the per-draft batches land in their undo stack. */
+    sessionId: v.string(),
+  },
+  returns: applyBrandResultValidator,
+  handler: async (ctx, args) => {
+    const canvas = await ctx.db.get(args.canvasId);
+    if (canvas === null) {
+      throw new ConvexError("That canvas no longer exists.");
+    }
+    if (canvas.brandKitId === undefined) {
+      throw new ConvexError("This canvas has no brand yet — choose one first.");
+    }
+    const kitRow = await ctx.db.get(canvas.brandKitId);
+    if (kitRow === null || kitRow.variations.length === 0) {
+      throw new ConvexError("The brand this canvas was using is gone — choose a brand again.");
+    }
+    const kitId = kitRow._id;
+    const revision = getEffectiveRevision(kitRow);
+    const brandKit = toBrandKitContract(kitRow);
+    const confirmedLogoUrl = getConfirmedBrandAssetUrl({ brandKit, kind: "logo" });
+    const results = [];
+    for (const documentId of args.documentIds) {
+      const state = await loadDocumentState(ctx, documentId);
+      if (state === null || state.document.canvasId !== args.canvasId) {
+        results.push({
+          documentId,
+          outcome: "failed" as const,
+          message: "That draft is no longer on this canvas.",
+        });
+        continue;
+      }
+      const rootBlock = state.doc[ROOT_BLOCK_ID];
+      const globals =
+        rootBlock !== undefined && rootBlock.type === "root"
+          ? rootBlock.properties.globals
+          : undefined;
+      const matched = findMatchingVariation({ brandKit, globals });
+      const target = pickTargetVariation({
+        variations: kitRow.variations,
+        matchedVariationId: matched?.id,
+        pointerVariationId: state.document.brand?.variationId,
+      });
+      const brandPointer = { kitId, revision, variationId: target.id };
+      const ops: Operation[] = [];
+      if (matched?.id !== target.id) {
+        ops.push({ name: "applyTheme", globals: target.globals } as Operation);
+      }
+      if (confirmedLogoUrl !== null) {
+        const desiredAlt = `${kitRow.name} logo`;
+        for (const block of Object.values(state.doc)) {
+          if (
+            block.type === "image" &&
+            block.properties.role === "logo" &&
+            (block.properties.src !== confirmedLogoUrl || block.properties.alt !== desiredAlt)
+          ) {
+            ops.push({
+              name: "updateBlockProperties",
+              blockId: block.id,
+              properties: { src: confirmedLogoUrl, alt: desiredAlt },
+            } as Operation);
+          }
+        }
+      }
+      if (ops.length === 0) {
+        // Already rendering the target verbatim: refresh the pointer (clears
+        // the pill) without appending a no-op history entry.
+        await ctx.db.patch(documentId, { brand: brandPointer });
+        results.push({
+          documentId,
+          outcome: "already-current" as const,
+          variationId: target.id,
+        });
+        continue;
+      }
+      const applied = applyOperationsToDocument(state.doc, ops);
+      if (!applied.isOk) {
+        results.push({
+          documentId,
+          outcome: "failed" as const,
+          message: applied.errors[0]?.message ?? "Couldn't apply the brand to this draft.",
+        });
+        continue;
+      }
+      const batchId = `brand:${kitId}:r${revision}:${documentId}`;
+      // `applied.inverses` is in REVERSE order: inverses[0] undoes the LAST op.
+      const entries: CommitEntry[] = ops.map((op, opIndex) => ({
+        op,
+        inverse: applied.inverses[ops.length - 1 - opIndex]!,
+        kind: "edit" as const,
+      }));
+      await commitVersions({
+        ctx,
+        state,
+        newDoc: applied.doc,
+        entries,
+        context: { authorId: args.sessionId, author: "user", caller: "frontend", batchId },
+      });
+      await ctx.db.patch(documentId, { brand: brandPointer });
+      results.push({
+        documentId,
+        outcome: "updated" as const,
+        batchId,
+        variationId: target.id,
+      });
+    }
+    return { results };
   },
 });
