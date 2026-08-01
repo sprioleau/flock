@@ -15,6 +15,7 @@ import {
   createDefaultLeafBlock,
   createDefaultSection,
   generateUniqueBlockId,
+  type BrandLogoSource,
 } from "../block-defaults";
 import { getPaletteDragBlockType, type PaletteItem } from "../add-blocks/palette-items";
 import type { DragSource, DropIndicatorLine, DropTarget } from "./drag-drop-store";
@@ -38,9 +39,10 @@ import type { DragSource, DropIndicatorLine, DropTarget } from "./drag-drop-stor
  *   section/column, column presets (rows) → sections, the Empty Section and
  *   every section-template tile → root-level gaps between sections.
  * Outside any accepting container the position is invalid and resolves to
- * null: no indicator, and release dispatches nothing. Only the ACTIVE
- * draft's editor carries `data-dnd-canvas-root`, so sibling preview frames
- * are inert drop targets structurally.
+ * null: no indicator, and release dispatches nothing. Resolution is scoped
+ * to ONE frame's canvas root (existing blocks: their own document's frame;
+ * palette items: the active frame) — every other frame, live editor or
+ * preview, is an inert drop target structurally.
  */
 
 /** Viewport coordinates of the pointer during a drag. */
@@ -51,20 +53,43 @@ export interface PointerPosition {
 
 const CANVAS_ROOT_SELECTOR = "[data-dnd-canvas-root]";
 
-function getBlockElement(blockId: BlockId): HTMLElement | null {
-  return document.querySelector<HTMLElement>(`[data-block-id="${CSS.escape(blockId)}"]`);
+/**
+ * THE frame-scoping seam (multi-frame editing): every live frame's email
+ * surface carries `data-dnd-canvas-root` + `data-canvas-document-id`, block
+ * ids repeat across forked sibling drafts, and drags are legal only within
+ * ONE document's frame — so all block-element lookups resolve inside that
+ * document's canvas root. Null when the frame isn't mounted.
+ */
+function getCanvasRootElement(documentId: string | null): HTMLElement | null {
+  return documentId === null
+    ? document.querySelector<HTMLElement>(CANVAS_ROOT_SELECTOR)
+    : document.querySelector<HTMLElement>(
+        `${CANVAS_ROOT_SELECTOR}[data-canvas-document-id="${CSS.escape(documentId)}"]`,
+      );
 }
 
-/** The innermost canvas block under the pointer (null off-block/off-canvas). */
-function findBlockUnderPointer(pointer: PointerPosition): {
+function getBlockElement(canvasRoot: HTMLElement, blockId: BlockId): HTMLElement | null {
+  return canvasRoot.querySelector<HTMLElement>(`[data-block-id="${CSS.escape(blockId)}"]`);
+}
+
+/**
+ * The innermost canvas block under the pointer (null off-block/off-canvas).
+ * "Inside the canvas" means inside THIS drag's target frame: hovering another
+ * frame's canvas — even one rendering the same block ids — resolves as
+ * outside, which is what structurally rejects cross-frame drags.
+ */
+function findBlockUnderPointer(args: {
+  pointer: PointerPosition;
+  canvasRoot: HTMLElement;
+}): {
   hitBlockId: BlockId | null;
   isInsideCanvas: boolean;
 } {
-  const element = document.elementFromPoint(pointer.x, pointer.y);
+  const element = document.elementFromPoint(args.pointer.x, args.pointer.y);
   if (element === null) {
     return { hitBlockId: null, isInsideCanvas: false };
   }
-  const isInsideCanvas = element.closest(CANVAS_ROOT_SELECTOR) !== null;
+  const isInsideCanvas = element.closest(CANVAS_ROOT_SELECTOR) === args.canvasRoot;
   const blockElement = element.closest<HTMLElement>("[data-block-id]");
   return { hitBlockId: (blockElement?.dataset.blockId ?? null) as BlockId | null, isInsideCanvas };
 }
@@ -143,9 +168,10 @@ export function resolveContainerId(args: {
 function resolveBeforeChildId(args: {
   childIds: readonly BlockId[];
   pointer: PointerPosition;
+  canvasRoot: HTMLElement;
 }): BlockId | null {
   for (const childId of args.childIds) {
-    const rect = getBlockElement(childId)?.getBoundingClientRect();
+    const rect = getBlockElement(args.canvasRoot, childId)?.getBoundingClientRect();
     if (rect !== undefined && args.pointer.y < rect.top + rect.height / 2) {
       return childId;
     }
@@ -189,15 +215,16 @@ function resolveIndicatorLine(args: {
   dragged: DraggedDescriptor;
   childIds: readonly BlockId[];
   beforeChildId: BlockId | null;
+  canvasRoot: HTMLElement;
 }): DropIndicatorLine | null {
-  const { container, dragged, childIds, beforeChildId } = args;
+  const { container, dragged, childIds, beforeChildId, canvasRoot } = args;
   const insertionIndex = beforeChildId === null ? childIds.length : childIds.indexOf(beforeChildId);
   const isBetweenStackedBlocks = insertionIndex > 0 && insertionIndex < childIds.length;
   const isEnteringOtherColumn =
     container.type === "column" && dragged.parentId !== container.id;
 
   if (isEnteringOtherColumn && !isBetweenStackedBlocks) {
-    const columnRect = getBlockElement(container.id)?.getBoundingClientRect();
+    const columnRect = getBlockElement(canvasRoot, container.id)?.getBoundingClientRect();
     if (columnRect === undefined) {
       return null;
     }
@@ -207,7 +234,7 @@ function resolveIndicatorLine(args: {
     const sourceRect =
       dragged.parentId === null
         ? undefined
-        : getBlockElement(dragged.parentId)?.getBoundingClientRect();
+        : getBlockElement(canvasRoot, dragged.parentId)?.getBoundingClientRect();
     const isComingFromTheRight =
       dragged.existingBlockId === null ||
       (sourceRect !== undefined && sourceRect.left + sourceRect.width / 2 > columnRect.right);
@@ -221,23 +248,23 @@ function resolveIndicatorLine(args: {
   }
 
   if (beforeChildId !== null) {
-    const rect = getBlockElement(beforeChildId)?.getBoundingClientRect();
+    const rect = getBlockElement(canvasRoot, beforeChildId)?.getBoundingClientRect();
     if (rect === undefined) {
       return null;
     }
-    const span = resolveHorizontalIndicatorSpan({ container, referenceRect: rect });
+    const span = resolveHorizontalIndicatorSpan({ container, referenceRect: rect, canvasRoot });
     return { orientation: "horizontal", left: span.left, top: rect.top, length: span.length };
   }
   const lastChildId = childIds[childIds.length - 1];
   if (lastChildId !== undefined) {
-    const rect = getBlockElement(lastChildId)?.getBoundingClientRect();
+    const rect = getBlockElement(canvasRoot, lastChildId)?.getBoundingClientRect();
     if (rect === undefined) {
       return null;
     }
-    const span = resolveHorizontalIndicatorSpan({ container, referenceRect: rect });
+    const span = resolveHorizontalIndicatorSpan({ container, referenceRect: rect, canvasRoot });
     return { orientation: "horizontal", left: span.left, top: rect.bottom, length: span.length };
   }
-  const rect = getContainerElement(container)?.getBoundingClientRect();
+  const rect = getContainerElement({ container, canvasRoot })?.getBoundingClientRect();
   return rect === undefined
     ? null
     : {
@@ -250,13 +277,15 @@ function resolveIndicatorLine(args: {
 
 /**
  * The container's live DOM element. The ROOT has no `data-block-id` wrapper —
- * it IS the email surface, marked `data-dnd-canvas-root` (only the active
- * frame carries the marker, so this never resolves to a sibling preview).
+ * it IS the email surface: the frame's canvas root itself.
  */
-function getContainerElement(container: Block): HTMLElement | null {
-  return container.type === "root"
-    ? document.querySelector<HTMLElement>(CANVAS_ROOT_SELECTOR)
-    : getBlockElement(container.id);
+function getContainerElement(args: {
+  container: Block;
+  canvasRoot: HTMLElement;
+}): HTMLElement | null {
+  return args.container.type === "root"
+    ? args.canvasRoot
+    : getBlockElement(args.canvasRoot, args.container.id);
 }
 
 /**
@@ -269,13 +298,12 @@ function getContainerElement(container: Block): HTMLElement | null {
 function resolveHorizontalIndicatorSpan(args: {
   container: Block;
   referenceRect: DOMRect;
+  canvasRoot: HTMLElement;
 }): { left: number; length: number } {
-  const { container, referenceRect } = args;
+  const { container, referenceRect, canvasRoot } = args;
   if (container.type === "root") {
-    const rootRect = getContainerElement(container)?.getBoundingClientRect();
-    if (rootRect !== undefined) {
-      return { left: rootRect.left, length: rootRect.width };
-    }
+    const rootRect = canvasRoot.getBoundingClientRect();
+    return { left: rootRect.left, length: rootRect.width };
   }
   return { left: referenceRect.left, length: referenceRect.width };
 }
@@ -291,16 +319,23 @@ function areSameIds(a: readonly BlockId[], b: readonly BlockId[]): boolean {
  * and no indicator rect.
  */
 export function resolveDropTarget(args: {
+  /** The TARGET document's doc (existing blocks: the source frame's; palette: the active). */
   doc: EmailDocument;
+  /** The target document id — scopes every DOM lookup to that frame. */
+  documentId: string | null;
   source: DragSource;
   pointer: PointerPosition;
 }): DropTarget | null {
-  const { doc, source, pointer } = args;
+  const { doc, documentId, source, pointer } = args;
   const dragged = resolveDraggedDescriptor({ doc, source });
   if (dragged === null) {
     return null;
   }
-  const { hitBlockId, isInsideCanvas } = findBlockUnderPointer(pointer);
+  const canvasRoot = getCanvasRootElement(documentId);
+  if (canvasRoot === null) {
+    return null;
+  }
+  const { hitBlockId, isInsideCanvas } = findBlockUnderPointer({ pointer, canvasRoot });
   if (!isInsideCanvas) {
     return null;
   }
@@ -310,7 +345,7 @@ export function resolveDropTarget(args: {
     return null;
   }
   const childIds: readonly BlockId[] = container.childrenIds;
-  const beforeChildId = resolveBeforeChildId({ childIds, pointer });
+  const beforeChildId = resolveBeforeChildId({ childIds, pointer, canvasRoot });
   const isSameParent = dragged.existingBlockId !== null && dragged.parentId === containerId;
   const isNoop =
     isSameParent &&
@@ -323,12 +358,13 @@ export function resolveDropTarget(args: {
       childIds,
     );
   return {
+    documentId: documentId as DropTarget["documentId"],
     parentId: containerId,
     beforeChildId,
     isNoop,
     indicatorLine: isNoop
       ? null
-      : resolveIndicatorLine({ container, dragged, childIds, beforeChildId }),
+      : resolveIndicatorLine({ container, dragged, childIds, beforeChildId, canvasRoot }),
   };
 }
 
@@ -401,8 +437,10 @@ export function buildPaletteDropInsertion(args: {
   doc: EmailDocument;
   item: PaletteItem;
   dropTarget: DropTarget;
+  /** The confirmed brand logo for the Logo preset (null = placeholder). */
+  brandLogo?: BrandLogoSource | null;
 }): PaletteInsertion | null {
-  const { doc, item, dropTarget } = args;
+  const { doc, item, dropTarget, brandLogo } = args;
   const container = doc[dropTarget.parentId];
   if (container === undefined) {
     return null;
@@ -420,6 +458,7 @@ export function buildPaletteDropInsertion(args: {
             id,
             parentId: dropTarget.parentId,
             doc,
+            brandLogo,
           }),
           parentId: dropTarget.parentId,
           index,

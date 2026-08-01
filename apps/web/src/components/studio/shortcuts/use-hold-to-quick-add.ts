@@ -63,8 +63,12 @@ function resolveQuickAddTarget(pointer: PointerPosition): DropTarget | null {
   if (proxyItem === undefined) {
     return null;
   }
+  const { doc, documentId } = useEditorStore.getState();
   return resolveDropTarget({
-    doc: useEditorStore.getState().doc,
+    doc,
+    // Quick-add always inserts into the ACTIVE frame (same rule as palette
+    // drops) — the resolver scopes its DOM lookups to that frame's canvas.
+    documentId,
     source: { kind: "palette", item: proxyItem },
     pointer,
   });

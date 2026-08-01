@@ -9,11 +9,11 @@ import {
 } from "react";
 import { useMutation } from "convex/react";
 import { MessageSquarePlusIcon, XIcon } from "lucide-react";
-import type { BlockId } from "@tandem/email-sdk";
+import type { BlockId, EmailDocument } from "@tandem/email-sdk";
 import { api } from "@convex/_generated/api";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
-import { getActiveEditorStore, useEditorStore } from "@/lib/editor-store";
+import { useEditorStore, useEditorStoreApi } from "@/lib/editor-store";
 import { resolvePointerPosition } from "../presence/PointerPresenceOverlay";
 import { getLocalCommentAuthorName } from "./comment-author";
 import {
@@ -50,6 +50,10 @@ export function CommentsModeOverlay() {
 }
 
 function CommentsCaptureLayer() {
+  // The FRAME's store instance: with multi-frame editing this overlay mounts
+  // in EVERY live frame's canvas, so pin context must come from the document
+  // the overlay actually covers (frames may share block ids across forks).
+  const editorStoreApi = useEditorStoreApi();
   const overlayRef = useRef<HTMLDivElement | null>(null);
   const pendingPin = useCommentsModeStore((state) => state.pendingPin);
   const setPendingPin = useCommentsModeStore((state) => state.setPendingPin);
@@ -101,6 +105,7 @@ function CommentsCaptureLayer() {
         clientY: event.clientY,
         overlayElement,
         canvasRoot,
+        doc: editorStoreApi.getState().doc,
       }),
     );
   };
@@ -122,18 +127,21 @@ function CommentsCaptureLayer() {
 /**
  * Click → pending pin: hit-test beneath the overlay for the innermost block,
  * fall back to a canvas-root (draft-level) anchor. Context comes from the
- * ACTIVE store's doc — the overlay only ever renders in the active frame.
+ * FRAME's own doc (the overlay mounts per live frame under multi-frame
+ * editing).
  */
 function resolveClickToPendingPin({
   clientX,
   clientY,
   overlayElement,
   canvasRoot,
+  doc,
 }: {
   clientX: number;
   clientY: number;
   overlayElement: HTMLDivElement;
   canvasRoot: HTMLElement;
+  doc: EmailDocument;
 }): PendingCommentPin {
   // Topmost-first hit list; skip our own layers (capture overlay + pins).
   const hitElements = document.elementsFromPoint(clientX, clientY);
@@ -150,7 +158,6 @@ function resolveClickToPendingPin({
         })()
       : null;
 
-  const doc = getActiveEditorStore().getState().doc;
   const blockId = blockElement?.dataset.blockId;
   const blockContext =
     blockId !== undefined

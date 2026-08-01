@@ -1,6 +1,13 @@
 "use client";
 
-import { useCallback, useEffect, useRef, useSyncExternalStore, type ReactNode } from "react";
+import {
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+  useSyncExternalStore,
+  type ReactNode,
+} from "react";
 import { createPortal } from "react-dom";
 import {
   DndContext,
@@ -11,10 +18,20 @@ import {
   type DragStartEvent,
 } from "@dnd-kit/core";
 import { ROOT_BLOCK_ID, type BlockId } from "@tandem/email-sdk";
-import { useEditorStore } from "@/lib/editor-store";
+import { useStore } from "zustand";
+import {
+  getActiveEditorStore,
+  peekEditorStore,
+  type EditorStoreApi,
+} from "@/lib/editor-store";
 import type { PaletteItem } from "../add-blocks/palette-items";
 import { scrollBlockIntoView } from "../add-blocks/scroll-block-into-view";
-import { useCanvasDragStore, type DragSource } from "./drag-drop-store";
+import { useConfirmedBrandLogo } from "../brand-kit/useConfirmedBrandLogo";
+import {
+  parseCanvasDraggableId,
+  useCanvasDragStore,
+  type DragSource,
+} from "./drag-drop-store";
 import { DragGhost } from "./DragGhost";
 import { DropIndicatorLineView } from "./DropIndicatorLineView";
 import {
@@ -50,6 +67,9 @@ export interface CanvasDndContextProps {
 export function CanvasDndContext({ children }: CanvasDndContextProps) {
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 4 } }));
   const isDragActive = useCanvasDragStore((state) => state.dragSource !== null);
+  // The Logo preset's source for palette DROPS (owner decision 4: only the
+  // confirmed logo enters documents; null inserts the placeholder).
+  const brandLogo = useConfirmedBrandLogo();
   const pointerRef = useRef<PointerPosition | null>(null);
   const frameRef = useRef<number | null>(null);
 
@@ -68,9 +88,15 @@ export function CanvasDndContext({ children }: CanvasDndContextProps) {
     if (dragStore.dragSource.kind === "palette") {
       autoScrollFramesSurface(pointer);
     }
+    // Frame scoping (multi-frame editing): an existing block resolves against
+    // ITS document's store + frame; palette items insert into the ACTIVE
+    // frame (owner decision §8.3 — sibling frames reject drops).
+    const sourceStore = resolveSourceStore(dragStore.dragSource);
+    const sourceState = sourceStore.getState();
     dragStore.setDropTarget(
       resolveDropTarget({
-        doc: useEditorStore.getState().doc,
+        doc: sourceState.doc,
+        documentId: sourceState.documentId,
         source: dragStore.dragSource,
         pointer,
       }),
@@ -117,7 +143,9 @@ export function CanvasDndContext({ children }: CanvasDndContextProps) {
     const source: DragSource =
       paletteItem !== undefined
         ? { kind: "palette", item: paletteItem }
-        : { kind: "existing-block", blockId: event.active.id as BlockId };
+        : // Canvas draggables register document-qualified (several frames
+          // share one DndContext and forked drafts share block ids).
+          { kind: "existing-block", ...parseCanvasDraggableId(String(event.active.id)) };
     useCanvasDragStore.getState().startDrag(source);
     scheduleResolve();
   };
@@ -133,7 +161,10 @@ export function CanvasDndContext({ children }: CanvasDndContextProps) {
     if (dragSource === null || dropTarget === null) {
       return;
     }
-    const editorStore = useEditorStore.getState();
+    // The op lands in the store the drag was scoped to: an existing block's
+    // own frame store (which may be a non-active sibling), or the active
+    // store for palette insertions.
+    const editorStore = resolveSourceStore(dragSource).getState();
     if (dragSource.kind === "existing-block") {
       const op = buildDropOperation({
         doc: editorStore.doc,
@@ -149,6 +180,7 @@ export function CanvasDndContext({ children }: CanvasDndContextProps) {
       doc: editorStore.doc,
       item: dragSource.item,
       dropTarget,
+      brandLogo,
     });
     if (insertion === null) {
       return;
@@ -166,7 +198,7 @@ export function CanvasDndContext({ children }: CanvasDndContextProps) {
       (appliedOp.name === "addSection" ? (appliedOp.section.id as BlockId) : null);
     if (newBlockId !== null) {
       editorStore.selectBlock(newBlockId);
-      scrollBlockIntoView(newBlockId);
+      scrollBlockIntoView({ blockId: newBlockId, documentId: editorStore.documentId });
     }
   };
 
@@ -190,6 +222,18 @@ export function CanvasDndContext({ children }: CanvasDndContextProps) {
       <CanvasDragLayer />
     </DndContext>
   );
+}
+
+/**
+ * The store a drag gesture is scoped to: an existing block's OWN document
+ * store (retained by the frame that rendered it — may be a non-active sibling
+ * editor), the active store otherwise (palette insertions target the active
+ * frame; the fallback also covers a source frame torn down mid-drag).
+ */
+function resolveSourceStore(dragSource: DragSource): EditorStoreApi {
+  return dragSource.kind === "existing-block" && dragSource.documentId !== null
+    ? (peekEditorStore(dragSource.documentId) ?? getActiveEditorStore())
+    : getActiveEditorStore();
 }
 
 const FRAMES_SCROLLER_SELECTOR = "[data-frames-scroller]";
@@ -255,23 +299,41 @@ function CanvasDragLayer() {
 
 function CanvasDragOverlay() {
   const dragSource = useCanvasDragStore((state) => state.dragSource);
-  const doc = useEditorStore((state) => state.doc);
-  const root = doc[ROOT_BLOCK_ID];
-  const globals = root?.type === "root" ? root.properties.globals : undefined;
-
   return (
     <DragOverlay dropAnimation={null} style={{ pointerEvents: "none" }}>
       {dragSource === null ? null : dragSource.kind === "palette" ? (
         <PaletteDragChip item={dragSource.item} />
-      ) : doc[dragSource.blockId] !== undefined ? (
-        <div
-          className="email-canvas cursor-grabbing overflow-hidden rounded-sm bg-background/95 opacity-90 shadow-2xl ring-2 ring-sky-400"
-          data-testid="drag-overlay-ghost"
-        >
-          <DragGhost blockId={dragSource.blockId} doc={doc} globals={globals} />
-        </div>
-      ) : null}
+      ) : (
+        <ExistingBlockDragGhost dragSource={dragSource} />
+      )}
     </DragOverlay>
+  );
+}
+
+/**
+ * The lifted copy of a dragged existing block, rendered from ITS document's
+ * store (the drag may originate in a non-active sibling frame). The store
+ * identity is stable for the drag's lifetime — the source frame retains it.
+ */
+function ExistingBlockDragGhost({
+  dragSource,
+}: {
+  dragSource: Extract<DragSource, { kind: "existing-block" }>;
+}) {
+  const [sourceStore] = useState(() => resolveSourceStore(dragSource));
+  const doc = useStore(sourceStore, (state) => state.doc);
+  const root = doc[ROOT_BLOCK_ID];
+  const globals = root?.type === "root" ? root.properties.globals : undefined;
+  if (doc[dragSource.blockId] === undefined) {
+    return null;
+  }
+  return (
+    <div
+      className="email-canvas cursor-grabbing overflow-hidden rounded-sm bg-background/95 opacity-90 shadow-2xl ring-2 ring-sky-400"
+      data-testid="drag-overlay-ghost"
+    >
+      <DragGhost blockId={dragSource.blockId} doc={doc} globals={globals} />
+    </div>
   );
 }
 

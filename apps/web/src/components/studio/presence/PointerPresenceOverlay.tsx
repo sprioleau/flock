@@ -124,7 +124,12 @@ export function resolvePointerPosition({
     return null;
   }
   if (pointer.blockId !== null) {
-    const blockElement = document.querySelector<HTMLElement>(
+    // Scoped to THIS overlay's canvas (multi-frame editing): several frames
+    // render live canvases at once and forked sibling drafts share block
+    // ids, so a document-wide query could anchor the cursor to another
+    // frame's copy of the block.
+    const canvasRoot = overlayElement.closest<HTMLElement>("[data-dnd-canvas-root]");
+    const blockElement = (canvasRoot ?? document).querySelector<HTMLElement>(
       `[data-block-id="${CSS.escape(pointer.blockId)}"]`,
     );
     if (blockElement === null) {

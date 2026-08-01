@@ -3,29 +3,29 @@
 import {
   useEffect,
   useRef,
-  useState,
   type MouseEvent as ReactMouseEvent,
   type PointerEvent as ReactPointerEvent,
 } from "react";
-import { useConvex, useQuery } from "convex/react";
+import { useQuery } from "convex/react";
 import { BanIcon, ChevronLeftIcon, ChevronRightIcon, Loader2Icon } from "lucide-react";
-import { useStore } from "zustand";
-import { ROOT_BLOCK_ID, type EmailDocument } from "@tandem/email-sdk";
+import { type EmailDocument } from "@tandem/email-sdk";
 import { api } from "@convex/_generated/api";
 import type { Id } from "@convex/_generated/dataModel";
 import { Button } from "@/components/ui/button";
-import {
-  EditorStoreProvider,
-  getActiveEditorStore,
-  peekEditorStore,
-  useEditorStore,
-} from "@/lib/editor-store";
+import { getActiveEditorStore } from "@/lib/editor-store";
 import { cn } from "@/lib/utils";
 import { useGenerationTargetDocumentId } from "../chat/agent-status";
 import { useCanvasDragStore } from "../dnd/drag-drop-store";
-import { EditorCanvas } from "../EditorCanvas";
 import { ReadOnlyEmailPreview } from "../history/ReadOnlyEmailPreview";
-import { DraftFrameToolbar } from "./DraftFrameToolbar";
+import {
+  EMPTY_FRAME_MIN_HEIGHT_CLASS,
+  GenerationGlowBorder,
+  GenerationWorkingOverlay,
+  DraftFrameLabel,
+  getIsDocEmpty,
+  PREVIEW_FRAME_WIDTH_PX,
+} from "./draft-frame-chrome";
+import { EditorDraftFrame } from "./EditorDraftFrame";
 import { useCanvasDrafts, type DraftListEntry } from "./use-canvas-drafts";
 
 /**
@@ -33,46 +33,34 @@ import { useCanvasDrafts, type DraftListEntry } from "./use-canvas-drafts";
  * style: top-aligned frames on a horizontally scrolling surface (no 2D
  * panning), each with a name label above it.
  *
- * - The ACTIVE frame (the store-connected draft — "last frame clicked") is
- *   the full live editor, exactly the pre-frames EditorCanvas: store binding,
- *   dnd, selection, inline editing, presence overlay. The floating side
- *   toolbar (viewport toggle + HTML export) rides alongside it.
- * - SIBLING frames are live READ-ONLY previews: each holds its own reactive
- *   `getDocumentByKey` subscription, so collaborators' edits appear live;
- *   `ReadOnlyEmailPreview`'s measured fit-zoom scales them down. Clicking a
- *   sibling activates it (shallow ?doc= switch upstream); the frame swaps
- *   from preview to editor when the store connects — content is always the
- *   right draft's, never a mid-switch flash of the old doc in the new frame.
- * - Frame ROLES key off the store's connected documentId (not the URL), so
- *   during the brief switch window the outgoing frame stays the editor.
+ * Simultaneous multi-frame editing: up to {@link MAX_LIVE_EDITOR_FRAMES}
+ * drafts render as FULL LIVE EDITORS (EditorDraftFrame — own store instance,
+ * own presence room, dnd, selection, inline editing), the active one always
+ * among them. Clicking into any editor frame lands exactly where you clicked
+ * (select / edit / drag in that frame's own store, immediately) and
+ * activates the frame in parallel — activation only flips styling, never
+ * remounts, so the right rail and chat re-target without interrupting the
+ * gesture. Drafts beyond the editor cap keep the older tiers:
+ *
+ * - live READ-ONLY previews (own reactive `getDocumentByKey` subscription,
+ *   fit-zoom scaled, activate on click) up to
+ *   {@link MAX_LIVE_SIBLING_PREVIEWS};
+ * - a lightweight placeholder frame past that, still activating on click.
+ *
+ * Frame ROLES key off the store's connected documentId (not the URL), so
+ * during the brief switch window the outgoing frame stays active-styled.
  *
  * Scale assumption (documented per the redesign spec): canvases hold a
- * handful of drafts at demo scale, so up to {@link MAX_LIVE_SIBLING_PREVIEWS}
- * sibling previews stay mounted simultaneously (each is one Convex
- * subscription + one zoomed static render — cheap). Drafts beyond the cap
- * render a lightweight placeholder frame that still activates on click.
+ * handful of drafts at demo scale. The editor cap bounds the expensive tier
+ * (each live editor ≈ one snapshot subscription + presence heartbeat +
+ * comment/persona queries + mounted block shells; PM text editors stay lazy
+ * per block); preview frames cost one subscription + one static render.
  */
 
-/** Live editor frame width (the email's natural desktop layout width). */
-const ACTIVE_FRAME_DESKTOP_WIDTH_PX = 680;
-/** Live editor frame width under the mobile viewport toggle. */
-const ACTIVE_FRAME_MOBILE_WIDTH_PX = 375;
-/** Read-only sibling preview frame width (fit-zoom scales the 640px layout down). */
-const PREVIEW_FRAME_WIDTH_PX = 384;
+/** Max simultaneous live editor frames (the active draft always holds a slot). */
+const MAX_LIVE_EDITOR_FRAMES = 3;
 /** Max sibling previews mounted with live subscriptions (demo scale ≤ 8 drafts/canvas). */
 const MAX_LIVE_SIBLING_PREVIEWS = 8;
-/**
- * Min height for a frame whose document has NO root sections — 2× the h-40
- * (10rem) baseline the placeholder/loading frames use, so a freshly created
- * blank draft (the AI-generation flows create one and stream into it) reads
- * as a real frame instead of a short strip (owner feedback, item 28a).
- */
-const EMPTY_FRAME_MIN_HEIGHT_CLASS = "min-h-80";
-
-/** Whether `doc` has no top-level sections yet (a blank/just-created draft). */
-function getIsDocEmpty(doc: EmailDocument): boolean {
-  return (doc[ROOT_BLOCK_ID]?.childrenIds.length ?? 0) === 0;
-}
 
 export function DraftFramesCanvas({
   onActivateDraft,
@@ -80,7 +68,6 @@ export function DraftFramesCanvas({
   onActivateDraft: (documentId: Id<"documents">) => void;
 }) {
   const { drafts, activeDocumentId, activeIndex } = useCanvasDrafts();
-  const viewport = useEditorStore((state) => state.viewport);
   // The document a live AI generation streams into (drafts menu flows) —
   // only THAT frame shows the working state; clears when the turn settles.
   const generationTargetDocumentId = useGenerationTargetDocumentId();
@@ -137,14 +124,22 @@ export function DraftFramesCanvas({
       ? drafts[activeIndex + 1]!
       : null;
 
-  // Sibling previews beyond the cap degrade to placeholders. The mounted set
-  // is precomputed in canvas order so it stays stable as you walk the row.
+  // Frame tiers, precomputed in canvas order so membership stays stable as
+  // you walk the row: the first MAX_LIVE_EDITOR_FRAMES drafts are live
+  // editors (the active draft ALWAYS holds a slot, wherever it sits), then
+  // live previews up to their cap, then placeholders.
+  const liveEditorIds = new Set<string>();
   const liveSiblingPreviewIds = new Set<string>();
+  if (activeDocumentId !== null) {
+    liveEditorIds.add(activeDocumentId);
+  }
   for (const draft of drafts ?? []) {
-    if (draft._id === activeDocumentId) {
+    if (liveEditorIds.has(draft._id)) {
       continue;
     }
-    if (liveSiblingPreviewIds.size < MAX_LIVE_SIBLING_PREVIEWS) {
+    if (liveEditorIds.size < MAX_LIVE_EDITOR_FRAMES) {
+      liveEditorIds.add(draft._id);
+    } else if (liveSiblingPreviewIds.size < MAX_LIVE_SIBLING_PREVIEWS) {
       liveSiblingPreviewIds.add(draft._id);
     }
   }
@@ -176,17 +171,14 @@ export function DraftFramesCanvas({
             }
           };
           const isGenerationTarget = draft._id === generationTargetDocumentId;
-          if (isActive) {
+          if (liveEditorIds.has(draft._id)) {
             return (
-              <ActiveDraftFrame
+              <EditorDraftFrame
                 key={draft._id}
                 draft={draft}
-                frameWidthPx={
-                  viewport === "mobile"
-                    ? ACTIVE_FRAME_MOBILE_WIDTH_PX
-                    : ACTIVE_FRAME_DESKTOP_WIDTH_PX
-                }
+                isActive={isActive}
                 isGenerationTarget={isGenerationTarget}
+                onActivate={() => onActivateDraft(draft._id)}
                 registerFrameRef={registerFrameRef}
               />
             );
@@ -216,144 +208,7 @@ export function DraftFramesCanvas({
   );
 }
 
-/** The live editable frame: label + the full EditorCanvas + the floating side toolbar. */
-function ActiveDraftFrame({
-  draft,
-  frameWidthPx,
-  isGenerationTarget,
-  registerFrameRef,
-}: {
-  draft: DraftListEntry;
-  frameWidthPx: number;
-  isGenerationTarget: boolean;
-  registerFrameRef: (element: HTMLDivElement | null) => void;
-}) {
-  // Drops only land here: while a drag is live the active frame gets a
-  // subtle ring (and siblings dim) so the legal target reads at a glance.
-  const isDragActive = useCanvasDragStore((state) => state.dragSource !== null);
-  // Per-document store wiring (drafts v2 factory): scope this frame's editor
-  // subtree to ITS document's store instance. Frame roles key off the store-
-  // connected documentId, so the active frame's instance is exactly the
-  // active one — the provider makes the binding explicit and is the seam
-  // future editable sibling frames reuse with their own instances. (The
-  // active fallback covers the unreachable no-registry-entry edge.)
-  const frameStore = peekEditorStore(draft._id) ?? getActiveEditorStore();
-  // Empty = no root sections yet. Drives the taller blank-frame minimum and,
-  // during a generation turn, the "first section landed" handover: the
-  // spinner/status overlay yields to the streaming content, the glow stays.
-  const isDocEmpty = useStore(frameStore, (state) => getIsDocEmpty(state.doc));
-  return (
-    <div
-      ref={registerFrameRef}
-      className="relative flex shrink-0 flex-col transition-[width] duration-200"
-      style={{ width: frameWidthPx }}
-      data-testid="draft-frame"
-      data-active="true"
-      data-document-id={draft._id}
-      data-generation-target={isGenerationTarget || undefined}
-    >
-      <DraftFrameLabel draft={draft} isActive />
-      {/* Floating per-frame toolbar: STICKY against the frames surface (the
-          one scroller) so it stays reachable while scrolling a tall email;
-          zero-height wrapper so it never shifts the canvas below. */}
-      <div className="sticky top-2 z-10 h-0 self-end overflow-visible pr-2">
-        <DraftFrameToolbar />
-      </div>
-      {/* Positioning wrapper so the generation glow can ring the content box
-          (it sits OUTSIDE the box's overflow-hidden clip) without including
-          the label row above. */}
-      <div className="relative flex min-h-0 flex-1 flex-col">
-        {isGenerationTarget && <GenerationGlowBorder />}
-        {/* Height follows content (owner decision): no inner max-height or
-            scroll region — the email defines the frame's height and the frames
-            surface does all scrolling. `inert` while a generation streams in:
-            the frame is display-only (no pointer, no focus) until the turn
-            settles — every OTHER frame keeps normal interaction. */}
-        <div
-          inert={isGenerationTarget || undefined}
-          className={cn(
-            "relative flex flex-col overflow-hidden rounded-lg border bg-background shadow-md ring-1 ring-black/5 dark:ring-white/10",
-            isDragActive && "ring-2 ring-ring/50",
-            isDocEmpty && EMPTY_FRAME_MIN_HEIGHT_CLASS,
-          )}
-        >
-          <EditorStoreProvider value={frameStore}>
-            <EditorCanvas />
-          </EditorStoreProvider>
-          {isGenerationTarget && isDocEmpty && <GenerationWorkingOverlay />}
-        </div>
-      </div>
-    </div>
-  );
-}
-
-/**
- * Rotating stage lines under the generation spinner — deliberately GENERIC
- * working words (honest presentation: no fake specific claims), cycled on a
- * timer until the first section lands and the overlay unmounts.
- */
-const GENERATION_STAGE_LINES = [
-  "Finding relevant sections…",
-  "Updating content…",
-  "Adjusting the styles…",
-] as const;
-
-/** How long each stage line holds before rotating to the next. */
-const GENERATION_STAGE_ROTATION_MS = 2200;
-
-/**
- * The in-frame working state while a generation turn targets a still-empty
- * draft: centered spinner + message + rotating stage lines. Unmounts the
- * moment the first section lands (content takes over); the glow border and
- * the edit lock stay until the turn settles.
- */
-function GenerationWorkingOverlay() {
-  const [stageIndex, setStageIndex] = useState(0);
-  useEffect(() => {
-    const intervalId = setInterval(() => {
-      setStageIndex((index) => (index + 1) % GENERATION_STAGE_LINES.length);
-    }, GENERATION_STAGE_ROTATION_MS);
-    return () => clearInterval(intervalId);
-  }, []);
-  return (
-    <div
-      className="absolute inset-0 z-10 flex flex-col items-center justify-center gap-2 bg-background/85"
-      data-testid="generation-working-overlay"
-    >
-      <Loader2Icon className="size-5 animate-spin text-muted-foreground" aria-hidden />
-      <p className="text-sm font-medium">Tandem is ideating…</p>
-      <p className="text-xs text-muted-foreground" aria-live="polite">
-        {GENERATION_STAGE_LINES[stageIndex]}
-      </p>
-    </div>
-  );
-}
-
-/**
- * EXPERIMENTAL (owner explicitly wants to try it): an animated glowing
- * border around the frame a generation turn streams into — a rotating
- * conic-gradient ring (crisp layer) plus a blurred halo, pulsing softly.
- * Vivid mid-scale colors read on both themes; keyframes in globals.css
- * (`generation-glow`). Rendered BEFORE the content box, which is positioned
- * and opaque, so only the ring around its edges shows.
- */
-function GenerationGlowBorder() {
-  return (
-    <>
-      <div
-        aria-hidden
-        className="generation-glow pointer-events-none absolute -inset-1.5 rounded-xl opacity-60 blur-md"
-      />
-      <div
-        aria-hidden
-        className="generation-glow pointer-events-none absolute -inset-0.5 rounded-[10px]"
-        data-testid="generation-glow-border"
-      />
-    </>
-  );
-}
-
-/** A sibling frame: label + live read-only preview (or a placeholder past the cap). */
+/** A sibling frame past the editor cap: label + live read-only preview (or a placeholder). */
 function SiblingDraftFrame({
   draft,
   shouldMountLivePreview,
@@ -368,9 +223,10 @@ function SiblingDraftFrame({
   registerFrameRef: (element: HTMLDivElement | null) => void;
 }) {
   // Reject-with-affordance (owner decision §8.3 — never activate-on-hover):
-  // while a drag is live, siblings dim/desaturate and show a static hint
-  // badge. Static, not hover-driven: pointer capture during a dnd gesture
-  // means :hover never updates on other elements.
+  // while a drag is live, preview frames dim/desaturate and show a static
+  // hint badge (previews are never a drop target for ANY drag source).
+  // Static, not hover-driven: pointer capture during a dnd gesture means
+  // :hover never updates on other elements.
   const isDragActive = useCanvasDragStore((state) => state.dragSource !== null);
   return (
     <div
@@ -405,7 +261,7 @@ function SiblingDraftFrame({
         aria-label={`Activate draft ${draft.name}`}
         className={cn(
           // Full scaled content, no inner scroller — consistent with the
-          // active frame's height-follows-content behavior.
+          // editor frames' height-follows-content behavior.
           "relative overflow-hidden rounded-lg text-left",
           "ring-1 ring-black/5 transition-[box-shadow,opacity,filter] dark:ring-white/10",
           "focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none",
@@ -458,92 +314,6 @@ function LiveSiblingPreview({
     <div className={cn("relative flex flex-col", isDocEmpty && EMPTY_FRAME_MIN_HEIGHT_CLASS)}>
       <ReadOnlyEmailPreview doc={snapshot.doc as EmailDocument} />
       {isGenerationTarget && isDocEmpty && <GenerationWorkingOverlay />}
-    </div>
-  );
-}
-
-/**
- * The Figma-frame-style name label above a frame. Active label is visually
- * distinct and renames inline on double-click (writes `documents.name` —
- * user-facing half of the §10.2 dual naming; `agentName` stays read-only in
- * the selector menu). Inactive labels activate their frame on click.
- */
-function DraftFrameLabel({
-  draft,
-  isActive,
-  onActivate,
-}: {
-  draft: DraftListEntry;
-  isActive: boolean;
-  onActivate?: () => void;
-}) {
-  const convexClient = useConvex();
-  const [isRenaming, setIsRenaming] = useState(false);
-  const [nameInput, setNameInput] = useState("");
-
-  const commitRename = (): void => {
-    setIsRenaming(false);
-    const name = nameInput.trim();
-    if (name.length === 0 || name === draft.name) {
-      return;
-    }
-    convexClient
-      .mutation(api.documents.renameDocument, { documentId: draft._id, name })
-      .catch((error: unknown) => {
-        console.error("renameDocument failed", error);
-      });
-  };
-
-  if (isRenaming) {
-    return (
-      <div className="flex h-6 shrink-0 items-center pb-1">
-        <input
-          value={nameInput}
-          onChange={(event) => setNameInput(event.target.value)}
-          onBlur={commitRename}
-          onKeyDown={(event) => {
-            if (event.key === "Enter") {
-              commitRename();
-            } else if (event.key === "Escape") {
-              setIsRenaming(false);
-            }
-          }}
-          autoFocus
-          onFocus={(event) => event.target.select()}
-          maxLength={80}
-          className="h-5 rounded-sm bg-background px-1.5 text-xs outline-none ring-1 ring-ring"
-          style={{ width: `${Math.max(nameInput.length + 2, 8)}ch` }}
-          aria-label={`Rename ${draft.name}`}
-          data-testid="draft-frame-rename"
-        />
-      </div>
-    );
-  }
-
-  return (
-    <div className="flex h-6 shrink-0 items-center pb-1">
-      <button
-        type="button"
-        onClick={onActivate}
-        onDoubleClick={
-          isActive
-            ? () => {
-                setNameInput(draft.name);
-                setIsRenaming(true);
-              }
-            : undefined
-        }
-        className={cn(
-          "max-w-full truncate text-xs",
-          isActive
-            ? "cursor-text font-semibold text-foreground"
-            : "cursor-pointer font-medium text-muted-foreground hover:text-foreground",
-        )}
-        title={draft.agentName !== undefined ? draft.agentName : undefined}
-        data-testid="draft-frame-label"
-      >
-        {draft.name}
-      </button>
     </div>
   );
 }

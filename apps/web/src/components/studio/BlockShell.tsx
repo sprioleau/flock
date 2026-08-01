@@ -7,7 +7,7 @@ import { useEditorStore } from "@/lib/editor-store";
 import { cn } from "@/lib/utils";
 import { BlockActionRow } from "./BlockActionRow";
 import { BlockBreadcrumb } from "./BlockBreadcrumb";
-import { useCanvasDragStore } from "./dnd/drag-drop-store";
+import { buildCanvasDraggableId, useCanvasDragStore } from "./dnd/drag-drop-store";
 import { BlockPresenceIndicator } from "./presence/BlockPresenceIndicator";
 
 export interface BlockShellProps {
@@ -43,10 +43,14 @@ export function BlockShell({ block, children, className }: BlockShellProps) {
   const isEditingText = useEditorStore((state) => state.editingBlockId === block.id);
   const selectBlock = useEditorStore((state) => state.selectBlock);
   const startTextEditing = useEditorStore((state) => state.startTextEditing);
+  const documentId = useEditorStore((state) => state.documentId);
 
   const isDraggableType = DRAGGABLE_BLOCK_TYPES.includes(block.type);
+  // Document-qualified id: several frames render live canvases in one
+  // DndContext, and forked sibling drafts share block ids (see
+  // buildCanvasDraggableId).
   const { attributes, listeners, setNodeRef, setActivatorNodeRef, isDragging } = useDraggable({
-    id: block.id,
+    id: buildCanvasDraggableId({ documentId, blockId: block.id }),
     disabled: !isDraggableType || isEditingText,
   });
   const isValidDropContainer = useCanvasDragStore(
@@ -54,7 +58,10 @@ export function BlockShell({ block, children, className }: BlockShellProps) {
       state.dragSource !== null &&
       state.dropTarget !== null &&
       !state.dropTarget.isNoop &&
-      state.dropTarget.parentId === block.id,
+      state.dropTarget.parentId === block.id &&
+      // Same id in a DIFFERENT frame (forked drafts share block ids) must
+      // not light up.
+      state.dropTarget.documentId === documentId,
   );
 
   // Blocks with an in-place content editor: text (rich-text Tiptap session)

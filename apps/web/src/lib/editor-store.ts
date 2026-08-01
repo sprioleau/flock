@@ -826,6 +826,20 @@ export function useEditorStore<SelectedValue>(
 
 useEditorStore.getState = (): EditorState => getActiveEditorStore().getState();
 
+/**
+ * The store INSTANCE a component is scoped to: the nearest
+ * {@link EditorStoreProvider}'s instance, falling back to the active one.
+ * For imperative reads/writes from callbacks that must target the document
+ * of the FRAME they render in (multi-frame editing) — the static
+ * `useEditorStore.getState()` always targets the ACTIVE instance and is
+ * wrong inside a non-active frame's subtree.
+ */
+export function useEditorStoreApi(): EditorStoreApi {
+  const contextStore = useContext(EditorStoreContext);
+  const activeStore = useStore(activeEditorStoreHolder, (holder) => holder.store);
+  return contextStore ?? activeStore;
+}
+
 useEditorStore.setState = (partial: Partial<EditorState>): void => {
   getActiveEditorStore().setState(partial);
 };

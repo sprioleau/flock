@@ -30,6 +30,7 @@ export function EditorCanvas() {
   const viewport = useEditorStore((state) => state.viewport);
   const selectBlock = useEditorStore((state) => state.selectBlock);
   const dispatch = useEditorStore((state) => state.dispatch);
+  const documentId = useEditorStore((state) => state.documentId);
 
   const tree = useMemo(() => inflate(doc), [doc]);
   const rootStyles = resolveRootBlockStyles(tree.block);
@@ -74,6 +75,10 @@ export function EditorCanvas() {
         style={{ backgroundColor: rootStyles.emailBackgroundColor }}
         data-viewport={viewport}
         data-dnd-canvas-root
+        // Which DOCUMENT this canvas renders (multi-frame editing): block ids
+        // repeat across forked sibling drafts, so every DOM lookup for a
+        // block element must be scoped to one document's canvas root.
+        data-canvas-document-id={documentId ?? undefined}
       >
         {tree.children.map((child) => (
           <CanvasNode key={child.block.id} node={child} globals={globals} />

@@ -2,6 +2,7 @@
 
 import type { BlockId } from "@tandem/email-sdk";
 import { create } from "zustand";
+import type { Id } from "@convex/_generated/dataModel";
 import type { PaletteItem } from "../add-blocks/palette-items";
 
 /**
@@ -10,10 +11,46 @@ import type { PaletteItem } from "../add-blocks/palette-items";
  * Everything downstream (drop resolution, indicator, overlay, the sibling-
  * frame reject affordance) branches on this union instead of assuming the
  * dragged thing already lives in the document.
+ *
+ * Existing-block sources carry the DOCUMENT the block belongs to (multi-frame
+ * editing: several sibling drafts render live canvases at once, and forked
+ * drafts share block ids, so a bare block id is ambiguous). Drop resolution
+ * and the completed-drag dispatch are scoped to that document's frame — a
+ * drag can never cross frames. Null only for a source whose frame carried no
+ * connected document (boot edge), which resolves as the active document.
  */
 export type DragSource =
-  | { kind: "existing-block"; blockId: BlockId }
+  | { kind: "existing-block"; blockId: BlockId; documentId: Id<"documents"> | null }
   | { kind: "palette"; item: PaletteItem };
+
+/**
+ * @dnd-kit draggable ids must be unique per DndContext, and ONE context spans
+ * every live frame — so canvas draggables register with a document-qualified
+ * composite id (same `${documentId}:${blockId}` convention as the text-sync
+ * doc ids; Convex ids never contain ":", so the first ":" splits safely).
+ */
+export function buildCanvasDraggableId({
+  documentId,
+  blockId,
+}: {
+  documentId: Id<"documents"> | null;
+  blockId: BlockId;
+}): string {
+  return `${documentId ?? "detached"}:${blockId}`;
+}
+
+/** Inverse of {@link buildCanvasDraggableId}. */
+export function parseCanvasDraggableId(draggableId: string): {
+  documentId: Id<"documents"> | null;
+  blockId: BlockId;
+} {
+  const separatorIndex = draggableId.indexOf(":");
+  const documentKey = draggableId.slice(0, separatorIndex);
+  return {
+    documentId: documentKey === "detached" ? null : (documentKey as Id<"documents">),
+    blockId: draggableId.slice(separatorIndex + 1) as BlockId,
+  };
+}
 
 /**
  * The drop-indicator line in viewport coordinates. Horizontal lines mark a
@@ -30,6 +67,12 @@ export interface DropIndicatorLine {
 
 /** A resolved drop position under the pointer (see resolveDropTarget). */
 export interface DropTarget {
+  /**
+   * The document whose frame the drop resolves in (existing blocks: the
+   * source's own document; palette items: the active document). Disambiguates
+   * `parentId` across frames — forked drafts share block ids.
+   */
+  documentId: Id<"documents"> | null;
   /** Container that would receive the dragged block. */
   parentId: BlockId;
   /** Sibling the dragged block would be inserted before; null = append. */

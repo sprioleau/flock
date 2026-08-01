@@ -21,7 +21,7 @@ import {
   type TextDoc,
 } from "@tandem/email-sdk";
 import { api } from "@convex/_generated/api";
-import { useEditorStore } from "@/lib/editor-store";
+import { useEditorStore, useEditorStoreApi } from "@/lib/editor-store";
 import { useBroadcastPresence, usePresenceRoster } from "@/lib/presence";
 import { createAgentPulseExtension } from "./agent-pulse-extension";
 import { AlignmentControls } from "./alignment-controls";
@@ -216,6 +216,9 @@ function SyncedTextEditor({
 }: SyncedTextEditorProps) {
   const dispatch = useEditorStore((state) => state.dispatch);
   const stopTextEditing = useEditorStore((state) => state.stopTextEditing);
+  // The FRAME's store instance (not the active one): this editor may live in
+  // a non-active sibling frame, and the commit must check THAT document.
+  const editorStoreApi = useEditorStoreApi();
   const broadcastPresence = useBroadcastPresence();
   const roster = usePresenceRoster();
   const convex = useConvex();
@@ -241,7 +244,7 @@ function SyncedTextEditor({
       return;
     }
     hasCommittedRef.current = true;
-    if (useEditorStore.getState().doc[blockId] === undefined) {
+    if (editorStoreApi.getState().doc[blockId] === undefined) {
       // The block was removed mid-session (e.g. deleted via the action row);
       // there is nothing to commit to.
       return;
@@ -270,7 +273,7 @@ function SyncedTextEditor({
       return;
     }
     dispatch({ name: "updateText", blockId, text: parsed.data });
-  }, [blockId, dispatch]);
+  }, [blockId, dispatch, editorStoreApi]);
 
   // Commit-and-close on any pointerdown outside the block's wrapper. The
   // bubble menu, node selector, and link form all render INSIDE the wrapper

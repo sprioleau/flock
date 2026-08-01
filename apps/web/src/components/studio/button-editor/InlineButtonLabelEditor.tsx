@@ -5,7 +5,7 @@ import type { Editor } from "@tiptap/core";
 import { EditorProvider } from "@tiptap/react";
 import { useCallback, useEffect, useMemo, useRef } from "react";
 import type { ButtonBlock, ResolvedButtonStyles } from "@tandem/email-sdk";
-import { useEditorStore } from "@/lib/editor-store";
+import { useEditorStore, useEditorStoreApi } from "@/lib/editor-store";
 import { normalizeButtonLabel } from "./normalize-button-label";
 
 export interface InlineButtonLabelEditorProps {
@@ -38,6 +38,9 @@ export interface InlineButtonLabelEditorProps {
 export function InlineButtonLabelEditor({ block, resolvedStyles }: InlineButtonLabelEditorProps) {
   const dispatch = useEditorStore((state) => state.dispatch);
   const stopTextEditing = useEditorStore((state) => state.stopTextEditing);
+  // The FRAME's store instance (not the active one): this editor may live in
+  // a non-active sibling frame, and the commit must check THAT document.
+  const editorStoreApi = useEditorStoreApi();
 
   const wrapperRef = useRef<HTMLDivElement | null>(null);
   const editorRef = useRef<Editor | null>(null);
@@ -50,7 +53,7 @@ export function InlineButtonLabelEditor({ block, resolvedStyles }: InlineButtonL
       return;
     }
     hasCommittedRef.current = true;
-    if (useEditorStore.getState().doc[blockId] === undefined) {
+    if (editorStoreApi.getState().doc[blockId] === undefined) {
       // The block was removed mid-session; nothing to commit to.
       return;
     }
@@ -64,7 +67,7 @@ export function InlineButtonLabelEditor({ block, resolvedStyles }: InlineButtonL
       return;
     }
     dispatch({ name: "updateBlockProperties", blockId, properties: { label } });
-  }, [blockId, dispatch, initialLabel]);
+  }, [blockId, dispatch, editorStoreApi, initialLabel]);
 
   // Commit-and-close on any pointerdown outside the button's wrapper.
   useEffect(() => {

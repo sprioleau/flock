@@ -65,6 +65,7 @@ function buildFixtureDoc(): EmailDocument {
 }
 
 const dropTarget = (parentId: string, beforeChildId: string | null): DropTarget => ({
+  documentId: null,
   parentId: id(parentId),
   beforeChildId: beforeChildId === null ? null : id(beforeChildId),
   isNoop: false,
