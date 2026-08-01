@@ -3,6 +3,7 @@ import {
   ChartColumnIcon,
   Columns2Icon,
   Columns3Icon,
+  Columns4Icon,
   CodeIcon,
   HeadingIcon,
   HexagonIcon,
@@ -68,7 +69,7 @@ export type PaletteItem =
        * Heading tile: a text block whose doc is a single heading node). */
       variant?: LeafBlockVariant;
     })
-  | (PaletteItemBase & { kind: "columns"; columnCount: 2 | 3 })
+  | (PaletteItemBase & { kind: "columns"; columnCount: 2 | 3 | 4 })
   | (PaletteItemBase & { kind: "empty-section" })
   | (PaletteItemBase & { kind: "section-template"; templateId: string });
 
@@ -220,6 +221,14 @@ export const PALETTE_GROUPS: readonly PaletteGroup[] = [
         label: "3 Columns",
         description: "A row of three equal columns.",
         Icon: Columns3Icon,
+      },
+      {
+        kind: "columns",
+        id: "columns-4",
+        columnCount: 4,
+        label: "4 Columns",
+        description: "A row of four equal columns.",
+        Icon: Columns4Icon,
       },
     ],
   },

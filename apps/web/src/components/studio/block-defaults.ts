@@ -42,6 +42,9 @@ export const DEFAULT_IMAGE_PADDING_PX = 12;
 /** New dividers default to this padding above and below the line (px). */
 export const DEFAULT_DIVIDER_PADDING_PX = 24;
 
+/** New spacers default to this height (px) — also the columns presets' seed content. */
+export const DEFAULT_SPACER_HEIGHT_PX = 24;
+
 /** The document's raw root globals (undefined when the doc has no root yet). */
 function getDocumentGlobals(doc: EmailDocument) {
   const root = doc[ROOT_BLOCK_ID];
@@ -255,14 +258,14 @@ export function createDefaultLeafBlock({
         type: "spacer",
         parentId,
         childrenIds: [],
-        properties: { height: 24 },
+        properties: { height: DEFAULT_SPACER_HEIGHT_PX },
       };
   }
 }
 
 export interface CreateDefaultColumnsPresetInput {
-  /** How many equal columns the new row holds. */
-  columnCount: 2 | 3;
+  /** How many equal columns the new row holds (rows cap at 4). */
+  columnCount: 2 | 3 | 4;
   /** The section the new row will be inserted into. */
   sectionId: BlockId;
   /** The current document — ids are generated collision-free against it. */
@@ -277,13 +280,17 @@ export interface DefaultColumnsPreset {
 }
 
 /**
- * Build the layout-palette columns preset: one row of N empty, equal-width
- * columns, assembled by the SDK's shared `buildColumns` (the same
- * row/column assembler every section template uses, so width arithmetic can
- * never drift). Empty columns render with BlockShell's min-height, so they
- * are immediately visible and droppable. Insert with ONE `restoreBlocks` op
- * ("valid to call directly" per its contract — the duplicate button uses the
- * same pattern), giving a single undo step.
+ * Build the layout-palette columns preset: one row of N equal-width columns,
+ * each seeded with ONE default spacer, assembled by the SDK's shared
+ * `buildColumns` (the same row/column assembler every section template uses,
+ * so width arithmetic can never drift). The spacer seeds are load-bearing:
+ * the document auto-removes empty columns/rows (removeBlock's
+ * empty-ancestor cascade), so a spacer makes each fresh column COUNT AS
+ * CONTENT — the layout sticks around until the user deletes the spacers,
+ * and deleting a column's last block collapses just that column (the last
+ * column takes the whole row with it), with width re-equalization. Insert
+ * with ONE `restoreBlocks` op ("valid to call directly" per its contract —
+ * the duplicate button uses the same pattern), giving a single undo step.
  */
 export function createDefaultColumnsPreset({
   columnCount,
@@ -301,7 +308,9 @@ export function createDefaultColumnsPreset({
   };
   const { rowId, blocks } = buildColumns({
     sectionId,
-    columns: Array.from({ length: columnCount }, () => ({ leaves: [] })),
+    columns: Array.from({ length: columnCount }, () => ({
+      leaves: [{ kind: "spacer" as const, height: DEFAULT_SPACER_HEIGHT_PX }],
+    })),
     allocateId,
   });
   return { rowId: rowId as BlockId, blocks };

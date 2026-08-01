@@ -33,7 +33,9 @@ import type { DragSource, DropIndicatorLine, DropTarget } from "./drag-drop-stor
  *
  * Semantics (SDK nesting rules, ALLOWED_CHILD_TYPES), by drag source:
  * - EXISTING leaf blocks target the innermost section/column on the
- *   pointer's hit chain.
+ *   pointer's hit chain. A column's whole table CELL counts as the column
+ *   (resolveColumnCellHitBlockId) — an empty column's shell is only a thin
+ *   strip, but hovering anywhere in its cell still drops into the column.
  * - EXISTING sections resolve like palette sections: only the root accepts
  *   a section, so wherever the pointer rests the hit chain walks up to a
  *   root-level gap — a section can never land inside another section or a
@@ -183,6 +185,38 @@ function resolveBeforeChildId(args: {
   return null;
 }
 
+/**
+ * Refine a ROW hit to the column CELL under the pointer. A column's shell
+ * only spans its rendered content (empty columns: just BlockShell's
+ * min-height strip at the cell's top), while its table cell stretches to the
+ * row's full height — so a pointer inside a column's cell but below its
+ * shell hit-tests to the ROW and would otherwise resolve past the column to
+ * the section. Cells tile the row's width, so the column whose horizontal
+ * span contains the pointer is the cell being hovered; that column is the
+ * real target. Pure over an injected span reader so the seam is unit
+ * testable without live DOM rects.
+ */
+export function resolveColumnCellHitBlockId(args: {
+  doc: EmailDocument;
+  hitBlockId: BlockId | null;
+  pointerX: number;
+  /** Live horizontal extent of a column's shell; null when not mounted. */
+  getColumnSpan: (columnId: BlockId) => { left: number; right: number } | null;
+}): BlockId | null {
+  const { doc, hitBlockId, pointerX, getColumnSpan } = args;
+  const hitBlock = hitBlockId === null ? undefined : doc[hitBlockId];
+  if (hitBlock === undefined || hitBlock.type !== "row") {
+    return hitBlockId;
+  }
+  for (const columnId of hitBlock.childrenIds) {
+    const span = getColumnSpan(columnId);
+    if (span !== null && pointerX >= span.left && pointerX <= span.right) {
+      return columnId;
+    }
+  }
+  return hitBlockId;
+}
+
 /** `childIds` with `draggedBlockId` moved before `beforeChildId` (null = end). */
 export function computeReorderedChildIds(args: {
   childIds: readonly BlockId[];
@@ -209,10 +243,12 @@ function resolveInsertionIndex(childIds: readonly BlockId[], beforeChildId: Bloc
  * Indicator geometry for a resolved drop.
  *
  * Stack positions get a HORIZONTAL line (top edge of the reference child, or
- * bottom of the last child). Entering a DIFFERENT column at column level —
- * an empty column, or the start/end of its stack rather than strictly
- * between two stacked blocks — gets a VERTICAL line along the column edge
- * being crossed, so a cross-column drag reads as changing columns.
+ * bottom of the last child). Entering a DIFFERENT non-empty column at column
+ * level — the start/end of its stack rather than strictly between two
+ * stacked blocks — gets a VERTICAL line along the column edge being crossed,
+ * so a cross-column drag reads as changing columns. An EMPTY column keeps
+ * the horizontal insert line INSIDE the column (the drop becomes its first
+ * child — a vertical line there would read as the column-split affordance).
  */
 function resolveIndicatorLine(args: {
   container: Block;
@@ -225,7 +261,7 @@ function resolveIndicatorLine(args: {
   const insertionIndex = beforeChildId === null ? childIds.length : childIds.indexOf(beforeChildId);
   const isBetweenStackedBlocks = insertionIndex > 0 && insertionIndex < childIds.length;
   const isEnteringOtherColumn =
-    container.type === "column" && dragged.parentId !== container.id;
+    container.type === "column" && dragged.parentId !== container.id && childIds.length > 0;
 
   if (isEnteringOtherColumn && !isBetweenStackedBlocks) {
     const columnRect = getBlockElement(canvasRoot, container.id)?.getBoundingClientRect();
@@ -519,10 +555,25 @@ export function resolveDropTarget(args: {
   if (canvasRoot === null) {
     return null;
   }
-  const { hitBlockId, isInsideCanvas } = findBlockUnderPointer({ pointer, canvasRoot });
+  const { hitBlockId: rawHitBlockId, isInsideCanvas } = findBlockUnderPointer({
+    pointer,
+    canvasRoot,
+  });
   if (!isInsideCanvas) {
     return null;
   }
+  // A raw ROW hit means the pointer is in a column's cell but off that
+  // column's shell (empty or short columns) — resolve it to the cell's
+  // column so empty columns are first-class drop targets.
+  const hitBlockId = resolveColumnCellHitBlockId({
+    doc,
+    hitBlockId: rawHitBlockId,
+    pointerX: pointer.x,
+    getColumnSpan: (columnId) => {
+      const rect = getBlockElement(canvasRoot, columnId)?.getBoundingClientRect();
+      return rect === undefined ? null : { left: rect.left, right: rect.right };
+    },
+  });
   // Edge bands first: a leaf-type drag hovering a leaf's left/right edge is a
   // column-split; everywhere else (including the leaf's center) falls through
   // to the normal stack-position resolution.

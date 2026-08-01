@@ -188,7 +188,7 @@ function resolveLeafTarget(
 
 function planColumnsAdd(args: {
   doc: EmailDocument;
-  columnCount: 2 | 3;
+  columnCount: 2 | 3 | 4;
   selected: Block | undefined;
 }): ClickToAddPlan | null {
   const { doc, columnCount, selected } = args;

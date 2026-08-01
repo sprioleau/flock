@@ -18,6 +18,7 @@ import {
   buildDropOperation,
   buildPaletteDropInsertion,
   computeReorderedChildIds,
+  resolveColumnCellHitBlockId,
   resolveColumnSplitCandidate,
   resolveContainerId,
 } from "./drop-target";
@@ -130,7 +131,7 @@ describe("buildPaletteDropInsertion", () => {
     expect(insertion!.op.name === "addBlock" && insertion!.op.index).toBe(2);
   });
 
-  it("columns tile → ONE restoreBlocks carrying row + equal columns", () => {
+  it("columns tile → ONE restoreBlocks carrying row + equal SPACER-SEEDED columns", () => {
     const doc = buildFixtureDoc();
     const insertion = buildPaletteDropInsertion({
       doc,
@@ -145,12 +146,51 @@ describe("buildPaletteDropInsertion", () => {
     expect(row!.id).toBe(insertion!.newBlockId);
     const columns = rest.filter((block) => block.type === "column");
     expect(columns).toHaveLength(2);
-    for (const column of columns) {
-      expect(column.parentId).toBe(row!.id);
-    }
     const applied = apply(doc, insertion!.op);
     expect(applied[id("sec_bbbb")]?.childrenIds).toEqual([row!.id]);
     expect(applied[row!.id as BlockId]?.childrenIds).toHaveLength(2);
+    // Each fresh column carries ONE spacer: the seed that keeps the layout
+    // alive under removeBlock's empty-column cascade (deleting a column's
+    // spacer collapses that column; the last one removes the whole row).
+    for (const column of columns) {
+      expect(column.parentId).toBe(row!.id);
+      const appliedColumn = applied[column.id as BlockId];
+      expect(appliedColumn?.childrenIds).toHaveLength(1);
+      expect(applied[appliedColumn!.childrenIds[0]! as BlockId]?.type).toBe("spacer");
+    }
+  });
+
+  it("4-columns tile → four equal spacer-seeded columns, still ONE restoreBlocks", () => {
+    const doc = buildFixtureDoc();
+    const insertion = buildPaletteDropInsertion({
+      doc,
+      item: { ...columnsItem, id: "columns-4", columnCount: 4 },
+      dropTarget: dropTarget("sec_bbbb", null),
+    });
+    expect(insertion).not.toBeNull();
+    if (insertion!.op.name !== "restoreBlocks") throw new Error("expected restoreBlocks");
+    const applied = apply(doc, insertion!.op);
+    const rowId = insertion!.newBlockId! as BlockId;
+    const columnIds = applied[rowId]!.childrenIds as readonly BlockId[];
+    expect(columnIds).toHaveLength(4);
+    const widths = columnIds.map((columnId) => {
+      const column = applied[columnId]!;
+      expect(column.childrenIds).toHaveLength(1);
+      expect(applied[column.childrenIds[0]! as BlockId]?.type).toBe("spacer");
+      return column.type === "column" ? column.properties.widthPercent : undefined;
+    });
+    expect(widths.reduce((total: number, width) => total + (width ?? 0), 0)).toBeCloseTo(100, 2);
+    // The preset lands AT the 4-column cap: every leaf's edge zones must be
+    // dead, so the at-cap deactivation survives the new tile.
+    const seededSpacerId = applied[columnIds[0]!]!.childrenIds[0]! as BlockId;
+    expect(
+      resolveColumnSplitCandidate({
+        doc: applied,
+        draggedType: "text",
+        draggedBlockId: null,
+        hitBlockId: seededSpacerId,
+      }),
+    ).toBeNull();
   });
 
   it("empty-section tile → one addSection at the root index", () => {
@@ -339,6 +379,151 @@ describe("resolveContainerId (nesting legality, pure hit-chain walk)", () => {
   it("a dragged LEAF over canvas padding resolves to nothing — leaves are not root-legal", () => {
     const doc = buildFixtureDoc();
     expect(resolveContainerId({ doc, draggedType: "text", hitBlockId: null })).toBeNull();
+  });
+});
+
+describe("resolveColumnCellHitBlockId (empty-column cells are first-class targets)", () => {
+  /**
+   * Fixture: sec_bbbb holds a 2-column row whose SECOND column was emptied
+   * (its seed spacer moved out) — the owner-repro shape where an empty
+   * column's cell hit-tests to the ROW because the column shell only covers
+   * its min-height strip.
+   */
+  function buildEmptyColumnFixture(): {
+    doc: EmailDocument;
+    rowId: BlockId;
+    filledColumnId: BlockId;
+    emptyColumnId: BlockId;
+  } {
+    const base = buildFixtureDoc();
+    const preset = createDefaultColumnsPreset({ columnCount: 2, sectionId: id("sec_bbbb"), doc: base });
+    let doc = apply(base, {
+      name: "restoreBlocks",
+      blocks: preset.blocks,
+      parentId: id("sec_bbbb"),
+      index: 0,
+    });
+    const rowId = preset.rowId;
+    const [filledColumnId, emptyColumnId] = doc[rowId]!.childrenIds as readonly BlockId[];
+    // Empty the second column by MOVING its seed spacer out (moveBlock does
+    // not cascade — this is exactly how empty columns arise in practice).
+    doc = apply(doc, {
+      name: "moveBlock",
+      blockId: doc[emptyColumnId!]!.childrenIds[0]! as BlockId,
+      newParentId: id("sec_aaaa"),
+      index: 0,
+    });
+    expect(doc[emptyColumnId!]?.childrenIds).toHaveLength(0);
+    return { doc, rowId, filledColumnId: filledColumnId!, emptyColumnId: emptyColumnId! };
+  }
+
+  /** Cells tile the row: filled column spans x 0–100, empty column 100–200. */
+  const getColumnSpan =
+    (fixture: { filledColumnId: BlockId; emptyColumnId: BlockId }) =>
+    (columnId: BlockId): { left: number; right: number } | null =>
+      columnId === fixture.filledColumnId
+        ? { left: 0, right: 100 }
+        : columnId === fixture.emptyColumnId
+          ? { left: 100, right: 200 }
+          : null;
+
+  it("a ROW hit refines to the column whose cell span contains the pointer", () => {
+    const fixture = buildEmptyColumnFixture();
+    expect(
+      resolveColumnCellHitBlockId({
+        doc: fixture.doc,
+        hitBlockId: fixture.rowId,
+        pointerX: 150,
+        getColumnSpan: getColumnSpan(fixture),
+      }),
+    ).toBe(fixture.emptyColumnId);
+    expect(
+      resolveColumnCellHitBlockId({
+        doc: fixture.doc,
+        hitBlockId: fixture.rowId,
+        pointerX: 50,
+        getColumnSpan: getColumnSpan(fixture),
+      }),
+    ).toBe(fixture.filledColumnId);
+  });
+
+  it("…and the refined hit resolves a LEAF drag to the empty column itself", () => {
+    const fixture = buildEmptyColumnFixture();
+    const hitBlockId = resolveColumnCellHitBlockId({
+      doc: fixture.doc,
+      hitBlockId: fixture.rowId,
+      pointerX: 150,
+      getColumnSpan: getColumnSpan(fixture),
+    });
+    expect(resolveContainerId({ doc: fixture.doc, draggedType: "text", hitBlockId })).toBe(
+      fixture.emptyColumnId,
+    );
+    // …and never to a column-split (splits need a LEAF under the pointer).
+    expect(
+      resolveColumnSplitCandidate({
+        doc: fixture.doc,
+        draggedType: "text",
+        draggedBlockId: null,
+        hitBlockId,
+      }),
+    ).toBeNull();
+  });
+
+  it("palette drop into the empty column → one addBlock as its first child", () => {
+    const fixture = buildEmptyColumnFixture();
+    const insertion = buildPaletteDropInsertion({
+      doc: fixture.doc,
+      item: leafItem,
+      dropTarget: dropTarget(fixture.emptyColumnId, null),
+    });
+    expect(insertion!.op).toMatchObject({ name: "addBlock", parentId: fixture.emptyColumnId, index: 0 });
+    const applied = apply(fixture.doc, insertion!.op as Operation);
+    expect(applied[fixture.emptyColumnId]?.childrenIds).toEqual([insertion!.newBlockId]);
+  });
+
+  it("existing-block drop into the empty column → one moveBlock as its first child", () => {
+    const fixture = buildEmptyColumnFixture();
+    const op = buildDropOperation({
+      doc: fixture.doc,
+      draggedBlockId: id("btn_aaaa"),
+      dropTarget: dropTarget(fixture.emptyColumnId, null),
+    });
+    expect(op).toEqual({
+      name: "moveBlock",
+      blockId: "btn_aaaa",
+      newParentId: fixture.emptyColumnId,
+      index: 0,
+    });
+    const applied = apply(fixture.doc, op!);
+    expect(applied[fixture.emptyColumnId]?.childrenIds).toEqual(["btn_aaaa"]);
+  });
+
+  it("non-row hits pass through untouched; a row hit with no matching span stays a row hit", () => {
+    const fixture = buildEmptyColumnFixture();
+    expect(
+      resolveColumnCellHitBlockId({
+        doc: fixture.doc,
+        hitBlockId: id("txt_aaaa"),
+        pointerX: 150,
+        getColumnSpan: getColumnSpan(fixture),
+      }),
+    ).toBe("txt_aaaa");
+    expect(
+      resolveColumnCellHitBlockId({
+        doc: fixture.doc,
+        hitBlockId: null,
+        pointerX: 150,
+        getColumnSpan: getColumnSpan(fixture),
+      }),
+    ).toBeNull();
+    expect(
+      resolveColumnCellHitBlockId({
+        doc: fixture.doc,
+        hitBlockId: fixture.rowId,
+        pointerX: 999,
+        getColumnSpan: getColumnSpan(fixture),
+      }),
+    ).toBe(fixture.rowId);
   });
 });
 

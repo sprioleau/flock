@@ -81,10 +81,10 @@ describe("buildClickToAddPlan: leaf items", () => {
     expect(plan!.op).toMatchObject({ name: "addBlock", parentId: "sec_aaaa", index: 1 });
   });
 
-  it("selected column → appends to the column", () => {
+  it("selected column → appends to the column (after its seed spacer)", () => {
     const { doc, firstColumnId } = buildFixtureDoc();
     const plan = buildClickToAddPlan({ doc, item: textItem, selectedBlockId: firstColumnId });
-    expect(plan!.op).toMatchObject({ name: "addBlock", parentId: firstColumnId, index: 0 });
+    expect(plan!.op).toMatchObject({ name: "addBlock", parentId: firstColumnId, index: 1 });
   });
 
   it("selected section → appends to the section", () => {
