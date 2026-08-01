@@ -5,10 +5,12 @@ import {
   addSectionOperationSchema,
   applyThemeOperationSchema,
   moveBlockOperationSchema,
+  placeBlockBesideOperationSchema,
   removeBlockOperationSchema,
   reorderChildrenOperationSchema,
   replaceBlockPropertiesOperationSchema,
   restoreBlocksOperationSchema,
+  unplaceBlockBesideOperationSchema,
   updateBlockPropertiesOperationSchema,
   updateDocumentSettingsOperationSchema,
   updateTextOperationSchema,
@@ -146,6 +148,18 @@ export const reorderChildrenAction = defineContentOperationAction({
   parallelSafe: false, // structural: whole-sibling-list permutation
 });
 
+export const placeBlockBesideAction = defineContentOperationAction({
+  name: "placeBlockBeside",
+  schema: placeBlockBesideOperationSchema,
+  parallelSafe: false, // structural: rewires a section/row's children
+});
+
+export const unplaceBlockBesideAction = defineContentOperationAction({
+  name: "unplaceBlockBeside",
+  schema: unplaceBlockBesideOperationSchema,
+  parallelSafe: false, // structural: rewires a section/row's children
+});
+
 export const updateTextAction = defineContentOperationAction({
   name: "updateText",
   schema: updateTextOperationSchema,
@@ -164,6 +178,8 @@ export const contentEmailActions = [
   removeBlockAction,
   moveBlockAction,
   reorderChildrenAction,
+  placeBlockBesideAction,
+  unplaceBlockBesideAction,
   updateTextAction,
 ] as const;
 

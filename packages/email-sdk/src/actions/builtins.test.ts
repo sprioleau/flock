@@ -108,7 +108,7 @@ describe("built-in editor actions", () => {
 });
 
 /** 11 op-mirroring content + styleTextSpan + scaffoldSection + 9 editor actions. */
-const BUILTIN_ACTION_COUNT = 22;
+const BUILTIN_ACTION_COUNT = 24;
 
 describe("emailActionRegistry", () => {
   it(`registers all ${BUILTIN_ACTION_COUNT} built-ins and looks them up by name`, () => {

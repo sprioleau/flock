@@ -186,6 +186,18 @@ export function describeOperationHuman(rawOp: unknown): string {
     }
     case "reorderChildren":
       return `Reordered blocks${formatBlockSuffix(getBlockNoun(op.parentId))}`;
+    case "placeBlockBeside": {
+      const contentNoun =
+        op.content.kind === "new-block"
+          ? BLOCK_TYPE_NOUNS[op.content.block.type]
+          : getBlockNoun(op.content.blockId);
+      const targetNoun = getBlockNoun(op.targetBlockId);
+      return `Placed ${withIndefiniteArticle(contentNoun ?? "block")} beside ${withIndefiniteArticle(targetNoun ?? "block")}`;
+    }
+    case "unplaceBlockBeside": {
+      const noun = getBlockNoun(op.content.blockId);
+      return `Removed ${withIndefiniteArticle(noun ?? "block")} from its column`;
+    }
     case "updateText":
       return `Edited text${formatBlockSuffix(getBlockNoun(op.blockId))}`;
     default: {

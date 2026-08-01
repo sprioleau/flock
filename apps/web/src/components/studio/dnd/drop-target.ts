@@ -2,12 +2,16 @@
 
 import {
   ALLOWED_CHILD_TYPES,
+  generateBlockId,
+  LEAF_BLOCK_TYPES,
+  MAX_COLUMNS_PER_ROW,
   ROOT_BLOCK_ID,
   type Block,
   type BlockId,
   type BlockType,
   type EmailDocument,
   type Operation,
+  type PlaceBlockBesideOperation,
 } from "@tandem/email-sdk";
 import type { DispatchableOp } from "@/lib/editor-store";
 import {
@@ -312,6 +316,186 @@ function areSameIds(a: readonly BlockId[], b: readonly BlockId[]): boolean {
   return a.length === b.length && a.every((id, index) => id === b[index]);
 }
 
+// ---------------------------------------------------------------------------
+// Column-split edge zones (drag-to-create columns)
+// ---------------------------------------------------------------------------
+
+/** Edge band width as a share of the hovered leaf's rendered width… */
+const COLUMN_SPLIT_EDGE_RATIO = 0.22;
+/** …clamped so tiny blocks stay hittable and wide blocks keep a center. */
+const COLUMN_SPLIT_EDGE_MIN_PX = 12;
+const COLUMN_SPLIT_EDGE_MAX_PX = 56;
+
+function isLeafBlockType(type: BlockType): boolean {
+  return (LEAF_BLOCK_TYPES as readonly BlockType[]).includes(type);
+}
+
+/**
+ * Structural eligibility for a column-split drop, pure (no DOM): the hovered
+ * block must be a LEAF a leaf-type drag can sit beside. Pointer geometry (is
+ * the pointer actually in an edge band?) is layered on top by
+ * resolveColumnSplitDropTarget. Null when a split is impossible here:
+ * - the dragged thing is not a leaf (sections, rows, column presets);
+ * - the hovered block is not a leaf (sections/rows/columns have no edges);
+ * - the leaf is the dragged block itself;
+ * - the leaf sits in a column whose row is at MAX_COLUMNS_PER_ROW.
+ */
+export function resolveColumnSplitCandidate(args: {
+  doc: EmailDocument;
+  draggedType: BlockType;
+  /** The dragged existing block, or null for palette items. */
+  draggedBlockId: BlockId | null;
+  hitBlockId: BlockId | null;
+}): { targetBlockId: BlockId } | null {
+  const { doc, draggedType, draggedBlockId, hitBlockId } = args;
+  if (hitBlockId === null || !isLeafBlockType(draggedType) || hitBlockId === draggedBlockId) {
+    return null;
+  }
+  const hitBlock = doc[hitBlockId];
+  if (hitBlock === undefined || !isLeafBlockType(hitBlock.type)) {
+    return null;
+  }
+  const parent = hitBlock.parentId === null ? undefined : doc[hitBlock.parentId];
+  if (parent === undefined) {
+    return null;
+  }
+  if (parent.type === "section") {
+    return { targetBlockId: hitBlock.id };
+  }
+  if (parent.type !== "column") {
+    return null;
+  }
+  const row = parent.parentId === null ? undefined : doc[parent.parentId];
+  if (row === undefined || row.type !== "row" || row.childrenIds.length >= MAX_COLUMNS_PER_ROW) {
+    return null;
+  }
+  return { targetBlockId: hitBlock.id };
+}
+
+/**
+ * The column-split drop target under the pointer, or null when the pointer
+ * is not in an eligible leaf's left/right edge band. Checked BEFORE the
+ * stack-position resolution, so the edge bands win over "insert above/below"
+ * there; the leaf's center keeps the normal stacking behavior. The indicator
+ * is a VERTICAL line hugging the leaf's edge — inside the leaf's own rect,
+ * visually distinct from both the horizontal stack lines and the
+ * column-boundary line (which spans the column, not the leaf).
+ */
+function resolveColumnSplitDropTarget(args: {
+  doc: EmailDocument;
+  documentId: string | null;
+  dragged: DraggedDescriptor;
+  hitBlockId: BlockId | null;
+  pointer: PointerPosition;
+  canvasRoot: HTMLElement;
+}): DropTarget | null {
+  const { doc, documentId, dragged, hitBlockId, pointer, canvasRoot } = args;
+  const candidate = resolveColumnSplitCandidate({
+    doc,
+    draggedType: dragged.type,
+    draggedBlockId: dragged.existingBlockId,
+    hitBlockId,
+  });
+  if (candidate === null) {
+    return null;
+  }
+  const rect = getBlockElement(canvasRoot, candidate.targetBlockId)?.getBoundingClientRect();
+  if (rect === undefined) {
+    return null;
+  }
+  const bandWidth = Math.min(
+    COLUMN_SPLIT_EDGE_MAX_PX,
+    Math.max(COLUMN_SPLIT_EDGE_MIN_PX, rect.width * COLUMN_SPLIT_EDGE_RATIO),
+  );
+  const side =
+    pointer.x <= rect.left + bandWidth
+      ? ("left" as const)
+      : pointer.x >= rect.right - bandWidth
+        ? ("right" as const)
+        : null;
+  if (side === null) {
+    return null;
+  }
+  const inset = 2;
+  return {
+    kind: "column-split",
+    documentId: documentId as DropTarget["documentId"],
+    targetBlockId: candidate.targetBlockId,
+    side,
+    isNoop: false,
+    indicatorLine: {
+      orientation: "vertical",
+      left: side === "left" ? rect.left + inset : rect.right - inset,
+      top: rect.top + inset,
+      length: Math.max(16, rect.height - inset * 2),
+    },
+  };
+}
+
+/**
+ * Fresh, mutually-distinct block ids for one op's scaffolding (a lone
+ * generateUniqueBlockId call only checks the doc, not its own siblings).
+ */
+function generateFreshBlockIds({
+  doc,
+  types,
+}: {
+  doc: EmailDocument;
+  types: readonly BlockType[];
+}): BlockId[] {
+  const usedIds = new Set<string>(Object.keys(doc));
+  return types.map((type) => {
+    let id: string = generateBlockId(type);
+    while (usedIds.has(id)) {
+      id = generateBlockId(type);
+    }
+    usedIds.add(id);
+    return id as BlockId;
+  });
+}
+
+/**
+ * The single placeBlockBeside op for a completed column-split drop. The op
+ * decides wrap-vs-insert from the document, but the SCAFFOLDING ids are
+ * caller-generated (ops must be replayable data), so this builder inspects
+ * the target's parent to know which ids to mint.
+ */
+function buildColumnSplitOperation(args: {
+  doc: EmailDocument;
+  dropTarget: Extract<DropTarget, { kind: "column-split" }>;
+  content: PlaceBlockBesideOperation["content"];
+}): PlaceBlockBesideOperation | null {
+  const { doc, dropTarget, content } = args;
+  const target = doc[dropTarget.targetBlockId];
+  const targetParent = target?.parentId == null ? undefined : doc[target.parentId];
+  if (target === undefined || targetParent === undefined) {
+    return null;
+  }
+  if (targetParent.type === "section") {
+    const [newColumnId, newRowId, newTargetColumnId] = generateFreshBlockIds({
+      doc,
+      types: ["column", "row", "column"],
+    });
+    return {
+      name: "placeBlockBeside",
+      targetBlockId: dropTarget.targetBlockId,
+      side: dropTarget.side,
+      content,
+      newColumnId: newColumnId!,
+      newRowId: newRowId!,
+      newTargetColumnId: newTargetColumnId!,
+    };
+  }
+  const [newColumnId] = generateFreshBlockIds({ doc, types: ["column"] });
+  return {
+    name: "placeBlockBeside",
+    targetBlockId: dropTarget.targetBlockId,
+    side: dropTarget.side,
+    content,
+    newColumnId: newColumnId!,
+  };
+}
+
 /**
  * Resolve the pointer to a drop target, or null when the position is invalid
  * for the drag source. A target whose drop would not change the document
@@ -339,6 +523,20 @@ export function resolveDropTarget(args: {
   if (!isInsideCanvas) {
     return null;
   }
+  // Edge bands first: a leaf-type drag hovering a leaf's left/right edge is a
+  // column-split; everywhere else (including the leaf's center) falls through
+  // to the normal stack-position resolution.
+  const columnSplitTarget = resolveColumnSplitDropTarget({
+    doc,
+    documentId,
+    dragged,
+    hitBlockId,
+    pointer,
+    canvasRoot,
+  });
+  if (columnSplitTarget !== null) {
+    return columnSplitTarget;
+  }
   const containerId = resolveContainerId({ doc, draggedType: dragged.type, hitBlockId });
   const container = containerId === null ? undefined : doc[containerId];
   if (containerId === null || container === undefined) {
@@ -358,6 +556,7 @@ export function resolveDropTarget(args: {
       childIds,
     );
   return {
+    kind: "insert",
     documentId: documentId as DropTarget["documentId"],
     parentId: containerId,
     beforeChildId,
@@ -372,9 +571,11 @@ export function resolveDropTarget(args: {
  * The single operation a completed EXISTING-BLOCK drag dispatches, or null
  * for a no-op: same-parent drops become one reorderChildren, cross-parent
  * drops one moveBlock (index is the position after detaching, which for a
- * different parent is simply the position among its current children).
- * Sections always take the reorderChildren branch — their only legal parent
- * is the root, so a section drop is ONE root reorder (single undo).
+ * different parent is simply the position among its current children), and
+ * edge drops one placeBlockBeside (the dragged leaf moves into the new
+ * column). Sections always take the reorderChildren branch — their only
+ * legal parent is the root, so a section drop is ONE root reorder (single
+ * undo). Every branch is one op = one undo step.
  */
 export function buildDropOperation(args: {
   doc: EmailDocument;
@@ -384,6 +585,13 @@ export function buildDropOperation(args: {
   const { doc, draggedBlockId, dropTarget } = args;
   if (dropTarget.isNoop) {
     return null;
+  }
+  if (dropTarget.kind === "column-split") {
+    return buildColumnSplitOperation({
+      doc,
+      dropTarget,
+      content: { kind: "existing-block", blockId: draggedBlockId },
+    });
   }
   const draggedBlock = doc[draggedBlockId];
   const container = doc[dropTarget.parentId];
@@ -425,7 +633,9 @@ export interface PaletteInsertion {
 /**
  * The single operation a completed PALETTE drag dispatches (one drop = one
  * op = one undo), composed from the shared block-defaults factories:
- * - leaf tiles → `addBlock` with that type's defaults;
+ * - leaf tiles → `addBlock` with that type's defaults — or ONE
+ *   `placeBlockBeside` when the drop resolved to a leaf's edge band (the new
+ *   default-built leaf lands in the freshly created column);
  * - column presets → `restoreBlocks` carrying the prebuilt row+columns
  *   subtree (the duplicate button's pattern);
  * - Empty Section → `addSection` at the resolved root position;
@@ -441,6 +651,37 @@ export function buildPaletteDropInsertion(args: {
   brandLogo?: BrandLogoSource | null;
 }): PaletteInsertion | null {
   const { doc, item, dropTarget, brandLogo } = args;
+  if (dropTarget.kind === "column-split") {
+    // Only leaf tiles ever resolve to an edge band (resolveColumnSplitCandidate
+    // gates on the dragged type); the guard is belt-and-suspenders.
+    if (item.kind !== "leaf") {
+      return null;
+    }
+    // Overwritten with the op's newColumnId on apply, but the op schema still
+    // validates it as a leaf's legal parent — so borrow the TARGET's parent
+    // (a section or column by construction of the drop target).
+    const stagingParentId = doc[dropTarget.targetBlockId]?.parentId;
+    if (stagingParentId == null) {
+      return null;
+    }
+    const [newLeafId] = generateFreshBlockIds({ doc, types: [item.blockType] });
+    const operation = buildColumnSplitOperation({
+      doc,
+      dropTarget,
+      content: {
+        kind: "new-block",
+        block: createDefaultLeafBlock({
+          type: item.blockType,
+          variant: item.variant,
+          id: newLeafId!,
+          parentId: stagingParentId,
+          doc,
+          brandLogo,
+        }),
+      },
+    });
+    return operation === null ? null : { op: operation, newBlockId: newLeafId! };
+  }
   const container = doc[dropTarget.parentId];
   if (container === undefined) {
     return null;

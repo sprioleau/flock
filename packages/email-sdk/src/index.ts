@@ -200,6 +200,11 @@ export {
   removeBlockOperationSchema,
   moveBlockOperationSchema,
   reorderChildrenOperationSchema,
+  placeBlockBesideOperationSchema,
+  placeBlockBesideContentSchema,
+  placeBlockBesideSideSchema,
+  unplaceBlockBesideOperationSchema,
+  previousColumnWidthSchema,
   updateTextOperationSchema,
 } from "./operations/ops";
 export type {
@@ -215,11 +220,16 @@ export type {
   RemoveBlockOperation,
   MoveBlockOperation,
   ReorderChildrenOperation,
+  PlaceBlockBesideOperation,
+  PlaceBlockBesideContent,
+  PlaceBlockBesideSide,
+  UnplaceBlockBesideOperation,
+  PreviousColumnWidth,
   UpdateTextOperation,
 } from "./operations/ops";
 
 // --- Applying operations (operations/apply) ------------------------------------------------
-export { applyOperation, applyOperations } from "./operations/apply";
+export { applyOperation, applyOperations, MAX_COLUMNS_PER_ROW } from "./operations/apply";
 export type {
   ApplyOperationResult,
   ApplyOperationsResult,

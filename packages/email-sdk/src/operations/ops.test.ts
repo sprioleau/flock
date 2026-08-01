@@ -43,6 +43,31 @@ const sampleOperations: Operation[] = [
   { name: "removeBlock", blockId: "sec_a1b2" },
   { name: "moveBlock", blockId: "img_a1b2", newParentId: "col_a1b2", index: 1 },
   { name: "reorderChildren", parentId: "sec_a1b2", orderedChildIds: ["txt_a1b2", "img_a1b2"] },
+  {
+    name: "placeBlockBeside",
+    targetBlockId: "img_a1b2",
+    side: "right",
+    content: {
+      kind: "new-block",
+      block: { id: "div_c3d4", type: "divider", parentId: "col_a1b2", childrenIds: [], properties: {} },
+    },
+    newColumnId: "col_a1b2",
+    newRowId: "row_a1b2",
+    newTargetColumnId: "col_c3d4",
+  },
+  {
+    name: "unplaceBlockBeside",
+    targetBlockId: "img_a1b2",
+    side: "right",
+    newColumnId: "col_a1b2",
+    content: {
+      kind: "existing-block",
+      blockId: "btn_c3d4",
+      previousParentId: "sec_a1b2",
+      previousIndex: 2,
+    },
+    previousWidths: [{ columnId: "col_c3d4", widthPercent: 60 }],
+  },
   { name: "updateText", blockId: "txt_a1b2", text: createTextDoc("Hello") },
 ];
 

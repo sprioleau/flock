@@ -58,6 +58,10 @@ export function BlockShell({ block, children, className }: BlockShellProps) {
       state.dragSource !== null &&
       state.dropTarget !== null &&
       !state.dropTarget.isNoop &&
+      // Only stack-insert targets highlight their receiving container; a
+      // column-split target communicates through the vertical edge indicator
+      // (the "container" it creates doesn't exist yet).
+      state.dropTarget.kind === "insert" &&
       state.dropTarget.parentId === block.id &&
       // Same id in a DIFFERENT frame (forked drafts share block ids) must
       // not light up.

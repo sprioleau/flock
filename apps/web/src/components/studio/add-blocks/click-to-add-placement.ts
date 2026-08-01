@@ -13,7 +13,7 @@ import {
   createDefaultSection,
   generateUniqueBlockId,
 } from "../block-defaults";
-import type { LeafBlockVariant } from "../block-defaults";
+import type { BrandLogoSource, LeafBlockVariant } from "../block-defaults";
 import type { PaletteItem } from "./palette-items";
 
 /**
@@ -74,12 +74,20 @@ export function buildClickToAddPlan(args: {
   doc: EmailDocument;
   item: PaletteItem;
   selectedBlockId: BlockId | null;
+  /** The confirmed brand logo for the Logo preset (null = placeholder). */
+  brandLogo?: BrandLogoSource | null;
 }): ClickToAddPlan | null {
-  const { doc, item, selectedBlockId } = args;
+  const { doc, item, selectedBlockId, brandLogo } = args;
   const selected = selectedBlockId === null ? undefined : doc[selectedBlockId];
   switch (item.kind) {
     case "leaf":
-      return planLeafAdd({ doc, blockType: item.blockType, variant: item.variant, selected });
+      return planLeafAdd({
+        doc,
+        blockType: item.blockType,
+        variant: item.variant,
+        selected,
+        brandLogo,
+      });
     case "columns":
       return planColumnsAdd({ doc, columnCount: item.columnCount, selected });
     case "empty-section":
@@ -103,8 +111,9 @@ function planLeafAdd(args: {
   blockType: (typeof LEAF_BLOCK_TYPES)[number];
   variant: LeafBlockVariant | undefined;
   selected: Block | undefined;
+  brandLogo: BrandLogoSource | null | undefined;
 }): ClickToAddPlan | null {
-  const { doc, blockType, variant, selected } = args;
+  const { doc, blockType, variant, selected, brandLogo } = args;
   const target = resolveLeafTarget(doc, selected);
   if (target === null) {
     // No sections yet: one composite addSection op carrying the new leaf.
@@ -116,6 +125,7 @@ function planLeafAdd(args: {
       id: leafId,
       parentId: sectionId,
       doc,
+      brandLogo,
     });
     return {
       op: {
@@ -137,6 +147,7 @@ function planLeafAdd(args: {
         id,
         parentId: target.parentId,
         doc,
+        brandLogo,
       }),
       parentId: target.parentId,
       index: target.index,

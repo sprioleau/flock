@@ -18,6 +18,7 @@ import {
   buildDropOperation,
   buildPaletteDropInsertion,
   computeReorderedChildIds,
+  resolveColumnSplitCandidate,
   resolveContainerId,
 } from "./drop-target";
 
@@ -65,9 +66,19 @@ function buildFixtureDoc(): EmailDocument {
 }
 
 const dropTarget = (parentId: string, beforeChildId: string | null): DropTarget => ({
+  kind: "insert",
   documentId: null,
   parentId: id(parentId),
   beforeChildId: beforeChildId === null ? null : id(beforeChildId),
+  isNoop: false,
+  indicatorLine: null,
+});
+
+const columnSplitDropTarget = (targetBlockId: string, side: "left" | "right"): DropTarget => ({
+  kind: "column-split",
+  documentId: null,
+  targetBlockId: id(targetBlockId),
+  side,
   isNoop: false,
   indicatorLine: null,
 });
@@ -328,6 +339,190 @@ describe("resolveContainerId (nesting legality, pure hit-chain walk)", () => {
   it("a dragged LEAF over canvas padding resolves to nothing — leaves are not root-legal", () => {
     const doc = buildFixtureDoc();
     expect(resolveContainerId({ doc, draggedType: "text", hitBlockId: null })).toBeNull();
+  });
+});
+
+describe("column-split drops (drag-to-create columns)", () => {
+  /** Fixture doc plus a 2-column row in sec_bbbb with a leaf in column A. */
+  function buildColumnLeafFixture(): { doc: EmailDocument; columnLeafId: BlockId } {
+    const base = buildFixtureDoc();
+    const preset = createDefaultColumnsPreset({
+      columnCount: 2,
+      sectionId: id("sec_bbbb"),
+      doc: base,
+    });
+    let doc = apply(base, {
+      name: "restoreBlocks",
+      blocks: preset.blocks,
+      parentId: id("sec_bbbb"),
+      index: 0,
+    });
+    const columnId = doc[preset.rowId]!.childrenIds[0]! as BlockId;
+    const columnLeafId = id("txt_incl");
+    doc = apply(doc, {
+      name: "addBlock",
+      block: createDefaultLeafBlock({ type: "text", id: columnLeafId, parentId: columnId, doc }),
+      parentId: columnId,
+      index: 0,
+    });
+    return { doc, columnLeafId };
+  }
+
+  it("existing-block edge drop on a section-level leaf → ONE placeBlockBeside (wrap case) that applies", () => {
+    const doc = buildFixtureDoc();
+    const op = buildDropOperation({
+      doc,
+      draggedBlockId: id("btn_aaaa"),
+      dropTarget: columnSplitDropTarget("txt_aaaa", "right"),
+    });
+    expect(op).not.toBeNull();
+    expect(op!.name).toBe("placeBlockBeside");
+    if (op!.name !== "placeBlockBeside") return;
+    expect(op!.targetBlockId).toBe("txt_aaaa");
+    expect(op!.side).toBe("right");
+    expect(op!.content).toEqual({ kind: "existing-block", blockId: "btn_aaaa" });
+    // Wrap case: the section-level target needs the full scaffolding.
+    expect(op!.newRowId).toBeDefined();
+    expect(op!.newTargetColumnId).toBeDefined();
+    const applied = apply(doc, op!);
+    expect(applied[op!.newRowId! as BlockId]?.childrenIds).toEqual([
+      op!.newTargetColumnId,
+      op!.newColumnId,
+    ]);
+    expect(applied[id("btn_aaaa")]?.parentId).toBe(op!.newColumnId);
+    expect(applied[id("txt_aaaa")]?.parentId).toBe(op!.newTargetColumnId);
+  });
+
+  it("edge drop on a leaf already inside a column → insert case (no row scaffolding) that applies", () => {
+    const { doc, columnLeafId } = buildColumnLeafFixture();
+    const op = buildDropOperation({
+      doc,
+      draggedBlockId: id("btn_aaaa"),
+      dropTarget: columnSplitDropTarget(columnLeafId, "left"),
+    });
+    expect(op).not.toBeNull();
+    if (op!.name !== "placeBlockBeside") return;
+    expect(op!.newRowId).toBeUndefined();
+    expect(op!.newTargetColumnId).toBeUndefined();
+    const applied = apply(doc, op!);
+    const targetColumnId = doc[columnLeafId]!.parentId! as BlockId;
+    const rowId = doc[targetColumnId]!.parentId! as BlockId;
+    // side "left": the new column lands before the target's column.
+    const rowChildIds = applied[rowId]!.childrenIds as readonly BlockId[];
+    expect(rowChildIds.indexOf(op!.newColumnId as BlockId)).toBe(
+      rowChildIds.indexOf(targetColumnId) - 1,
+    );
+  });
+
+  it("palette edge drop → ONE placeBlockBeside carrying a default-built new leaf", () => {
+    const doc = buildFixtureDoc();
+    const insertion = buildPaletteDropInsertion({
+      doc,
+      item: leafItem,
+      dropTarget: columnSplitDropTarget("txt_aaaa", "right"),
+    });
+    expect(insertion).not.toBeNull();
+    expect(insertion!.op.name).toBe("placeBlockBeside");
+    if (insertion!.op.name !== "placeBlockBeside") return;
+    expect(insertion!.op.content.kind).toBe("new-block");
+    if (insertion!.op.content.kind !== "new-block") return;
+    expect(insertion!.op.content.block.id).toBe(insertion!.newBlockId);
+    expect(doc[insertion!.newBlockId!]).toBeUndefined(); // fresh id
+    const applied = apply(doc, insertion!.op);
+    expect(applied[insertion!.newBlockId!]?.parentId).toBe(insertion!.op.newColumnId);
+    expect(applied[insertion!.newBlockId!]?.type).toBe("text");
+  });
+
+  it("non-leaf palette items never produce a column-split insertion", () => {
+    const doc = buildFixtureDoc();
+    for (const item of [columnsItem, emptySectionItem, templateItem]) {
+      expect(
+        buildPaletteDropInsertion({ doc, item, dropTarget: columnSplitDropTarget("txt_aaaa", "left") }),
+      ).toBeNull();
+    }
+  });
+
+  it("resolveColumnSplitCandidate gates on leaf-over-leaf, self-drops, and the column cap", () => {
+    const { doc, columnLeafId } = buildColumnLeafFixture();
+    // Eligible: leaf dragged over a section-level leaf, or a column leaf.
+    expect(
+      resolveColumnSplitCandidate({
+        doc,
+        draggedType: "button",
+        draggedBlockId: id("btn_aaaa"),
+        hitBlockId: id("txt_aaaa"),
+      }),
+    ).toEqual({ targetBlockId: "txt_aaaa" });
+    expect(
+      resolveColumnSplitCandidate({
+        doc,
+        draggedType: "button",
+        draggedBlockId: id("btn_aaaa"),
+        hitBlockId: columnLeafId,
+      }),
+    ).toEqual({ targetBlockId: columnLeafId });
+    // Ineligible: dragging a section, hovering a section, hovering yourself.
+    expect(
+      resolveColumnSplitCandidate({
+        doc,
+        draggedType: "section",
+        draggedBlockId: id("sec_aaaa"),
+        hitBlockId: id("txt_aaaa"),
+      }),
+    ).toBeNull();
+    expect(
+      resolveColumnSplitCandidate({
+        doc,
+        draggedType: "button",
+        draggedBlockId: id("btn_aaaa"),
+        hitBlockId: id("sec_aaaa"),
+      }),
+    ).toBeNull();
+    expect(
+      resolveColumnSplitCandidate({
+        doc,
+        draggedType: "text",
+        draggedBlockId: id("txt_aaaa"),
+        hitBlockId: id("txt_aaaa"),
+      }),
+    ).toBeNull();
+  });
+
+  it("edge zones deactivate at the 4-column cap (grown via successive edge drops)", () => {
+    const fixture = buildColumnLeafFixture();
+    const { columnLeafId } = fixture;
+    let doc = fixture.doc;
+    // Grow the 2-column row to 4 columns with palette edge drops.
+    for (let drops = 0; drops < 2; drops += 1) {
+      expect(
+        resolveColumnSplitCandidate({
+          doc,
+          draggedType: "text",
+          draggedBlockId: null,
+          hitBlockId: columnLeafId,
+        }),
+      ).not.toBeNull();
+      const insertion = buildPaletteDropInsertion({
+        doc,
+        item: leafItem,
+        dropTarget: columnSplitDropTarget(columnLeafId, "right"),
+      });
+      if (insertion === null || insertion.op.name !== "placeBlockBeside") {
+        throw new Error("expected a placeBlockBeside insertion");
+      }
+      doc = apply(doc, insertion.op);
+    }
+    const rowId = doc[doc[columnLeafId]!.parentId! as BlockId]!.parentId! as BlockId;
+    expect(doc[rowId]?.childrenIds).toHaveLength(4);
+    // At the cap the candidate resolver goes dead for every leaf in the row.
+    expect(
+      resolveColumnSplitCandidate({
+        doc,
+        draggedType: "text",
+        draggedBlockId: null,
+        hitBlockId: columnLeafId,
+      }),
+    ).toBeNull();
   });
 });
 

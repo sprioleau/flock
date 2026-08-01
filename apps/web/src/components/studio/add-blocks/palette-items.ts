@@ -5,6 +5,7 @@ import {
   Columns3Icon,
   CodeIcon,
   HeadingIcon,
+  HexagonIcon,
   ImageIcon,
   ImagesIcon,
   LayoutGridIcon,
@@ -153,6 +154,19 @@ export const PALETTE_GROUPS: readonly PaletteGroup[] = [
         label: "Image",
         description: "A picture with alt text.",
         Icon: ImageIcon,
+      },
+      {
+        // Stage M (brand-kit §7.2): feels like a block type, is a PRESET —
+        // an image block with role:"logo", sourced from the canvas brand's
+        // CONFIRMED logo (placeholder + Brand kit hint when none). Brand
+        // propagation re-sources role-marked images on update.
+        kind: "leaf",
+        id: "logo",
+        blockType: "image",
+        variant: "logo",
+        label: "Logo",
+        description: "Your brand's logo — updates when the brand changes.",
+        Icon: HexagonIcon,
       },
       {
         kind: "leaf",

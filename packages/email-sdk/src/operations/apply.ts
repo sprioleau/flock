@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { blockSchema, type Block } from "../schema/blocks";
-import { ROOT_BLOCK_ID, type BlockId } from "../schema/ids";
+import { LEAF_BLOCK_TYPES, ROOT_BLOCK_ID, type BlockId, type BlockType } from "../schema/ids";
 import { emailDocumentSchema, type EmailDocument } from "../store/document";
 import { ALLOWED_CHILD_TYPES, checkDocumentIntegrity } from "../store/integrity";
 import {
@@ -10,10 +10,13 @@ import {
   type AddSectionOperation,
   type ApplyThemeOperation,
   type MoveBlockOperation,
+  type PlaceBlockBesideOperation,
+  type PreviousColumnWidth,
   type RemoveBlockOperation,
   type ReorderChildrenOperation,
   type ReplaceBlockPropertiesOperation,
   type RestoreBlocksOperation,
+  type UnplaceBlockBesideOperation,
   type UpdateBlockPropertiesOperation,
   type UpdateDocumentSettingsOperation,
   type UpdateTextOperation,
@@ -730,6 +733,518 @@ function applyReorderChildren(
   });
 }
 
+// ---------------------------------------------------------------------------
+// placeBlockBeside / unplaceBlockBeside (drag-to-create columns)
+// ---------------------------------------------------------------------------
+
+/**
+ * The most columns a row may hold. placeBlockBeside enforces it, and the
+ * editor's edge-drop zones deactivate at this count.
+ */
+export const MAX_COLUMNS_PER_ROW = 4;
+
+function isLeafBlockType(type: BlockType): boolean {
+  return (LEAF_BLOCK_TYPES as readonly BlockType[]).includes(type);
+}
+
+/**
+ * placeBlockBeside — ONE undoable step for the "drop a block on another
+ * block's edge" gesture. Two structural cases, decided by the target leaf's
+ * current parent:
+ *
+ * - WRAP (target directly in a section): the target's slot in the section is
+ *   replaced by a new row of two fresh columns — target in one, the placed
+ *   content in the other, ordered by `side`. Both columns omit widthPercent,
+ *   which renders as an equal 50/50 split.
+ * - INSERT (target inside a column): a new column carrying the content is
+ *   inserted beside the target's column (capped at MAX_COLUMNS_PER_ROW), and
+ *   every column in the row has its explicit widthPercent stripped so the row
+ *   renders as an equal split. The stripped widths ride on the inverse.
+ *
+ * Content is either a brand-new leaf (palette drop) or an existing leaf moved
+ * from anywhere in the document (canvas drag). The inverse is exactly one
+ * unplaceBlockBeside carrying everything needed to restore the original
+ * document — which is the entire reason this is one operation instead of a
+ * composition (one gesture = one history row = one undo).
+ */
+function applyPlaceBlockBeside(
+  document: EmailDocument,
+  op: PlaceBlockBesideOperation,
+): PerOpResult {
+  const target = document[op.targetBlockId];
+  if (target === undefined) {
+    return fail({
+      code: "target_not_found",
+      message: `Block "${op.targetBlockId}" does not exist in the document.`,
+      blockId: op.targetBlockId,
+    });
+  }
+  if (!isLeafBlockType(target.type)) {
+    return fail({
+      code: "wrong_block_type",
+      message: `Block "${op.targetBlockId}" is a ${target.type} block; placeBlockBeside targets leaf blocks only.`,
+      blockId: op.targetBlockId,
+    });
+  }
+  const targetParentId = target.parentId as BlockId | null;
+  const targetParent = targetParentId === null ? undefined : document[targetParentId];
+  if (targetParentId === null || targetParent === undefined) {
+    return fail({
+      code: "target_not_found",
+      message: `Block "${op.targetBlockId}" has no existing parent ("${String(targetParentId)}"); the document is structurally unsound.`,
+      blockId: op.targetBlockId,
+    });
+  }
+
+  // Validate the content leaf.
+  if (op.content.kind === "existing-block") {
+    if (op.content.blockId === op.targetBlockId) {
+      return fail({
+        code: "op_validation_failed",
+        message: `Cannot place block "${op.targetBlockId}" beside itself.`,
+        blockId: op.targetBlockId,
+      });
+    }
+    const contentBlock = document[op.content.blockId];
+    if (contentBlock === undefined) {
+      return fail({
+        code: "target_not_found",
+        message: `Block "${op.content.blockId}" does not exist in the document.`,
+        blockId: op.content.blockId,
+      });
+    }
+    if (!isLeafBlockType(contentBlock.type)) {
+      return fail({
+        code: "wrong_block_type",
+        message: `Block "${op.content.blockId}" is a ${contentBlock.type} block; only leaf blocks can be placed beside another block.`,
+        blockId: op.content.blockId,
+      });
+    }
+  } else {
+    if (!isLeafBlockType(op.content.block.type)) {
+      return fail({
+        code: "nesting_violation",
+        message: `A ${op.content.block.type} block cannot be placed beside another block; only leaf blocks can.`,
+        blockId: op.content.block.id,
+      });
+    }
+    if (document[op.content.block.id] !== undefined) {
+      return fail({
+        code: "duplicate_block_id",
+        message: `A block with id "${op.content.block.id}" already exists; generate a fresh id before placing.`,
+        blockId: op.content.block.id,
+      });
+    }
+  }
+  const contentBlockId = op.content.kind === "existing-block" ? op.content.blockId : op.content.block.id;
+
+  // Validate the scaffolding ids: present where required, fresh, and distinct.
+  const isWrapCase = targetParent.type === "section";
+  if (isWrapCase && (op.newRowId === undefined || op.newTargetColumnId === undefined)) {
+    return fail({
+      code: "op_validation_failed",
+      message: `Target "${op.targetBlockId}" sits directly in a section, so placeBlockBeside must wrap it in a row: provide newRowId and newTargetColumnId.`,
+      blockId: op.targetBlockId,
+    });
+  }
+  if (!isWrapCase && targetParent.type !== "column") {
+    return fail({
+      code: "wrong_block_type",
+      message: `Block "${op.targetBlockId}" sits in a ${targetParent.type} block; leaves live in sections or columns.`,
+      blockId: op.targetBlockId,
+      relatedBlockId: targetParentId,
+    });
+  }
+  const scaffoldingIds: BlockId[] = isWrapCase
+    ? [op.newRowId!, op.newTargetColumnId!, op.newColumnId]
+    : [op.newColumnId];
+  const seenIds = new Set<BlockId>([contentBlockId]);
+  for (const scaffoldingId of scaffoldingIds) {
+    if (document[scaffoldingId] !== undefined || seenIds.has(scaffoldingId)) {
+      return fail({
+        code: "duplicate_block_id",
+        message: `A block with id "${scaffoldingId}" already exists (or repeats in the operation); generate fresh scaffolding ids.`,
+        blockId: scaffoldingId,
+      });
+    }
+    seenIds.add(scaffoldingId);
+  }
+
+  const nextDocument: EmailDocument = { ...document };
+
+  // 1. Stage the content leaf under the new column (detaching it first when
+  //    it comes from elsewhere in the document).
+  let inverseContent: UnplaceBlockBesideOperation["content"];
+  if (op.content.kind === "existing-block") {
+    const movedBlockId = op.content.blockId;
+    const contentBlock = document[movedBlockId]!;
+    const contentParentId = contentBlock.parentId as BlockId;
+    const contentParent = document[contentParentId];
+    const contentIndex =
+      contentParent === undefined
+        ? -1
+        : (contentParent.childrenIds as BlockId[]).indexOf(movedBlockId);
+    if (contentParent === undefined || contentIndex === -1) {
+      return fail({
+        code: "target_not_found",
+        message: `Block "${movedBlockId}" has no existing parent listing it as a child; the document is structurally unsound.`,
+        blockId: movedBlockId,
+      });
+    }
+    nextDocument[contentParentId] = {
+      ...contentParent,
+      childrenIds: (contentParent.childrenIds as BlockId[]).filter(
+        (childId) => childId !== movedBlockId,
+      ),
+    } as Block;
+    nextDocument[movedBlockId] = { ...contentBlock, parentId: op.newColumnId } as Block;
+    inverseContent = {
+      kind: "existing-block",
+      blockId: movedBlockId,
+      previousParentId: contentParentId,
+      previousIndex: contentIndex,
+    };
+  } else {
+    const parsed = parseBlock({ ...op.content.block, parentId: op.newColumnId }, op.content.block.id);
+    if ("isOk" in parsed) {
+      return parsed;
+    }
+    nextDocument[op.content.block.id] = parsed.block;
+    inverseContent = { kind: "new-block", blockId: op.content.block.id };
+  }
+
+  if (isWrapCase) {
+    // 2a. WRAP: the row takes the target's slot in the section.
+    const newRowId = op.newRowId!;
+    const newTargetColumnId = op.newTargetColumnId!;
+    const sectionNow = nextDocument[targetParentId]!;
+    if (!(sectionNow.childrenIds as BlockId[]).includes(op.targetBlockId)) {
+      return fail({
+        code: "target_not_found",
+        message: `Section "${targetParentId}" does not list "${op.targetBlockId}" as a child; the document is structurally unsound.`,
+        blockId: op.targetBlockId,
+        relatedBlockId: targetParentId,
+      });
+    }
+    nextDocument[newRowId] = {
+      id: newRowId,
+      type: "row",
+      parentId: targetParentId,
+      childrenIds:
+        op.side === "left" ? [op.newColumnId, newTargetColumnId] : [newTargetColumnId, op.newColumnId],
+      properties: {},
+    } as Block;
+    nextDocument[newTargetColumnId] = {
+      id: newTargetColumnId,
+      type: "column",
+      parentId: newRowId,
+      childrenIds: [op.targetBlockId],
+      properties: {},
+    } as Block;
+    nextDocument[op.newColumnId] = {
+      id: op.newColumnId,
+      type: "column",
+      parentId: newRowId,
+      childrenIds: [contentBlockId],
+      properties: {},
+    } as Block;
+    nextDocument[op.targetBlockId] = { ...target, parentId: newTargetColumnId } as Block;
+    nextDocument[targetParentId] = {
+      ...sectionNow,
+      childrenIds: (sectionNow.childrenIds as BlockId[]).map((childId) =>
+        childId === op.targetBlockId ? newRowId : childId,
+      ),
+    } as Block;
+    return ok(nextDocument, {
+      name: "unplaceBlockBeside",
+      targetBlockId: op.targetBlockId,
+      side: op.side,
+      newColumnId: op.newColumnId,
+      content: inverseContent,
+      unwrapRowId: newRowId,
+    });
+  }
+
+  // 2b. INSERT: a new column beside the target's column, row reset to an
+  //     equal split (explicit widths stripped; the inverse restores them).
+  const anchorColumnId = targetParentId;
+  const rowId = targetParent.parentId as BlockId;
+  const row = document[rowId];
+  if (row === undefined || row.type !== "row") {
+    return fail({
+      code: "target_not_found",
+      message: `Column "${anchorColumnId}" has no existing row parent ("${rowId}"); the document is structurally unsound.`,
+      blockId: anchorColumnId,
+      relatedBlockId: rowId,
+    });
+  }
+  if (row.childrenIds.length >= MAX_COLUMNS_PER_ROW) {
+    return fail({
+      code: "nesting_violation",
+      message: `Row "${rowId}" already has ${row.childrenIds.length} columns — the maximum is ${MAX_COLUMNS_PER_ROW}. Place the block elsewhere instead.`,
+      blockId: rowId,
+    });
+  }
+  const anchorIndex = (row.childrenIds as BlockId[]).indexOf(anchorColumnId);
+  if (anchorIndex === -1) {
+    return fail({
+      code: "target_not_found",
+      message: `Row "${rowId}" does not list "${anchorColumnId}" as a child; the document is structurally unsound.`,
+      blockId: anchorColumnId,
+      relatedBlockId: rowId,
+    });
+  }
+  const previousWidths: PreviousColumnWidth[] = [];
+  for (const columnId of row.childrenIds as BlockId[]) {
+    const column = nextDocument[columnId];
+    if (column === undefined || column.type !== "column") {
+      continue; // unreachable in a sound document; integrity re-checks anyway
+    }
+    const { widthPercent } = column.properties as { widthPercent?: number };
+    if (widthPercent === undefined) {
+      continue;
+    }
+    previousWidths.push({ columnId, widthPercent });
+    const strippedProperties = { ...(column.properties as Record<string, unknown>) };
+    delete strippedProperties.widthPercent;
+    nextDocument[columnId] = { ...column, properties: strippedProperties } as Block;
+  }
+  nextDocument[op.newColumnId] = {
+    id: op.newColumnId,
+    type: "column",
+    parentId: rowId,
+    childrenIds: [contentBlockId],
+    properties: {},
+  } as Block;
+  nextDocument[rowId] = {
+    ...row,
+    childrenIds: insertAt({
+      items: row.childrenIds as BlockId[],
+      index: op.side === "right" ? anchorIndex + 1 : anchorIndex,
+      item: op.newColumnId,
+    }),
+  } as Block;
+  return ok(nextDocument, {
+    name: "unplaceBlockBeside",
+    targetBlockId: op.targetBlockId,
+    side: op.side,
+    newColumnId: op.newColumnId,
+    content: inverseContent,
+    ...(previousWidths.length > 0 ? { previousWidths } : {}),
+  });
+}
+
+/**
+ * unplaceBlockBeside — the exact inverse of placeBlockBeside. Dissolves the
+ * placed column: brand-new content is removed with it, moved content returns
+ * to its previous parent and index; the wrap case additionally moves the
+ * target back into the section at the row's slot and removes the row with
+ * both columns; the insert case restores the stripped column widths.
+ *
+ * Deliberately strict about the structure it unwinds (the created column must
+ * hold exactly the placed block, a wrapped row exactly its two columns): if a
+ * newer concurrent edit landed inside the created layout, dissolving it would
+ * destroy that edit, so the operation fails instead — surfacing as the
+ * standard cross-user undo conflict.
+ */
+function applyUnplaceBlockBeside(
+  document: EmailDocument,
+  op: UnplaceBlockBesideOperation,
+): PerOpResult {
+  const newColumn = document[op.newColumnId];
+  if (newColumn === undefined) {
+    return fail({
+      code: "target_not_found",
+      message: `Block "${op.newColumnId}" does not exist in the document.`,
+      blockId: op.newColumnId,
+    });
+  }
+  if (newColumn.type !== "column") {
+    return fail({
+      code: "wrong_block_type",
+      message: `Block "${op.newColumnId}" is a ${newColumn.type} block; unplaceBlockBeside dissolves columns.`,
+      blockId: op.newColumnId,
+    });
+  }
+  const contentBlockId = op.content.blockId;
+  const contentBlock = document[contentBlockId];
+  if (contentBlock === undefined) {
+    return fail({
+      code: "target_not_found",
+      message: `Block "${contentBlockId}" does not exist in the document.`,
+      blockId: contentBlockId,
+    });
+  }
+  const holdsExactlyContent =
+    newColumn.childrenIds.length === 1 && newColumn.childrenIds[0] === contentBlockId;
+  if (!holdsExactlyContent) {
+    return fail({
+      code: "op_validation_failed",
+      message: `Column "${op.newColumnId}" no longer holds exactly the placed block "${contentBlockId}"; a newer change landed inside it, so it cannot be dissolved.`,
+      blockId: op.newColumnId,
+      relatedBlockId: contentBlockId,
+    });
+  }
+  const target = document[op.targetBlockId];
+  if (target === undefined) {
+    return fail({
+      code: "target_not_found",
+      message: `Block "${op.targetBlockId}" does not exist in the document.`,
+      blockId: op.targetBlockId,
+    });
+  }
+
+  const nextDocument: EmailDocument = { ...document };
+  // Snapshot before any removal — the redo op re-inserts this exact block.
+  const contentClone = structuredClone(contentBlock);
+  // 1. Empty the created column so removing it never cascades into content.
+  nextDocument[op.newColumnId] = { ...newColumn, childrenIds: [] } as Block;
+
+  let redoTargetColumnId: BlockId | null = null;
+  if (op.unwrapRowId !== undefined) {
+    // 2a. UNWRAP: the target goes back to the section at the row's slot.
+    const row = document[op.unwrapRowId];
+    if (row === undefined || row.type !== "row") {
+      return fail({
+        code: "target_not_found",
+        message: `Row "${op.unwrapRowId}" does not exist in the document (or is not a row).`,
+        blockId: op.unwrapRowId,
+      });
+    }
+    const sectionId = row.parentId as BlockId;
+    const section = document[sectionId];
+    if (section === undefined || !(section.childrenIds as BlockId[]).includes(op.unwrapRowId)) {
+      return fail({
+        code: "target_not_found",
+        message: `Row "${op.unwrapRowId}" has no section parent listing it as a child; the document is structurally unsound.`,
+        blockId: op.unwrapRowId,
+      });
+    }
+    const targetColumnId = target.parentId as BlockId;
+    const targetColumn = document[targetColumnId];
+    const isTargetInRow =
+      targetColumn !== undefined &&
+      targetColumn.type === "column" &&
+      targetColumn.parentId === op.unwrapRowId;
+    const rowChildIds = row.childrenIds as BlockId[];
+    const hasExactColumns =
+      rowChildIds.length === 2 &&
+      rowChildIds.includes(op.newColumnId) &&
+      rowChildIds.includes(targetColumnId);
+    const targetColumnHoldsExactlyTarget =
+      isTargetInRow &&
+      targetColumn.childrenIds.length === 1 &&
+      targetColumn.childrenIds[0] === op.targetBlockId;
+    if (!isTargetInRow || !hasExactColumns || !targetColumnHoldsExactlyTarget) {
+      return fail({
+        code: "op_validation_failed",
+        message: `Row "${op.unwrapRowId}" no longer holds exactly the two columns of the original placement (target "${op.targetBlockId}" alone in one, the placed block alone in the other); a newer change altered it, so it cannot be unwrapped.`,
+        blockId: op.unwrapRowId,
+        relatedBlockId: op.targetBlockId,
+      });
+    }
+    nextDocument[op.targetBlockId] = { ...target, parentId: sectionId } as Block;
+    nextDocument[sectionId] = {
+      ...section,
+      childrenIds: (section.childrenIds as BlockId[]).map((childId) =>
+        childId === op.unwrapRowId ? op.targetBlockId : childId,
+      ),
+    } as Block;
+    delete nextDocument[op.unwrapRowId];
+    delete nextDocument[targetColumnId];
+    delete nextDocument[op.newColumnId];
+    redoTargetColumnId = targetColumnId;
+  } else {
+    // 2b. Remove the created column from its row; restore stripped widths.
+    const rowId = newColumn.parentId as BlockId;
+    const row = document[rowId];
+    if (row === undefined || row.type !== "row") {
+      return fail({
+        code: "target_not_found",
+        message: `Column "${op.newColumnId}" has no existing row parent ("${rowId}"); the document is structurally unsound.`,
+        blockId: op.newColumnId,
+        relatedBlockId: rowId,
+      });
+    }
+    nextDocument[rowId] = {
+      ...row,
+      childrenIds: (row.childrenIds as BlockId[]).filter((childId) => childId !== op.newColumnId),
+    } as Block;
+    delete nextDocument[op.newColumnId];
+    for (const { columnId, widthPercent } of op.previousWidths ?? []) {
+      const column = nextDocument[columnId];
+      if (column === undefined || column.type !== "column") {
+        return fail({
+          code: "target_not_found",
+          message: `Column "${columnId}" in previousWidths does not exist in the document.`,
+          blockId: columnId,
+        });
+      }
+      nextDocument[columnId] = {
+        ...column,
+        properties: { ...(column.properties as Record<string, unknown>), widthPercent },
+      } as Block;
+    }
+  }
+
+  // 3. The placed block: brand-new content is removed; moved content returns
+  //    to its previous parent at its previous index.
+  if (op.content.kind === "new-block") {
+    delete nextDocument[contentBlockId];
+  } else {
+    const previousParent = nextDocument[op.content.previousParentId];
+    if (previousParent === undefined) {
+      return fail({
+        code: "target_not_found",
+        message: `Previous parent "${op.content.previousParentId}" does not exist in the document.`,
+        blockId: op.content.previousParentId,
+        relatedBlockId: contentBlockId,
+      });
+    }
+    if (!ALLOWED_CHILD_TYPES[previousParent.type].includes(contentBlock.type)) {
+      return fail({
+        code: "nesting_violation",
+        message: `A ${contentBlock.type} block cannot return to a ${previousParent.type} block ("${op.content.previousParentId}").`,
+        blockId: contentBlockId,
+        relatedBlockId: op.content.previousParentId,
+      });
+    }
+    if (op.content.previousIndex > previousParent.childrenIds.length) {
+      return fail({
+        code: "index_out_of_range",
+        message: `previousIndex ${op.content.previousIndex} is out of range: parent "${op.content.previousParentId}" has ${previousParent.childrenIds.length} children.`,
+        blockId: op.content.previousParentId,
+      });
+    }
+    nextDocument[contentBlockId] = {
+      ...contentBlock,
+      parentId: op.content.previousParentId,
+    } as Block;
+    nextDocument[op.content.previousParentId] = {
+      ...previousParent,
+      childrenIds: insertAt({
+        items: previousParent.childrenIds as BlockId[],
+        index: op.content.previousIndex,
+        item: contentBlockId,
+      }),
+    } as Block;
+  }
+
+  return ok(nextDocument, {
+    name: "placeBlockBeside",
+    targetBlockId: op.targetBlockId,
+    side: op.side,
+    content:
+      op.content.kind === "new-block"
+        ? { kind: "new-block", block: contentClone }
+        : { kind: "existing-block", blockId: contentBlockId },
+    newColumnId: op.newColumnId,
+    ...(op.unwrapRowId !== undefined && redoTargetColumnId !== null
+      ? { newRowId: op.unwrapRowId, newTargetColumnId: redoTargetColumnId }
+      : {}),
+  });
+}
+
 function applyUpdateText(document: EmailDocument, op: UpdateTextOperation): PerOpResult {
   const block = document[op.blockId];
   if (block === undefined) {
@@ -784,6 +1299,10 @@ function applyParsedOperation(document: EmailDocument, op: Operation): PerOpResu
       return applyMoveBlock(document, op);
     case "reorderChildren":
       return applyReorderChildren(document, op);
+    case "placeBlockBeside":
+      return applyPlaceBlockBeside(document, op);
+    case "unplaceBlockBeside":
+      return applyUnplaceBlockBeside(document, op);
     case "updateText":
       return applyUpdateText(document, op);
   }

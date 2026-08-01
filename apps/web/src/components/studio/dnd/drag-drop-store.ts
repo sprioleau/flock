@@ -65,23 +65,46 @@ export interface DropIndicatorLine {
   length: number;
 }
 
-/** A resolved drop position under the pointer (see resolveDropTarget). */
-export interface DropTarget {
+/** Fields every resolved drop position carries (see resolveDropTarget). */
+interface DropTargetBase {
   /**
    * The document whose frame the drop resolves in (existing blocks: the
    * source's own document; palette items: the active document). Disambiguates
-   * `parentId` across frames — forked drafts share block ids.
+   * block ids across frames — forked drafts share them.
    */
   documentId: Id<"documents"> | null;
-  /** Container that would receive the dragged block. */
-  parentId: BlockId;
-  /** Sibling the dragged block would be inserted before; null = append. */
-  beforeChildId: BlockId | null;
   /** True when dropping here would leave the document unchanged. */
   isNoop: boolean;
   /** Where to draw the indicator line; null when isNoop (no line shown). */
   indicatorLine: DropIndicatorLine | null;
 }
+
+/** A stack position inside a container: insert before a sibling / append. */
+export interface InsertDropTarget extends DropTargetBase {
+  kind: "insert";
+  /** Container that would receive the dragged block. */
+  parentId: BlockId;
+  /** Sibling the dragged block would be inserted before; null = append. */
+  beforeChildId: BlockId | null;
+}
+
+/**
+ * A drop on a leaf block's left/right EDGE: the dragged block becomes that
+ * leaf's side-by-side neighbor (drag-to-create columns). Resolves to ONE
+ * placeBlockBeside op — wrapping the target in a new 2-column row when it
+ * sits directly in a section, or adding a sibling column when it already
+ * sits in a column (rows cap at 4 columns; at the cap edge zones go dead).
+ */
+export interface ColumnSplitDropTarget extends DropTargetBase {
+  kind: "column-split";
+  /** The leaf block whose edge the pointer is on. */
+  targetBlockId: BlockId;
+  /** Which side of that leaf the dragged block would land on. */
+  side: "left" | "right";
+}
+
+/** A resolved drop position under the pointer (see resolveDropTarget). */
+export type DropTarget = InsertDropTarget | ColumnSplitDropTarget;
 
 interface CanvasDragState {
   /** The live drag's source, or null when no drag is active. */

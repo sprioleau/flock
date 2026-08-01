@@ -1,7 +1,14 @@
 import { z } from "zod";
 import { blockSchema, sectionBlockSchema } from "../schema/blocks";
 import { globalStylesSchema } from "../schema/globals";
-import { blockIdSchema, sectionBlockIdSchema, textBlockIdSchema } from "../schema/ids";
+import {
+  blockIdSchema,
+  columnBlockIdSchema,
+  leafBlockIdSchema,
+  rowBlockIdSchema,
+  sectionBlockIdSchema,
+  textBlockIdSchema,
+} from "../schema/ids";
 import { textDocSchema } from "../schema/text";
 
 /**
@@ -256,6 +263,149 @@ export const reorderChildrenOperationSchema = z
 export type ReorderChildrenOperation = z.infer<typeof reorderChildrenOperationSchema>;
 
 // ---------------------------------------------------------------------------
+// Column-placement operations (drag-to-create columns)
+// ---------------------------------------------------------------------------
+
+/** What occupies the new column a placeBlockBeside creates. */
+export const placeBlockBesideContentSchema = z
+  .discriminatedUnion("kind", [
+    z
+      .strictObject({
+        kind: z.literal("new-block").describe("Content discriminator: insert a brand-new block."),
+        block: blockSchema.describe(
+          "The complete new leaf block (text, button, image, divider, link, code, spacer), including a caller-generated id (see generateBlockId) that must not already exist in the document. Its parentId is overwritten with the new column's id on apply.",
+        ),
+      })
+      .describe("Insert a brand-new leaf block into the new column."),
+    z
+      .strictObject({
+        kind: z
+          .literal("existing-block")
+          .describe("Content discriminator: move an existing block."),
+        blockId: leafBlockIdSchema.describe(
+          "Id of an existing leaf block anywhere in the document. It moves into the new column; its old parent keeps its other children.",
+        ),
+      })
+      .describe("Move an existing leaf block into the new column."),
+  ])
+  .describe(
+    "What occupies the new column: a brand-new leaf block, or an existing leaf block moved from elsewhere in the document.",
+  );
+
+export type PlaceBlockBesideContent = z.infer<typeof placeBlockBesideContentSchema>;
+
+/** Which side of the target the placed block lands on. */
+export const placeBlockBesideSideSchema = z
+  .enum(["left", "right"])
+  .describe('Which side of the target the placed block lands on: "left" or "right".');
+
+export type PlaceBlockBesideSide = z.infer<typeof placeBlockBesideSideSchema>;
+
+/** Place a block side-by-side with a target leaf, creating columns as needed. */
+export const placeBlockBesideOperationSchema = z
+  .strictObject({
+    name: z.literal("placeBlockBeside").describe("Operation discriminator."),
+    targetBlockId: leafBlockIdSchema.describe(
+      "Id of the existing leaf block to place beside. Never a section, row, or column.",
+    ),
+    side: placeBlockBesideSideSchema,
+    content: placeBlockBesideContentSchema,
+    newColumnId: columnBlockIdSchema.describe(
+      "Caller-generated id for the new column that holds the placed block. Must not already exist in the document.",
+    ),
+    newRowId: rowBlockIdSchema
+      .optional()
+      .describe(
+        "Caller-generated id for the wrapping row. REQUIRED when the target sits directly in a section (the wrap case); ignored when the target already sits inside a column.",
+      ),
+    newTargetColumnId: columnBlockIdSchema
+      .optional()
+      .describe(
+        "Caller-generated id for the column that receives the target in the wrap case. REQUIRED when the target sits directly in a section; ignored otherwise.",
+      ),
+  })
+  .describe(
+    "Places a block side-by-side with a target leaf block, creating column layout as needed. A target sitting directly in a section is wrapped in a new row of two equal columns (target in one, the placed block in the other); a target already inside a column gets a new sibling column beside its column. Rows hold at most 4 columns. All column widths in the affected row are reset to an equal split. One operation — one undo step; the inverse is a single unplaceBlockBeside.",
+  );
+
+export type PlaceBlockBesideOperation = z.infer<typeof placeBlockBesideOperationSchema>;
+
+/** One column's previous explicit width, restored by unplaceBlockBeside. */
+export const previousColumnWidthSchema = z
+  .strictObject({
+    columnId: columnBlockIdSchema.describe("Id of the column whose width to restore."),
+    widthPercent: z
+      .number()
+      .min(1)
+      .max(100)
+      .describe("The widthPercent to set back on the column."),
+  })
+  .describe("One column's previous explicit widthPercent, re-set after the column is removed.");
+
+export type PreviousColumnWidth = z.infer<typeof previousColumnWidthSchema>;
+
+/** Undo a placeBlockBeside: dissolve the created column (and row, if wrapped). */
+export const unplaceBlockBesideOperationSchema = z
+  .strictObject({
+    name: z.literal("unplaceBlockBeside").describe("Operation discriminator."),
+    targetBlockId: leafBlockIdSchema.describe(
+      "The target of the original placeBlockBeside (also used to reconstruct the redo operation).",
+    ),
+    side: placeBlockBesideSideSchema,
+    newColumnId: columnBlockIdSchema.describe(
+      "The column the original operation created. It must currently hold exactly the placed block, and it is removed.",
+    ),
+    content: z
+      .discriminatedUnion("kind", [
+        z
+          .strictObject({
+            kind: z
+              .literal("new-block")
+              .describe("Content discriminator: the placed block was brand-new."),
+            blockId: leafBlockIdSchema.describe(
+              "Id of the placed block. It was created by the original operation, so it is removed together with its column.",
+            ),
+          })
+          .describe("Remove the placed block (it was created by the original operation)."),
+        z
+          .strictObject({
+            kind: z
+              .literal("existing-block")
+              .describe("Content discriminator: the placed block was moved from elsewhere."),
+            blockId: leafBlockIdSchema.describe("Id of the placed block to move back."),
+            previousParentId: z
+              .union([sectionBlockIdSchema, columnBlockIdSchema])
+              .describe("The section or column the placed block came from."),
+            previousIndex: z
+              .number()
+              .int()
+              .min(0)
+              .describe("The placed block's position among its previous parent's children."),
+          })
+          .describe("Move the placed block back to where it came from."),
+      ])
+      .describe(
+        "What happens to the placed block: brand-new blocks are removed with their column; moved blocks return to their previous parent and position.",
+      ),
+    unwrapRowId: rowBlockIdSchema
+      .optional()
+      .describe(
+        "Wrap case only: the row the original operation created. The target moves back into the section at the row's position and the row (with both of its columns) is removed.",
+      ),
+    previousWidths: z
+      .array(previousColumnWidthSchema)
+      .optional()
+      .describe(
+        "Column case only: explicit widthPercent values the original operation stripped from the row's other columns, re-set after the new column is removed.",
+      ),
+  })
+  .describe(
+    "Reverts a placeBlockBeside: removes the column it created (removing a brand-new placed block, or moving a relocated one back to its previous parent), unwraps the created row in the wrap case, and restores the row's previous column widths. Primarily generated as the inverse of placeBlockBeside, but valid to call directly.",
+  );
+
+export type UnplaceBlockBesideOperation = z.infer<typeof unplaceBlockBesideOperationSchema>;
+
+// ---------------------------------------------------------------------------
 // Text operations
 // ---------------------------------------------------------------------------
 
@@ -300,6 +450,8 @@ export const operationSchema = z
     removeBlockOperationSchema,
     moveBlockOperationSchema,
     reorderChildrenOperationSchema,
+    placeBlockBesideOperationSchema,
+    unplaceBlockBesideOperationSchema,
     updateTextOperationSchema,
   ])
   .describe("Any document operation, discriminated by its name field.");
@@ -318,6 +470,8 @@ export const OPERATION_NAMES = [
   "removeBlock",
   "moveBlock",
   "reorderChildren",
+  "placeBlockBeside",
+  "unplaceBlockBeside",
   "updateText",
 ] as const satisfies readonly Operation["name"][];
 

@@ -3,6 +3,7 @@
 import { useCallback } from "react";
 import type { BlockId } from "@tandem/email-sdk";
 import { useEditorStore } from "@/lib/editor-store";
+import { useConfirmedBrandLogo } from "../brand-kit/useConfirmedBrandLogo";
 import { buildClickToAddPlan } from "./click-to-add-placement";
 import type { PaletteItem } from "./palette-items";
 import { scrollBlockIntoView } from "./scroll-block-into-view";
@@ -14,12 +15,16 @@ import { scrollBlockIntoView } from "./scroll-block-into-view";
  * the Properties tab).
  */
 export function useClickToAdd(): (item: PaletteItem) => void {
+  // The Logo preset's source: the canvas brand's CONFIRMED logo, or null
+  // (placeholder) — owner decision 4 keeps unconfirmed URLs out of documents.
+  const brandLogo = useConfirmedBrandLogo();
   return useCallback((item) => {
     const editorStore = useEditorStore.getState();
     const plan = buildClickToAddPlan({
       doc: editorStore.doc,
       item,
       selectedBlockId: editorStore.selectedBlockId,
+      brandLogo,
     });
     if (plan === null) {
       return;
@@ -37,5 +42,5 @@ export function useClickToAdd(): (item: PaletteItem) => void {
       editorStore.selectBlock(newBlockId);
       scrollBlockIntoView(newBlockId);
     }
-  }, []);
+  }, [brandLogo]);
 }
