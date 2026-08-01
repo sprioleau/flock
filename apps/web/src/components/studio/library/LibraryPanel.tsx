@@ -1,8 +1,8 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { useQuery } from "convex/react";
-import { ImagesIcon } from "lucide-react";
+import { ImagesIcon, LinkIcon, Loader2, Upload } from "lucide-react";
 import { api } from "@convex/_generated/api";
 import type { Doc, Id } from "@convex/_generated/dataModel";
 import { Button } from "@/components/ui/button";
@@ -14,18 +14,23 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import {
   Tooltip,
   TooltipContent,
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import { toast } from "@/components/ui/toast";
 import { cn } from "@/lib/utils";
 import { useEditorStore } from "@/lib/editor-store";
 import { useUiSurfaceOpenRequest } from "@/lib/ui-surfaces";
 import { scrollBlockIntoView } from "../add-blocks/scroll-block-into-view";
 import { formatRelativeTime } from "../history/history-grouping";
 import { buildLibraryInsertPlan } from "./library-insert";
+import { useUploadImageAsset } from "./use-upload-image-asset";
 
 /**
  * Content Studio Stage S — the session's asset library (proposal §8; the
@@ -80,6 +85,11 @@ export function LibraryPanel() {
   const [isOpen, setIsOpen] = useState(false);
   const [kindFilter, setKindFilter] = useState<KindFilter>("all");
   const [selectedAssetId, setSelectedAssetId] = useState<Id<"assets"> | null>(null);
+  const { isUploading, uploadImageAsset } = useUploadImageAsset();
+  const uploadInputRef = useRef<HTMLInputElement>(null);
+  const [isImportPopoverOpen, setIsImportPopoverOpen] = useState(false);
+  const [importUrlDraft, setImportUrlDraft] = useState("");
+  const [isImporting, setIsImporting] = useState(false);
 
   // Reactive: an upload/generation/confirm in any tab appears here live.
   const assets = useQuery(
@@ -97,6 +107,8 @@ export function LibraryPanel() {
     if (nextIsOpen) {
       setKindFilter("all");
       setSelectedAssetId(null);
+      setIsImportPopoverOpen(false);
+      setImportUrlDraft("");
     }
   };
 
@@ -124,6 +136,74 @@ export function LibraryPanel() {
     }
     // Close so the draft (and the fresh image) is immediately visible.
     setIsOpen(false);
+  };
+
+  // Pure library add — the shared upload path registers the asset and
+  // Convex reactivity lands it in the grid. Deliberately NO block mutation:
+  // even in pick mode (image block selected) an upload only fills the
+  // library; inserting stays a separate, explicit click.
+  const uploadFilesToLibrary = async (files: readonly File[]): Promise<void> => {
+    let uploadedCount = 0;
+    for (const file of files) {
+      try {
+        await uploadImageAsset(file);
+        uploadedCount += 1;
+      } catch (error) {
+        toast.error(`Couldn't upload ${file.name}`, {
+          description: error instanceof Error ? error.message : undefined,
+        });
+      }
+    }
+    if (uploadedCount === 0) {
+      return;
+    }
+    // A filter that would hide the fresh upload defeats "it appears right
+    // away" — widen to All so the new asset is visible immediately.
+    setKindFilter((current) => (current === "all" || current === "uploaded" ? current : "all"));
+    toast.success(
+      uploadedCount === 1
+        ? "Image added to your library"
+        : `${uploadedCount} images added to your library`,
+    );
+  };
+
+  // "From URL": the /api/library/import-image route fetches the external
+  // image SERVER-side (client fetch = CORS), rehosts the bytes into Convex
+  // storage, and registers the asset — the grid row's src is OUR durable
+  // Convex URL, never the external one. Reactivity lands it in the grid.
+  const importImageFromUrl = async (): Promise<void> => {
+    const trimmedUrl = importUrlDraft.trim();
+    if (trimmedUrl === "" || sessionId === null || isImporting) {
+      return;
+    }
+    setIsImporting(true);
+    try {
+      const response = await fetch("/api/library/import-image", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ sessionId, url: trimmedUrl }),
+      });
+      const payload = (await response.json().catch(() => null)) as {
+        isOk: boolean;
+        message?: string;
+      } | null;
+      if (payload === null || !payload.isOk) {
+        toast.error("Couldn't import that image", {
+          description: payload?.message ?? "Something went wrong — please try again.",
+        });
+        return;
+      }
+      setKindFilter((current) => (current === "all" || current === "uploaded" ? current : "all"));
+      setImportUrlDraft("");
+      setIsImportPopoverOpen(false);
+      toast.success("Image imported to your library");
+    } catch {
+      toast.error("Couldn't import that image", {
+        description: "Something went wrong — please try again.",
+      });
+    } finally {
+      setIsImporting(false);
+    }
   };
 
   return (
@@ -158,20 +238,127 @@ export function LibraryPanel() {
           </DialogDescription>
         </DialogHeader>
 
-        <div className="flex flex-wrap items-center gap-1" role="group" aria-label="Filter by kind">
-          {FILTER_CHIPS.map((chip) => (
+        {/* One header row over the grid: kind filters on the left, Upload on
+            the right — the library's own way in for new images (same shared
+            upload path as the property panel, but a pure library add: no
+            block's src is touched). */}
+        <div className="flex flex-wrap items-center gap-1">
+          <div
+            className="flex flex-wrap items-center gap-1"
+            role="group"
+            aria-label="Filter by kind"
+          >
+            {FILTER_CHIPS.map((chip) => (
+              <Button
+                key={chip.value}
+                variant={kindFilter === chip.value ? "secondary" : "ghost"}
+                size="sm"
+                className="h-7 px-2.5 text-xs"
+                aria-pressed={kindFilter === chip.value}
+                onClick={() => setKindFilter(chip.value)}
+                data-testid={`library-filter-${chip.value}`}
+              >
+                {chip.label}
+              </Button>
+            ))}
+          </div>
+          <input
+            ref={uploadInputRef}
+            type="file"
+            accept="image/*"
+            multiple
+            aria-label="Choose image files to upload"
+            tabIndex={-1}
+            className="hidden"
+            data-testid="library-upload-file-input"
+            onChange={(event) => {
+              const files = Array.from(event.target.files ?? []);
+              // Allow re-selecting the same file(s) later.
+              event.target.value = "";
+              if (files.length > 0) {
+                void uploadFilesToLibrary(files);
+              }
+            }}
+          />
+          <div className="ml-auto flex items-center gap-1">
             <Button
-              key={chip.value}
-              variant={kindFilter === chip.value ? "secondary" : "ghost"}
+              variant="outline"
               size="sm"
-              className="h-7 px-2.5 text-xs"
-              aria-pressed={kindFilter === chip.value}
-              onClick={() => setKindFilter(chip.value)}
-              data-testid={`library-filter-${chip.value}`}
+              className="h-7 gap-1.5 px-2.5 text-xs"
+              disabled={isUploading}
+              aria-label="Upload image to your library"
+              data-testid="library-upload-button"
+              onClick={() => uploadInputRef.current?.click()}
             >
-              {chip.label}
+              {isUploading ? (
+                <Loader2 className="animate-spin" data-testid="library-upload-spinner" />
+              ) : (
+                <Upload />
+              )}
+              {isUploading ? "Uploading…" : "Upload image"}
             </Button>
-          ))}
+            <Popover open={isImportPopoverOpen} onOpenChange={setIsImportPopoverOpen}>
+              <PopoverTrigger
+                render={
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="h-7 gap-1.5 px-2.5 text-xs"
+                    aria-label="Import image from a URL"
+                  />
+                }
+                data-testid="library-import-url-button"
+              >
+                <LinkIcon />
+                From URL
+              </PopoverTrigger>
+              <PopoverContent
+                className="w-80 space-y-2"
+                align="end"
+                data-testid="library-import-url-popover"
+              >
+                <Label
+                  htmlFor="library-import-url-input"
+                  className="text-xs text-muted-foreground"
+                >
+                  Image URL
+                </Label>
+                <div className="flex gap-1.5">
+                  <Input
+                    id="library-import-url-input"
+                    value={importUrlDraft}
+                    placeholder="https://…"
+                    className="h-7 font-mono text-xs"
+                    aria-label="Image URL to import"
+                    onChange={(event) => setImportUrlDraft(event.target.value)}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter") {
+                        event.preventDefault();
+                        void importImageFromUrl();
+                      }
+                    }}
+                  />
+                  <Button
+                    size="sm"
+                    className="h-7 shrink-0"
+                    disabled={isImporting || importUrlDraft.trim() === ""}
+                    aria-label="Import this image into your library"
+                    data-testid="library-import-url-submit"
+                    onClick={() => void importImageFromUrl()}
+                  >
+                    {isImporting ? (
+                      <Loader2 className="animate-spin" data-testid="library-import-spinner" />
+                    ) : null}
+                    {isImporting ? "Importing…" : "Import"}
+                  </Button>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  We copy the image into your library, so it keeps working even if the original
+                  link goes away.
+                </p>
+              </PopoverContent>
+            </Popover>
+          </div>
         </div>
 
         <div className="max-h-[50vh] min-h-32 overflow-y-auto">

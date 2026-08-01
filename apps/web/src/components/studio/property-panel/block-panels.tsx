@@ -160,11 +160,7 @@ export function ImagePanel({ block }: { block: ImageBlock }) {
 
   return (
     <div className="space-y-4 p-4">
-      <ImageSourceField
-        src={properties.src}
-        helpText={helpFor("src")}
-        onCommitSrc={(src) => commit({ src })}
-      />
+      <ImageSourceField helpText={helpFor("src")} onCommitSrc={(src) => commit({ src })} />
       <GenerateImageField blockId={block.id} />
       <TextField
         label="Alt text"
