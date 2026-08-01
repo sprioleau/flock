@@ -1,6 +1,12 @@
 "use client";
 
-import { useState, type KeyboardEvent, type MouseEvent } from "react";
+import {
+  useLayoutEffect,
+  useRef,
+  useState,
+  type KeyboardEvent,
+  type MouseEvent,
+} from "react";
 import { useMutation, useQuery } from "convex/react";
 import { CheckIcon, PencilIcon, Trash2Icon } from "lucide-react";
 import type { Block, BlockId } from "@tandem/email-sdk";
@@ -18,6 +24,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { useEditorStore } from "@/lib/editor-store";
 import { buildInsertSavedSectionPlan } from "@/lib/saved-sections";
+import { cn } from "@/lib/utils";
 import { formatRelativeTime } from "../history/history-grouping";
 import { SavedSectionPreview } from "./SavedSectionPreview";
 import { scrollBlockIntoView } from "./scroll-block-into-view";
@@ -134,7 +141,7 @@ export function SavedSectionsManagerDialog({
 
   return (
     <Dialog open={isOpen} onOpenChange={handleOpenChange}>
-      <DialogContent className="sm:max-w-xl" data-testid="saved-sections-manager">
+      <DialogContent className="sm:max-w-2xl" data-testid="saved-sections-manager">
         <DialogHeader>
           <DialogTitle>Saved sections</DialogTitle>
           <DialogDescription>
@@ -148,25 +155,27 @@ export function SavedSectionsManagerDialog({
             Nothing saved yet — select a section on the canvas and click its bookmark button.
           </p>
         ) : (
-          <div className="flex max-h-[55vh] flex-col gap-2 overflow-y-auto pr-1">
-            {(savedSections ?? []).map((row) => (
-              <SavedSectionManagerRow
-                key={row._id}
-                row={row}
-                isSelected={selectedIds.includes(row._id)}
-                isRenaming={renamingId === row._id}
-                renameDraft={renameDraft}
-                onToggleSelected={() => toggleSelected(row._id)}
-                onStartRename={() => {
-                  setRenamingId(row._id);
-                  setRenameDraft(row.name);
-                }}
-                onRenameDraftChange={setRenameDraft}
-                onCommitRename={() => commitRename(row)}
-                onCancelRename={() => setRenamingId(null)}
-                onDelete={(event) => deleteRow(event, row)}
-              />
-            ))}
+          <div className="max-h-[60vh] overflow-y-auto pr-1">
+            <div className="grid grid-cols-2 gap-3 sm:grid-cols-3">
+              {(savedSections ?? []).map((row) => (
+                <SavedSectionManagerCard
+                  key={row._id}
+                  row={row}
+                  isSelected={selectedIds.includes(row._id)}
+                  isRenaming={renamingId === row._id}
+                  renameDraft={renameDraft}
+                  onToggleSelected={() => toggleSelected(row._id)}
+                  onStartRename={() => {
+                    setRenamingId(row._id);
+                    setRenameDraft(row.name);
+                  }}
+                  onRenameDraftChange={setRenameDraft}
+                  onCommitRename={() => commitRename(row)}
+                  onCancelRename={() => setRenamingId(null)}
+                  onDelete={(event) => deleteRow(event, row)}
+                />
+              ))}
+            </div>
           </div>
         )}
 
@@ -185,7 +194,15 @@ export function SavedSectionsManagerDialog({
   );
 }
 
-function SavedSectionManagerRow({
+/**
+ * One saved section as a uniform grid card: 1:1 muted preview square on top
+ * (contain-fit — see SquareSavedSectionPreview), then name (+ rename pencil),
+ * the usage meta line, and the clamped description. The checkbox and delete
+ * button overlay the square's corners so every card body lines up; clicking
+ * the square itself also toggles selection (the checkbox stays the
+ * accessible control and the visible state).
+ */
+function SavedSectionManagerCard({
   row,
   isSelected,
   isRenaming,
@@ -227,21 +244,34 @@ function SavedSectionManagerRow({
 
   return (
     <div
-      className="flex items-start gap-3 rounded-md border p-2.5"
+      className={cn(
+        "flex flex-col overflow-hidden rounded-lg border transition-colors",
+        isSelected && "border-primary ring-1 ring-primary",
+      )}
       data-testid={`saved-section-row-${row._id}`}
     >
-      <input
-        type="checkbox"
-        checked={isSelected}
-        onChange={onToggleSelected}
-        aria-label={`Select saved section ${row.name}`}
-        className="mt-1 size-4 shrink-0 cursor-pointer accent-primary"
-        data-testid={`saved-section-checkbox-${row._id}`}
-      />
-      <div className="w-36 shrink-0 overflow-hidden rounded border bg-background">
-        <SavedSectionPreview blocks={row.blocks as Block[]} />
+      <div className="relative cursor-pointer" onClick={onToggleSelected}>
+        <SquareSavedSectionPreview blocks={row.blocks as Block[]} />
+        <input
+          type="checkbox"
+          checked={isSelected}
+          onChange={onToggleSelected}
+          onClick={(event) => event.stopPropagation()}
+          aria-label={`Select saved section ${row.name}`}
+          className="absolute top-2 left-2 z-10 size-4 cursor-pointer accent-primary"
+          data-testid={`saved-section-checkbox-${row._id}`}
+        />
+        <Button
+          variant="ghost"
+          size="icon-sm"
+          aria-label={`Delete saved section ${row.name}`}
+          className="absolute top-1 right-1 z-10 bg-background/70 text-destructive backdrop-blur-sm hover:text-destructive"
+          onClick={onDelete}
+        >
+          <Trash2Icon />
+        </Button>
       </div>
-      <div className="min-w-0 flex-1">
+      <div className="flex min-w-0 flex-1 flex-col gap-0.5 border-t p-2.5">
         {isRenaming ? (
           <div className="flex items-center gap-1">
             <Input
@@ -268,7 +298,9 @@ function SavedSectionManagerRow({
           </div>
         ) : (
           <div className="flex items-center gap-1">
-            <span className="truncate text-sm font-medium">{row.name}</span>
+            <span className="truncate text-sm font-medium" title={row.name}>
+              {row.name}
+            </span>
             <Button
               variant="ghost"
               size="icon-sm"
@@ -280,20 +312,130 @@ function SavedSectionManagerRow({
             </Button>
           </div>
         )}
-        <p className="text-xs text-muted-foreground">{usageMeta}</p>
-        {row.useWhen !== undefined && (
-          <p className="mt-1 line-clamp-2 text-xs text-muted-foreground/80">{row.useWhen}</p>
-        )}
+        <p className="truncate text-xs text-muted-foreground" title={usageMeta}>
+          {usageMeta}
+        </p>
+        {row.useWhen !== undefined && <ClampedDescription text={row.useWhen} />}
       </div>
-      <Button
-        variant="ghost"
-        size="icon-sm"
-        aria-label={`Delete saved section ${row.name}`}
-        className="shrink-0 text-destructive hover:text-destructive"
-        onClick={onDelete}
+    </div>
+  );
+}
+
+/**
+ * Natural layout width the preview composes at inside the square (matches
+ * ReadOnlyEmailPreview's PREVIEW_LAYOUT_WIDTH_PX, so its internal fit-zoom
+ * resolves to exactly 1 and never scales).
+ */
+const SQUARE_PREVIEW_NATURAL_WIDTH_PX = 640;
+
+/**
+ * The card's 1:1 preview square: a muted stage with the themed section
+ * miniature contain-fit inside — taller-than-wide sections touch the top
+ * and bottom edges, wider-than-tall ones touch the left and right edges.
+ *
+ * Contain-fit is a `transform: scale()` — NOT conditional width/height
+ * styling. The miniature renders at its natural 640px layout width (flex
+ * centering keeps its center on the square's center), and one scale factor
+ * min(square/naturalWidth, square/naturalHeight) shrinks it into view.
+ * Because transforms never affect layout, the measured inputs (the square's
+ * size from the grid, the content's natural offset size) are independent of
+ * the applied style — no measure→style→measure feedback, no flicker. (An
+ * earlier version sized the zoomed wrapper from its own rect, which raced
+ * the preview's fit-zoom observer and oscillated.)
+ */
+function SquareSavedSectionPreview({ blocks }: { blocks: Block[] }) {
+  const squareRef = useRef<HTMLDivElement | null>(null);
+  const contentRef = useRef<HTMLDivElement | null>(null);
+  const [squareSizePx, setSquareSizePx] = useState<number | null>(null);
+  const [naturalHeightPx, setNaturalHeightPx] = useState<number | null>(null);
+
+  // useLayoutEffect: measure before paint so the first frame never flashes
+  // an unscaled 640px-wide miniature. offset sizes are layout units — the
+  // transform applied below does not change them.
+  useLayoutEffect(() => {
+    const square = squareRef.current;
+    const content = contentRef.current;
+    if (square === null || content === null) {
+      return;
+    }
+    const measure = (): void => {
+      if (square.offsetWidth > 0) {
+        setSquareSizePx(square.offsetWidth);
+      }
+      if (content.offsetHeight > 0) {
+        setNaturalHeightPx(content.offsetHeight);
+      }
+    };
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(square);
+    observer.observe(content);
+    return () => observer.disconnect();
+  }, []);
+
+  const scale =
+    squareSizePx !== null && naturalHeightPx !== null
+      ? Math.min(
+          squareSizePx / SQUARE_PREVIEW_NATURAL_WIDTH_PX,
+          squareSizePx / naturalHeightPx,
+        )
+      : null;
+
+  return (
+    <div
+      ref={squareRef}
+      className="flex aspect-square items-center justify-center overflow-hidden bg-muted"
+      data-testid="saved-section-preview-square"
+    >
+      <div
+        ref={contentRef}
+        className={cn("shrink-0 origin-center", scale === null && "invisible")}
+        style={{
+          width: SQUARE_PREVIEW_NATURAL_WIDTH_PX,
+          ...(scale === null ? {} : { transform: `scale(${scale})` }),
+        }}
       >
-        <Trash2Icon />
-      </Button>
+        <SavedSectionPreview blocks={blocks} />
+      </div>
+    </div>
+  );
+}
+
+/**
+ * The per-card description, clamped to two lines with a "More" affordance
+ * only when the text actually overflows; "Less" folds it back. Expansion
+ * grows the card (its grid row stretches) — simple and predictable.
+ */
+function ClampedDescription({ text }: { text: string }) {
+  const [isExpanded, setIsExpanded] = useState(false);
+  const [isOverflowing, setIsOverflowing] = useState(false);
+  const textRef = useRef<HTMLParagraphElement | null>(null);
+
+  useLayoutEffect(() => {
+    const element = textRef.current;
+    if (element === null || isExpanded) {
+      return;
+    }
+    setIsOverflowing(element.scrollHeight > element.clientHeight + 1);
+  }, [text, isExpanded]);
+
+  return (
+    <div className="mt-0.5">
+      <p
+        ref={textRef}
+        className={cn("text-xs text-muted-foreground/80", !isExpanded && "line-clamp-2")}
+      >
+        {text}
+      </p>
+      {(isOverflowing || isExpanded) && (
+        <button
+          type="button"
+          onClick={() => setIsExpanded((wasExpanded) => !wasExpanded)}
+          className="cursor-pointer text-[11px] font-medium text-muted-foreground underline-offset-2 hover:text-foreground hover:underline focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+        >
+          {isExpanded ? "Less" : "More"}
+        </button>
+      )}
     </div>
   );
 }

@@ -1,7 +1,7 @@
 "use client";
 
 import { useState } from "react";
-import { ArrowUpRightIcon, ChevronLeftIcon, LayoutGridIcon } from "lucide-react";
+import { ArrowUpRightIcon, BookmarkIcon, ChevronLeftIcon, LayoutGridIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
@@ -12,14 +12,15 @@ import {
   type PaletteItem,
 } from "./palette-items";
 import { PaletteTile } from "./PaletteTile";
-import { SavedSectionsGroup } from "./SavedSectionsGroup";
+import { SavedSectionsManagerDialog } from "./SavedSectionsManagerDialog";
 import { SectionTemplatePreview } from "./SectionTemplatePreview";
 import { useClickToAdd } from "./use-click-to-add";
 
 /**
  * The Blocks tab of the right rail: the full add-blocks palette — Content and
- * Layout block tiles, then a two-entry Sections area (progressive
- * disclosure): "Empty section" and "Section gallery". The gallery entry
+ * Layout block tiles, then a three-entry Sections area (progressive
+ * disclosure): "Empty section", "Section gallery", and "Saved" (the
+ * session's saved reusable sections, managed in a modal). The gallery entry
  * drills into a second view of the panel (back affordance up top) listing
  * every catalog template by category — each tile draggable AND
  * click-to-add, exactly like every other palette item. A preview toggle
@@ -34,6 +35,7 @@ export function AddBlocksPanel() {
   const [isGalleryOpen, setIsGalleryOpen] = useState(false);
   // Lifted above the gallery view so the choice survives drilling in and out.
   const [isPreviewModeOn, setIsPreviewModeOn] = useState(false);
+  const [isSavedSectionsOpen, setIsSavedSectionsOpen] = useState(false);
 
   if (isGalleryOpen) {
     return (
@@ -93,10 +95,35 @@ export function AddBlocksPanel() {
               aria-hidden
             />
           </button>
+          {/* Saved sections live behind a card like the gallery (owner ask):
+              same tile styling + corner arrow (reveals more UI, not
+              draggable). Opens the saved-sections manager modal. */}
+          <button
+            type="button"
+            onClick={() => setIsSavedSectionsOpen(true)}
+            title="Reuse sections you saved from any draft."
+            className={cn(
+              // min-height matches PaletteTile so the Sections row stays even.
+              "relative flex min-h-[3.75rem] cursor-pointer flex-col items-center justify-center gap-1.5 rounded-md border bg-background p-3 text-center transition-colors",
+              "hover:border-ring/60 hover:bg-muted/60",
+              "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+            )}
+            data-testid="open-saved-sections-manager"
+          >
+            <BookmarkIcon className="size-4 shrink-0 text-muted-foreground" aria-hidden />
+            <span className="line-clamp-1 max-w-full text-xs font-medium leading-tight text-foreground">
+              Saved
+            </span>
+            <ArrowUpRightIcon
+              className="absolute top-1 right-1 size-3 text-muted-foreground/70"
+              aria-hidden
+            />
+          </button>
         </div>
-        {/* The session's saved reusable sections (hidden until one exists);
-            "Manage…" opens the saved-sections manager modal. */}
-        <SavedSectionsGroup />
+        <SavedSectionsManagerDialog
+          isOpen={isSavedSectionsOpen}
+          onOpenChange={setIsSavedSectionsOpen}
+        />
       </section>
     </div>
   );

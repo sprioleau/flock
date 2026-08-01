@@ -10,11 +10,13 @@ import {
   BookmarkIcon,
   CopyIcon,
   GripVerticalIcon,
+  LoaderCircleIcon,
   Trash2Icon,
 } from "lucide-react";
 import type { BlockId } from "@tandem/email-sdk";
 import { api } from "@convex/_generated/api";
 import { Button } from "@/components/ui/button";
+import { toast } from "@/components/ui/toast";
 import { buildDuplicateBlockOperation } from "@/lib/duplicate-block";
 import { useEditorStore } from "@/lib/editor-store";
 import { collectSectionSubtree, seedNameFromSectionSubtree } from "@/lib/saved-sections";
@@ -47,9 +49,9 @@ export interface BlockActionRowProps {
  *
  * Save (sections only): bookmarks the section's subtree VERBATIM into the
  * session's saved-sections list (convex/savedSections.ts — the asset-library
- * scoping), reusable from the Blocks palette's Saved group. Not a document
- * op — nothing on the history spine changes; the icon flips to a check as
- * inline confirmation.
+ * scoping), reusable from the Blocks palette's Saved card. Not a document
+ * op — nothing on the history spine changes; the icon spins while the save
+ * is in flight, flips to a check, and a toast confirms it.
  */
 export function BlockActionRow({
   blockId,
@@ -61,8 +63,11 @@ export function BlockActionRow({
   const dispatch = useEditorStore((state) => state.dispatch);
   const sessionId = useEditorStore((state) => state.authorId);
   const saveSavedSection = useMutation(api.savedSections.save);
-  // Inline save confirmation: the bookmark flips to a check briefly; clicking
-  // the check answers "where did it go?" by opening the manager modal.
+  // Instant save feedback: the bookmark becomes a spinner the moment the
+  // click lands (never an unacknowledged click), then flips to a check
+  // briefly; clicking the check answers "where did it go?" by opening the
+  // manager modal. A toast confirms the save (or reports a failure).
+  const [isSaving, setIsSaving] = useState(false);
   const [isJustSaved, setIsJustSaved] = useState(false);
   const [isManagerOpen, setIsManagerOpen] = useState(false);
 
@@ -102,7 +107,7 @@ export function BlockActionRow({
   const isSaveableSection = block.type === "section";
 
   const saveSection = (): void => {
-    if (sessionId === null) {
+    if (sessionId === null || isSaving) {
       return;
     }
     if (isJustSaved) {
@@ -114,24 +119,35 @@ export function BlockActionRow({
     if (subtreeBlocks === null) {
       return;
     }
+    setIsSaving(true); // spinner NOW — before any async work.
     const seededName = seedNameFromSectionSubtree(subtreeBlocks);
     void saveSavedSection({
       sessionId,
       ...(seededName.length === 0 ? {} : { name: seededName }),
       blocks: subtreeBlocks,
-    }).then(({ savedSectionId }) => {
-      setIsJustSaved(true);
-      window.setTimeout(() => setIsJustSaved(false), 2000);
-      // ASYNC enrichment (fails-soft): a small LLM call authors the row's
-      // useWhen/description for the compose agent. Fire-and-forget — the
-      // save UX never waits, and any failure just leaves the row unenriched.
-      void fetch("/api/saved-sections/enrich", {
-        method: "POST",
-        headers: { "content-type": "application/json" },
-        body: JSON.stringify({ savedSectionId }),
-        keepalive: true,
-      }).catch(() => {});
-    });
+    })
+      .then(({ savedSectionId }) => {
+        setIsJustSaved(true);
+        toast.success("Section saved");
+        window.setTimeout(() => setIsJustSaved(false), 2000);
+        // ASYNC enrichment (fails-soft): a small LLM call authors the row's
+        // useWhen/description for the compose agent. Fire-and-forget — the
+        // save UX never waits, and any failure just leaves the row unenriched.
+        void fetch("/api/saved-sections/enrich", {
+          method: "POST",
+          headers: { "content-type": "application/json" },
+          body: JSON.stringify({ savedSectionId }),
+          keepalive: true,
+        }).catch(() => {});
+      })
+      .catch(() => {
+        toast.error("Couldn't save the section", {
+          description: "Something went wrong. Please try again.",
+        });
+      })
+      .finally(() => {
+        setIsSaving(false);
+      });
   };
 
   return (
@@ -188,12 +204,22 @@ export function BlockActionRow({
             variant="ghost"
             size="icon-sm"
             aria-label={
-              isJustSaved ? "Section saved — open saved sections" : "Save section for reuse"
+              isSaving
+                ? "Saving section…"
+                : isJustSaved
+                  ? "Section saved — open saved sections"
+                  : "Save section for reuse"
             }
             data-testid={`save-section-${blockId}`}
             onClick={stopThen(saveSection)}
           >
-            {isJustSaved ? <BookmarkCheckIcon className="text-primary" /> : <BookmarkIcon />}
+            {isSaving ? (
+              <LoaderCircleIcon className="animate-spin" data-testid="save-section-spinner" />
+            ) : isJustSaved ? (
+              <BookmarkCheckIcon className="text-primary" />
+            ) : (
+              <BookmarkIcon />
+            )}
           </Button>
           <SavedSectionsManagerDialog isOpen={isManagerOpen} onOpenChange={setIsManagerOpen} />
         </>
