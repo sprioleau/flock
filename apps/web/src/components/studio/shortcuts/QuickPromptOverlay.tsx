@@ -2,10 +2,11 @@
 
 import { useState } from "react";
 import { createPortal } from "react-dom";
-import { CornerDownLeftIcon } from "lucide-react";
+import { CornerDownLeftIcon, MicIcon } from "lucide-react";
 import { Kbd } from "@/components/ui/kbd";
 import { cn } from "@/lib/utils";
 import { sendPromptThroughComposer } from "../chat/composer-handoff";
+import { useSpeechInput } from "../chat/use-speech-input";
 
 /**
  * The slash-summon quick prompt (the Resend-style UX): "/" anywhere outside a
@@ -34,6 +35,13 @@ export function QuickPromptOverlay({
 function QuickPromptCard({ onClose }: { onClose: () => void }) {
   const [promptText, setPromptText] = useState("");
 
+  // Voice input (Web Speech API, feature-detected): dictation streams into
+  // the prompt text, appended and editable — submitting stays a deliberate
+  // Enter press, never automatic. The card unmounting (close/submit) aborts
+  // any in-flight recording via the hook's cleanup.
+  const { isSpeechSupported, isListening, speechErrorMessage, stopListening, toggleListening } =
+    useSpeechInput({ onTranscriptChange: setPromptText });
+
   const submitPrompt = (): void => {
     const trimmedText = promptText.trim();
     if (trimmedText.length === 0) {
@@ -49,7 +57,13 @@ function QuickPromptCard({ onClose }: { onClose: () => void }) {
       submitPrompt();
     } else if (event.key === "Escape") {
       event.preventDefault();
-      onClose();
+      // First Escape ends the recording (keeping the text); the next one
+      // dismisses the card, matching "Escape stops listening" everywhere.
+      if (isListening) {
+        stopListening();
+      } else {
+        onClose();
+      }
     }
   };
 
@@ -74,20 +88,52 @@ function QuickPromptCard({ onClose }: { onClose: () => void }) {
           "animate-in fade-in-0 zoom-in-95 duration-100",
         )}
       >
-        <input
-          // A summoned prompt exists to be typed into — focus is the point.
-          autoFocus
-          type="text"
-          value={promptText}
-          onChange={(event) => setPromptText(event.target.value)}
-          onKeyDown={handleKeyDown}
-          placeholder="Ask Tandem to change your email…"
-          aria-label="Quick prompt"
-          className="w-full bg-transparent px-4 py-3.5 text-base text-foreground outline-none placeholder:text-muted-foreground"
-          data-testid="quick-prompt-input"
-        />
+        <div className="flex items-center">
+          <input
+            // A summoned prompt exists to be typed into — focus is the point.
+            autoFocus
+            type="text"
+            value={promptText}
+            onChange={(event) => setPromptText(event.target.value)}
+            onKeyDown={handleKeyDown}
+            placeholder={isListening ? "Listening…" : "Ask Tandem to change your email…"}
+            aria-label="Quick prompt"
+            className="w-full min-w-0 flex-1 bg-transparent px-4 py-3.5 text-base text-foreground outline-none placeholder:text-muted-foreground"
+            data-testid="quick-prompt-input"
+          />
+          {isSpeechSupported && (
+            <button
+              type="button"
+              aria-label={isListening ? "Stop voice input" : "Start voice input"}
+              aria-pressed={isListening}
+              data-testid="quick-prompt-mic-button"
+              onClick={() => toggleListening(promptText)}
+              className={cn(
+                "mr-2 cursor-pointer rounded-md p-2 text-muted-foreground hover:bg-muted hover:text-foreground",
+                isListening && "text-destructive hover:text-destructive",
+              )}
+            >
+              <MicIcon className={cn("size-4", isListening && "animate-pulse")} />
+            </button>
+          )}
+        </div>
         <div className="flex items-center justify-between border-t px-4 py-2 text-xs text-muted-foreground">
-          <span>Sends to the chat</span>
+          {speechErrorMessage !== null ? (
+            <span className="text-destructive" data-testid="quick-prompt-speech-error">
+              {speechErrorMessage}
+            </span>
+          ) : isListening ? (
+            <span
+              className="inline-flex items-center gap-1 font-medium text-destructive"
+              data-testid="quick-prompt-listening-indicator"
+              role="status"
+            >
+              <span className="size-1.5 animate-pulse rounded-full bg-destructive" />
+              Listening…
+            </span>
+          ) : (
+            <span>Sends to the chat</span>
+          )}
           <span className="flex items-center gap-2">
             <span className="flex items-center gap-1">
               <Kbd>

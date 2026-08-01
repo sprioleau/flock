@@ -1,9 +1,10 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
+import { useCallback, useEffect, useRef, useState, useSyncExternalStore } from "react";
 import {
   createSpeechInputController,
   getSpeechRecognitionConstructor,
+  type SpeechInputController,
 } from "./speech-input-controller";
 
 /**
@@ -56,46 +57,50 @@ export function useSpeechInput({
     onTranscriptChangeRef.current = onTranscriptChange;
   });
 
-  const controller = useMemo(
-    () =>
-      createSpeechInputController({
-        createRecognition: () => {
-          const RecognitionConstructor = getSpeechRecognitionConstructor();
-          return RecognitionConstructor === null ? null : new RecognitionConstructor();
-        },
-        onTranscriptChange: (text) => onTranscriptChangeRef.current(text),
-        onListeningChange: setIsListening,
-        onError: setSpeechErrorMessage,
-      }),
-    [],
-  );
+  // The controller is created LAZILY on first use (event-handler time, never
+  // during render — the react-hooks/refs rule forbids render-time ref reads)
+  // and lives for the component's lifetime.
+  const controllerRef = useRef<SpeechInputController | null>(null);
+  const getController = useCallback((): SpeechInputController => {
+    controllerRef.current ??= createSpeechInputController({
+      createRecognition: () => {
+        const RecognitionConstructor = getSpeechRecognitionConstructor();
+        return RecognitionConstructor === null ? null : new RecognitionConstructor();
+      },
+      onTranscriptChange: (text) => onTranscriptChangeRef.current(text),
+      onListeningChange: setIsListening,
+      onError: setSpeechErrorMessage,
+    });
+    return controllerRef.current;
+  }, []);
 
   // Abort (not stop) on unmount: no state updates on an unmounted owner.
   useEffect(() => {
-    return () => controller.abort();
-  }, [controller]);
+    return () => controllerRef.current?.abort();
+  }, []);
 
   const startListening = useCallback(
     (baseText: string): void => {
       setSpeechErrorMessage(null);
-      controller.start(baseText);
+      getController().start(baseText);
     },
-    [controller],
+    [getController],
   );
 
   const stopListening = useCallback((): void => {
-    controller.stop();
-  }, [controller]);
+    getController().stop();
+  }, [getController]);
 
   const toggleListening = useCallback(
     (baseText: string): void => {
+      const controller = getController();
       if (controller.getIsListening()) {
         controller.stop();
       } else {
         startListening(baseText);
       }
     },
-    [controller, startListening],
+    [getController, startListening],
   );
 
   return {
