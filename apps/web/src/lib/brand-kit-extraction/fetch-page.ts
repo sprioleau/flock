@@ -111,9 +111,11 @@ type GuardedFetchResult = GuardedFetchOk | FetchPageFailure;
 async function guardedFetch({
   url,
   deadlineAtMs,
+  method = "GET",
 }: {
   url: string;
   deadlineAtMs: number;
+  method?: "GET" | "HEAD";
 }): Promise<GuardedFetchResult> {
   let currentUrl = url;
   for (let hop = 0; hop <= MAX_REDIRECTS; hop += 1) {
@@ -137,6 +139,7 @@ async function guardedFetch({
     let response: Response;
     try {
       response = await fetch(guardResult.url, {
+        method,
         redirect: "manual",
         signal: AbortSignal.timeout(remainingMs),
         headers: {
@@ -264,6 +267,43 @@ export async function fetchBinaryResource({
   }
   const contentType = (response.headers.get("content-type") ?? "").split(";")[0].trim().toLowerCase();
   return { isOk: true, bytes, contentType };
+}
+
+export type AssetProbeMethod = "GET" | "HEAD";
+
+export type AssetProbeResult =
+  | { isOk: true; status: number; contentType: string }
+  | FetchPageFailure;
+
+/**
+ * Probe an asset URL through the same SSRF rails WITHOUT downloading the
+ * body — status + normalized content-type only (the body stream is cancelled
+ * unread). The method is caller-chosen: verify-image-url.ts tries HEAD first
+ * and falls back to GET because some CDNs reject HEAD outright.
+ *
+ * Unlike the page/binary fetchers, a non-2xx status is NOT mapped to a
+ * failure here — the status code itself is the answer the caller wants.
+ */
+export async function probeAssetUrl({
+  url,
+  method,
+  timeoutMs,
+}: {
+  url: string;
+  method: AssetProbeMethod;
+  timeoutMs: number;
+}): Promise<AssetProbeResult> {
+  const fetchResult = await guardedFetch({ url, deadlineAtMs: Date.now() + timeoutMs, method });
+  if (!fetchResult.isOk) {
+    return fetchResult;
+  }
+  const { response } = fetchResult;
+  const contentType = (response.headers.get("content-type") ?? "")
+    .split(";")[0]
+    .trim()
+    .toLowerCase();
+  await response.body?.cancel().catch(() => undefined);
+  return { isOk: true, status: response.status, contentType };
 }
 
 /**

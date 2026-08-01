@@ -30,6 +30,7 @@ import { extractSiteIdentity } from "./extract-site-identity";
 import { fetchPage, fetchTextResource } from "./fetch-page";
 import { harvestBrandSignals, type BrandSignals } from "./harvest";
 import { normalizeWebsiteUrl } from "./url-guard";
+import { pickFirstRenderableImageUrl } from "./verify-image-url";
 
 export type BrandKitGenerationResult =
   | { isOk: true; brandKit: BrandKit }
@@ -273,18 +274,26 @@ export async function generateBrandKit({ url }: { url: string }): Promise<BrandK
 
   // Logo: the deterministic head-first extraction wins; the model's pick is
   // only a fallback, and even then only a verbatim harvested candidate
-  // survives (never invented).
-  const candidateUrls = new Set(signals.logoCandidates.map((candidate) => candidate.url));
-  const logoUrl =
-    identity.logoUrl ?? (candidateUrls.has(modelOutput.logoUrl) ? modelOutput.logoUrl : undefined);
+  // survives (never invented). Every suggested asset URL must then PROVE it
+  // renders (2xx + image content-type, HEAD-then-GET probe) before it goes
+  // to the client — a dead og:image / logo URL becomes an absent field, never
+  // a broken tile, while the rest of the kit still ships (owner directive).
+  const harvestedCandidateUrls = new Set(signals.logoCandidates.map((candidate) => candidate.url));
+  const modelLogoUrl = harvestedCandidateUrls.has(modelOutput.logoUrl)
+    ? modelOutput.logoUrl
+    : null;
+  const [logoUrl, socialImageUrl] = await Promise.all([
+    pickFirstRenderableImageUrl({ candidateUrls: [identity.logoUrl, modelLogoUrl] }),
+    pickFirstRenderableImageUrl({ candidateUrls: [identity.socialImageUrl] }),
+  ]);
 
   const brandKit: BrandKit = {
     sourceUrl: page.finalUrl,
     // Deterministically extracted company name takes precedence.
     name: identity.siteName ?? modelOutput.brandName,
     fonts,
-    ...(logoUrl === undefined || logoUrl === null ? {} : { logoUrl }),
-    ...(identity.socialImageUrl === null ? {} : { socialImageUrl: identity.socialImageUrl }),
+    ...(logoUrl === null ? {} : { logoUrl }),
+    ...(socialImageUrl === null ? {} : { socialImageUrl }),
     ...(identity.socialLinks.length > 0 ? { socialLinks: identity.socialLinks } : {}),
     variations: dedupeVariationIds(expandedVariations),
   };
