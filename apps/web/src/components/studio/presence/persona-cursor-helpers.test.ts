@@ -1,8 +1,11 @@
 import { describe, expect, it } from "vitest";
+import { FINDING_CARD_REVEAL_MS, FINDING_DWELL_MS } from "@/lib/personas/finding-presentation";
 import {
   buildFindingHoverAnchor,
   buildReadingLaneX,
   extractPersonaSlugFromPresenceUserId,
+  getMsUntilPresentationPhaseChange,
+  getPresentationPhase,
   getPresentationRemainingMs,
   PRESENTATION_WINDOW_MS,
 } from "./persona-cursor-helpers";
@@ -121,5 +124,98 @@ describe("getPresentationRemainingMs", () => {
         nowMs: CREATED_AT_MS,
       }),
     ).toBe(PRESENTATION_WINDOW_MS);
+  });
+});
+
+describe("getPresentationPhase — the wander → dwell → select → post contract", () => {
+  const CREATED_AT_MS = 1_700_000_000_000;
+
+  it("opens in the dwell beat the instant the finding lands", () => {
+    expect(
+      getPresentationPhase({ findingCreatedAtMs: CREATED_AT_MS, nowMs: CREATED_AT_MS }),
+    ).toBe("dwell");
+  });
+
+  it("dwells for FINDING_DWELL_MS, then flips to select", () => {
+    expect(
+      getPresentationPhase({
+        findingCreatedAtMs: CREATED_AT_MS,
+        nowMs: CREATED_AT_MS + FINDING_DWELL_MS - 1,
+      }),
+    ).toBe("dwell");
+    expect(
+      getPresentationPhase({
+        findingCreatedAtMs: CREATED_AT_MS,
+        nowMs: CREATED_AT_MS + FINDING_DWELL_MS,
+      }),
+    ).toBe("select");
+  });
+
+  it("closes when the presentation window passes", () => {
+    expect(
+      getPresentationPhase({
+        findingCreatedAtMs: CREATED_AT_MS,
+        nowMs: CREATED_AT_MS + PRESENTATION_WINDOW_MS,
+      }),
+    ).toBe("closed");
+  });
+
+  it("treats no finding (createdAtMs 0) as closed", () => {
+    expect(getPresentationPhase({ findingCreatedAtMs: 0, nowMs: CREATED_AT_MS })).toBe("closed");
+  });
+
+  it("reads a future-stamped finding (clock skew) as the dwell beat", () => {
+    expect(
+      getPresentationPhase({
+        findingCreatedAtMs: CREATED_AT_MS + 120_000,
+        nowMs: CREATED_AT_MS,
+      }),
+    ).toBe("dwell");
+  });
+
+  it("orders the beats: the card posts only after the select beat began", () => {
+    // The cross-module invariant the flow depends on: at the card's reveal
+    // instant the cursor is already in its select pose.
+    expect(FINDING_CARD_REVEAL_MS).toBeGreaterThanOrEqual(FINDING_DWELL_MS);
+    expect(
+      getPresentationPhase({
+        findingCreatedAtMs: CREATED_AT_MS,
+        nowMs: CREATED_AT_MS + FINDING_CARD_REVEAL_MS,
+      }),
+    ).toBe("select");
+  });
+});
+
+describe("getMsUntilPresentationPhaseChange", () => {
+  const CREATED_AT_MS = 1_700_000_000_000;
+
+  it("points a dwelling finding at the dwell → select boundary", () => {
+    expect(
+      getMsUntilPresentationPhaseChange({
+        findingCreatedAtMs: CREATED_AT_MS,
+        nowMs: CREATED_AT_MS + 1_000,
+      }),
+    ).toBe(FINDING_DWELL_MS - 1_000);
+  });
+
+  it("points a selecting finding at the window close", () => {
+    expect(
+      getMsUntilPresentationPhaseChange({
+        findingCreatedAtMs: CREATED_AT_MS,
+        nowMs: CREATED_AT_MS + FINDING_DWELL_MS,
+      }),
+    ).toBe(PRESENTATION_WINDOW_MS - FINDING_DWELL_MS);
+  });
+
+  it("returns null once closed — no timer to arm", () => {
+    expect(
+      getMsUntilPresentationPhaseChange({
+        findingCreatedAtMs: CREATED_AT_MS,
+        nowMs: CREATED_AT_MS + PRESENTATION_WINDOW_MS + 1,
+      }),
+    ).toBeNull();
+    expect(
+      getMsUntilPresentationPhaseChange({ findingCreatedAtMs: 0, nowMs: CREATED_AT_MS }),
+    ).toBeNull();
   });
 });

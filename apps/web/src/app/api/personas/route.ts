@@ -5,6 +5,7 @@ import {
 } from "@tandem/agent";
 import {
   applyOperations,
+  ROOT_BLOCK_ID,
   updateBlockPropertiesOperationSchema,
   type EmailDocument,
   type Operation,
@@ -14,6 +15,7 @@ import { ConvexHttpClient } from "convex/browser";
 import type { FunctionReturnType } from "convex/server";
 import { z } from "zod";
 import { api } from "@convex/_generated/api";
+import { MOCK_MODEL_HEADER } from "@/lib/chat-contract";
 import { stableStringify } from "@/lib/suggestions/serialize-block";
 import { proposedEditSchema, runnerOutputSchema, truncateFindingProse } from "./finding-schema";
 
@@ -39,7 +41,10 @@ import { proposedEditSchema, runnerOutputSchema, truncateFindingProse } from "./
  * Budget discipline (§5.1): per-persona cooldowns gate client-side; this
  * route adds a per-document minimum interval and an outline-unchanged skip
  * as server backstops, plus a `tandem.personas.request` JSON log line so
- * tokens-per-run stay observable.
+ * tokens-per-run stay observable. Requests carrying `x-tandem-mock: 1` (or
+ * any request when GOOGLE_GENERATIVE_AI_API_KEY is absent — the chat route's
+ * exact convention) skip the Gemini call for a deterministic mock findings
+ * set; everything else in the pipeline stays real.
  *
  * PERSISTENCE (multi-agent v1): surviving findings are RECORDED in the
  * `personaFindings` table (convex/personaFindings.ts) rather than consumed
@@ -72,6 +77,19 @@ const MIN_RUN_INTERVAL_MS = 20_000;
 /** Brief visible "reading" beat before the call — presentation smoothing only
  * (§3.5: the one theatrical liberty; the statuses themselves are real). */
 const READING_BEAT_MS = 800;
+
+/**
+ * Per-persona random stagger on the reading/thinking transition writes
+ * (owner feedback 2026-07-31: personas must not flip states in lockstep —
+ * the same de-synchronization ask as the client-side walk randomization,
+ * applied to the phase EDGES, and server-driven so every collaborator sees
+ * the same offsets). Presentation smoothing only; adds ≤ ~1s to a run.
+ */
+const READING_STAGGER_MAX_MS = 900;
+const THINKING_STAGGER_MAX_MS = 600;
+
+/** Visible "thinking" beat for mock runs (no real model latency to show). */
+const MOCK_THINKING_BEAT_MS = 1_400;
 
 const requestBodySchema = z.object({
   documentId: z.string().min(1),
@@ -225,6 +243,47 @@ function composeFindingOps({
 
 const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
 
+/**
+ * Deterministic mock findings for `x-tandem-mock: 1` runs (the chat route's
+ * exact convention — CI/dev never need a key or quota) and the automatic
+ * no-key fallback. One informational finding per persona, each targeting a
+ * DIFFERENT leaf block, so the presence choreography (walk → dwell → select
+ * → card) is exercised end-to-end without a model call. Real runs are
+ * untouched — this path exists only behind the explicit header / absent key.
+ */
+function buildMockRunnerOutput({
+  doc,
+  personas,
+}: {
+  doc: EmailDocument;
+  personas: PersonaRow[];
+}): z.infer<typeof runnerOutputSchema> {
+  const leafBlockIds = Object.entries(
+    doc as Record<string, { childrenIds?: string[] } | undefined>,
+  )
+    .filter(
+      ([blockId, block]) =>
+        blockId !== ROOT_BLOCK_ID && (block?.childrenIds === undefined || block.childrenIds.length === 0),
+    )
+    .map(([blockId]) => blockId);
+  if (leafBlockIds.length === 0) {
+    return { findings: [] };
+  }
+  const stride = Math.max(1, Math.floor(leafBlockIds.length / personas.length));
+  return {
+    findings: personas.map((persona, personaIndex) => ({
+      personaSlug: persona.slug,
+      title: `Mock note from ${persona.name}`,
+      description:
+        "Deterministic mock finding (x-tandem-mock / no model key) — exercises the persona presence choreography without a Gemini call.",
+      targetBlockNames: [`mock target ${personaIndex + 1}`],
+      targetBlockIds: [
+        leafBlockIds[(personaIndex * stride + 1) % leafBlockIds.length] ?? leafBlockIds[0]!,
+      ],
+    })),
+  };
+}
+
 type OpenFindingRow = FunctionReturnType<typeof api.personaFindings.listOpenFindings>[number];
 
 /** Dismissal identity — MUST match the client's buildPatternKey (use-persona-advisors.ts). */
@@ -338,22 +397,33 @@ export async function POST(request: Request) {
   runState.isRunInFlight = true;
   runState.lastRunStartedAtMs = now;
 
-  const setStatusForAll = async (status: "idle" | "reading" | "thinking"): Promise<void> => {
+  const setStatusForAll = async (
+    status: "idle" | "reading" | "thinking",
+    { staggerMaxMs = 0 }: { staggerMaxMs?: number } = {},
+  ): Promise<void> => {
     await Promise.all(
-      personas.map((persona) =>
-        convexClient.mutation(api.personas.setPersonaStatus, {
+      personas.map(async (persona) => {
+        // Per-persona random offset on the transition write (see the
+        // READING/THINKING_STAGGER constants): the personas stop flipping
+        // states in lockstep, and because the offset rides the presence
+        // WRITE, every collaborator sees the same de-synced edges.
+        if (staggerMaxMs > 0) {
+          await sleep(Math.random() * staggerMaxMs);
+        }
+        await convexClient.mutation(api.personas.setPersonaStatus, {
           documentId: document.documentId,
           slug: persona.slug,
           status,
-        }),
-      ),
+        });
+      }),
     );
   };
 
   try {
     // Status choreography: reading (context assembly) → thinking (call in
-    // flight) → idle. Transition-only presence writes (§3.5).
-    await setStatusForAll("reading");
+    // flight) → idle. Transition-only presence writes (§3.5), with random
+    // per-persona stagger so the personas never move in lockstep.
+    await setStatusForAll("reading", { staggerMaxMs: READING_STAGGER_MAX_MS });
 
     // Persisted-findings maintenance (the real "reading" work): prune open
     // rows whose target blocks drifted since they were recorded (they die
@@ -395,14 +465,28 @@ export async function POST(request: Request) {
       .filter((part): part is string => part !== null)
       .join("\n\n");
 
-    await setStatusForAll("thinking");
-    const { object, usage } = await generateObject({
-      model: google(PERSONA_MODEL_ID),
-      schema: runnerOutputSchema,
-      system,
-      prompt,
-      abortSignal: AbortSignal.timeout(GENERATION_TIMEOUT_MS),
-    });
+    await setStatusForAll("thinking", { staggerMaxMs: THINKING_STAGGER_MAX_MS });
+    // The chat route's mock convention: `x-tandem-mock: 1` forces the
+    // deterministic mock, and an absent key falls back to it — the whole
+    // downstream pipeline (dry-run, persistence, statuses) stays real.
+    const hasGoogleApiKey = Boolean(process.env.GOOGLE_GENERATIVE_AI_API_KEY);
+    const isMockRun = request.headers.get(MOCK_MODEL_HEADER) === "1" || !hasGoogleApiKey;
+    let object: z.infer<typeof runnerOutputSchema>;
+    let usage: unknown;
+    if (isMockRun) {
+      await sleep(MOCK_THINKING_BEAT_MS); // a visible thinking beat to watch
+      object = buildMockRunnerOutput({ doc, personas });
+    } else {
+      const generated = await generateObject({
+        model: google(PERSONA_MODEL_ID),
+        schema: runnerOutputSchema,
+        system,
+        prompt,
+        abortSignal: AbortSignal.timeout(GENERATION_TIMEOUT_MS),
+      });
+      object = generated.object;
+      usage = generated.usage;
+    }
 
     const personasBySlug = new Map(personas.map((persona) => [persona.slug, persona]));
     const findings: RunnerFinding[] = [];

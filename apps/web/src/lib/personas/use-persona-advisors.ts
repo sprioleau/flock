@@ -24,6 +24,7 @@ import {
   recordPersonaCheckedHash,
   recordPersonaRunStart,
 } from "./persona-run-clock";
+import { useRevealedFindingIds } from "./use-finding-reveal";
 import {
   computeWatchScopeHash,
   getPersonaStaggerMs,
@@ -567,13 +568,27 @@ export function usePersonaAdvisors(): PersonaAdvisorsController {
   // The visible card set: this tab's applied cards (revert affordance) on
   // top, then the freshest open findings that aren't locally hidden,
   // dismissed, or being applied — capped at MAX_VISIBLE_FINDINGS total.
+  //
+  // DWELL-GATE (owner feedback 2026-07-31 — wander → dwell → select → post):
+  // a FRESH finding's card stays hidden until FINDING_CARD_REVEAL_MS after
+  // its server-stamped createdAtMs, i.e. until just after its persona's
+  // cursor has dwell-hovered the target block and visibly selected it — so
+  // the human connects the motion to the message. Rows that arrive already
+  // old (late-joining tab, reload) reveal instantly.
   // -------------------------------------------------------------------------
+  const revealedFindingIds = useRevealedFindingIds({
+    findings: (findingRows ?? []).map((row) => ({
+      findingId: row.findingId,
+      createdAtMs: row.createdAtMs,
+    })),
+  });
   // Applied ids from STATE here (never the ref — refs must not be read in
   // render): by the re-render after an apply, the card is in appliedCards.
   const appliedFindingIds = new Set(appliedCards.map((card) => card.findingId));
   const visibleOpenRows = (findingRows ?? [])
     .filter(
       (row) =>
+        revealedFindingIds.has(row.findingId) &&
         !hiddenFindingIds.has(row.findingId) &&
         !appliedFindingIds.has(row.findingId) &&
         !dismissedPatternKeys.has(row.patternKey),

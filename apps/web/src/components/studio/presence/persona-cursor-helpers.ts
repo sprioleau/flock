@@ -1,8 +1,11 @@
 /**
  * Pure helpers for PersonaCursorOverlay (multi-agent v1 persona cursors) —
- * kept dependency-free so the deterministic-anchor contract is unit-testable
- * (vitest runs node-env, no DOM/Convex).
+ * kept dependency-free (beyond the lib-level finding-presentation timing
+ * contract) so the deterministic-anchor contract is unit-testable (vitest
+ * runs node-env, no DOM/Convex).
  */
+
+import { FINDING_DWELL_MS } from "@/lib/personas/finding-presentation";
 
 /** FNV-1a 32-bit — deterministic anchor jitter (same hash as presence identity). */
 export function hashString(input: string): number {
@@ -88,4 +91,59 @@ export function getPresentationRemainingMs({
     return PRESENTATION_WINDOW_MS; // future-stamped (clock skew): full window
   }
   return Math.max(0, PRESENTATION_WINDOW_MS - elapsedMs);
+}
+
+/**
+ * The two beats of a finding's presentation (owner feedback 2026-07-31 —
+ * the legible wander → dwell → select → post flow), derived from the same
+ * server-stamped `createdAtMs` clock as the window itself:
+ *
+ * - "dwell":  the first FINDING_DWELL_MS — the cursor hovers AROUND the
+ *   found block ("it found something there") with no selection chrome yet;
+ * - "select": the rest of the window — the cursor settles and the persona's
+ *   presence-level selection reads on the block, right before the card posts
+ *   (FINDING_CARD_REVEAL_MS ≥ FINDING_DWELL_MS in finding-presentation.ts);
+ * - "closed": the window has passed (or there is no finding) — cursor fades.
+ */
+export type FindingPresentationPhase = "dwell" | "select" | "closed";
+
+export function getPresentationPhase({
+  findingCreatedAtMs,
+  nowMs,
+}: {
+  findingCreatedAtMs: number;
+  nowMs: number;
+}): FindingPresentationPhase {
+  if (findingCreatedAtMs === 0) {
+    return "closed"; // 0 = no finding
+  }
+  if (getPresentationRemainingMs({ findingCreatedAtMs, nowMs }) <= 0) {
+    return "closed";
+  }
+  const elapsedMs = nowMs - findingCreatedAtMs;
+  // Future-stamped (clock skew, elapsed < 0) reads as the dwell beat — the
+  // whole presentation still plays once the local clock catches up.
+  return elapsedMs >= FINDING_DWELL_MS ? "select" : "dwell";
+}
+
+/**
+ * Milliseconds until the presentation phase next changes (dwell → select, or
+ * select → closed), or null when it never will (already closed). Feeds the
+ * one-timeout-per-boundary subscription in the cursor overlay — no ticking.
+ */
+export function getMsUntilPresentationPhaseChange({
+  findingCreatedAtMs,
+  nowMs,
+}: {
+  findingCreatedAtMs: number;
+  nowMs: number;
+}): number | null {
+  const phase = getPresentationPhase({ findingCreatedAtMs, nowMs });
+  if (phase === "closed") {
+    return null;
+  }
+  const dwellEndsAtMs = findingCreatedAtMs + FINDING_DWELL_MS;
+  const windowEndsAtMs = findingCreatedAtMs + PRESENTATION_WINDOW_MS;
+  const nextBoundaryAtMs = phase === "dwell" ? Math.min(dwellEndsAtMs, windowEndsAtMs) : windowEndsAtMs;
+  return Math.max(1, nextBoundaryAtMs - nowMs);
 }
