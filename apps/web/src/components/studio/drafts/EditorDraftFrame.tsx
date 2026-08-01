@@ -274,21 +274,30 @@ function FrameShell({
         isActive={isActive}
         onActivate={isActive ? undefined : onActivate}
       />
-      {/* Floating per-frame toolbar (viewport toggle + HTML export), active
-          frame only: STICKY against the frames surface (the one scroller) so
-          it stays reachable while scrolling a tall email; zero-height wrapper
-          so it never shifts the canvas below. */}
-      {isActive && (
-        <div className="sticky top-2 z-10 h-0 self-end overflow-visible pr-2">
-          <DraftFrameToolbar />
-        </div>
-      )}
       {/* Positioning wrapper so the generation glow can ring the content box
           (it sits OUTSIDE the box's overflow-hidden clip) without including
           the label row above. */}
       <div className="relative flex min-h-0 flex-1 flex-col">
         {isGenerationTarget && <GenerationGlowBorder />}
         {children}
+        {/* Floating per-frame toolbar (viewport toggle + HTML export), active
+            frame only, OUTSIDE the frame (owner decision): a full-height rail
+            absolutely positioned in the inter-frame gutter at the frame's
+            right edge (`left-full` tracks the width flip of the mobile
+            viewport toggle), top-aligned to the content box. The pill inside
+            is STICKY against the frames surface (the one scroller) so it
+            stays reachable while scrolling a tall email. The rail itself is
+            pointer-transparent so gutter clicks still reach the surface's
+            background-deselect handler; only the pill takes pointer events —
+            and, sitting outside the frame, it can never cover email content
+            or the in-frame right-edge column-split drop zones. */}
+        {isActive && (
+          <div className="pointer-events-none absolute inset-y-0 left-full z-10 ml-3">
+            <div className="pointer-events-auto sticky top-2 w-max">
+              <DraftFrameToolbar />
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );
