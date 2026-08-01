@@ -5,7 +5,7 @@ import { Inspector } from "@react-email/editor/ui";
 import { useRef, useState } from "react";
 
 const initialContent = `
-  <h1>Welcome to Tandem</h1>
+  <h1>Welcome to Flock</h1>
   <p>Start typing — or press "/" for blocks.</p>
 `;
 
@@ -28,7 +28,7 @@ export function EmailEditorPanel() {
   return (
     <div className="flex flex-1 flex-col">
       <header className="flex items-center justify-between border-b px-4 py-2">
-        <h1 className="text-sm font-medium tracking-tight">Tandem — Email Editor</h1>
+        <h1 className="text-sm font-medium tracking-tight">Flock — Email Editor</h1>
         <button
           type="button"
           onClick={handleExport}

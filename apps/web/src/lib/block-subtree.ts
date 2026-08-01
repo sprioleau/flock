@@ -1,4 +1,4 @@
-import { generateBlockId, type Block, type BlockId, type EmailDocument } from "@tandem/email-sdk";
+import { generateBlockId, type Block, type BlockId, type EmailDocument } from "@flock/email-sdk";
 
 /**
  * Shared subtree plumbing for the flows that snapshot and re-materialize a

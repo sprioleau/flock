@@ -27,7 +27,7 @@ vi.mock("convex/browser", () => ({
 import { proxy } from "./proxy";
 
 const PASSWORD = "test-password";
-const ORIGIN = "https://tandem.test";
+const ORIGIN = "https://flock.test";
 
 function buildRequest(pathAndQuery: string, cookies?: Record<string, string>): NextRequest {
   const headers = new Headers();
@@ -54,18 +54,18 @@ function expectGateRedirect(response: Response, expectedFrom: string): void {
 }
 
 beforeEach(() => {
-  process.env.TANDEM_ACCESS_PASSWORD = PASSWORD;
+  process.env.FLOCK_ACCESS_PASSWORD = PASSWORD;
   process.env.NEXT_PUBLIC_CONVEX_URL = "https://example.convex.cloud";
   queryMock.mockReset();
 });
 
 afterEach(() => {
-  delete process.env.TANDEM_ACCESS_PASSWORD;
+  delete process.env.FLOCK_ACCESS_PASSWORD;
 });
 
 describe("proxy access gate", () => {
   it("passes everything when the gate is disabled", async () => {
-    delete process.env.TANDEM_ACCESS_PASSWORD;
+    delete process.env.FLOCK_ACCESS_PASSWORD;
     expectPass(await proxy(buildRequest("/studio")));
     expect(queryMock).not.toHaveBeenCalled();
   });

@@ -1,7 +1,7 @@
-import { createSampleDocument, type Block } from "@tandem/email-sdk";
+import { createSampleDocument, type Block } from "@flock/email-sdk";
 import type { UIMessageStreamWriter } from "ai";
 import { describe, expect, it } from "vitest";
-import type { TandemChatMessage } from "@/lib/chat-contract";
+import type { FlockChatMessage } from "@/lib/chat-contract";
 import { MOCK_MODEL_ID } from "./constants";
 import { createMockChatModel } from "./mock-model";
 import { runChatPipeline } from "./pipeline";
@@ -38,9 +38,9 @@ async function runPipelineProbe(lastUserText: string): Promise<PipelineProbeResu
       mergedStream = stream;
     },
     onError: undefined,
-  } as unknown as UIMessageStreamWriter<TandemChatMessage>;
+  } as unknown as UIMessageStreamWriter<FlockChatMessage>;
 
-  const messages: TandemChatMessage[] = [
+  const messages: FlockChatMessage[] = [
     { id: "msg-1", role: "user", parts: [{ type: "text", text: lastUserText }] },
   ];
 

@@ -10,7 +10,7 @@ import {
 import type { Editor } from "@tiptap/core";
 import { useEditorState } from "@tiptap/react";
 import type { ReactNode } from "react";
-import type { TextAlign } from "@tandem/email-sdk";
+import type { TextAlign } from "@flock/email-sdk";
 
 /**
  * Per-paragraph alignment controls for the inline-editor bubble menu.

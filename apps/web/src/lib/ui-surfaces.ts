@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useSyncExternalStore } from "react";
-import type { UiPanel } from "@tandem/email-sdk";
+import type { UiPanel } from "@flock/email-sdk";
 
 /**
  * ui-surfaces — the agent-parity "open a panel" seam (openPanel command).
@@ -18,7 +18,7 @@ import type { UiPanel } from "@tandem/email-sdk";
  * Requests are monotonic ({@link UiSurfaceOpenRequest.requestId}) so the same
  * panel can be requested repeatedly, and a host mounted AFTER a request was
  * issued ignores it (open commands belong to the moment they were issued,
- * matching the dropped-view-command rule in use-tandem-chat).
+ * matching the dropped-view-command rule in use-flock-chat).
  */
 
 export interface UiSurfaceOpenRequest {

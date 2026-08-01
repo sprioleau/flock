@@ -6,7 +6,7 @@ import {
   type EmailDocument,
   type GlobalStyles,
   type TextDoc,
-} from "@tandem/email-sdk";
+} from "@flock/email-sdk";
 
 /**
  * Compressed document view (plan §3.1) — THE token-efficiency lever.

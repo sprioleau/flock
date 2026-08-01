@@ -1,7 +1,7 @@
 "use client";
 
 import type { ConvexReactClient } from "convex/react";
-import type { BlockId } from "@tandem/email-sdk";
+import type { BlockId } from "@flock/email-sdk";
 import { api } from "@convex/_generated/api";
 import type { Id } from "@convex/_generated/dataModel";
 import {

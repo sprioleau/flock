@@ -15,7 +15,7 @@ import { useSyncExternalStore } from "react";
  * writes through here, so the user's last state wins on the next visit.
  */
 
-const PANEL_PREFERENCES_STORAGE_KEY = "tandem:panel-preferences";
+const PANEL_PREFERENCES_STORAGE_KEY = "flock:panel-preferences";
 
 export interface PanelPreferences {
   isChatPanelExpanded: boolean;

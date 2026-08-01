@@ -547,7 +547,7 @@ export default defineSchema({
         authorKind: v.union(v.literal("user"), v.literal("agent")),
         /** Present on user entries (the writer's session); absent on agent entries. */
         authorSessionId: v.optional(v.string()),
-        /** Display name at write time (presence identity / "Tandem" for the agent). */
+        /** Display name at write time (presence identity / "Flock" for the agent). */
         authorName: v.string(),
         text: v.string(),
         createdAtMs: v.number(),

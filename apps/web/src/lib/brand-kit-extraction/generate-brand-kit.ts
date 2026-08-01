@@ -20,7 +20,7 @@
  */
 
 import { google } from "@ai-sdk/google";
-import { globalStylesSchema } from "@tandem/email-sdk";
+import { globalStylesSchema } from "@flock/email-sdk";
 import { generateObject } from "ai";
 import { z } from "zod";
 import type { BrandKit, BrandKitFonts } from "@/lib/brand-kit";

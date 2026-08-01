@@ -4,7 +4,7 @@ import {
   ROOT_BLOCK_ID,
   type GlobalStyles,
   type Operation,
-} from "@tandem/email-sdk";
+} from "@flock/email-sdk";
 import { ConvexError, v, type Infer } from "convex/values";
 import {
   findMatchingVariation,

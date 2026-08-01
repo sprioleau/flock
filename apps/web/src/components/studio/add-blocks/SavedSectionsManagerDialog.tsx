@@ -9,7 +9,7 @@ import {
 } from "react";
 import { useMutation, useQuery } from "convex/react";
 import { CheckIcon, PencilIcon, Trash2Icon } from "lucide-react";
-import type { Block, BlockId } from "@tandem/email-sdk";
+import type { Block, BlockId } from "@flock/email-sdk";
 import { api } from "@convex/_generated/api";
 import type { Doc, Id } from "@convex/_generated/dataModel";
 import { Button } from "@/components/ui/button";

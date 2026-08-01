@@ -3,7 +3,7 @@ import {
   ROOT_BLOCK_ID,
   type EmailDocument,
   type GlobalStyles,
-} from "@tandem/email-sdk";
+} from "@flock/email-sdk";
 import { getContrastRatio } from "@/lib/brand-kit";
 
 /**

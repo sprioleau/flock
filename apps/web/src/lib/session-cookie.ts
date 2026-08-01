@@ -10,7 +10,7 @@
  * Shared constants + a pure parser only — importable from client and server.
  */
 
-export const SESSION_COOKIE_NAME = "tandem_session_id";
+export const SESSION_COOKIE_NAME = "flock_session_id";
 
 /** One year — the cookie is re-written on every studio load anyway. */
 export const SESSION_COOKIE_MAX_AGE_SECONDS = 60 * 60 * 24 * 365;

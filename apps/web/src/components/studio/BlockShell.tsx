@@ -2,7 +2,7 @@
 
 import type { MouseEvent, ReactNode } from "react";
 import { useDraggable } from "@dnd-kit/core";
-import { LEAF_BLOCK_TYPES, type Block, type BlockType } from "@tandem/email-sdk";
+import { LEAF_BLOCK_TYPES, type Block, type BlockType } from "@flock/email-sdk";
 import { useEditorStore } from "@/lib/editor-store";
 import { cn } from "@/lib/utils";
 import { BlockActionRow } from "./BlockActionRow";

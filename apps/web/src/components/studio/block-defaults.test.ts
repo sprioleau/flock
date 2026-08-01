@@ -4,7 +4,7 @@ import {
   blockSchema,
   createSampleDocument,
   LEAF_BLOCK_TYPES,
-} from "@tandem/email-sdk";
+} from "@flock/email-sdk";
 import {
   createDefaultLeafBlock,
   DEFAULT_DIVIDER_PADDING_PX,

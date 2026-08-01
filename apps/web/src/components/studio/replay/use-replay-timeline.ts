@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useConvex } from "convex/react";
-import type { EmailDocument } from "@tandem/email-sdk";
+import type { EmailDocument } from "@flock/email-sdk";
 import { api } from "@convex/_generated/api";
 import type { Id } from "@convex/_generated/dataModel";
 import type { OperationEntry } from "../history/history-grouping";

@@ -36,7 +36,7 @@ import { useCanvasDrafts } from "./drafts/use-canvas-drafts";
  * localStorage and prefilled on the next open.
  */
 
-const LAST_RECIPIENT_STORAGE_KEY = "tandem:send-test-email:last-recipient";
+const LAST_RECIPIENT_STORAGE_KEY = "flock:send-test-email:last-recipient";
 
 /** Empty string when unset or when storage is unavailable (private mode). */
 function readLastUsedRecipient(): string {

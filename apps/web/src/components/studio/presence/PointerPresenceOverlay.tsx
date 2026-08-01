@@ -86,7 +86,7 @@ function PointerOverlayLayer({ roster }: { roster: PresenceRosterEntry[] }) {
   return (
     <div
       ref={attachOverlayElement}
-      className="tandem-pointer-overlay"
+      className="flock-pointer-overlay"
       aria-hidden
       data-testid="pointer-presence-overlay"
     >
@@ -215,9 +215,9 @@ function RemotePointerCursor({
   }, [blockId, x, y, layoutVersion]);
 
   return (
-    <div ref={cursorRef} className="tandem-pointer-cursor" data-testid="remote-pointer-cursor">
+    <div ref={cursorRef} className="flock-pointer-cursor" data-testid="remote-pointer-cursor">
       <PointerCursorArrow color={color} />
-      <span className="tandem-pointer-cursor__label" style={{ backgroundColor: color }}>
+      <span className="flock-pointer-cursor__label" style={{ backgroundColor: color }}>
         {name}
       </span>
     </div>
@@ -233,7 +233,7 @@ function RemotePointerCursor({
 export function PointerCursorArrow({ color }: { color: string }) {
   return (
     <svg
-      className="tandem-pointer-cursor__arrow"
+      className="flock-pointer-cursor__arrow"
       width="15"
       height="15"
       viewBox="0 0 15 15"

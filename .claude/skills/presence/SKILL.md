@@ -1,18 +1,18 @@
 ---
 name: convex-dev-presence
-description: Add real-time presence (who's online, avatars/facepiles, typing and activity indicators, custom per-user room data such as cursor/selection state) to a Convex app. Use this skill whenever working with the Convex Presence component or Tandem Phase 6.2 presence features.
+description: Add real-time presence (who's online, avatars/facepiles, typing and activity indicators, custom per-user room data such as cursor/selection state) to a Convex app. Use this skill whenever working with the Convex Presence component or Flock Phase 6.2 presence features.
 version: 0.4.0
 ---
 
-> Agents: read this skill fully before writing code that uses the Presence component. Follow the installation and configuration steps exactly, and read the Tandem-specific notes at the end before designing anything for Phase 6.2.
+> Agents: read this skill fully before writing code that uses the Presence component. Follow the installation and configuration steps exactly, and read the Flock-specific notes at the end before designing anything for Phase 6.2.
 
 # Presence
 
 ## Instructions
 
-This component tracks which users are currently active in a "room" (any string-keyed unit of presence — for Tandem, a document). It manages heartbeats, session lifecycles, graceful and timed-out disconnects, and stale-state cleanup for you. Each `(roomId, userId)` presence entry can also carry an arbitrary `data` payload (`v.any()`), which is how you attach custom state like display names, typing flags, "agent is editing…" status, or serialized cursor/selection positions.
+This component tracks which users are currently active in a "room" (any string-keyed unit of presence — for Flock, a document). It manages heartbeats, session lifecycles, graceful and timed-out disconnects, and stale-state cleanup for you. Each `(roomId, userId)` presence entry can also carry an arbitrary `data` payload (`v.any()`), which is how you attach custom state like display names, typing flags, "agent is editing…" status, or serialized cursor/selection positions.
 
-What it does NOT do: it does not render cursors, map editor positions, or provide any editor integration. It is a membership-plus-data transport; cursor/selection UI is built on top of it (see the Tandem notes below).
+What it does NOT do: it does not render cursors, map editor positions, or provide any editor integration. It is a membership-plus-data transport; cursor/selection UI is built on top of it (see the Flock notes below).
 
 ### Installation
 
@@ -51,7 +51,7 @@ export const heartbeat = mutation({
     interval: v.number(),
   },
   handler: async (ctx, { roomId, userId, sessionId, interval }) => {
-    // Add authorization checks here (Tandem: capability check on the doc).
+    // Add authorization checks here (Flock: capability check on the doc).
     return await presence.heartbeat(ctx, roomId, userId, sessionId, interval);
   },
 });
@@ -135,7 +135,7 @@ Membership changes (join/leave/online-flip) invalidate the shared `list` query a
 ## When NOT to use
 
 - When you need rendered live cursors "for free" — this component transports presence state; cursor/selection rendering (e.g. ProseMirror decorations) is app code you write on top
-- For high-frequency ephemeral state where even throttled database writes are too costly (massive rooms, 60fps cursor trails) — consider a dedicated in-memory/sub-database channel; at Tandem's collaboration scale (a few humans + one agent per document) the `data` payload is fine
+- For high-frequency ephemeral state where even throttled database writes are too costly (massive rooms, 60fps cursor trails) — consider a dedicated in-memory/sub-database channel; at Flock's collaboration scale (a few humans + one agent per document) the `data` payload is fine
 - When room membership is derivable from data you already store (e.g. "participants who ever edited") — presence is for *live* state only
 - If you are not using Convex as your backend
 
@@ -149,13 +149,13 @@ Membership changes (join/leave/online-flip) invalidate the shared `list` query a
 
 ---
 
-## Tandem-specific notes (Phase 6.2)
+## Flock-specific notes (Phase 6.2)
 
 ### Identity: no auth, session ids
 
-Tandem is no-auth: identity is an anonymous per-browser id from `getOrCreateSessionId()` in `apps/web/src/lib/session.ts` (localStorage key `tandem_session_id`), and document access is a capability `?doc=` URL. Therefore:
+Flock is no-auth: identity is an anonymous per-browser id from `getOrCreateSessionId()` in `apps/web/src/lib/session.ts` (localStorage key `flock_session_id`), and document access is a capability `?doc=` URL. Therefore:
 
-- `userId` for presence = the Tandem session id (the same id already used as `authorId` for ops and for document listing). Do not confuse it with the component's `sessionId` parameter — that one is per-tab and generated internally by `usePresence`.
+- `userId` for presence = the Flock session id (the same id already used as `authorId` for ops and for document listing). Do not confuse it with the component's `sessionId` parameter — that one is per-tab and generated internally by `usePresence`.
 - Auth checks in the `heartbeat`/`updateRoomUser` wrappers = the same capability check the other document mutations use (holding the doc id is the capability). `disconnect` stays unauthenticated by design (sendBeacon).
 - Display names/avatars: there are no accounts, so derive a stable display name + color from the session id (or a user-chosen name stored in localStorage) and put them in the `data` payload — the pattern `example-with-auth` uses server-side enrichment for, we do client-side.
 - The AI agent participates as a first-class presence user: `userId` = the agent's identity (documents already carry an `agentName` field), with `data.isAgent: true`. The agent's server loop calls `heartbeat` and `updateRoomUser` directly (they're plain mutations) — e.g. `data: { isAgent: true, editingBlockId: "..." }` while a tool call is mutating a block, cleared when done. That single mechanism covers the "agent is editing…" indicator.
@@ -191,6 +191,6 @@ Broadcast selection state through the presence `data` payload, render with Prose
 
 - **Write path:** on editor `selectionUpdate` / focus change, call `updateRoomUser` throttled + single-flighted (~150–300 ms trailing). Skip writes when the selection is unchanged. Clear `selection` on blur.
 - **Read path:** one `usePresence(api.presence, documentId, sessionId)` at the StudioShell level; distribute `presenceState` via context. Each block editor filters for entries whose `selection.blockId` matches its block and feeds them to a ProseMirror plugin that builds `Decoration.widget` (caret + name flag) and `Decoration.inline` (selection highlight) decorations. Clamp remote positions to the current doc size (positions may be momentarily stale relative to the synced doc); optionally map them through steps using the recorded sync `version` for exactness. Avatars come from the same `presenceState` (FacePile or a custom MCDS-styled row); "agent is editing block X" renders from `isAgent + editingBlockId` (e.g. a shimmer/border on that block's CanvasNode).
-- **Costs:** every selection write re-runs the room's shared `list` query and pushes the whole room payload to all subscribers. At Tandem scale (couple of humans + one agent per doc) this is well within budget; the throttle is the only tuning knob you should need.
+- **Costs:** every selection write re-runs the room's shared `list` query and pushes the whole room payload to all subscribers. At Flock scale (couple of humans + one agent per doc) this is well within budget; the throttle is the only tuning knob you should need.
 
 **Trade-off vs a dedicated `cursors` table:** a hand-rolled table (like multiplayer-cursors) gives schema validation, per-block subscription granularity, and history/interpolation options — but you'd rebuild heartbeats, disconnect detection, and stale-row pruning that this component already provides, and per-block subscriptions save little when a document has a handful of collaborators. Start with presence `data`; graduate to a dedicated table only if payload fan-out measurably hurts.

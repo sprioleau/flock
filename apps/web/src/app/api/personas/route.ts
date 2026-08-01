@@ -2,14 +2,14 @@ import { google } from "@ai-sdk/google";
 import {
   generateDocumentOutline,
   SYSTEM_STATIC,
-} from "@tandem/agent";
+} from "@flock/agent";
 import {
   applyOperations,
   ROOT_BLOCK_ID,
   updateBlockPropertiesOperationSchema,
   type EmailDocument,
   type Operation,
-} from "@tandem/email-sdk";
+} from "@flock/email-sdk";
 import { generateObject } from "ai";
 import { ConvexHttpClient } from "convex/browser";
 import type { FunctionReturnType } from "convex/server";
@@ -40,8 +40,8 @@ import { proposedEditSchema, runnerOutputSchema, truncateFindingProse } from "./
  *
  * Budget discipline (§5.1): per-persona cooldowns gate client-side; this
  * route adds a per-document minimum interval and an outline-unchanged skip
- * as server backstops, plus a `tandem.personas.request` JSON log line so
- * tokens-per-run stay observable. Requests carrying `x-tandem-mock: 1` (or
+ * as server backstops, plus a `flock.personas.request` JSON log line so
+ * tokens-per-run stay observable. Requests carrying `x-flock-mock: 1` (or
  * any request when GOOGLE_GENERATIVE_AI_API_KEY is absent — the chat route's
  * exact convention) skip the Gemini call for a deterministic mock findings
  * set; everything else in the pipeline stays real.
@@ -244,7 +244,7 @@ function composeFindingOps({
 const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
 
 /**
- * Deterministic mock findings for `x-tandem-mock: 1` runs (the chat route's
+ * Deterministic mock findings for `x-flock-mock: 1` runs (the chat route's
  * exact convention — CI/dev never need a key or quota) and the automatic
  * no-key fallback. One informational finding per persona, each targeting a
  * DIFFERENT leaf block, so the presence choreography (walk → dwell → select
@@ -275,7 +275,7 @@ function buildMockRunnerOutput({
       personaSlug: persona.slug,
       title: `Mock note from ${persona.name}`,
       description:
-        "Deterministic mock finding (x-tandem-mock / no model key) — exercises the persona presence choreography without a Gemini call.",
+        "Deterministic mock finding (x-flock-mock / no model key) — exercises the persona presence choreography without a Gemini call.",
       targetBlockNames: [`mock target ${personaIndex + 1}`],
       targetBlockIds: [
         leafBlockIds[(personaIndex * stride + 1) % leafBlockIds.length] ?? leafBlockIds[0]!,
@@ -466,7 +466,7 @@ export async function POST(request: Request) {
       .join("\n\n");
 
     await setStatusForAll("thinking", { staggerMaxMs: THINKING_STAGGER_MAX_MS });
-    // The chat route's mock convention: `x-tandem-mock: 1` forces the
+    // The chat route's mock convention: `x-flock-mock: 1` forces the
     // deterministic mock, and an absent key falls back to it — the whole
     // downstream pipeline (dry-run, persistence, statuses) stays real.
     const hasGoogleApiKey = Boolean(process.env.GOOGLE_GENERATIVE_AI_API_KEY);
@@ -592,7 +592,7 @@ export async function POST(request: Request) {
     // The budget ledger line (plan §4.4 cost-logging convention).
     console.log(
       JSON.stringify({
-        tag: "tandem.personas.request",
+        tag: "flock.personas.request",
         model: PERSONA_MODEL_ID,
         personaSlugs: personas.map((persona) => persona.slug),
         findingCount: findings.length,

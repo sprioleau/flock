@@ -38,7 +38,7 @@ import {
   type BlockType,
   type LeafBlockType,
   type SectionCategory,
-} from "@tandem/email-sdk";
+} from "@flock/email-sdk";
 import type { LeafBlockVariant } from "../block-defaults";
 
 /**

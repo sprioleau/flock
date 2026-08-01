@@ -1,4 +1,4 @@
-import { createEmptyDocument, createSampleDocument } from "@tandem/email-sdk";
+import { createEmptyDocument, createSampleDocument } from "@flock/email-sdk";
 import { describe, expect, it } from "vitest";
 import { generateDocumentOutline } from "./outline";
 
@@ -11,8 +11,8 @@ describe("generateDocumentOutline (default depth: blocks)", () => {
     expect(outline).toMatchInlineSnapshot(`
       "globals: buttonBackgroundColor=#1a1a2e, heading1TextAlign=center
       sec_a1b2 section
-        txt_e5f6 text h1,p "Welcome to Tandem | You describe, your partner builds — read…" +bold+link
-        img_g7h8 image alt="Two riders on a tandem bicycle" w=520 src=placehold.co
+        txt_e5f6 text h1,p "Welcome to Flock | You describe, your partner builds — read…" +bold+link
+        img_g7h8 image alt="Two riders on a flock bicycle" w=520 src=placehold.co
         div_i9j0 divider
       sec_c3d4 section
         row_k1l2 row (2 col)
@@ -22,7 +22,7 @@ describe("generateDocumentOutline (default depth: blocks)", () => {
             btn_t9u0 button "Get started" href=https://example.com/start
       sec_e5f6 section
         txt_v1w2 text h2 "For developers"
-        cod_x3y4 code bash "npm install @tandem/email-sdk"
+        cod_x3y4 code bash "npm install @flock/email-sdk"
         spc_z5a6 spacer h=16
         lnk_b7c8 link "Read the changelog" href=https://example.com/changelog"
     `);
@@ -119,7 +119,7 @@ describe("maxTextChars option", () => {
 
   it("does not append an ellipsis when the text fits", () => {
     const outline = generateDocumentOutline({ doc: sampleDoc, options: { maxTextChars: 500 } });
-    expect(outline).toContain('"Welcome to Tandem | You describe,');
+    expect(outline).toContain('"Welcome to Flock | You describe,');
     expect(outline).not.toMatch(/txt_e5f6[^\n]*…/);
   });
 });

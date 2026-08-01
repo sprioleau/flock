@@ -2,7 +2,7 @@ import {
   applyOperation,
   applyOperations as applyOperationsToDocument,
   type Operation,
-} from "@tandem/email-sdk";
+} from "@flock/email-sdk";
 import { v } from "convex/values";
 import type { Doc, Id } from "./_generated/dataModel";
 import { mutation, query, type QueryCtx } from "./_generated/server";

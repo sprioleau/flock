@@ -8,7 +8,7 @@ import {
   type GlobalStyles,
   type RestoreBlocksOperation,
   type ScaffoldSectionPosition,
-} from "@tandem/email-sdk";
+} from "@flock/email-sdk";
 import { cloneSubtreeWithFreshIds, collectSubtreeBlocks } from "./block-subtree";
 
 /**

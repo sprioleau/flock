@@ -1,5 +1,5 @@
 /**
- * @tandem/agent — compressed document views, prompts, tool definitions,
+ * @flock/agent — compressed document views, prompts, tool definitions,
  * triage/execute pipeline.
  *
  * Phase 3.1 implemented: compressed document view (outline + block details)

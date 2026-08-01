@@ -14,7 +14,7 @@
 export const DEFAULT_GEMINI_MODEL_ID = "gemini-3.6-flash";
 
 /** Model id reported in logs when the deterministic mock model is used. */
-export const MOCK_MODEL_ID = "tandem-mock-chat-model";
+export const MOCK_MODEL_ID = "flock-mock-chat-model";
 
 /**
  * A/B seam (Phase 3.2): the pipeline variant behind the flag.
@@ -26,7 +26,7 @@ export const MOCK_MODEL_ID = "tandem-mock-chat-model";
  *   (NOT built yet — `runTriageExecutePipeline` in pipeline.ts throws; drop
  *   the implementation in there and flip this env var to compare).
  *
- * Select with the TANDEM_PIPELINE_VARIANT env var; unknown values fall back
+ * Select with the FLOCK_PIPELINE_VARIANT env var; unknown values fall back
  * to "single-pass".
  */
 export const PIPELINE_VARIANTS = ["single-pass", "triage-execute"] as const;
@@ -39,7 +39,7 @@ function resolvePipelineVariant(rawValue: string | undefined): PipelineVariant {
 }
 
 export const PIPELINE_VARIANT: PipelineVariant = resolvePipelineVariant(
-  process.env.TANDEM_PIPELINE_VARIANT,
+  process.env.FLOCK_PIPELINE_VARIANT,
 );
 
 /**

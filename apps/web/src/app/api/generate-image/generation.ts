@@ -21,8 +21,8 @@ import { createMockImagePng } from "./mock-image";
  *
  * Follows the send-test-email.ts module conventions: outcome unions instead of
  * throws, raw provider errors stay in the server log, callers get one clean
- * human sentence, and every generation emits a `tandem.image.request` JSON
- * cost-log line (the image analogue of `tandem.chat.request`).
+ * human sentence, and every generation emits a `flock.image.request` JSON
+ * cost-log line (the image analogue of `flock.chat.request`).
  *
  * ARCHITECTURAL INVARIANT: base64 image data NEVER goes to Convex — not in
  * ops, not in block properties. The only durable artifact is the storage
@@ -115,7 +115,7 @@ function toFriendlyGenerationFailureMessage(error: unknown): {
 export interface GenerateEmailImageInput {
   prompt: string;
   aspectRatio?: ImageAspectRatio;
-  /** Force the deterministic mock (route: x-tandem-mock header). */
+  /** Force the deterministic mock (route: x-flock-mock header). */
   isMockForced?: boolean;
   /** Env source, overridable in tests. */
   env?: Record<string, string | undefined>;
@@ -138,7 +138,7 @@ export async function generateEmailImage({
   const logRequest = (details: { isOk: boolean; outputBytes?: number; reason?: string }) => {
     console.log(
       JSON.stringify({
-        tag: "tandem.image.request",
+        tag: "flock.image.request",
         model: modelId,
         isMock: isUsingMock,
         totalMs: Math.round(performance.now() - startMs),
@@ -180,7 +180,7 @@ export async function generateEmailImage({
     // Raw provider error: server log only — never the user-facing outcome.
     console.error(
       JSON.stringify({
-        tag: "tandem.image.generationFailed",
+        tag: "flock.image.generationFailed",
         model: modelId,
         message: error instanceof Error ? error.message : String(error),
       }),
@@ -268,7 +268,7 @@ export async function storeImageInConvex({
     // legacy unregistered upload) and leave a trace for the Stage M backfill.
     console.warn(
       JSON.stringify({
-        tag: "tandem.image.storedUnregistered",
+        tag: "flock.image.storedUnregistered",
         message: "no session id on the request — the upload joined storage but not a library",
       }),
     );
@@ -280,7 +280,7 @@ export async function storeImageInConvex({
   } catch (error) {
     console.error(
       JSON.stringify({
-        tag: "tandem.image.storeFailed",
+        tag: "flock.image.storeFailed",
         message: error instanceof Error ? error.message : String(error),
       }),
     );

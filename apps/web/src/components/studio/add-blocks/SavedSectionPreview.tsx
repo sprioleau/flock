@@ -1,7 +1,7 @@
 "use client";
 
 import { useMemo } from "react";
-import { ROOT_BLOCK_ID, type Block } from "@tandem/email-sdk";
+import { ROOT_BLOCK_ID, type Block } from "@flock/email-sdk";
 import { useEditorStore } from "@/lib/editor-store";
 import { buildStandaloneSectionDoc } from "@/lib/saved-sections";
 import { ReadOnlyEmailPreview } from "../history/ReadOnlyEmailPreview";

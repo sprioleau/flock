@@ -1,4 +1,4 @@
-import { createEmptyDocument, ROOT_BLOCK_ID, type BlockId } from "@tandem/email-sdk";
+import { createEmptyDocument, ROOT_BLOCK_ID, type BlockId } from "@flock/email-sdk";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { SendTestEmailOutcome } from "../chat/send-test-email";
 

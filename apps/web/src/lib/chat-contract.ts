@@ -6,7 +6,7 @@ import type {
   ListAssetsResult,
   ProposeEditsInput,
   ProposeSectionVariationsInput,
-} from "@tandem/agent";
+} from "@flock/agent";
 import type { UIMessage } from "ai";
 import { z } from "zod";
 import {
@@ -48,7 +48,7 @@ import {
   type UpdateBlockPropertiesOperation,
   type UpdateDocumentSettingsOperation,
   type UpdateTextOperation,
-} from "@tandem/email-sdk";
+} from "@flock/email-sdk";
 
 /**
  * Chat wire contract — the ONE module both the /api/chat route and the chat UI
@@ -77,11 +77,11 @@ import {
 export const CHAT_API_PATH = "/api/chat";
 
 /**
- * Send `x-tandem-mock: 1` to force the deterministic mock model even when a
+ * Send `x-flock-mock: 1` to force the deterministic mock model even when a
  * real provider key is configured — CI/tests never need a key. The mock is
  * also selected automatically when GOOGLE_GENERATIVE_AI_API_KEY is absent.
  */
-export const MOCK_MODEL_HEADER = "x-tandem-mock";
+export const MOCK_MODEL_HEADER = "x-flock-mock";
 
 // ---------------------------------------------------------------------------
 // Request body
@@ -97,7 +97,7 @@ export const chatRequestBodySchema = z.object({
   id: z.string().optional(),
   /** UIMessage[] — structurally validated by the AI SDK during conversion. */
   messages: z
-    .array(z.custom<TandemChatMessage>((value) => typeof value === "object" && value !== null))
+    .array(z.custom<FlockChatMessage>((value) => typeof value === "object" && value !== null))
     .min(1),
   /** The current email document (flat block map). */
   document: emailDocumentSchema,
@@ -213,10 +213,10 @@ export const tableDataPartSchema = z.object({
 
 export type TableDataPart = z.infer<typeof tableDataPartSchema>;
 
-/** DATA_PARTS generic for {@link TandemChatMessage}, keyed by part name. */
+/** DATA_PARTS generic for {@link FlockChatMessage}, keyed by part name. */
 // A type alias (not an interface) so it gets an implicit index signature and
 // satisfies the AI SDK's `UIDataTypes` (Record<string, unknown>) constraint.
-export type TandemChatDataParts = {
+export type FlockChatDataParts = {
   "editor-command": EditorCommandDataPart;
   "section-variations": SectionVariationsDataPart;
   "edit-suggestions": EditSuggestionsDataPart;
@@ -284,14 +284,14 @@ export type ProposeEditsToolOutput = WidgetPresentedOutput & {
 export type ListAssetsToolOutput = AnalysisToolOutput<ListAssetsResult>;
 
 /**
- * TOOLS generic for {@link TandemChatMessage} — one entry per registry action
+ * TOOLS generic for {@link FlockChatMessage} — one entry per registry action
  * (tool names match `emailActionRegistry` action names exactly).
  *
  * Content ops have `output: never` (no execute; the CLIENT applies them).
  * Editor actions execute server-side and produce {@link EditorToolOutput}.
  */
-// Type alias for the same implicit-index-signature reason as TandemChatDataParts.
-export type TandemChatTools = {
+// Type alias for the same implicit-index-signature reason as FlockChatDataParts.
+export type FlockChatTools = {
   updateBlockProperties: { input: UpdateBlockPropertiesOperation; output: never };
   replaceBlockProperties: { input: ReplaceBlockPropertiesOperation; output: never };
   updateDocumentSettings: { input: UpdateDocumentSettingsOperation; output: never };
@@ -330,7 +330,7 @@ export type TandemChatTools = {
 };
 
 /** The typed UI message flowing over /api/chat in both directions. */
-export type TandemChatMessage = UIMessage<never, TandemChatDataParts, TandemChatTools>;
+export type FlockChatMessage = UIMessage<never, FlockChatDataParts, FlockChatTools>;
 
 // ---------------------------------------------------------------------------
 // Client-side validation gate (Phase 3.3, layer 3)
@@ -415,7 +415,7 @@ export function validateAndClassifyOp(input: unknown): ValidateAndClassifyOpResu
  * the one server-side repair round-trip has been exhausted.
  */
 export const chatErrorPayloadSchema = z.object({
-  kind: z.literal("tandem-chat-error"),
+  kind: z.literal("flock-chat-error"),
   failureKind: z.enum(["retryable", "terminal"]),
   errors: z.array(z.object({ code: z.string(), message: z.string() })),
 });

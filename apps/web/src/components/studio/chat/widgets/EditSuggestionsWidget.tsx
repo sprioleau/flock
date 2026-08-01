@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { CheckIcon, Loader2Icon, SparklesIcon, Undo2Icon } from "lucide-react";
-import { applyOperations } from "@tandem/email-sdk";
+import { applyOperations } from "@flock/email-sdk";
 import type { EditSuggestionsDataPart } from "@/lib/chat-contract";
 import { useEditorStore } from "@/lib/editor-store";
 import { cn } from "@/lib/utils";

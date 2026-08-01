@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useConvex } from "convex/react";
-import { GENERATE_IMAGE_MAX_PROMPT_LENGTH, type BlockId } from "@tandem/email-sdk";
+import { GENERATE_IMAGE_MAX_PROMPT_LENGTH, type BlockId } from "@flock/email-sdk";
 import { Loader2, RotateCcw, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";

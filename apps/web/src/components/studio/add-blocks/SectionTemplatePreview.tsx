@@ -7,7 +7,7 @@ import {
   ROOT_BLOCK_ID,
   type EmailDocument,
   type GlobalStyles,
-} from "@tandem/email-sdk";
+} from "@flock/email-sdk";
 import { useEditorStore } from "@/lib/editor-store";
 import { ReadOnlyEmailPreview } from "../history/ReadOnlyEmailPreview";
 

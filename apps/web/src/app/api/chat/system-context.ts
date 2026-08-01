@@ -1,5 +1,5 @@
-import { buildDocumentContext, buildToolGuidance, SYSTEM_STATIC } from "@tandem/agent";
-import type { BlockId, EmailDocument } from "@tandem/email-sdk";
+import { buildDocumentContext, buildToolGuidance, SYSTEM_STATIC } from "@flock/agent";
+import type { BlockId, EmailDocument } from "@flock/email-sdk";
 import { chatActionRegistry } from "./registry";
 
 /**

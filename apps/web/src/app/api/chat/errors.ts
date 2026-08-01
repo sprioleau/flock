@@ -13,11 +13,11 @@ import { TerminalChatError } from "./tools";
  */
 export function toChatErrorText(error: unknown): string {
   // The raw error stays server-side; the client gets the structured payload.
-  console.error("[tandem.chat] stream error:", error);
+  console.error("[flock.chat] stream error:", error);
 
   if (error instanceof TerminalChatError) {
     return serializeChatError({
-      kind: "tandem-chat-error",
+      kind: "flock-chat-error",
       failureKind: "terminal",
       errors: error.errors.map(({ code, message }) => ({ code, message })),
     });
@@ -27,7 +27,7 @@ export function toChatErrorText(error: unknown): string {
   const isToolCallValidationError =
     InvalidToolInputError.isInstance(error) || NoSuchToolError.isInstance(error);
   return serializeChatError({
-    kind: "tandem-chat-error",
+    kind: "flock-chat-error",
     failureKind: isToolCallValidationError ? "retryable" : "terminal",
     errors: [
       {

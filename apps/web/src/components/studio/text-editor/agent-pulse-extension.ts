@@ -28,12 +28,12 @@ import {
  *
  * Fallback: if the agent's ranges collapse to nothing renderable (pure
  * deletions in a shrunken doc), the whole block's inline content shimmers
- * instead (`tandem-agent-pulse--block`).
+ * instead (`flock-agent-pulse--block`).
  */
 
 /** Mirrors AI_AGENT_CLIENT_ID in convex/model/textBlockSync.ts (the convex
  * model file cannot be imported into the client bundle). */
-const AGENT_CLIENT_ID = "tandem-agent";
+const AGENT_CLIENT_ID = "flock-agent";
 
 const PULSE_DURATION_MS = 1000;
 
@@ -59,7 +59,7 @@ type AgentPulseAction =
   | { type: "drop"; id: number }
   | { type: "clear"; id: number };
 
-const agentPulsePluginKey = new PluginKey<AgentPulseState>("tandemAgentPulse");
+const agentPulsePluginKey = new PluginKey<AgentPulseState>("flockAgentPulse");
 
 let nextPulseId = 1;
 
@@ -69,7 +69,7 @@ export function createAgentPulseExtension({
   resolveClientIds: ResolveClientIds;
 }): Extension {
   return Extension.create({
-    name: "tandemAgentPulse",
+    name: "flockAgentPulse",
     addProseMirrorPlugins() {
       return [createAgentPulsePlugin({ resolveClientIds })];
     },
@@ -209,7 +209,7 @@ function buildPulseDecorations({
     const to = Math.max(0, Math.min(range.to, maxPos));
     if (from < to) {
       built.push(
-        Decoration.inline(from, to, { class: "tandem-agent-pulse" }, { pulseId: pulse.id }),
+        Decoration.inline(from, to, { class: "flock-agent-pulse" }, { pulseId: pulse.id }),
       );
     }
   }
@@ -219,7 +219,7 @@ function buildPulseDecorations({
       Decoration.inline(
         0,
         maxPos,
-        { class: "tandem-agent-pulse tandem-agent-pulse--block" },
+        { class: "flock-agent-pulse flock-agent-pulse--block" },
         { pulseId: pulse.id },
       ),
     );

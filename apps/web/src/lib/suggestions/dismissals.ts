@@ -5,7 +5,7 @@
  * learning loop (acceptance-tuned recommendations) replaces this later.
  */
 
-const STORAGE_KEY_PREFIX = "tandem:suggestions:dismissed:";
+const STORAGE_KEY_PREFIX = "flock:suggestions:dismissed:";
 
 function getStorageKey(documentId: string): string {
   return `${STORAGE_KEY_PREFIX}${documentId}`;

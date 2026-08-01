@@ -1,4 +1,4 @@
-import { createSampleDocument } from "@tandem/email-sdk";
+import { createSampleDocument } from "@flock/email-sdk";
 import { describe, expect, it } from "vitest";
 import { describeBlock } from "./describe-block";
 

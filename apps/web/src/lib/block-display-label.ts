@@ -1,4 +1,4 @@
-import type { Block, BlockType } from "@tandem/email-sdk";
+import type { Block, BlockType } from "@flock/email-sdk";
 
 /** Display labels per block type — always full words, never abbreviated or truncated. */
 export const BLOCK_TYPE_LABELS: Record<BlockType, string> = {

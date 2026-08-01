@@ -13,7 +13,7 @@ export const testimonialParamsSchema = z
       .string()
       .min(1)
       .default(
-        "Tandem has completely changed how our team ships email. What used to take a day now takes minutes.",
+        "Flock has completely changed how our team ships email. What used to take a day now takes minutes.",
       )
       .describe("The customer's quote, without surrounding quotation marks (they are added for you)."),
     attribution: z

@@ -7,7 +7,7 @@
  * (lib/suggestions/dismissals.ts).
  */
 
-const STORAGE_KEY_PREFIX = "tandem:brand:pill-dismissed:";
+const STORAGE_KEY_PREFIX = "flock:brand:pill-dismissed:";
 
 function getStorageKey(documentId: string): string {
   return `${STORAGE_KEY_PREFIX}${documentId}`;

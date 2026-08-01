@@ -1,7 +1,7 @@
-import { createSampleDocument } from "@tandem/email-sdk";
+import { createSampleDocument } from "@flock/email-sdk";
 import type { UIMessageStreamWriter } from "ai";
 import { describe, expect, it } from "vitest";
-import type { TandemChatMessage } from "@/lib/chat-contract";
+import type { FlockChatMessage } from "@/lib/chat-contract";
 import { MOCK_MODEL_ID } from "./constants";
 import { createMockChatModel, MOCK_COMPOSE_EMAIL_TEMPLATE_IDS } from "./mock-model";
 import { runChatPipeline } from "./pipeline";
@@ -11,7 +11,7 @@ import { runChatPipeline } from "./pipeline";
  * composes a full email as N per-section tool calls, the pipeline must
  * deliver each VALIDATED call to the client as it completes — never buffer
  * the step and flush all calls at the end. The client applies each content
- * op at input-available (use-tandem-chat onToolCall), so "call k delivered
+ * op at input-available (use-flock-chat onToolCall), so "call k delivered
  * before call k+1 starts generating" IS "section k painted before section
  * k+1 exists".
  *
@@ -37,9 +37,9 @@ async function runPipelineProbe(lastUserText: string): Promise<RecordedChunk[]> 
       mergedStream = stream;
     },
     onError: undefined,
-  } as unknown as UIMessageStreamWriter<TandemChatMessage>;
+  } as unknown as UIMessageStreamWriter<FlockChatMessage>;
 
-  const messages: TandemChatMessage[] = [
+  const messages: FlockChatMessage[] = [
     { id: "msg-1", role: "user", parts: [{ type: "text", text: lastUserText }] },
   ];
 
@@ -103,7 +103,7 @@ describe("per-section streaming through the chat pipeline", () => {
     // Evidence line for the latency report (inter-section paint gaps).
     console.log(
       JSON.stringify({
-        tag: "tandem.test.sectionStreamGaps",
+        tag: "flock.test.sectionStreamGaps",
         gapsMs: gapsMs.map((gapMs) => Math.round(gapMs)),
       }),
     );

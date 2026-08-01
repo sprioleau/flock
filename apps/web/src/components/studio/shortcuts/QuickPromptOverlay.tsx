@@ -96,7 +96,7 @@ function QuickPromptCard({ onClose }: { onClose: () => void }) {
             value={promptText}
             onChange={(event) => setPromptText(event.target.value)}
             onKeyDown={handleKeyDown}
-            placeholder={isListening ? "Listening…" : "Ask Tandem to change your email…"}
+            placeholder={isListening ? "Listening…" : "Ask Flock to change your email…"}
             aria-label="Quick prompt"
             className="w-full min-w-0 flex-1 bg-transparent px-4 py-3.5 text-base text-foreground outline-none placeholder:text-muted-foreground"
             data-testid="quick-prompt-input"

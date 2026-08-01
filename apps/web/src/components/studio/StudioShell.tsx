@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useConvex, useQuery } from "convex/react";
 import { Loader2Icon, TriangleAlertIcon } from "lucide-react";
-import type { EmailDocument } from "@tandem/email-sdk";
+import type { EmailDocument } from "@flock/email-sdk";
 import { api } from "@convex/_generated/api";
 import type { Id } from "@convex/_generated/dataModel";
 import { Button } from "@/components/ui/button";

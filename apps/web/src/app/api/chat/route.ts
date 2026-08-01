@@ -1,11 +1,11 @@
 import { google } from "@ai-sdk/google";
-import { checkDocumentIntegrity } from "@tandem/email-sdk";
+import { checkDocumentIntegrity } from "@flock/email-sdk";
 import { createUIMessageStream, createUIMessageStreamResponse, type LanguageModel } from "ai";
 import {
   chatRequestBodySchema,
   MOCK_MODEL_HEADER,
   type ChatRequestErrorResponse,
-  type TandemChatMessage,
+  type FlockChatMessage,
 } from "@/lib/chat-contract";
 import { getSessionIdFromCookieHeader } from "@/lib/session-cookie";
 import { DEFAULT_GEMINI_MODEL_ID, MOCK_MODEL_ID } from "./constants";
@@ -22,14 +22,14 @@ import { runChatPipeline } from "./pipeline";
  *
  * Model selection: Gemini (DEFAULT_GEMINI_MODEL_ID) when
  * GOOGLE_GENERATIVE_AI_API_KEY is set; the deterministic mock otherwise, or
- * whenever the request carries `x-tandem-mock: 1` (CI/tests never need a key).
+ * whenever the request carries `x-flock-mock: 1` (CI/tests never need a key).
  */
 
 function badRequest(body: ChatRequestErrorResponse): Response {
   return Response.json(body, { status: 400 });
 }
 
-function getLastUserText(messages: TandemChatMessage[]): string {
+function getLastUserText(messages: FlockChatMessage[]): string {
   const lastUserMessage = [...messages].reverse().find((message) => message.role === "user");
   const text = lastUserMessage?.parts
     .filter((part) => part.type === "text")
@@ -94,7 +94,7 @@ export async function POST(request: Request) {
       })
     : google(DEFAULT_GEMINI_MODEL_ID);
 
-  const stream = createUIMessageStream<TandemChatMessage>({
+  const stream = createUIMessageStream<FlockChatMessage>({
     // Reusing the incoming message history lets continuation rounds (tool
     // results, approval responses) merge into the SAME assistant message id
     // instead of replaying prior tool parts as a fresh message — without

@@ -334,7 +334,7 @@ describe("applySpanStyle — mark application", () => {
     if (doc.type !== "text") throw new Error("fixture");
     const result = applySpanStyle({
       text: doc.properties.text,
-      find: "Welcome to Tandem",
+      find: "Welcome to Flock",
       style: { textColor: "#16a34a" },
     });
     expect(result.isOk).toBe(true);
@@ -409,7 +409,7 @@ describe("resolveStyleTextSpanOperation", () => {
       input: parseInput({
         name: "styleTextSpan",
         blockId: "txt_e5f6",
-        find: "Tandem",
+        find: "Flock",
         occurrence: 4,
         style: { bold: true },
       }),
@@ -496,7 +496,7 @@ describe("styleTextSpanAction through dispatchContentAction", () => {
     if (result.isOk) return;
     expect(result.failureKind).toBe("retryable");
     expect(result.errors[0]!.code).toBe("span_not_found");
-    expect(result.errors[0]!.message).toContain("Welcome to Tandem");
+    expect(result.errors[0]!.message).toContain("Welcome to Flock");
   });
 
   it("rejects an empty style object and unknown style keys at the schema gate", () => {
@@ -504,7 +504,7 @@ describe("styleTextSpanAction through dispatchContentAction", () => {
       styleTextSpanInputSchema.safeParse({
         name: "styleTextSpan",
         blockId: "txt_e5f6",
-        find: "Tandem",
+        find: "Flock",
         style: {},
       }).success,
     ).toBe(false);
@@ -512,7 +512,7 @@ describe("styleTextSpanAction through dispatchContentAction", () => {
       styleTextSpanInputSchema.safeParse({
         name: "styleTextSpan",
         blockId: "txt_e5f6",
-        find: "Tandem",
+        find: "Flock",
         style: { color: "#fff" },
       }).success,
     ).toBe(false);

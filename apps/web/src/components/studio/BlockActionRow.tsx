@@ -13,7 +13,7 @@ import {
   LoaderCircleIcon,
   Trash2Icon,
 } from "lucide-react";
-import type { BlockId } from "@tandem/email-sdk";
+import type { BlockId } from "@flock/email-sdk";
 import { api } from "@convex/_generated/api";
 import { Button } from "@/components/ui/button";
 import { toast } from "@/components/ui/toast";

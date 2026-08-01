@@ -1,4 +1,4 @@
-import { buildAgentActionRegistry } from "@tandem/agent";
+import { buildAgentActionRegistry } from "@flock/agent";
 import { fetchWebArticle } from "@/lib/article-extraction/fetch-web-article";
 
 /**

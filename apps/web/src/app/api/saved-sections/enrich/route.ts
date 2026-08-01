@@ -1,6 +1,6 @@
 import { google } from "@ai-sdk/google";
-import { generateDocumentOutline } from "@tandem/agent";
-import type { Block } from "@tandem/email-sdk";
+import { generateDocumentOutline } from "@flock/agent";
+import type { Block } from "@flock/email-sdk";
 import { generateObject } from "ai";
 import { ConvexHttpClient } from "convex/browser";
 import { z } from "zod";
@@ -66,7 +66,7 @@ async function generateEnrichment({
     } catch (error) {
       console.error(
         JSON.stringify({
-          tag: "tandem.savedSections.enrichModelFailed",
+          tag: "flock.savedSections.enrichModelFailed",
           message: error instanceof Error ? error.message.slice(0, 300) : String(error),
         }),
       );
@@ -111,13 +111,13 @@ export async function POST(request: Request): Promise<Response> {
       description: enrichment.description,
     });
     console.log(
-      JSON.stringify({ tag: "tandem.savedSections.enriched", savedSectionId, source }),
+      JSON.stringify({ tag: "flock.savedSections.enriched", savedSectionId, source }),
     );
     return Response.json({ isEnriched: true, source });
   } catch (error) {
     console.error(
       JSON.stringify({
-        tag: "tandem.savedSections.enrichFailed",
+        tag: "flock.savedSections.enrichFailed",
         message: error instanceof Error ? error.message.slice(0, 300) : String(error),
       }),
     );

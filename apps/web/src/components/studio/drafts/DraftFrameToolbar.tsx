@@ -1,7 +1,7 @@
 "use client";
 
 import { MonitorIcon, SmartphoneIcon } from "lucide-react";
-import type { PreviewMode } from "@tandem/email-sdk";
+import type { PreviewMode } from "@flock/email-sdk";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import { useEditorStore } from "@/lib/editor-store";
 import { HtmlPreviewDialog } from "../HtmlPreviewDialog";

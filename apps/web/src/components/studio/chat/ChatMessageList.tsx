@@ -3,7 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import { isStaticToolUIPart } from "ai";
 import { Loader2Icon, MessagesSquareIcon, TriangleAlertIcon, Undo2Icon } from "lucide-react";
-import { parseChatErrorText, type TandemChatMessage } from "@/lib/chat-contract";
+import { parseChatErrorText, type FlockChatMessage } from "@/lib/chat-contract";
 import { useEditorStore } from "@/lib/editor-store";
 import { cn } from "@/lib/utils";
 import { EditorCommandChip } from "./EditorCommandChip";
@@ -79,7 +79,7 @@ function ErrorBubble({ error }: { error: Error }) {
   );
 }
 
-function getPartToolCallId(part: TandemChatMessage["parts"][number]): string | null {
+function getPartToolCallId(part: FlockChatMessage["parts"][number]): string | null {
   if (isStaticToolUIPart(part)) {
     return part.toolCallId;
   }
@@ -102,7 +102,7 @@ function getPartToolCallId(part: TandemChatMessage["parts"][number]): string | n
  * already deduped by toolCallId; this dedupes RENDERING — for each
  * toolCallId only the latest occurrence (freshest state) draws a chip.
  */
-function buildLatestToolPartKeys(messages: TandemChatMessage[]): Map<string, string> {
+function buildLatestToolPartKeys(messages: FlockChatMessage[]): Map<string, string> {
   const latestKeyByToolCallId = new Map<string, string>();
   for (const message of messages) {
     if (message.role !== "assistant") {
@@ -129,7 +129,7 @@ function buildLatestToolPartKeys(messages: TandemChatMessage[]): Map<string, str
  * on purpose — a genuinely failed edit must not be hidden by an unrelated
  * success in a later turn.
  */
-function getSupersededFailureKeys(message: TandemChatMessage): Set<string> {
+function getSupersededFailureKeys(message: FlockChatMessage): Set<string> {
   const supersededKeys = new Set<string>();
   message.parts.forEach((part, partIndex) => {
     if (!isStaticToolUIPart(part) || part.state !== "output-error") {
@@ -158,7 +158,7 @@ function getAppliedBatchIds({
   message,
   latestToolPartKeys,
 }: {
-  message: TandemChatMessage;
+  message: FlockChatMessage;
   latestToolPartKeys: Map<string, string>;
 }): string[] {
   const batchIds: string[] = [];
@@ -244,7 +244,7 @@ function AssistantMessageParts({
   hasLaterUserMessage,
   onApprovalResponse,
 }: {
-  message: TandemChatMessage;
+  message: FlockChatMessage;
   latestToolPartKeys: Map<string, string>;
   /** True while this message's turn is still in flight (a retry may follow). */
   isRetryPending: boolean;
@@ -323,7 +323,7 @@ function AssistantMessageParts({
 }
 
 export interface ChatMessageListProps {
-  messages: TandemChatMessage[];
+  messages: FlockChatMessage[];
   error: Error | undefined;
   isAwaitingResponse: boolean;
   /**

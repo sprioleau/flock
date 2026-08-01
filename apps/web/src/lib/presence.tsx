@@ -21,7 +21,7 @@ import { getOrCreateSessionId } from "@/lib/session";
  * text cursors) and every other presence consumer:
  *
  * - one presence room per DOCUMENT (roomId = the Convex document id string);
- * - userId = the Tandem anonymous session id (two tabs of one browser are one
+ * - userId = the Flock anonymous session id (two tabs of one browser are one
  *   roster user with two component sessions — the `data` payload is shared,
  *   last write wins);
  * - {@link PresenceProvider} is mounted ONCE at the studio shell level while
@@ -96,7 +96,7 @@ export interface PresenceRosterEntry {
 const BROADCAST_THROTTLE_MS = 200;
 
 /** localStorage key for the user-chosen nickname override. */
-export const DISPLAY_NAME_STORAGE_KEY = "tandem_display_name";
+export const DISPLAY_NAME_STORAGE_KEY = "flock_display_name";
 
 // ---------------------------------------------------------------------------
 // Derived identity: stable adjective-animal name + hue from the session id

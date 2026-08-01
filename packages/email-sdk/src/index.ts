@@ -1,5 +1,5 @@
 /**
- * @tandem/email-sdk — document definition, Zod schemas, operations, renderers.
+ * @flock/email-sdk — document definition, Zod schemas, operations, renderers.
  *
  * Phase 1 status: 1.1 (schemas) and 1.2 (flat store & integrity) implemented.
  * Operations (1.3) and renderers (1.4) build on this surface.

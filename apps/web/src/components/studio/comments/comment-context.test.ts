@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { createSampleDocument, type BlockId } from "@tandem/email-sdk";
+import { createSampleDocument, type BlockId } from "@flock/email-sdk";
 import {
   buildCommentAnchorContext,
   extractBlockTextSnippet,

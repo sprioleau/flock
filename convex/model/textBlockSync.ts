@@ -1,5 +1,5 @@
 import { ProsemirrorSync } from "@convex-dev/prosemirror-sync";
-import type { TextDoc } from "@tandem/email-sdk";
+import type { TextDoc } from "@flock/email-sdk";
 import { buildEditorSchema, Transform } from "../../apps/web/src/lib/editorSchema";
 import { components } from "../_generated/api";
 import type { Doc, Id } from "../_generated/dataModel";
@@ -110,8 +110,8 @@ const prosemirrorSync = new ProsemirrorSync(components.prosemirrorSync);
  * 6.2 presence) can attribute/animate them distinctly from keystrokes.
  * Owner directive from Spike B: the AI has a dedicated clientId from day one.
  */
-export const AI_AGENT_CLIENT_ID = "tandem-agent";
-export const HISTORY_CLIENT_ID = "tandem-history";
+export const AI_AGENT_CLIENT_ID = "flock-agent";
+export const HISTORY_CLIENT_ID = "flock-history";
 
 /**
  * Force a block's sync doc to exactly match an op-authoritative TextDoc —

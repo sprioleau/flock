@@ -12,7 +12,7 @@
  * pointer-events-none and moves only via GPU-composited transforms.
  */
 
-.tandem-pointer-overlay {
+.flock-pointer-overlay {
   position: absolute;
   inset: 0;
   z-index: 20;
@@ -20,7 +20,7 @@
   pointer-events: none;
 }
 
-.tandem-pointer-cursor {
+.flock-pointer-cursor {
   position: absolute;
   top: 0;
   left: 0;
@@ -36,7 +36,7 @@
     opacity 200ms ease;
 }
 
-.tandem-pointer-cursor__arrow {
+.flock-pointer-cursor__arrow {
   display: block;
   filter: drop-shadow(0 1px 1px rgb(0 0 0 / 0.25));
 }
@@ -50,7 +50,7 @@
  * deliberately slower than the human cursors' 180ms tracking — persona
  * motion reads as "attention shifting", not mouse telemetry.
  */
-.tandem-persona-cursor {
+.flock-persona-cursor {
   position: absolute;
   top: 0;
   left: 0;
@@ -64,11 +64,11 @@
 
 /* Gentle idle bob while visible — the "hovering over your button" life sign.
  * Lives on an INNER wrapper: the outer element's transform is positioning. */
-.tandem-persona-cursor__bob {
-  animation: tandem-persona-cursor-bob 3.4s ease-in-out infinite;
+.flock-persona-cursor__bob {
+  animation: flock-persona-cursor-bob 3.4s ease-in-out infinite;
 }
 
-@keyframes tandem-persona-cursor-bob {
+@keyframes flock-persona-cursor-bob {
   0%,
   100% {
     transform: translate(0, 0);
@@ -84,7 +84,7 @@
 /* The at-cursor status badge — same size/ring/pulse treatment as the
  * facepile's PersonaStatusDot (color + animate-pulse come from the
  * component's Tailwind classes, matching the avatar-stack indicator). */
-.tandem-persona-cursor__badge {
+.flock-persona-cursor__badge {
   position: absolute;
   top: -5px;
   left: 9px;
@@ -99,7 +99,7 @@
 /* Name tag: same visual language as the block presence labels
  * (rounded-sm px-1 py-px text-[9px] font-medium leading-3 text-white on the
  * user's presence color). */
-.tandem-pointer-cursor__label {
+.flock-pointer-cursor__label {
   position: absolute;
   top: 14px;
   left: 11px;

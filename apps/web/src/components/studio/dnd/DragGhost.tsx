@@ -15,7 +15,7 @@ import {
   type BlockId,
   type EmailDocument,
   type GlobalStyles,
-} from "@tandem/email-sdk";
+} from "@flock/email-sdk";
 
 export interface DragGhostProps {
   blockId: BlockId;

@@ -1,4 +1,4 @@
-import { SECTION_TEMPLATES, type EmailActionRegistry } from "@tandem/email-sdk";
+import { SECTION_TEMPLATES, type EmailActionRegistry } from "@flock/email-sdk";
 
 /**
  * Prompt layer (b) — tool guidance, generated from the SDK's action registry.

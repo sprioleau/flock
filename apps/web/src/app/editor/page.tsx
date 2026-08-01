@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { EmailEditorPanel } from "./EmailEditorPanel";
 
 export const metadata: Metadata = {
-  title: "Editor — Tandem",
+  title: "Editor — Flock",
 };
 
 export default function EditorPage() {

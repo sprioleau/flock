@@ -29,7 +29,7 @@ import { SuggestionCard } from "./SuggestionCard";
 import { useMessageQueue } from "./use-message-queue";
 import { usePromptHistory } from "./use-prompt-history";
 import { useSpeechInput } from "./use-speech-input";
-import { useTandemChat } from "./use-tandem-chat";
+import { useFlockChat } from "./use-flock-chat";
 
 const EXPANDED_WIDTH_PX = 360;
 const COLLAPSED_WIDTH_PX = 48;
@@ -126,7 +126,7 @@ export function ChatPanel() {
     respondToApproval,
     hasPendingApproval,
     getIsAgentIdle,
-  } = useTandemChat();
+  } = useFlockChat();
   const promptHistory = usePromptHistory();
 
   // The composer's selection-context chip: the selected block's TYPE (ids are
@@ -331,7 +331,7 @@ export function ChatPanel() {
         aria-hidden={!isExpanded}
       >
         <div className="flex h-12 shrink-0 items-center justify-between border-b px-4">
-          <h1 className="font-heading text-sm font-semibold">Tandem</h1>
+          <h1 className="font-heading text-sm font-semibold">Flock</h1>
           <TooltipProvider>
             <Tooltip>
               <TooltipTrigger

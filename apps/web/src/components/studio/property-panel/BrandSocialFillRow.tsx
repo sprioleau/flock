@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { Share2Icon } from "lucide-react";
-import type { BlockId } from "@tandem/email-sdk";
+import type { BlockId } from "@flock/email-sdk";
 import { Button } from "@/components/ui/button";
 import { buildSocialFillUpdates, hasSocialRow } from "@/lib/brand-kit-social-fill";
 import type { BrandSocialLink, SocialPlatform } from "@/lib/social-links";

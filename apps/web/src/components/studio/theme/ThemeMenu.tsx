@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useMutation } from "convex/react";
 import { ChevronDownIcon } from "lucide-react";
-import { resolveGlobalStyles, ROOT_BLOCK_ID } from "@tandem/email-sdk";
+import { resolveGlobalStyles, ROOT_BLOCK_ID } from "@flock/email-sdk";
 import { api } from "@convex/_generated/api";
 import { Button } from "@/components/ui/button";
 import {

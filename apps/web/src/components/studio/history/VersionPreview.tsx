@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useQuery } from "convex/react";
 import { ArrowLeftIcon, HistoryIcon, Loader2Icon } from "lucide-react";
-import type { EmailDocument } from "@tandem/email-sdk";
+import type { EmailDocument } from "@flock/email-sdk";
 import { api } from "@convex/_generated/api";
 import type { Id } from "@convex/_generated/dataModel";
 import { Button } from "@/components/ui/button";

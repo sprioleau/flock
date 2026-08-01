@@ -19,7 +19,7 @@
 import { guardUrl } from "./url-guard";
 
 const USER_AGENT =
-  "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36 TandemBrandKit/1.0";
+  "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126.0 Safari/537.36 FlockBrandKit/1.0";
 
 const MAX_REDIRECTS = 5;
 const DEFAULT_TIMEOUT_MS = 10_000;

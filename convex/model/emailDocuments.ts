@@ -5,8 +5,8 @@ import {
   type Operation,
   type OperationAuthor,
   type OperationError,
-} from "@tandem/email-sdk";
-import type { ActionCaller } from "@tandem/email-sdk";
+} from "@flock/email-sdk";
+import type { ActionCaller } from "@flock/email-sdk";
 import { v } from "convex/values";
 import type { Doc, Id } from "../_generated/dataModel";
 import type { MutationCtx, QueryCtx } from "../_generated/server";

@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback } from "react";
-import type { BlockId } from "@tandem/email-sdk";
+import type { BlockId } from "@flock/email-sdk";
 import { useEditorStore } from "@/lib/editor-store";
 import { useConfirmedBrandLogo } from "../brand-kit/useConfirmedBrandLogo";
 import { buildClickToAddPlan } from "./click-to-add-placement";

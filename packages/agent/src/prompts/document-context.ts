@@ -1,4 +1,4 @@
-import type { BlockId, EmailDocument } from "@tandem/email-sdk";
+import type { BlockId, EmailDocument } from "@flock/email-sdk";
 import { generateDocumentOutline, type DocumentOutlineOptions } from "../outline";
 
 /**

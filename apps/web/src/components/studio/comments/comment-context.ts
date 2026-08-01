@@ -1,5 +1,5 @@
 import type { FunctionReturnType } from "convex/server";
-import type { Block, BlockId, BlockType, EmailDocument } from "@tandem/email-sdk";
+import type { Block, BlockId, BlockType, EmailDocument } from "@flock/email-sdk";
 import type { api } from "@convex/_generated/api";
 import { getAncestorIds } from "@/lib/get-ancestor-ids";
 

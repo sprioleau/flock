@@ -1,4 +1,4 @@
-import { emailDocumentSchema } from "@tandem/email-sdk";
+import { emailDocumentSchema } from "@flock/email-sdk";
 import { z } from "zod";
 
 /**

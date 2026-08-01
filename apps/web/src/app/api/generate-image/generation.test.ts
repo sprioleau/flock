@@ -59,10 +59,10 @@ describe("generateEmailImage (mock selection — no network in tests)", () => {
     expect(outcome.modelId).toBe(MOCK_IMAGE_MODEL_ID);
   });
 
-  it("honors the TANDEM_MOCK_IMAGE_MODEL env switch", async () => {
+  it("honors the FLOCK_MOCK_IMAGE_MODEL env switch", async () => {
     const outcome = await generateEmailImage({
       prompt: "a sunrise",
-      env: { GOOGLE_GENERATIVE_AI_API_KEY: "test-key", TANDEM_MOCK_IMAGE_MODEL: "1" },
+      env: { GOOGLE_GENERATIVE_AI_API_KEY: "test-key", FLOCK_MOCK_IMAGE_MODEL: "1" },
     });
     expect(outcome.isGenerated).toBe(true);
     if (!outcome.isGenerated) return;

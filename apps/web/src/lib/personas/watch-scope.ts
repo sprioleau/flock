@@ -1,4 +1,4 @@
-import { LEAF_BLOCK_TYPES, type Block, type BlockType, type EmailDocument } from "@tandem/email-sdk";
+import { LEAF_BLOCK_TYPES, type Block, type BlockType, type EmailDocument } from "@flock/email-sdk";
 import { serializeBlock } from "@/lib/suggestions/serialize-block";
 
 /**

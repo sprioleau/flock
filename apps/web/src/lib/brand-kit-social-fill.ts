@@ -19,7 +19,7 @@
  * Pure module: detection + update-building only; the panel dispatches.
  */
 
-import type { Block, BlockId, EmailDocument, TextMark, TextNode } from "@tandem/email-sdk";
+import type { Block, BlockId, EmailDocument, TextMark, TextNode } from "@flock/email-sdk";
 import {
   classifySocialUrl,
   SOCIAL_PLATFORM_LABELS,

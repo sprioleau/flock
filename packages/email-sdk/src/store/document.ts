@@ -255,7 +255,7 @@ export function createSampleDocument(): EmailDocument {
             {
               type: "heading",
               attrs: { level: 1 },
-              content: [{ type: "text", text: "Welcome to Tandem" }],
+              content: [{ type: "text", text: "Welcome to Flock" }],
             },
             {
               type: "paragraph",
@@ -284,7 +284,7 @@ export function createSampleDocument(): EmailDocument {
       childrenIds: [],
       properties: {
         src: "https://placehold.co/600x400",
-        alt: "Two riders on a tandem bicycle",
+        alt: "Two riders on a flock bicycle",
         width: 520,
         align: "center",
       },
@@ -387,7 +387,7 @@ export function createSampleDocument(): EmailDocument {
       parentId: "sec_e5f6",
       childrenIds: [],
       properties: {
-        code: 'npm install @tandem/email-sdk\n\nimport { renderToHTML } from "@tandem/email-sdk";',
+        code: 'npm install @flock/email-sdk\n\nimport { renderToHTML } from "@flock/email-sdk";',
         language: "bash",
       },
     },

@@ -15,7 +15,7 @@ import {
   type SectionBlock,
   type SpacerBlock,
   type TextBlock,
-} from "@tandem/email-sdk";
+} from "@flock/email-sdk";
 import {
   AlignField,
   ColorField,

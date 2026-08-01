@@ -98,7 +98,7 @@ function SpanControlShell({ name, isActive, trigger, children }: SpanControlShel
   }, [isOpen]);
 
   return (
-    <div ref={containerRef} className="tandem-span-control">
+    <div ref={containerRef} className="flock-span-control">
       <BubbleMenuItem
         name={name}
         isActive={isActive || isOpen}
@@ -108,7 +108,7 @@ function SpanControlShell({ name, isActive, trigger, children }: SpanControlShel
       >
         {trigger}
       </BubbleMenuItem>
-      {isOpen && <div className="tandem-span-popover">{children(() => setIsOpen(false))}</div>}
+      {isOpen && <div className="flock-span-popover">{children(() => setIsOpen(false))}</div>}
     </div>
   );
 }
@@ -124,12 +124,12 @@ function OptionRow({ isActive, onSelect, style, children }: OptionRowProps) {
   return (
     <button
       type="button"
-      className="tandem-span-option"
+      className="flock-span-option"
       data-active={isActive || undefined}
       onPointerDown={(event) => event.preventDefault()}
       onClick={onSelect}
     >
-      <span className="tandem-span-option-label" style={style}>
+      <span className="flock-span-option-label" style={style}>
         {children}
       </span>
       {isActive && <CheckIcon width={14} height={14} />}
@@ -145,12 +145,12 @@ interface SwatchGridProps {
 
 function SwatchGrid({ colors, activeColor, onSelect }: SwatchGridProps) {
   return (
-    <div className="tandem-swatch-grid">
+    <div className="flock-swatch-grid">
       {colors.map((color) => (
         <button
           key={color}
           type="button"
-          className="tandem-swatch"
+          className="flock-swatch"
           data-active={color === activeColor || undefined}
           style={{ backgroundColor: color }}
           aria-label={color}
@@ -199,7 +199,7 @@ export function FontFamilySelector() {
       name="Font family"
       isActive={fontFamily !== undefined}
       trigger={
-        <span className="tandem-span-trigger-label">
+        <span className="flock-span-trigger-label">
           <span style={activeOption !== undefined ? { fontFamily: activeOption.value } : undefined}>
             {activeOption?.label ?? "Font"}
           </span>
@@ -249,7 +249,7 @@ export function FontSizeSelector() {
       name="Font size"
       isActive={fontSize !== undefined}
       trigger={
-        <span className="tandem-span-trigger-label">
+        <span className="flock-span-trigger-label">
           <span>{fontSize !== undefined ? fontSize.replace("px", "") : "Size"}</span>
           <ChevronDownIcon width={12} height={12} />
         </span>
@@ -296,8 +296,8 @@ export function TextColorSelector() {
       name="Text color"
       isActive={color !== undefined}
       trigger={
-        <span className="tandem-span-trigger-label">
-          <span className="tandem-color-a" style={{ borderBottomColor: color ?? "currentColor" }}>
+        <span className="flock-span-trigger-label">
+          <span className="flock-color-a" style={{ borderBottomColor: color ?? "currentColor" }}>
             A
           </span>
           <ChevronDownIcon width={12} height={12} />
@@ -341,7 +341,7 @@ export function HighlightSelector() {
       name="Highlight"
       isActive={highlightColor !== undefined}
       trigger={
-        <span className="tandem-span-trigger-label">
+        <span className="flock-span-trigger-label">
           <HighlighterIcon
             width={14}
             height={14}

@@ -1,4 +1,4 @@
-import type { Block, BlockId, EmailDocument, Operation } from "@tandem/email-sdk";
+import type { Block, BlockId, EmailDocument, Operation } from "@flock/email-sdk";
 
 /**
  * Proactive recommendations (Phase 7.3 v1) — shared types.

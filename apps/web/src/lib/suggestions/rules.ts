@@ -4,7 +4,7 @@ import {
   type BlockId,
   type EmailDocument,
   type Operation,
-} from "@tandem/email-sdk";
+} from "@flock/email-sdk";
 import { getAncestorIds } from "@/lib/get-ancestor-ids";
 import { deriveAccentTheme } from "./derive-accent-theme";
 import type {

@@ -12,7 +12,7 @@ import {
 import { GateForm } from "./GateForm";
 
 export const metadata: Metadata = {
-  title: "Tandem",
+  title: "Flock",
   description: "Private preview",
 };
 
@@ -45,7 +45,7 @@ export default async function GatePage({ searchParams }: PageProps<"/gate">) {
   return (
     <main className="flex flex-1 flex-col items-center justify-center gap-6 p-8">
       <div className="flex flex-col items-center gap-2">
-        <h1 className="text-4xl font-semibold tracking-tight">Tandem</h1>
+        <h1 className="text-4xl font-semibold tracking-tight">Flock</h1>
         <p className="max-w-sm text-center text-sm text-muted-foreground">
           This is a private preview. Enter the access password to continue.
         </p>

@@ -6,7 +6,7 @@ import {
   type Block,
   type EmailDocument,
   type TextDoc,
-} from "@tandem/email-sdk";
+} from "@flock/email-sdk";
 import { v } from "convex/values";
 import { normalizeEditorDoc } from "../apps/web/src/components/studio/text-editor/normalize-editor-doc";
 import { buildEditorSchema, Transform } from "../apps/web/src/lib/editorSchema";
@@ -73,9 +73,9 @@ const prosemirrorSync = new ProsemirrorSync(components.prosemirrorSync);
  * Synthetic clientId for ghost-typed steps. Sibling of AI_AGENT_CLIENT_ID /
  * HISTORY_CLIENT_ID (model/textBlockSync.ts) but declared here on purpose —
  * the ghost is a demo-only actor and textBlockSync stays untouched. MUST stay
- * distinct from "tandem-agent" or the client agent-pulse would fire.
+ * distinct from "flock-agent" or the client agent-pulse would fire.
  */
-export const GHOST_CLIENT_ID = "tandem-ghost";
+export const GHOST_CLIENT_ID = "flock-ghost";
 
 /** Presence identity: the ghost simulates a HUMAN guest (isAgent is never set). */
 const GHOST_NAME = "Riley (guest)";

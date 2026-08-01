@@ -1,4 +1,4 @@
-import { blockSchema } from "@tandem/email-sdk";
+import { blockSchema } from "@flock/email-sdk";
 
 /**
  * Saved reusable sections — shared (non-registered) helpers. The table

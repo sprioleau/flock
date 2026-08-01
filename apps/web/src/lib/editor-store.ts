@@ -11,7 +11,7 @@ import {
   type PreviewMode,
   type ScaffoldSectionInput,
   type StyleTextSpanInput,
-} from "@tandem/email-sdk";
+} from "@flock/email-sdk";
 import type { ConvexReactClient } from "convex/react";
 import { createContext, useContext } from "react";
 import { useStore, type StoreApi } from "zustand";
@@ -144,7 +144,7 @@ interface PendingOp {
 /**
  * Route ONE settled operation to the correct Convex mutation — THE wire-out
  * seam shared by the store's own outbound overlay (sendPendingOp) and the
- * chat panel's mid-turn-draft-switch path (use-tandem-chat.ts, which must
+ * chat panel's mid-turn-draft-switch path (use-flock-chat.ts, which must
  * land a turn's ops in the document the turn STARTED in even when that
  * document is no longer the connected one).
  *
@@ -869,11 +869,11 @@ useEditorStore.subscribe = (
 // inspect the pending overlay and document without going through React.
 declare global {
   interface Window {
-    __tandemEditorStore?: typeof useEditorStore;
+    __flockEditorStore?: typeof useEditorStore;
   }
 }
 if (typeof window !== "undefined" && process.env.NODE_ENV !== "production") {
-  window.__tandemEditorStore = useEditorStore;
+  window.__flockEditorStore = useEditorStore;
 }
 
 /** Selector: can history.undo do anything for this author? (server-derived) */

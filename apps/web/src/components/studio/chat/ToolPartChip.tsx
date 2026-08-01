@@ -21,9 +21,9 @@ import {
   XIcon,
 } from "lucide-react";
 import type { ToolUIPart } from "ai";
-import type { BlockId } from "@tandem/email-sdk";
+import type { BlockId } from "@flock/email-sdk";
 import { Button } from "@/components/ui/button";
-import type { TandemChatTools } from "@/lib/chat-contract";
+import type { FlockChatTools } from "@/lib/chat-contract";
 import { useEditorStore } from "@/lib/editor-store";
 import { cn } from "@/lib/utils";
 
@@ -41,11 +41,11 @@ import { cn } from "@/lib/utils";
  * "Details" disclosure.
  */
 
-type TandemToolPart = ToolUIPart<TandemChatTools>;
+type FlockToolPart = ToolUIPart<FlockChatTools>;
 
 const READ_ONLY_TOOL_NAMES = new Set(["getBlockDetails", "fetchWebContent", "listAssets"]);
 
-function getToolName(part: TandemToolPart): string {
+function getToolName(part: FlockToolPart): string {
   return part.type.slice("tool-".length);
 }
 
@@ -111,13 +111,13 @@ function getToolActivityLabel(toolName: string): string {
 }
 
 /** The op's target blockId, if its input carries one (not user-facing). */
-function getTargetBlockId(part: TandemToolPart): BlockId | undefined {
+function getTargetBlockId(part: FlockToolPart): BlockId | undefined {
   const input = part.input as Record<string, unknown> | undefined;
   return typeof input?.blockId === "string" ? (input.blockId as BlockId) : undefined;
 }
 
 /** Human-readable non-block target: a recipient, a viewport mode, a panel… */
-function getNonBlockTargetLabel(part: TandemToolPart): string | undefined {
+function getNonBlockTargetLabel(part: FlockToolPart): string | undefined {
   const input = part.input as Record<string, unknown> | undefined;
   if (input === undefined || input === null) {
     return undefined;
@@ -144,7 +144,7 @@ function getNonBlockTargetLabel(part: TandemToolPart): string | undefined {
   return undefined;
 }
 
-function getToolIcon(part: TandemToolPart): React.ReactNode {
+function getToolIcon(part: FlockToolPart): React.ReactNode {
   const toolName = getToolName(part);
   if (READ_ONLY_TOOL_NAMES.has(toolName)) {
     return <SearchIcon className="size-3" />;
@@ -195,7 +195,7 @@ function getToolIcon(part: TandemToolPart): React.ReactNode {
  * raw args JSON (which may contain block ids) — flattened into one string
  * that ONLY ever renders inside the collapsed "Details" disclosure.
  */
-function getRawFailureDetails(part: TandemToolPart & { state: "output-error" }): string {
+function getRawFailureDetails(part: FlockToolPart & { state: "output-error" }): string {
   const rawArgs = part.input ?? part.rawInput;
   const detailLines = [`tool: ${getToolName(part)}`, `error: ${part.errorText}`];
   if (rawArgs !== undefined) {
@@ -217,7 +217,7 @@ function FailedToolPart({
   part,
   isRetryPending,
 }: {
-  part: TandemToolPart & { state: "output-error" };
+  part: FlockToolPart & { state: "output-error" };
   isRetryPending: boolean;
 }) {
   return (
@@ -245,7 +245,7 @@ function FailedToolPart({
   );
 }
 
-function StateBadge({ part }: { part: TandemToolPart }) {
+function StateBadge({ part }: { part: FlockToolPart }) {
   switch (part.state) {
     case "input-streaming":
     case "input-available":
@@ -266,7 +266,7 @@ function StateBadge({ part }: { part: TandemToolPart }) {
 }
 
 /** Short trailing status text for terminal states. */
-function getStatusText(part: TandemToolPart): string | undefined {
+function getStatusText(part: FlockToolPart): string | undefined {
   const toolName = getToolName(part);
   if (part.state === "output-available" && toolName === "sendTestEmail") {
     return "sent";
@@ -281,7 +281,7 @@ function getStatusText(part: TandemToolPart): string | undefined {
 }
 
 export interface ToolPartChipProps {
-  part: TandemToolPart;
+  part: FlockToolPart;
   onApprovalResponse: (input: { approvalId: string; isApproved: boolean }) => void;
   /** True while this part's turn is still in flight (a retry may follow). */
   isRetryPending?: boolean;

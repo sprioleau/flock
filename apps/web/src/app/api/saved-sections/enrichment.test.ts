@@ -1,4 +1,4 @@
-import { createSampleDocument, createTextDoc, ROOT_BLOCK_ID, type Block } from "@tandem/email-sdk";
+import { createSampleDocument, createTextDoc, ROOT_BLOCK_ID, type Block } from "@flock/email-sdk";
 import { describe, expect, it } from "vitest";
 import { collectSectionSubtree } from "@/lib/saved-sections";
 import {

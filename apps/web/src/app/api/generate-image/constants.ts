@@ -17,16 +17,16 @@
  * and EVERY image model returns 429 "free tier limit: 0" — image generation on
  * the Gemini API needs a billing-enabled key. Text models are unaffected. The
  * route surfaces this as a clean "no image quota" error; the deterministic
- * mock (x-tandem-mock header or TANDEM_MOCK_IMAGE_MODEL=1) covers development
+ * mock (x-flock-mock header or FLOCK_MOCK_IMAGE_MODEL=1) covers development
  * and CI until billing is enabled.
  */
 export const GEMINI_IMAGE_MODEL_ID = "gemini-2.5-flash-image";
 
 /** Model id reported in logs when the deterministic mock generator is used. */
-export const MOCK_IMAGE_MODEL_ID = "tandem-mock-image-model";
+export const MOCK_IMAGE_MODEL_ID = "flock-mock-image-model";
 
 /** Env switch that forces the mock generator server-wide (dev/CI without quota). */
-export const MOCK_IMAGE_MODEL_ENV_VAR = "TANDEM_MOCK_IMAGE_MODEL";
+export const MOCK_IMAGE_MODEL_ENV_VAR = "FLOCK_MOCK_IMAGE_MODEL";
 
 /**
  * Aspect ratios accepted by the route and passed through to the model —

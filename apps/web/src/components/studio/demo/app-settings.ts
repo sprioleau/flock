@@ -16,7 +16,7 @@ import { useSyncExternalStore } from "react";
  *   power-user surfaces hidden by default.
  */
 
-const APP_SETTINGS_STORAGE_KEY = "tandem:app-settings";
+const APP_SETTINGS_STORAGE_KEY = "flock:app-settings";
 
 export interface AppSettings {
   isDemoModeEnabled: boolean;

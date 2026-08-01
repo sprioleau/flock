@@ -1,4 +1,4 @@
-import { parseBlockId, type BlockType, type Operation } from "@tandem/email-sdk";
+import { parseBlockId, type BlockType, type Operation } from "@flock/email-sdk";
 import { deriveIdentity } from "@/lib/presence";
 import type { OperationEntry } from "./history-grouping";
 import { humanizePropertyKey } from "./property-phrases";

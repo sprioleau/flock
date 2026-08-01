@@ -1,4 +1,4 @@
-import type { EmailDocument } from "@tandem/email-sdk";
+import type { EmailDocument } from "@flock/email-sdk";
 
 /**
  * Prompt construction for the drafts menu's AI generation actions ("Ideate

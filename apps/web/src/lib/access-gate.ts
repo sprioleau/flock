@@ -6,12 +6,12 @@ import { createHash, createHmac, timingSafeEqual } from "node:crypto";
  * Node.js runtime, so node:crypto is available.
  *
  * Cookie scheme: the gate cookie's value is an HMAC derived from the
- * TANDEM_ACCESS_PASSWORD env var (never the raw password). Rotating the env
+ * FLOCK_ACCESS_PASSWORD env var (never the raw password). Rotating the env
  * var changes the expected HMAC, which invalidates every outstanding cookie
  * automatically — no server-side session state needed.
  */
 
-export const GATE_COOKIE_NAME = "tandem_access";
+export const GATE_COOKIE_NAME = "flock_access";
 export const GATE_COOKIE_MAX_AGE_SECONDS = 60 * 60 * 24 * 30; // ~30 days
 
 /**
@@ -20,7 +20,7 @@ export const GATE_COOKIE_MAX_AGE_SECONDS = 60 * 60 * 24 * 30; // ~30 days
  * HMAC), so it only skips repeat Convex lookups for the same capability link
  * — it never unlocks the bare entry pages the password protects.
  */
-export const DOC_COOKIE_NAME = "tandem_doc_ok";
+export const DOC_COOKIE_NAME = "flock_doc_ok";
 export const DOC_COOKIE_MAX_AGE_SECONDS = 60 * 60; // 1 hour
 
 /**
@@ -28,7 +28,7 @@ export const DOC_COOKIE_MAX_AGE_SECONDS = 60 * 60; // 1 hour
  * existence check, scoped to that one canvas id. Same trust model — it only
  * skips repeat Convex lookups for the same capability link.
  */
-export const CANVAS_COOKIE_NAME = "tandem_canvas_ok";
+export const CANVAS_COOKIE_NAME = "flock_canvas_ok";
 export const CANVAS_COOKIE_MAX_AGE_SECONDS = 60 * 60; // 1 hour
 
 export const GATE_PATH = "/gate";
@@ -42,7 +42,7 @@ export const DEFAULT_RETURN_TO_PATH = "/studio";
  * setting the env var. Read server-side only.
  */
 export function getAccessPassword(): string | undefined {
-  const password = process.env.TANDEM_ACCESS_PASSWORD;
+  const password = process.env.FLOCK_ACCESS_PASSWORD;
   return password !== undefined && password.length > 0 ? password : undefined;
 }
 
@@ -66,7 +66,7 @@ export function isMatchingSecret({
 /** The value stored in the gate cookie for a given password. */
 export function deriveGateCookieValue(password: string): string {
   return createHmac("sha256", password)
-    .update("tandem-access-gate-v1")
+    .update("flock-access-gate-v1")
     .digest("hex");
 }
 
@@ -79,7 +79,7 @@ export function deriveDocCookieValue({
   documentKey: string;
 }): string {
   return createHmac("sha256", password)
-    .update(`tandem-doc-ok-v1:${documentKey}`)
+    .update(`flock-doc-ok-v1:${documentKey}`)
     .digest("hex");
 }
 
@@ -92,7 +92,7 @@ export function deriveCanvasCookieValue({
   canvasKey: string;
 }): string {
   return createHmac("sha256", password)
-    .update(`tandem-canvas-ok-v1:${canvasKey}`)
+    .update(`flock-canvas-ok-v1:${canvasKey}`)
     .digest("hex");
 }
 

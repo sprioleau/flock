@@ -76,7 +76,7 @@ const sendTestEmailAction = defineEmailAction({
   readOnly: false,
   parallelSafe: false,
   needsApproval: (input, context) =>
-    context.author === "agent" || !input.to.endsWith("@tandem.test"),
+    context.author === "agent" || !input.to.endsWith("@flock.test"),
   run: (input) => ({ type: "sendTestEmail" as const, to: input.to }),
 });
 
@@ -315,7 +315,7 @@ describe("dispatchEditorAction", () => {
     const internalSend = dispatchEditorAction({
       registry,
       name: "sendTestEmail",
-      input: { to: "me@tandem.test" },
+      input: { to: "me@flock.test" },
       context: userContext,
     });
     expect(internalSend.isOk).toBe(true);
@@ -335,7 +335,7 @@ describe("dispatchEditorAction", () => {
     const agentSend = dispatchEditorAction({
       registry,
       name: "sendTestEmail",
-      input: { to: "me@tandem.test" },
+      input: { to: "me@flock.test" },
       context: agentContext,
     });
     expect(agentSend.isOk).toBe(true);

@@ -1,4 +1,4 @@
-import type { Block, BlockId, EmailDocument } from "@tandem/email-sdk";
+import type { Block, BlockId, EmailDocument } from "@flock/email-sdk";
 
 /**
  * Block detail view (plan §9.4 item 1, catalog-lookup pattern).

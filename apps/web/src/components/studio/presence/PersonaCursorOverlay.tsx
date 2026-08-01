@@ -211,7 +211,7 @@ function PersonaCursorLayer({
   return (
     <div
       ref={attachOverlayElement}
-      className="tandem-pointer-overlay"
+      className="flock-pointer-overlay"
       aria-hidden
       data-testid="persona-cursor-overlay"
     >
@@ -544,14 +544,14 @@ function PersonaCursor({
   return (
     <div
       ref={cursorRef}
-      className="tandem-persona-cursor"
+      className="flock-persona-cursor"
       data-testid="persona-cursor"
       data-persona-slug={slug}
       data-activity={activity}
     >
-      <div className="tandem-persona-cursor__bob">
+      <div className="flock-persona-cursor__bob">
         <PointerCursorArrow color={color} />
-        <span className="tandem-pointer-cursor__label" style={{ backgroundColor: color }}>
+        <span className="flock-pointer-cursor__label" style={{ backgroundColor: color }}>
           {name}
         </span>
         {activity !== "hidden" && (
@@ -561,7 +561,7 @@ function PersonaCursor({
            * (the bounded post-run presentation before the cursor fades). */
           <span
             className={cn(
-              "tandem-persona-cursor__badge animate-pulse",
+              "flock-persona-cursor__badge animate-pulse",
               activity === "reading" ? "bg-amber-500" : "bg-violet-500",
             )}
             data-testid="persona-cursor-badge"

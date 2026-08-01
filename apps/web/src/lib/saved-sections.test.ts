@@ -5,7 +5,7 @@ import {
   type Block,
   type BlockId,
   type SectionBlock,
-} from "@tandem/email-sdk";
+} from "@flock/email-sdk";
 import { describe, expect, it } from "vitest";
 import {
   buildInsertSavedSectionPlan,

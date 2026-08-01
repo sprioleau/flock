@@ -5,7 +5,7 @@ import {
   type BlockId,
   type EmailDocument,
   type InlineNode,
-} from "@tandem/email-sdk";
+} from "@flock/email-sdk";
 import { render } from "react-email";
 import { Resend } from "resend";
 import { z } from "zod";
@@ -20,7 +20,7 @@ import { z } from "zod";
  * - from    = RESEND_FROM_EMAIL (env default; per-document config is a future
  *             phase), reply-to = RESEND_REPLY_TO_EMAIL when set.
  * - subject = the document's first heading (the wire document carries no
- *             name/subject field), falling back to "Tandem test email".
+ *             name/subject field), falling back to "Flock test email".
  * - Idempotency: the key is a hash of the exact send payload
  *   (from + to + subject + html). Resend replays the ORIGINAL response for
  *   the same key + same payload within 24h, so approval-loop double-fires
@@ -72,7 +72,7 @@ function getResendSendConfig(env: Record<string, string | undefined>): ResendSen
 // Subject derivation
 // ---------------------------------------------------------------------------
 
-const FALLBACK_SUBJECT = "Tandem test email";
+const FALLBACK_SUBJECT = "Flock test email";
 const MAX_SUBJECT_LENGTH = 90;
 
 function getInlineNodesText(nodes: InlineNode[] | undefined): string {
@@ -200,7 +200,7 @@ export async function sendTestEmailWithResend({
   } catch (error) {
     console.error(
       JSON.stringify({
-        tag: "tandem.sendTestEmail.renderFailed",
+        tag: "flock.sendTestEmail.renderFailed",
         message: error instanceof Error ? error.message : String(error),
       }),
     );
@@ -237,7 +237,7 @@ export async function sendTestEmailWithResend({
       // Raw provider error: server log only — never the user-facing outcome.
       console.error(
         JSON.stringify({
-          tag: "tandem.sendTestEmail.failed",
+          tag: "flock.sendTestEmail.failed",
           to: recipient,
           idempotencyKey,
           errorName: error.name,
@@ -255,7 +255,7 @@ export async function sendTestEmailWithResend({
     }
     console.log(
       JSON.stringify({
-        tag: "tandem.sendTestEmail.sent",
+        tag: "flock.sendTestEmail.sent",
         to: recipient,
         messageId: data.id,
         idempotencyKey,
@@ -266,7 +266,7 @@ export async function sendTestEmailWithResend({
     // The SDK only rejects for transport-level failures (DNS, TLS, proxy).
     console.error(
       JSON.stringify({
-        tag: "tandem.sendTestEmail.networkError",
+        tag: "flock.sendTestEmail.networkError",
         to: recipient,
         message: error instanceof Error ? error.message : String(error),
       }),

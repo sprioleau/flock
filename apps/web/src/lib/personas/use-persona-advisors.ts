@@ -3,8 +3,8 @@
 import { useEffect, useRef, useState } from "react";
 import { useConvex, useQuery } from "convex/react";
 import type { FunctionReturnType } from "convex/server";
-import { generateDocumentOutline } from "@tandem/agent";
-import { applyOperations, type EmailDocument, type Operation } from "@tandem/email-sdk";
+import { generateDocumentOutline } from "@flock/agent";
+import { applyOperations, type EmailDocument, type Operation } from "@flock/email-sdk";
 import { api } from "@convex/_generated/api";
 import type { Id } from "@convex/_generated/dataModel";
 import { useEditorStore } from "@/lib/editor-store";
@@ -107,12 +107,12 @@ const APPLIED_STATE_TTL_MS = 8_000;
 // Dev-only trace so in-browser verification can see WHY a run did/didn't fire.
 declare global {
   interface Window {
-    __tandemPersonasDebug?: unknown[];
+    __flockPersonasDebug?: unknown[];
   }
 }
 function tracePersonas(event: Record<string, unknown>): void {
   if (typeof window !== "undefined" && process.env.NODE_ENV !== "production") {
-    (window.__tandemPersonasDebug ??= []).push({ atMs: Date.now(), ...event });
+    (window.__flockPersonasDebug ??= []).push({ atMs: Date.now(), ...event });
   }
 }
 

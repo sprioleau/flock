@@ -5,7 +5,7 @@ import {
   createStarterDocument,
   withRemoveBlockCascadeDefault,
   type Operation,
-} from "@tandem/email-sdk";
+} from "@flock/email-sdk";
 import { v } from "convex/values";
 import { internal } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";

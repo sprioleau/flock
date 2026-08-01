@@ -2,7 +2,7 @@
 
 import { useId } from "react";
 import { AlignCenter, AlignLeft, AlignRight, X } from "lucide-react";
-import type { TextAlign } from "@tandem/email-sdk";
+import type { TextAlign } from "@flock/email-sdk";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";

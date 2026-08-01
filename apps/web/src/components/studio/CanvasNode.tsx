@@ -11,7 +11,7 @@ import {
   SpacerBlockView,
   type EmailTreeNode,
   type GlobalStyles,
-} from "@tandem/email-sdk";
+} from "@flock/email-sdk";
 import { BlockShell } from "./BlockShell";
 import { ButtonBlockCanvasSlot } from "./button-editor/ButtonBlockCanvasSlot";
 import { ImageBlockCanvasSlot } from "./ImageBlockCanvasSlot";

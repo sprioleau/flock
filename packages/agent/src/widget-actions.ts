@@ -8,7 +8,7 @@ import {
   type Block,
   type EmailDocument,
   type UpdateBlockPropertiesOperation,
-} from "@tandem/email-sdk";
+} from "@flock/email-sdk";
 import { z } from "zod";
 
 /**

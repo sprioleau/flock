@@ -1,4 +1,4 @@
-import { ROOT_BLOCK_ID, type BlockId, type EmailDocument } from "@tandem/email-sdk";
+import { ROOT_BLOCK_ID, type BlockId, type EmailDocument } from "@flock/email-sdk";
 
 export interface GetAncestorIdsArgs {
   doc: EmailDocument;

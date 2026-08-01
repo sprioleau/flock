@@ -5,7 +5,7 @@ import {
   TextBlockView,
   type ResolvedTextStyles,
   type TextBlock,
-} from "@tandem/email-sdk";
+} from "@flock/email-sdk";
 import { api } from "@convex/_generated/api";
 import { useEditorStore } from "@/lib/editor-store";
 import { InlineTextEditor } from "./InlineTextEditor";

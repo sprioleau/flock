@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { DEFAULT_GLOBAL_STYLES } from "@tandem/email-sdk";
+import { DEFAULT_GLOBAL_STYLES } from "@flock/email-sdk";
 import { describeValueTransition, formatTransitionTooltip } from "./value-transition";
 
 /**

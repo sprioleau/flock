@@ -1,7 +1,7 @@
 // @vitest-environment edge-runtime
 import { describe, expect, it } from "vitest";
 import { convexTest } from "convex-test";
-import { generateBlockId, ROOT_BLOCK_ID } from "@tandem/email-sdk";
+import { generateBlockId, ROOT_BLOCK_ID } from "@flock/email-sdk";
 import { api } from "@convex/_generated/api";
 import type { Doc, Id } from "@convex/_generated/dataModel";
 import schema from "@convex/schema";

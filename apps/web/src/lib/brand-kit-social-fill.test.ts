@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import type { EmailDocument } from "@tandem/email-sdk";
+import type { EmailDocument } from "@flock/email-sdk";
 import { buildSocialFillUpdates, hasSocialRow } from "./brand-kit-social-fill";
 import type { BrandSocialLink } from "./social-links";
 

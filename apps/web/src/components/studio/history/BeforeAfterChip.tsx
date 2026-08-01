@@ -1,4 +1,4 @@
-import type { GlobalStyles } from "@tandem/email-sdk";
+import type { GlobalStyles } from "@flock/email-sdk";
 import { cn } from "@/lib/utils";
 import { formatTransitionTooltip, type ValueTransition } from "./value-transition";
 

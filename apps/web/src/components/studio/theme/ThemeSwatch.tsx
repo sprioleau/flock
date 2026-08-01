@@ -1,4 +1,4 @@
-import type { GlobalStyles } from "@tandem/email-sdk";
+import type { GlobalStyles } from "@flock/email-sdk";
 
 /**
  * The visual cue for one theme: an "Aa" glyph showing the theme's text colors

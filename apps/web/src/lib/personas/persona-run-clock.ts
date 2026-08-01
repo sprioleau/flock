@@ -24,7 +24,7 @@ import { useSyncExternalStore } from "react";
  * unit-testable: internal states map to user language, never raw ms.
  */
 
-const RUN_CLOCK_STORAGE_KEY = "tandem_persona_last_run";
+const RUN_CLOCK_STORAGE_KEY = "flock_persona_last_run";
 
 /** Bound on retained entries — old documents' stamps get evicted. */
 const MAX_RUN_CLOCK_ENTRIES = 64;
@@ -130,7 +130,7 @@ export function recordPersonaRunStart({
  * last check. localStorage so reloads and sibling tabs share the baseline;
  * non-reactive on purpose (only the runner reads it, at call time).
  */
-const CHECKED_HASH_STORAGE_KEY = "tandem_persona_last_hash";
+const CHECKED_HASH_STORAGE_KEY = "flock_persona_last_hash";
 
 interface CheckedHashEntry {
   hash: string;

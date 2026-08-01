@@ -57,7 +57,7 @@ interface RemoteCursorsState {
   heldAhead: Map<string, RemoteCursor>;
 }
 
-const remoteCursorsPluginKey = new PluginKey<RemoteCursorsState>("tandemRemoteCursors");
+const remoteCursorsPluginKey = new PluginKey<RemoteCursorsState>("flockRemoteCursors");
 
 /** Push the latest roster-derived cursor list into the editor's plugin. */
 export function updateRemoteCursors({
@@ -75,7 +75,7 @@ export function updateRemoteCursors({
 
 export function createRemoteCursorsExtension(): Extension {
   return Extension.create({
-    name: "tandemRemoteCursors",
+    name: "flockRemoteCursors",
     addProseMirrorPlugins() {
       return [createRemoteCursorsPlugin()];
     },
@@ -277,8 +277,8 @@ function buildCursorDecorations({
         from,
         to,
         {
-          class: "tandem-remote-selection",
-          style: `--tandem-presence-color: ${cursor.color}`,
+          class: "flock-remote-selection",
+          style: `--flock-presence-color: ${cursor.color}`,
         },
         { userId: cursor.userId },
       ),
@@ -289,10 +289,10 @@ function buildCursorDecorations({
 
 function buildCaretElement(cursor: RemoteCursor): HTMLElement {
   const caret = document.createElement("span");
-  caret.className = "tandem-remote-caret";
-  caret.style.setProperty("--tandem-presence-color", cursor.color);
+  caret.className = "flock-remote-caret";
+  caret.style.setProperty("--flock-presence-color", cursor.color);
   const flag = document.createElement("span");
-  flag.className = "tandem-remote-caret__flag";
+  flag.className = "flock-remote-caret__flag";
   flag.textContent = cursor.isAgent === true ? `✦ ${cursor.name}` : cursor.name;
   caret.appendChild(flag);
   return caret;

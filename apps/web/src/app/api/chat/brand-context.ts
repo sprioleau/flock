@@ -57,7 +57,7 @@ export async function buildBrandSocialContextLine({
   } catch (error) {
     console.error(
       JSON.stringify({
-        tag: "tandem.chat.brandContextFailed",
+        tag: "flock.chat.brandContextFailed",
         message: error instanceof Error ? error.message.slice(0, 300) : String(error),
       }),
     );

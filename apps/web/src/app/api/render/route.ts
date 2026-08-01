@@ -2,7 +2,7 @@ import {
   checkDocumentIntegrity,
   emailDocumentSchema,
   renderToHTML,
-} from "@tandem/email-sdk";
+} from "@flock/email-sdk";
 
 /**
  * POST /api/render — flat email document in, email-safe HTML out.

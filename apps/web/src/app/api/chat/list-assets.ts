@@ -1,5 +1,5 @@
 import { ConvexHttpClient } from "convex/browser";
-import type { AssetSummary, ListAssetsResult } from "@tandem/agent";
+import type { AssetSummary, ListAssetsResult } from "@flock/agent";
 import { api } from "@convex/_generated/api";
 
 /**
@@ -44,7 +44,7 @@ export async function listSessionAssets({
   } catch (error) {
     console.error(
       JSON.stringify({
-        tag: "tandem.chat.listAssetsFailed",
+        tag: "flock.chat.listAssetsFailed",
         message: error instanceof Error ? error.message.slice(0, 300) : String(error),
       }),
     );

@@ -13,9 +13,9 @@ import { useSyncExternalStore } from "react";
  * "storage" listener keeps multiple tabs in sync.
  */
 
-const ENABLED_PERSONAS_STORAGE_KEY = "tandem_enabled_agents";
+const ENABLED_PERSONAS_STORAGE_KEY = "flock_enabled_agents";
 /** Pause flag ("1" = paused) — persisted beside the enablement list. */
-const PERSONAS_PAUSED_STORAGE_KEY = "tandem_agents_paused";
+const PERSONAS_PAUSED_STORAGE_KEY = "flock_agents_paused";
 
 /** Stable snapshot (useSyncExternalStore requires reference equality). */
 let cachedSlugs: readonly string[] = [];

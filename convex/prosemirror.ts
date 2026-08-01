@@ -1,5 +1,5 @@
 import { ProsemirrorSync } from "@convex-dev/prosemirror-sync";
-import { textDocSchema } from "@tandem/email-sdk";
+import { textDocSchema } from "@flock/email-sdk";
 import { v } from "convex/values";
 import { normalizeEditorDoc } from "../apps/web/src/components/studio/text-editor/normalize-editor-doc";
 import {

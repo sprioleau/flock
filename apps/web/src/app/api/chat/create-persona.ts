@@ -1,4 +1,4 @@
-import type { CreatePersonaCommand } from "@tandem/email-sdk";
+import type { CreatePersonaCommand } from "@flock/email-sdk";
 import { ConvexHttpClient } from "convex/browser";
 import { api } from "@convex/_generated/api";
 
@@ -118,7 +118,7 @@ export async function createPersonaForSession({
     const rawMessage = error instanceof Error ? error.message : String(error);
     console.error(
       JSON.stringify({
-        tag: "tandem.chat.createPersonaFailed",
+        tag: "flock.chat.createPersonaFailed",
         message: rawMessage.slice(0, 300),
       }),
     );

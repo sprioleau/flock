@@ -28,7 +28,7 @@ function makeComment(overrides: {
     },
     thread: overrides.texts.map((entry, index) => ({
       authorKind: entry.authorKind,
-      authorName: entry.authorKind === "agent" ? "Tandem" : "brave otter",
+      authorName: entry.authorKind === "agent" ? "Flock" : "brave otter",
       text: entry.text,
       createdAtMs: 1000 + index,
     })),

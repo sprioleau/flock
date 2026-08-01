@@ -1,4 +1,4 @@
-import { createEmptyDocument, createStarterDocument } from "@tandem/email-sdk";
+import { createEmptyDocument, createStarterDocument } from "@flock/email-sdk";
 import { describe, expect, it } from "vitest";
 import {
   buildDesignVariationPrompt,

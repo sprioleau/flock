@@ -11,7 +11,7 @@ import {
   type EmailDocument,
   type LeafBlockType,
   type SectionBlock,
-} from "@tandem/email-sdk";
+} from "@flock/email-sdk";
 
 /**
  * Factories for the add-block affordance: fresh ids plus sensible default
@@ -246,7 +246,7 @@ export function createDefaultLeafBlock({
         parentId,
         childrenIds: [],
         properties: {
-          code: 'console.log("Hello from Tandem");',
+          code: 'console.log("Hello from Flock");',
           language: "javascript",
           paddingTop: 8,
           paddingBottom: 8,

@@ -6,7 +6,7 @@ import {
   updateTextOperationSchema,
   type TextDoc,
   type UpdateTextOperation,
-} from "@tandem/email-sdk";
+} from "@flock/email-sdk";
 import { v } from "convex/values";
 import {
   buildEditorSchema,

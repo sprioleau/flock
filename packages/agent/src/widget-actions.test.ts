@@ -3,7 +3,7 @@ import {
   emailActionRegistry,
   ROOT_BLOCK_ID,
   type BlockId,
-} from "@tandem/email-sdk";
+} from "@flock/email-sdk";
 import { describe, expect, it } from "vitest";
 import { buildAgentActionRegistry } from "./actions";
 import { buildToolGuidance } from "./prompts";

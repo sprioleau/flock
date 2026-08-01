@@ -7,7 +7,7 @@
  * (stepped toward black/white until compliant) rather than eyeballed.
  */
 
-import { DEFAULT_GLOBAL_STYLES, type GlobalStyles } from "@tandem/email-sdk";
+import { DEFAULT_GLOBAL_STYLES, type GlobalStyles } from "@flock/email-sdk";
 import {
   getContrastRatio,
   getVariationContrastPairs,

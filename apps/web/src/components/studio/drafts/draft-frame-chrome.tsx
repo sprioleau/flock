@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { useConvex } from "convex/react";
 import { Loader2Icon } from "lucide-react";
-import { ROOT_BLOCK_ID, type EmailDocument } from "@tandem/email-sdk";
+import { ROOT_BLOCK_ID, type EmailDocument } from "@flock/email-sdk";
 import { api } from "@convex/_generated/api";
 import { cn } from "@/lib/utils";
 import { DraftBrandPill } from "../brand-kit/DraftBrandPill";
@@ -69,7 +69,7 @@ export function GenerationWorkingOverlay() {
       data-testid="generation-working-overlay"
     >
       <Loader2Icon className="size-5 animate-spin text-muted-foreground" aria-hidden />
-      <p className="text-sm font-medium">Tandem is ideating…</p>
+      <p className="text-sm font-medium">Flock is ideating…</p>
       <p className="text-xs text-muted-foreground" aria-live="polite">
         {GENERATION_STAGE_LINES[stageIndex]}
       </p>

@@ -1,4 +1,4 @@
-import { checkDocumentIntegrity } from "@tandem/email-sdk";
+import { checkDocumentIntegrity } from "@flock/email-sdk";
 import { sendTestEmailWithResend } from "../chat/send-test-email";
 import {
   sendTestEmailRequestBodySchema,
@@ -20,7 +20,7 @@ import {
  * instead of sending again), same user-facing error copy. There is exactly
  * ONE send path.
  *
- * Audit trail: the module writes the same tandem.sendTestEmail.sent/.failed
+ * Audit trail: the module writes the same flock.sendTestEmail.sent/.failed
  * log lines it writes for agent sends; this route adds one provenance line
  * marking the send as user-authored. A test send is a side effect, not a
  * document edit, so (as in the chat flow) nothing enters the op-log spine.
@@ -64,7 +64,7 @@ export async function POST(request: Request): Promise<Response> {
   // ActionContext records author "agent"; this is the human counterpart).
   console.log(
     JSON.stringify({
-      tag: "tandem.sendTestEmail.userInitiated",
+      tag: "flock.sendTestEmail.userInitiated",
       author: "user",
       caller: "studio-header",
       to,

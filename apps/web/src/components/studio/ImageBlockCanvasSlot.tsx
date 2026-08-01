@@ -1,6 +1,6 @@
 "use client";
 
-import { ImageBlockView, type ImageBlock, type ResolvedImageStyles } from "@tandem/email-sdk";
+import { ImageBlockView, type ImageBlock, type ResolvedImageStyles } from "@flock/email-sdk";
 import { Loader2 } from "lucide-react";
 import { useImagePreviewStore } from "@/lib/image-preview-store";
 

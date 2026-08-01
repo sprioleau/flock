@@ -64,12 +64,12 @@
  * as the package's own node-selector popover so the visual language matches.
  */
 
-[data-inline-text-editor] .tandem-span-control {
+[data-inline-text-editor] .flock-span-control {
   position: relative;
   display: flex;
 }
 
-[data-inline-text-editor] .tandem-span-trigger-label {
+[data-inline-text-editor] .flock-span-trigger-label {
   display: inline-flex;
   align-items: center;
   gap: 2px;
@@ -78,7 +78,7 @@
   white-space: nowrap;
 }
 
-[data-inline-text-editor] .tandem-color-a {
+[data-inline-text-editor] .flock-color-a {
   display: inline-block;
   font-weight: 600;
   line-height: 1;
@@ -86,7 +86,7 @@
   border-bottom: 2px solid currentColor;
 }
 
-[data-inline-text-editor] .tandem-span-popover {
+[data-inline-text-editor] .flock-span-popover {
   position: absolute;
   top: calc(100% + 6px);
   left: 0;
@@ -104,7 +104,7 @@
   box-shadow: var(--re-shadow);
 }
 
-[data-inline-text-editor] .tandem-span-option {
+[data-inline-text-editor] .flock-span-option {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -121,22 +121,22 @@
   white-space: nowrap;
 }
 
-[data-inline-text-editor] .tandem-span-option:hover {
+[data-inline-text-editor] .flock-span-option:hover {
   background: var(--re-hover);
 }
 
-[data-inline-text-editor] .tandem-span-option[data-active] {
+[data-inline-text-editor] .flock-span-option[data-active] {
   background: var(--re-bg-active);
 }
 
-[data-inline-text-editor] .tandem-swatch-grid {
+[data-inline-text-editor] .flock-swatch-grid {
   display: grid;
   grid-template-columns: repeat(5, 1fr);
   gap: 4px;
   padding: 4px;
 }
 
-[data-inline-text-editor] .tandem-swatch {
+[data-inline-text-editor] .flock-swatch {
   width: 22px;
   height: 22px;
   padding: 0;
@@ -145,12 +145,12 @@
   cursor: pointer;
 }
 
-[data-inline-text-editor] .tandem-swatch:hover {
+[data-inline-text-editor] .flock-swatch:hover {
   outline: 2px solid var(--re-text-muted);
   outline-offset: 1px;
 }
 
-[data-inline-text-editor] .tandem-swatch[data-active] {
+[data-inline-text-editor] .flock-swatch[data-active] {
   outline: 2px solid var(--re-text);
   outline-offset: 1px;
 }

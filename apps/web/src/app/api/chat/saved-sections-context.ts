@@ -61,7 +61,7 @@ export async function buildSavedSectionsContext({
   } catch (error) {
     console.error(
       JSON.stringify({
-        tag: "tandem.chat.savedSectionsContextFailed",
+        tag: "flock.chat.savedSectionsContextFailed",
         message: error instanceof Error ? error.message.slice(0, 300) : String(error),
       }),
     );

@@ -1,4 +1,4 @@
-import type { Block, EmailDocument, TextDoc } from "@tandem/email-sdk";
+import type { Block, EmailDocument, TextDoc } from "@flock/email-sdk";
 
 /**
  * Demo-mode prompt composer: turns the CURRENT document into a handful of natural-
@@ -91,7 +91,7 @@ function findParagraphPhrase(text: TextDoc): string | null {
 // ---------------------------------------------------------------------------
 
 const ACCENT_COLOR_NAMES = ["deep violet", "forest green", "warm coral", "navy blue"] as const;
-const BUTTON_LABEL_IDEAS = ["Start now", "Join the ride", "Try Tandem free", "Count me in"] as const;
+const BUTTON_LABEL_IDEAS = ["Start now", "Join the ride", "Try Flock free", "Count me in"] as const;
 const TONE_WORDS = ["more playful", "shorter and punchier", "warmer and more personal"] as const;
 
 function buildPromptCandidates(doc: EmailDocument): string[] {

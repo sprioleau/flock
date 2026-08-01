@@ -5,7 +5,7 @@ import {
   type BlockId,
   type EmailDocument,
   type SectionBlock,
-} from "@tandem/email-sdk";
+} from "@flock/email-sdk";
 import type { DispatchableOp } from "@/lib/editor-store";
 import {
   createDefaultColumnsPreset,

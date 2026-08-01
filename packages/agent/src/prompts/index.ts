@@ -1,4 +1,4 @@
-import type { EmailActionRegistry, EmailDocument } from "@tandem/email-sdk";
+import type { EmailActionRegistry, EmailDocument } from "@flock/email-sdk";
 import { buildDocumentContext, type BuildDocumentContextOptions } from "./document-context";
 import { SYSTEM_STATIC } from "./system-static";
 import { buildToolGuidance } from "./tool-guidance";

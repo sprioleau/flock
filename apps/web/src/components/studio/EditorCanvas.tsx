@@ -2,7 +2,7 @@
 
 import { useMemo } from "react";
 import { PlusIcon } from "lucide-react";
-import { inflate, resolveRootBlockStyles, ROOT_BLOCK_ID } from "@tandem/email-sdk";
+import { inflate, resolveRootBlockStyles, ROOT_BLOCK_ID } from "@flock/email-sdk";
 import { Button } from "@/components/ui/button";
 import { useEditorStore } from "@/lib/editor-store";
 import { cn } from "@/lib/utils";

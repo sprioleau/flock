@@ -7,7 +7,7 @@ import {
   applyOperations,
   updateBlockPropertiesOperationSchema,
   type EmailDocument,
-} from "@tandem/email-sdk";
+} from "@flock/email-sdk";
 import { api } from "@convex/_generated/api";
 import type { Id } from "@convex/_generated/dataModel";
 import { useEditorStore } from "@/lib/editor-store";
@@ -88,12 +88,12 @@ export { serializeBlock, stableStringify } from "./serialize-block";
 // (agents, debugging) can see WHY a suggestion did or didn't surface.
 declare global {
   interface Window {
-    __tandemSuggestionsDebug?: unknown[];
+    __flockSuggestionsDebug?: unknown[];
   }
 }
 function traceEvaluation(event: Record<string, unknown>): void {
   if (typeof window !== "undefined" && process.env.NODE_ENV !== "production") {
-    (window.__tandemSuggestionsDebug ??= []).push({ atMs: Date.now(), ...event });
+    (window.__flockSuggestionsDebug ??= []).push({ atMs: Date.now(), ...event });
   }
 }
 

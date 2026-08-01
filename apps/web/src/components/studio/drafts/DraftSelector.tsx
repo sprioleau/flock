@@ -482,7 +482,7 @@ export function DraftSelector({
             <TooltipProvider>
               <MaybeDisabledTooltip
                 isDisabled={isAgentBusy}
-                message="Tandem is busy with another request — try again when it finishes."
+                message="Flock is busy with another request — try again when it finishes."
               >
                 <DropdownMenuItem
                   disabled={isAgentBusy || isGenerationPending}
@@ -494,7 +494,7 @@ export function DraftSelector({
               </MaybeDisabledTooltip>
               <MaybeDisabledTooltip
                 isDisabled={isAgentBusy}
-                message="Tandem is busy with another request — try again when it finishes."
+                message="Flock is busy with another request — try again when it finishes."
               >
                 <DropdownMenuItem
                   disabled={isAgentBusy || isGenerationPending}

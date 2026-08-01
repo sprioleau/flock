@@ -1,4 +1,4 @@
-import type { Block } from "@tandem/email-sdk";
+import type { Block } from "@flock/email-sdk";
 import { z } from "zod";
 
 /**

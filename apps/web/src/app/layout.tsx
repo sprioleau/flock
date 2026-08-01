@@ -17,7 +17,7 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Tandem",
+  title: "Flock",
   description: "AI-powered collaborative email editor",
 };
 

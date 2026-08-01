@@ -4,7 +4,7 @@ import {
   createSampleDocument,
   emailActionRegistry,
   SECTION_TEMPLATES,
-} from "@tandem/email-sdk";
+} from "@flock/email-sdk";
 import { describe, expect, it } from "vitest";
 import { generateDocumentOutline } from "../outline";
 import {

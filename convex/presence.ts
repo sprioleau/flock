@@ -9,7 +9,7 @@ import { internalMutation, mutation, query, type MutationCtx } from "./_generate
  *
  * One presence ROOM per document: `roomId` is the Convex document id string
  * (NOT per block — see .claude/skills/presence/SKILL.md, "Rooms" note).
- * `userId` is the Tandem anonymous session id (the same id used as authorId
+ * `userId` is the Flock anonymous session id (the same id used as authorId
  * for ops), or the fixed {@link AGENT_PRESENCE_USER_ID} for the AI agent.
  *
  * Authorization mirrors the rest of the no-auth capability model

@@ -3,7 +3,7 @@ import type {
   ListAssetsInput,
   ProposeEditsInput,
   ProposeSectionVariationsInput,
-} from "@tandem/agent";
+} from "@flock/agent";
 import type {
   BlockId,
   CreateDraftInput,
@@ -17,13 +17,13 @@ import type {
   UiPanel,
   UndoInput,
   UpdateBlockPropertiesOperation,
-} from "@tandem/email-sdk";
+} from "@flock/email-sdk";
 import { simulateReadableStream } from "ai";
 import { MockLanguageModelV4 } from "ai/test";
 
 /**
  * Deterministic mock chat model (no API key needed — CI/tests use this via
- * the x-tandem-mock header; it is also the automatic fallback when
+ * the x-flock-mock header; it is also the automatic fallback when
  * GOOGLE_GENERATIVE_AI_API_KEY is absent).
  *
  * It emits the SAME provider-spec (LanguageModelV4) chunk sequence a real
@@ -540,7 +540,7 @@ export function createMockChatModel(input: CreateMockChatModelInput) {
               {
                 type: "response-metadata" as const,
                 id: `mock-response-${doStreamCallCount}`,
-                modelId: "tandem-mock-chat-model",
+                modelId: "flock-mock-chat-model",
                 timestamp: new Date(0),
               },
               ...buildMalformedProbeChunks(input.selectedBlockId),
@@ -557,7 +557,7 @@ export function createMockChatModel(input: CreateMockChatModelInput) {
               {
                 type: "response-metadata" as const,
                 id: `mock-response-${doStreamCallCount}`,
-                modelId: "tandem-mock-chat-model",
+                modelId: "flock-mock-chat-model",
                 timestamp: new Date(0),
               },
               ...buildComposeEmailChunks(),
@@ -575,7 +575,7 @@ export function createMockChatModel(input: CreateMockChatModelInput) {
             {
               type: "response-metadata" as const,
               id: `mock-response-${doStreamCallCount}`,
-              modelId: "tandem-mock-chat-model",
+              modelId: "flock-mock-chat-model",
               timestamp: new Date(0),
             },
             ...(isFirstStep

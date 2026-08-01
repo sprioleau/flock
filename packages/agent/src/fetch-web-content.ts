@@ -1,4 +1,4 @@
-import { defineEmailAction, type AnalysisEmailAction } from "@tandem/email-sdk";
+import { defineEmailAction, type AnalysisEmailAction } from "@flock/email-sdk";
 import { z } from "zod";
 
 /**

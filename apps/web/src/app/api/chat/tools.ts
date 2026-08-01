@@ -3,7 +3,7 @@ import {
   proposeEditsInputSchema,
   proposeSectionVariationsInputSchema,
   validateEditSuggestions,
-} from "@tandem/agent";
+} from "@flock/agent";
 import {
   dispatchEditorAction,
   getAction,
@@ -11,7 +11,7 @@ import {
   type ActionContext,
   type ActionDispatchError,
   type EmailDocument,
-} from "@tandem/email-sdk";
+} from "@flock/email-sdk";
 import { tool, type Tool, type ToolApprovalStatus, type ToolSet, type UIMessageStreamWriter } from "ai";
 import {
   CHAT_TABLE_MAX_ROWS,
@@ -21,7 +21,7 @@ import {
   type ListAssetsToolOutput,
   type ProposeEditsToolOutput,
   type ProposeSectionVariationsToolOutput,
-  type TandemChatMessage,
+  type FlockChatMessage,
 } from "@/lib/chat-contract";
 import { generateAndStoreImage } from "../generate-image/generation";
 import { createPersonaForSession } from "./create-persona";
@@ -69,7 +69,7 @@ export class TerminalChatError extends Error {
 }
 
 export interface BuildChatToolsInput {
-  writer: UIMessageStreamWriter<TandemChatMessage>;
+  writer: UIMessageStreamWriter<FlockChatMessage>;
   actionContext: ActionContext;
   /** This request's document — what analysis actions read (never mutated). */
   doc: EmailDocument;
@@ -113,7 +113,7 @@ interface BuildWidgetToolInput {
   name: string;
   description: string;
   modelInputSchema: ReturnType<typeof toModelInputSchema>;
-  writer: UIMessageStreamWriter<TandemChatMessage>;
+  writer: UIMessageStreamWriter<FlockChatMessage>;
   doc: EmailDocument;
   sessionId: string | null;
 }
@@ -308,7 +308,7 @@ export function buildChatTools({
               writer.write({
                 type: "error",
                 errorText: serializeChatError({
-                  kind: "tandem-chat-error",
+                  kind: "flock-chat-error",
                   failureKind: "terminal",
                   errors: result.errors.map(({ code, message }) => ({ code, message })),
                 }),

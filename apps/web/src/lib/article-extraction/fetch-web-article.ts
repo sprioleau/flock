@@ -1,4 +1,4 @@
-import type { FetchWebContentResult } from "@tandem/agent";
+import type { FetchWebContentResult } from "@flock/agent";
 import { fetchPage, type FetchFailureReason } from "../brand-kit-extraction/fetch-page";
 import { extractArticle } from "./extract-article";
 

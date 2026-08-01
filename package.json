@@ -1,5 +1,5 @@
 {
-  "name": "tandem",
+  "name": "flock",
   "version": "0.1.0",
   "private": true,
   "scripts": {
@@ -17,6 +17,6 @@
   "dependencies": {
     "@convex-dev/presence": "0.4.0",
     "@convex-dev/prosemirror-sync": "^0.2.5",
-    "@tandem/email-sdk": "workspace:*"
+    "@flock/email-sdk": "workspace:*"
   }
 }

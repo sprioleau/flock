@@ -17,7 +17,7 @@ import {
  * truth; the cookie is re-written on every read.
  */
 
-const SESSION_STORAGE_KEY = "tandem_session_id";
+const SESSION_STORAGE_KEY = "flock_session_id";
 
 function mirrorSessionIdIntoCookie(sessionId: string): void {
   document.cookie =

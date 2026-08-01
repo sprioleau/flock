@@ -1,4 +1,4 @@
-import type { BlockId, EmailDocument, RestoreBlocksOperation } from "@tandem/email-sdk";
+import type { BlockId, EmailDocument, RestoreBlocksOperation } from "@flock/email-sdk";
 import { cloneSubtreeWithFreshIds, collectSubtreeBlocks } from "./block-subtree";
 
 /**

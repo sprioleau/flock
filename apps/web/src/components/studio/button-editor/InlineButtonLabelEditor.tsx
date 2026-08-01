@@ -4,7 +4,7 @@ import { StarterKit } from "@tiptap/starter-kit";
 import type { Editor } from "@tiptap/core";
 import { EditorProvider } from "@tiptap/react";
 import { useCallback, useEffect, useMemo, useRef } from "react";
-import type { ButtonBlock, ResolvedButtonStyles } from "@tandem/email-sdk";
+import type { ButtonBlock, ResolvedButtonStyles } from "@flock/email-sdk";
 import { useEditorStore, useEditorStoreApi } from "@/lib/editor-store";
 import { normalizeButtonLabel } from "./normalize-button-label";
 

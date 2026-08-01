@@ -4,7 +4,7 @@ import {
   ButtonBlockView,
   type ButtonBlock,
   type ResolvedButtonStyles,
-} from "@tandem/email-sdk";
+} from "@flock/email-sdk";
 import { useEditorStore } from "@/lib/editor-store";
 import { InlineButtonLabelEditor } from "./InlineButtonLabelEditor";
 

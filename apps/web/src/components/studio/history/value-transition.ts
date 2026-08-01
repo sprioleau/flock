@@ -3,7 +3,7 @@ import {
   parseBlockId,
   type GlobalStyles,
   type Operation,
-} from "@tandem/email-sdk";
+} from "@flock/email-sdk";
 import { humanizePropertyKey } from "./property-phrases";
 
 /**

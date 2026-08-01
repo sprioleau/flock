@@ -1,4 +1,4 @@
-import { DEFAULT_GLOBAL_STYLES, type GlobalStyles } from "@tandem/email-sdk";
+import { DEFAULT_GLOBAL_STYLES, type GlobalStyles } from "@flock/email-sdk";
 import type { BrandSocialLink } from "./social-links";
 
 /**
@@ -494,7 +494,7 @@ const SHARED_LAYOUT = {
  * variations are hand-tuned but obey the same contract the agent will.
  */
 export const MOCK_BRAND_KIT: BrandKit = {
-  name: "Tandem Demo Brand",
+  name: "Flock Demo Brand",
   fonts: {
     heading: SANS_STACK,
     body: SANS_STACK,

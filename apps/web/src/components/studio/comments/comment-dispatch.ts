@@ -94,7 +94,7 @@ export function buildFixAllCommentsPrompt(dispatchables: readonly DispatchableCo
 }
 
 /** Display name on agent-authored thread entries (matches the chat panel's product name). */
-export const AGENT_THREAD_AUTHOR_NAME = "Tandem";
+export const AGENT_THREAD_AUTHOR_NAME = "Flock";
 
 /**
  * The post-fix thread note. Deliberately an "I responded" marker, not an "it

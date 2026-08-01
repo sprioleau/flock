@@ -1,4 +1,4 @@
-import { GENERATE_IMAGE_MAX_PROMPT_LENGTH } from "@tandem/email-sdk";
+import { GENERATE_IMAGE_MAX_PROMPT_LENGTH } from "@flock/email-sdk";
 import { z } from "zod";
 import { IMAGE_ASPECT_RATIOS } from "./constants";
 

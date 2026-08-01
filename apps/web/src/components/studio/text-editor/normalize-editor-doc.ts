@@ -7,7 +7,7 @@ import type {
   TextBlockNode,
   TextDoc,
   TextMark,
-} from "@tandem/email-sdk";
+} from "@flock/email-sdk";
 
 /**
  * Editor JSON → SDK text-doc normalization.

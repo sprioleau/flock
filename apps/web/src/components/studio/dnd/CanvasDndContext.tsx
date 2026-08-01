@@ -17,7 +17,7 @@ import {
   useSensors,
   type DragStartEvent,
 } from "@dnd-kit/core";
-import { ROOT_BLOCK_ID, type BlockId } from "@tandem/email-sdk";
+import { ROOT_BLOCK_ID, type BlockId } from "@flock/email-sdk";
 import { useStore } from "zustand";
 import {
   getActiveEditorStore,

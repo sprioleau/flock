@@ -68,7 +68,7 @@ const quietButtonClassName = cn(
  * expanded default, the stored value applies right after mount, no hydration
  * mismatch, no setState-in-effect.
  */
-const TRAY_COLLAPSED_STORAGE_KEY = "tandem_suggestions_tray_collapsed";
+const TRAY_COLLAPSED_STORAGE_KEY = "flock_suggestions_tray_collapsed";
 let cachedIsTrayCollapsed = false;
 let hasReadTrayStorage = false;
 const trayListeners = new Set<() => void>();

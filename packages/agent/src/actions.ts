@@ -4,7 +4,7 @@ import {
   defineEmailAction,
   emailActionRegistry,
   type EmailActionRegistry,
-} from "@tandem/email-sdk";
+} from "@flock/email-sdk";
 import { z } from "zod";
 import { describeBlock, type BlockDetails } from "./describe-block";
 import { defineFetchWebContentAction, type FetchWebArticleFn } from "./fetch-web-content";
@@ -14,7 +14,7 @@ import { widgetActions } from "./widget-actions";
  * Agent-level action definitions (plan §9.4 item 1 — the catalog-lookup tool).
  *
  * `getBlockDetails` lives HERE, not in the email-sdk: it wraps this package's
- * `describeBlock`, and the sdk cannot depend on @tandem/agent. The full agent
+ * `describeBlock`, and the sdk cannot depend on @flock/agent. The full agent
  * registry is therefore also assembled here — the sdk built-ins plus the
  * agent-only analysis actions.
  */

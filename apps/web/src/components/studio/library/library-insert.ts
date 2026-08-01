@@ -1,5 +1,5 @@
 import { ImageIcon } from "lucide-react";
-import type { BlockId, EmailDocument } from "@tandem/email-sdk";
+import type { BlockId, EmailDocument } from "@flock/email-sdk";
 import type { DispatchableOp } from "@/lib/editor-store";
 import { buildClickToAddPlan } from "../add-blocks/click-to-add-placement";
 import type { PaletteItem } from "../add-blocks/palette-items";

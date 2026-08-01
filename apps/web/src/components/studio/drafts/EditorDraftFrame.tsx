@@ -4,7 +4,7 @@ import { useEffect } from "react";
 import { useConvex, useQuery } from "convex/react";
 import { BanIcon, Loader2Icon } from "lucide-react";
 import { useStore } from "zustand";
-import type { EmailDocument } from "@tandem/email-sdk";
+import type { EmailDocument } from "@flock/email-sdk";
 import { api } from "@convex/_generated/api";
 import {
   acquireEditorStore,

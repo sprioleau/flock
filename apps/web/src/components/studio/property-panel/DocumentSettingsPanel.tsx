@@ -1,6 +1,6 @@
 "use client";
 
-import type { GlobalStyles, TextAlign } from "@tandem/email-sdk";
+import type { GlobalStyles, TextAlign } from "@flock/email-sdk";
 import {
   Accordion,
   AccordionContent,

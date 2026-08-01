@@ -1,4 +1,4 @@
-import type { FetchWebContentResult, WebContentConfidence } from "@tandem/agent";
+import type { FetchWebContentResult, WebContentConfidence } from "@flock/agent";
 
 /**
  * Article extraction (Phase 7.4a) — pure HTML → the page's ACTUAL main

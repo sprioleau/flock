@@ -6,7 +6,7 @@ import { api } from "@convex/_generated/api";
 import { StudioShell } from "@/components/studio/StudioShell";
 
 export const metadata: Metadata = {
-  title: "Studio — Tandem",
+  title: "Studio — Flock",
   description: "Build your email: chat on the left, live canvas on the right.",
 };
 

@@ -75,7 +75,7 @@ const ops: Operation[] = [
       type: "button",
       parentId: "sec_hero",
       childrenIds: [],
-      properties: { label: "Open Tandem", href: "https://tandem-one-neon.vercel.app" },
+      properties: { label: "Open Flock", href: "https://flockto.email" },
     },
     parentId: "sec_hero",
     index: 1,
@@ -96,7 +96,7 @@ const ops: Operation[] = [
   {
     name: "updateText",
     blockId: "txt_head",
-    text: createTextDoc("Tandem — Phase 1 demo"),
+    text: createTextDoc("Flock — Phase 1 demo"),
   },
   { name: "reorderChildren", parentId: "sec_hero", orderedChildIds: ["txt_head", "div_end1", "btn_cta1"] },
   { name: "removeBlock", blockId: "div_end1" },
@@ -114,5 +114,5 @@ const html = await renderToHTML(result.doc);
 console.log(`ops applied:        ${ops.length} (with ${result.inverses.length} inverses for undo)`);
 console.log(`integrity:          ${integrity.isValid ? "valid" : "INVALID"}`);
 console.log(`html bytes:         ${html.length}`);
-console.log(`looks like email:   ${html.includes("<!DOCTYPE") && html.includes("Tandem — Phase 1 demo") && html.includes("Open Tandem")}`);
+console.log(`looks like email:   ${html.includes("<!DOCTYPE") && html.includes("Flock — Phase 1 demo") && html.includes("Open Flock")}`);
 console.log("\n--- first 400 chars ---\n" + html.slice(0, 400));

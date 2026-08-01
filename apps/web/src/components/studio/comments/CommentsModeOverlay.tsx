@@ -9,7 +9,7 @@ import {
 } from "react";
 import { useMutation } from "convex/react";
 import { MessageSquarePlusIcon, XIcon } from "lucide-react";
-import type { BlockId, EmailDocument } from "@tandem/email-sdk";
+import type { BlockId, EmailDocument } from "@flock/email-sdk";
 import { api } from "@convex/_generated/api";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";

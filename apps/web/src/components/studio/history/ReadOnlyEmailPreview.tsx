@@ -18,7 +18,7 @@ import {
   type EmailDocument,
   type EmailTreeNode,
   type GlobalStyles,
-} from "@tandem/email-sdk";
+} from "@flock/email-sdk";
 
 /**
  * A historical document rendered through the SAME SDK block views the canvas

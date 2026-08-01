@@ -20,7 +20,7 @@ import {
  * Access gate (Next.js 16 proxy — the renamed middleware.ts convention).
  *
  * Decision matrix, evaluated per matched request:
- *   0. Gate disabled (TANDEM_ACCESS_PASSWORD unset/empty) → pass everything.
+ *   0. Gate disabled (FLOCK_ACCESS_PASSWORD unset/empty) → pass everything.
  *   1. /gate itself → pass (the password form and its server action POST).
  *   2. Valid gate cookie (HMAC derived from the password env) → pass.
  *   3. `?doc=<id>` present → capability link:

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { inflate, ROOT_BLOCK_ID, SECTION_TEMPLATES } from "@tandem/email-sdk";
+import { inflate, ROOT_BLOCK_ID, SECTION_TEMPLATES } from "@flock/email-sdk";
 import { buildSectionTemplatePreviewDoc } from "./SectionTemplatePreview";
 
 describe("buildSectionTemplatePreviewDoc", () => {

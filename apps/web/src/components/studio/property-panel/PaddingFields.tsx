@@ -1,6 +1,6 @@
 "use client";
 
-import type { ResolvedPadding } from "@tandem/email-sdk";
+import type { ResolvedPadding } from "@flock/email-sdk";
 import { NumberField } from "./fields";
 import { getBlockPropertyHelp, type DescribableBlockType } from "./schema-help";
 

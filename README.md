@@ -1,12 +1,12 @@
-# Tandem
+# Flock
 
 | Dark | Light |
 |--------|-------|
-| ![Screenshot 2026-08-01 at 1 01 42 AM](apps/web/public/screenshots/flock-app-dark-mode.png) | ![Screenshot 2026-08-01 at 1 03 51 AM](apps/web/public/screenshots/flock-app-light-mode.png) |
+| ![Flock studio in dark mode](apps/web/public/screenshots/flock-app-dark-mode.png) | ![Flock studio in light mode](apps/web/public/screenshots/flock-app-light-mode.png) |
 
 **What email creation looks like when humans and agents are the same kind of collaborator.**
 
-Tandem is a collaborative email studio where you don't just get an AI assistant bolted onto an editor — you get a room. You edit on a live canvas; a copilot builds alongside you from plain language; a crew of advisory agents reads your drafts on a cadence and leaves reviewable recommendations; and other humans (and their agents) can be in the document at the same time, cursors and all. Every change — human click, copilot edit, agent suggestion — flows through the same validated, invertible operations, so you can see who did what, apply anything with one click, and revert anything just as fast.
+Flock is a collaborative email studio where you don't just get an AI assistant bolted onto an editor — you get a room. You edit on a live canvas; a copilot builds alongside you from plain language; a crew of advisory agents reads your drafts on a cadence and leaves reviewable recommendations; and other humans (and their agents) can be in the document at the same time, cursors and all. Every change — human click, copilot edit, agent suggestion — flows through the same validated, invertible operations, so you can see who did what, apply anything with one click, and revert anything just as fast.
 
 This is a working preview of a future-facing idea: software where agents are first-class collaborators with visible presence and editable expertise, and the human is always in control.
 
@@ -42,7 +42,7 @@ This is a working preview of a future-facing idea: software where agents are fir
 | | Undo, redo, revert | Undo/redo that never rewrites history, plus per-batch revert: unwind any past change — yours, the copilot's, or an agent's — without touching everything after it. |
 | | Time travel | Restore the document to any point in time, or scrub through its entire history and watch it replay like a movie. Before/after chips show each change at a glance, in human language. |
 | | Op inspector | For the curious: a live console showing every raw operation and its inverse as they happen. |
-| **Brand & Theme** | Brand kit from a URL | Type your website address — with or without the `https://` — and Tandem extracts your palette (including signature accents), logo, brand name, social card, and social links, and builds a theme from it. |
+| **Brand & Theme** | Brand kit from a URL | Type your website address — with or without the `https://` — and Flock extracts your palette (including signature accents), logo, brand name, social card, and social links, and builds a theme from it. |
 | | Assets you approve | Extracted logos and images arrive as proposals — nothing joins your kit until you confirm it. Your social links can fill the email footer in one click. |
 | | Brand colors everywhere | Your brand palette shows up as swatches inside every color picker in the studio, so on-brand is always one click away. |
 | | Live theming | Pick a theme and every draft follows it live; override any global and snap back cleanly. |
@@ -51,7 +51,7 @@ This is a working preview of a future-facing idea: software where agents are fir
 
 ## The primitives (why this works)
 
-Most editors bolt AI on and hope. Tandem's core was designed so that humans and agents are the same kind of collaborator — the primitives are not hostile to agents, and everything above falls out of five of them:
+Most editors bolt AI on and hope. Flock's core was designed so that humans and agents are the same kind of collaborator — the primitives are not hostile to agents, and everything above falls out of five of them:
 
 - **One append-only operation log with provenance.** Every change from every actor is an operation with an author. There is no second history for AI edits; undo, revert, audit, and time travel all read from the same spine.
 - **Pure operations with exact inverses.** Applying an operation never mutates state and always returns its inverse — even cascading deletes invert cleanly. Undo, per-batch revert, and point-in-time restore aren't features that were built; they're consequences.
@@ -104,7 +104,7 @@ Useful commands:
 
 ## Deployment
 
-- **Vercel** — deployed via CLI with `rootDirectory` set to `apps/web`: https://tandem-one-neon.vercel.app
+- **Vercel** — deployed via CLI with `rootDirectory` set to `apps/web`: https://flockto.email
 - **Convex** — separate prod deployment; its URL/deploy key are wired into Vercel env vars
 
 Deployed builds sit behind a lightweight password gate; capability links pass straight through.

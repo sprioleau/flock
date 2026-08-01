@@ -19,7 +19,7 @@ import {
   type Block,
   type GenerateImageCommand,
   type ScaffoldSectionPosition,
-} from "@tandem/email-sdk";
+} from "@flock/email-sdk";
 import { api } from "@convex/_generated/api";
 import type { Doc, Id } from "@convex/_generated/dataModel";
 import { buildInsertSavedSectionPlan } from "@/lib/saved-sections";
@@ -28,8 +28,8 @@ import {
   editorCommandDataPartSchema,
   MOCK_MODEL_HEADER,
   validateAndClassifyOp,
-  type TandemChatMessage,
-  type TandemChatTools,
+  type FlockChatMessage,
+  type FlockChatTools,
 } from "@/lib/chat-contract";
 import {
   acquireEditorStore,
@@ -92,11 +92,11 @@ function serializeApplyFailure(failure: {
  * callbacks close over. Created ONCE per panel mount (useState initializer) —
  * plain closures, so no render-time ref access and no state-object mutation.
  */
-interface TandemChatController {
-  chat: Chat<TandemChatMessage>;
+interface FlockChatController {
+  chat: Chat<FlockChatMessage>;
   /** Start a user-initiated turn: fresh agent batchId + continuation budget. */
   beginUserTurn: () => void;
-  /** Dev-only x-tandem-mock switch, read by the transport at request time. */
+  /** Dev-only x-flock-mock switch, read by the transport at request time. */
   setIsMockEnabled: (isMockEnabled: boolean) => void;
   /**
    * Keep the controller's saved-sections runtime current (reactive rows +
@@ -119,7 +119,7 @@ interface SavedSectionsRuntime {
   recordUse: (savedSectionId: Id<"savedSections">) => void;
 }
 
-function createTandemChatController(): TandemChatController {
+function createFlockChatController(): FlockChatController {
   // toolCallIds already applied / commands already executed (same-id stream
   // rewrites and repeated deliveries must not double-apply).
   const appliedToolCallIds = new Set<string>();
@@ -196,7 +196,7 @@ function createTandemChatController(): TandemChatController {
     return useEditorStore.getState().documentId === turnState.documentId;
   };
 
-  const transport = new DefaultChatTransport<TandemChatMessage>({
+  const transport = new DefaultChatTransport<FlockChatMessage>({
     api: CHAT_API_PATH,
     headers: (): Record<string, string> =>
       turnState.isMockEnabled ? { [MOCK_MODEL_HEADER]: "1" } : {},
@@ -214,7 +214,7 @@ function createTandemChatController(): TandemChatController {
     },
   });
 
-  const chat = new Chat<TandemChatMessage>({
+  const chat = new Chat<FlockChatMessage>({
     transport,
 
     // Content ops reach here at input-available (editor/analysis tools have a
@@ -462,7 +462,7 @@ function createTandemChatController(): TandemChatController {
     toolCallId,
     input,
   }: {
-    toolName: keyof TandemChatTools;
+    toolName: keyof FlockChatTools;
     toolCallId: string;
     input: unknown;
   }): void {
@@ -557,7 +557,7 @@ function createTandemChatController(): TandemChatController {
     toolCallId,
     operation,
   }: {
-    toolName: keyof TandemChatTools;
+    toolName: keyof FlockChatTools;
     toolCallId: string;
     operation: DispatchableOp;
   }): void {
@@ -638,7 +638,7 @@ function createTandemChatController(): TandemChatController {
  * a queued user message must never auto-send past a pending approval, and
  * the responded→resubmit window is a race the queue must not slip through.
  */
-function getHasPendingApproval(messages: TandemChatMessage[]): boolean {
+function getHasPendingApproval(messages: FlockChatMessage[]): boolean {
   const lastMessage = messages.at(-1);
   if (lastMessage === undefined || lastMessage.role !== "assistant") {
     return false;
@@ -650,8 +650,8 @@ function getHasPendingApproval(messages: TandemChatMessage[]): boolean {
   );
 }
 
-export interface TandemChat {
-  messages: TandemChatMessage[];
+export interface FlockChat {
+  messages: FlockChatMessage[];
   status: "submitted" | "streaming" | "ready" | "error";
   error: Error | undefined;
   /** Send one user text message (starts a fresh agent batch). */
@@ -670,19 +670,19 @@ export interface TandemChat {
   getIsAgentIdle: () => boolean;
   /**
    * Test-only lever (no UI since the dev "mock" checkbox was removed): force
-   * the deterministic mock model via the x-tandem-mock header. The server
+   * the deterministic mock model via the x-flock-mock header. The server
    * still falls back to the mock automatically when no API key is set.
    */
   isMockEnabled: boolean;
   setIsMockEnabled: (isMockEnabled: boolean) => void;
 }
 
-export function useTandemChat(): TandemChat {
+export function useFlockChat(): FlockChat {
   // The controller is created once per mount.
-  const [controller] = useState(() => createTandemChatController());
+  const [controller] = useState(() => createFlockChatController());
   const [isMockEnabled, setIsMockEnabledState] = useState(false);
 
-  const chat = useChat<TandemChatMessage>({ chat: controller.chat });
+  const chat = useChat<FlockChatMessage>({ chat: controller.chat });
 
   // Saved-sections runtime for the agent's `saved:<id>` scaffold calls:
   // reactive rows (a delete/save reflects immediately) + the fails-soft

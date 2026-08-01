@@ -1,4 +1,4 @@
-import type { Block } from "@tandem/email-sdk";
+import type { Block } from "@flock/email-sdk";
 
 /**
  * Staleness-baseline serialization, shared by BOTH sides of the persona

@@ -6,22 +6,22 @@
  * no rule may affect layout, per the merge-notify owner decision that
  * presence visuals stay secondary to local editing affordances.
  *
- * --tandem-presence-color is set per-decoration (inline style / widget DOM)
+ * --flock-presence-color is set per-decoration (inline style / widget DOM)
  * from the user's roster color.
  */
 
 /* Remote selection highlight (anchor ≠ head), low alpha of the user color. */
-[data-inline-text-editor] .tandem-remote-selection {
-  background-color: color-mix(in srgb, var(--tandem-presence-color) 22%, transparent);
+[data-inline-text-editor] .flock-remote-selection {
+  background-color: color-mix(in srgb, var(--flock-presence-color) 22%, transparent);
   border-radius: 2px;
 }
 
 /* Remote caret: a 2px bar with zero net width (negative margins swallow the
  * border), so it never shifts the text it sits between. */
-[data-inline-text-editor] .tandem-remote-caret {
+[data-inline-text-editor] .flock-remote-caret {
   position: relative;
   display: inline;
-  border-left: 2px solid var(--tandem-presence-color);
+  border-left: 2px solid var(--flock-presence-color);
   margin-left: -1px;
   margin-right: -1px;
   pointer-events: none;
@@ -31,13 +31,13 @@
 /* Name flag above the caret; fades out ~2s after that user's last selection
  * change (the animation restarts only when the caret DOM is rebuilt, which
  * the plugin does exactly when the user's payload changes). */
-[data-inline-text-editor] .tandem-remote-caret__flag {
+[data-inline-text-editor] .flock-remote-caret__flag {
   position: absolute;
   top: -1.45em;
   left: -2px;
   padding: 1px 6px;
   border-radius: 3px 3px 3px 0;
-  background-color: var(--tandem-presence-color);
+  background-color: var(--flock-presence-color);
   color: #fff;
   font-family: ui-sans-serif, system-ui, sans-serif;
   font-size: 11px;
@@ -46,10 +46,10 @@
   white-space: nowrap;
   user-select: none;
   pointer-events: none;
-  animation: tandem-remote-flag-fade 300ms ease-out 2s forwards;
+  animation: flock-remote-flag-fade 300ms ease-out 2s forwards;
 }
 
-@keyframes tandem-remote-flag-fade {
+@keyframes flock-remote-flag-fade {
   to {
     opacity: 0;
   }
@@ -58,12 +58,12 @@
 /* Agent-edit pulse: ~1s background flash over the merged range. Background
  * only — zero layout shift. Decorations are removed right after the
  * animation ends (PULSE_DURATION_MS in agent-pulse-extension.ts). */
-[data-inline-text-editor] .tandem-agent-pulse {
+[data-inline-text-editor] .flock-agent-pulse {
   border-radius: 2px;
-  animation: tandem-agent-pulse-fade 900ms ease-out forwards;
+  animation: flock-agent-pulse-fade 900ms ease-out forwards;
 }
 
-@keyframes tandem-agent-pulse-fade {
+@keyframes flock-agent-pulse-fade {
   from {
     background-color: color-mix(in srgb, #8b5cf6 35%, transparent);
   }
@@ -74,11 +74,11 @@
 
 /* Whole-block shimmer fallback (pure deletions): lighter so it reads as
  * "something changed here", not "all of this changed". */
-[data-inline-text-editor] .tandem-agent-pulse--block {
-  animation-name: tandem-agent-pulse-fade-block;
+[data-inline-text-editor] .flock-agent-pulse--block {
+  animation-name: flock-agent-pulse-fade-block;
 }
 
-@keyframes tandem-agent-pulse-fade-block {
+@keyframes flock-agent-pulse-fade-block {
   from {
     background-color: color-mix(in srgb, #8b5cf6 16%, transparent);
   }

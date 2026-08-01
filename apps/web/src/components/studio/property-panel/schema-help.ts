@@ -11,7 +11,7 @@ import {
   spacerBlockSchema,
   textBlockSchema,
   type GlobalStyles,
-} from "@tandem/email-sdk";
+} from "@flock/email-sdk";
 import type { z } from "zod";
 
 /**

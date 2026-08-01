@@ -1,6 +1,6 @@
 "use client";
 
-import type { BlockId } from "@tandem/email-sdk";
+import type { BlockId } from "@flock/email-sdk";
 import { create } from "zustand";
 import type { Id } from "@convex/_generated/dataModel";
 import type { PaletteItem } from "../add-blocks/palette-items";

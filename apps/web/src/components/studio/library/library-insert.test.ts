@@ -5,7 +5,7 @@ import {
   type BlockId,
   type EmailDocument,
   type Operation,
-} from "@tandem/email-sdk";
+} from "@flock/email-sdk";
 import { createDefaultLeafBlock, createDefaultSection } from "../block-defaults";
 import {
   buildLibraryInsertPlan,

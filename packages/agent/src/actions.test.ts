@@ -1,4 +1,4 @@
-import { createSampleDocument, emailActionRegistry, SECTION_TEMPLATES } from "@tandem/email-sdk";
+import { createSampleDocument, emailActionRegistry, SECTION_TEMPLATES } from "@flock/email-sdk";
 import { describe, expect, it } from "vitest";
 import { buildAgentActionRegistry, getBlockDetailsAction } from "./actions";
 import { buildToolGuidance } from "./prompts";

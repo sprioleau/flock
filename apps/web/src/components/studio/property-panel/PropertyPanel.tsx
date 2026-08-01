@@ -1,6 +1,6 @@
 "use client";
 
-import type { Block } from "@tandem/email-sdk";
+import type { Block } from "@flock/email-sdk";
 import {
   ButtonPanel,
   CodePanel,

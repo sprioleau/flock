@@ -19,7 +19,7 @@ import {
   type ResolvedTextStyles,
   type TextBlock,
   type TextDoc,
-} from "@tandem/email-sdk";
+} from "@flock/email-sdk";
 import { api } from "@convex/_generated/api";
 import { useEditorStore, useEditorStoreApi } from "@/lib/editor-store";
 import { useBroadcastPresence, usePresenceRoster } from "@/lib/presence";
@@ -423,7 +423,7 @@ function SyncedTextEditor({
           }
           if (editorOpenedAt !== null) {
             console.debug(
-              `[tandem] click-to-editable: ${Math.round(performance.now() - editorOpenedAt)}ms (${syncDocId})`,
+              `[flock] click-to-editable: ${Math.round(performance.now() - editorOpenedAt)}ms (${syncDocId})`,
             );
           }
           // Seed remote cursors that arrived before the editor materialized.

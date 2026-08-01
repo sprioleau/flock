@@ -1,4 +1,4 @@
-import type { ActionContext, BlockId, EmailDocument } from "@tandem/email-sdk";
+import type { ActionContext, BlockId, EmailDocument } from "@flock/email-sdk";
 import {
   convertToModelMessages,
   generateText,
@@ -12,7 +12,7 @@ import {
   type ToolSet,
   type UIMessageStreamWriter,
 } from "ai";
-import type { TandemChatMessage } from "@/lib/chat-contract";
+import type { FlockChatMessage } from "@/lib/chat-contract";
 import { toChatErrorText } from "./errors";
 import {
   MAX_REPAIR_ATTEMPTS_PER_TOOL_CALL,
@@ -42,7 +42,7 @@ export interface ChatPipelineInput {
   /** For the latency log line (the LanguageModel object hides its id). */
   modelId: string;
   isUsingMockModel: boolean;
-  messages: TandemChatMessage[];
+  messages: FlockChatMessage[];
   doc: EmailDocument;
   selectedBlockId?: BlockId;
   /** Chat/thread id from the client transport, used for op provenance. */
@@ -53,7 +53,7 @@ export interface ChatPipelineInput {
    * generation under this session's asset library (Content Studio Stage S).
    */
   sessionId: string | null;
-  writer: UIMessageStreamWriter<TandemChatMessage>;
+  writer: UIMessageStreamWriter<FlockChatMessage>;
 }
 
 // ---------------------------------------------------------------------------
@@ -204,7 +204,7 @@ export function createToolCallRepairer({
       // to "unrepaired" and the SDK's invalid-call path keeps the turn alive.
       console.error(
         JSON.stringify({
-          tag: "tandem.chat.repairRequestFailed",
+          tag: "flock.chat.repairRequestFailed",
           toolName: toolCall.toolName,
           message:
             repairRequestError instanceof Error
@@ -241,7 +241,7 @@ async function runSinglePassPipeline(input: ChatPipelineInput): Promise<void> {
   // Provenance for everything this turn dispatches (op-log ready, Phase 4).
   const actionContext: ActionContext = {
     caller: "tool",
-    authorId: threadId ?? "tandem-agent",
+    authorId: threadId ?? "flock-agent",
     author: "agent",
     batchId: crypto.randomUUID(),
     threadId,
@@ -317,7 +317,7 @@ async function runSinglePassPipeline(input: ChatPipelineInput): Promise<void> {
     onEnd: ({ finishReason, usage, toolCalls }) => {
       console.log(
         JSON.stringify({
-          tag: "tandem.chat.request",
+          tag: "flock.chat.request",
           variant: "single-pass" satisfies PipelineVariant,
           model: modelId,
           isMock: isUsingMockModel,
@@ -333,7 +333,7 @@ async function runSinglePassPipeline(input: ChatPipelineInput): Promise<void> {
   });
 
   writer.merge(
-    toUIMessageStream<ToolSet, TandemChatMessage>({
+    toUIMessageStream<ToolSet, FlockChatMessage>({
       stream: result.stream,
       tools,
       // Model-stream errors funnel through here (createUIMessageStream's
@@ -353,12 +353,12 @@ async function runSinglePassPipeline(input: ChatPipelineInput): Promise<void> {
  * receives only those schemas (smaller toolset, tighter validation). Implement
  * with the same contract as {@link runSinglePassPipeline} — reuse
  * buildChatTools (filtered), buildSystemContext, and the repairer — then set
- * TANDEM_PIPELINE_VARIANT=triage-execute to compare latency via the
- * tandem.chat.request log lines.
+ * FLOCK_PIPELINE_VARIANT=triage-execute to compare latency via the
+ * flock.chat.request log lines.
  */
 async function runTriageExecutePipeline(): Promise<void> {
   throw new Error(
-    'Pipeline variant "triage-execute" is not implemented yet — unset TANDEM_PIPELINE_VARIANT or use "single-pass".',
+    'Pipeline variant "triage-execute" is not implemented yet — unset FLOCK_PIPELINE_VARIANT or use "single-pass".',
   );
 }
 

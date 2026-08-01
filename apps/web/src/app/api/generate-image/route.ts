@@ -16,7 +16,7 @@ import { generateEmailImage } from "./generation";
  * storage URL as the block's src. Base64 never touches Convex.
  *
  * Mock selection mirrors /api/chat: the deterministic generator runs when the
- * request carries `x-tandem-mock: 1`, when TANDEM_MOCK_IMAGE_MODEL=1, or when
+ * request carries `x-flock-mock: 1`, when FLOCK_MOCK_IMAGE_MODEL=1, or when
  * no GOOGLE_GENERATIVE_AI_API_KEY is configured.
  */
 
