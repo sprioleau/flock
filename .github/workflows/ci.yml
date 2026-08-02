@@ -25,6 +25,9 @@ jobs:
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
 
+      # Runs before Build on purpose: apps/web's typecheck script shells out to
+      # `next typegen` first, so the generated PageProps/LayoutProps helpers in
+      # .next/types exist even on a clean checkout.
       - name: Typecheck
         run: pnpm typecheck
 
