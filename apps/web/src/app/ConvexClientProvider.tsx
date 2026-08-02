@@ -1,7 +1,8 @@
 "use client";
 
-import { ConvexProvider, ConvexReactClient } from "convex/react";
+import { ConvexReactClient } from "convex/react";
 import { ReactNode } from "react";
+import { FlockAuthProvider } from "@/lib/auth/FlockAuthProvider";
 
 /**
  * Built on first render, never at import time — prerendering a page that never
@@ -21,6 +22,11 @@ function getConvexClient(): ConvexReactClient {
   return convex;
 }
 
+/**
+ * FlockAuthProvider is a pass-through to the plain ConvexProvider unless the
+ * Better Auth roll-out flag is on (lib/auth/config.ts), so this stays the one
+ * place the Convex client is constructed either way.
+ */
 export function ConvexClientProvider({ children }: { children: ReactNode }) {
-  return <ConvexProvider client={getConvexClient()}>{children}</ConvexProvider>;
+  return <FlockAuthProvider client={getConvexClient()}>{children}</FlockAuthProvider>;
 }

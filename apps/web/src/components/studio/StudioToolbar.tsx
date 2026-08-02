@@ -3,6 +3,7 @@
 import { Redo2Icon, Undo2Icon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { UserButton } from "@/lib/auth/UserButton";
 import { selectCanRedo, selectCanUndo, useEditorStore } from "@/lib/editor-store";
 import { BrandKitPanel } from "./brand-kit/BrandKitPanel";
 import { CommentsControl } from "./comments/CommentsControl";
@@ -70,6 +71,11 @@ export function StudioToolbar({
       </div>
 
       <div className="flex min-w-0 items-center gap-1.5">
+        {/* ACCOUNT. First in the right cluster, immediately before the human
+            avatars it belongs with — both answer "who is here". Renders null
+            when auth is disabled, so the divider below never strands. */}
+        <UserButton />
+
         {/* PRESENCE. Constrained from the OUTSIDE (facepile internals belong
             to the presence workstream): the avatar stack lives in a
             HARD-CAPPED slot (max-w-40) that also shrinks first when the row
