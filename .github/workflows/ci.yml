@@ -36,3 +36,8 @@ jobs:
 
       - name: Build
         run: pnpm build
+        env:
+          # Placeholder on purpose: prerendering only needs a syntactically
+          # valid address to construct the Convex client — CI never connects to
+          # a deployment, so no real URL (or secret) belongs here.
+          NEXT_PUBLIC_CONVEX_URL: https://placeholder.convex.cloud
