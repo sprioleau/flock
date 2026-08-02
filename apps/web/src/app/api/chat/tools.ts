@@ -1,7 +1,9 @@
 import {
   materializeSectionVariations,
+  personHighlightInputSchema,
   proposeEditsInputSchema,
   proposeSectionVariationsInputSchema,
+  fetchWebContentInputSchema,
   validateEditSuggestions,
 } from "@flock/agent";
 import {
@@ -18,11 +20,15 @@ import {
   serializeChatError,
   type AnalysisToolOutput,
   type EditorToolOutput,
+  type FetchPersonHighlightToolOutput,
+  type FetchWebContentToolOutput,
   type ListAssetsToolOutput,
   type ProposeEditsToolOutput,
   type ProposeSectionVariationsToolOutput,
   type FlockChatMessage,
 } from "@/lib/chat-contract";
+import { ingestArticle } from "@/lib/content-ingestion/ingest-article";
+import { ingestPerson } from "@/lib/content-ingestion/ingest-person";
 import { generateAndStoreImage } from "../generate-image/generation";
 import { createPersonaForSession } from "./create-persona";
 import { ASSET_KIND_LABELS, listSessionAssets } from "./list-assets";
@@ -79,6 +85,12 @@ export interface BuildChatToolsInput {
    * (Content Studio Stage S — every generation registers unconditionally).
    */
   sessionId: string | null;
+  /**
+   * True when this turn runs on the deterministic mock model. The person
+   * pipeline reads it to skip the live public-web search entirely — a mock
+   * run must cost no quota AND must never fabricate research results.
+   */
+  isUsingMockModel: boolean;
 }
 
 export interface BuiltChatTools {
@@ -248,12 +260,91 @@ function buildWidgetTool({
   return null;
 }
 
+// ---------------------------------------------------------------------------
+// Web-content ingestion tools (Phase 7.4 — host-side fulfillment)
+// ---------------------------------------------------------------------------
+
+interface BuildIngestionToolInput {
+  name: string;
+  description: string;
+  modelInputSchema: ReturnType<typeof toModelInputSchema>;
+  sessionId: string | null;
+  isUsingMockModel: boolean;
+}
+
+/**
+ * The Phase 7.4 ingestion tools, or null when `name` isn't one of them.
+ *
+ * They are registry "analysis" actions, but they are fulfilled HERE rather
+ * than through the generic in-loop `action.run` for one reason: the pipeline
+ * needs the CALLER'S SESSION so a rehosted hero image or portrait joins that
+ * session's Asset Library. The registry is a module-level singleton (the
+ * prompt-cache contract), so its injected executors cannot close over a
+ * request. Same host-fulfillment pattern as generateImage and createPersona.
+ *
+ * A REFUSAL IS NOT AN ERROR. "This page is paywalled / blocked by robots.txt /
+ * isn't an article" comes back as a successful tool output carrying
+ * `isOk: false` and a user-facing `message`, because that is information the
+ * model must relay before stopping. Throwing would put it on the error path,
+ * where the model is invited to retry — exactly the wrong instinct for a page
+ * that cannot be read.
+ */
+function buildIngestionTool({
+  name,
+  description,
+  modelInputSchema,
+  sessionId,
+  isUsingMockModel,
+}: BuildIngestionToolInput): Tool | null {
+  if (name === "fetchWebContent") {
+    return tool({
+      description,
+      inputSchema: modelInputSchema,
+      execute: async (input): Promise<FetchWebContentToolOutput> => {
+        const parsedInput = fetchWebContentInputSchema.safeParse(input);
+        if (!parsedInput.success) {
+          throw new Error(
+            `Input for action "fetchWebContent" failed validation: ${parsedInput.error.message}`,
+          );
+        }
+        const result = await ingestArticle({ url: parsedInput.data.url, sessionId });
+        return { isFound: true, data: result };
+      },
+    });
+  }
+  if (name === "fetchPersonHighlight") {
+    return tool({
+      description,
+      inputSchema: modelInputSchema,
+      execute: async (input): Promise<FetchPersonHighlightToolOutput> => {
+        const parsedInput = personHighlightInputSchema.safeParse(input);
+        if (!parsedInput.success) {
+          throw new Error(
+            `Input for action "fetchPersonHighlight" failed validation: ${parsedInput.error.message}`,
+          );
+        }
+        const result = await ingestPerson({
+          url: parsedInput.data.url,
+          sessionId,
+          isMockRun: isUsingMockModel,
+          ...(parsedInput.data.personName === undefined
+            ? {}
+            : { personName: parsedInput.data.personName }),
+        });
+        return { isFound: true, data: result };
+      },
+    });
+  }
+  return null;
+}
+
 /** Build the per-request toolset. The writer is this request's stream writer. */
 export function buildChatTools({
   writer,
   actionContext,
   doc,
   sessionId,
+  isUsingMockModel,
 }: BuildChatToolsInput): BuiltChatTools {
   const tools: ToolSet = {};
   const schemaOnlyTools: ToolSet = {};
@@ -286,10 +377,21 @@ export function buildChatTools({
       doc,
       sessionId,
     });
+    // Ingestion tools are likewise host-fulfilled — they need the request's
+    // session to file a rehosted image under the right library.
+    const ingestionTool = buildIngestionTool({
+      name: definition.name,
+      description: definition.description,
+      modelInputSchema,
+      sessionId,
+      isUsingMockModel,
+    });
     if (definition.name === "askForClarification") {
       tools[definition.name] = schemaOnlyTool;
     } else if (widgetTool !== null) {
       tools[definition.name] = widgetTool;
+    } else if (ingestionTool !== null) {
+      tools[definition.name] = ingestionTool;
     } else if (action.kind === "editor") {
       tools[definition.name] = tool({
         description: definition.description,

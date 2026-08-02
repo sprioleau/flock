@@ -66,6 +66,18 @@ export type {
   WebContentConfidence,
 } from "./fetch-web-content";
 
+// --- Person-highlight contract (§7.4b — executor injected by the host) -----------
+export { definePersonHighlightAction, personHighlightInputSchema } from "./person-highlight";
+export type {
+  FetchPersonHighlightFn,
+  PersonFact,
+  PersonHighlightInput,
+  PersonHighlightPayload,
+  PersonHighlightResult,
+  PersonSearchStatus,
+  PersonSource,
+} from "./person-highlight";
+
 // --- Prompt layers (static/cacheable → per-request, §3.2) --------------------------
 export {
   SYSTEM_STATIC,

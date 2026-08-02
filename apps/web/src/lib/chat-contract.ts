@@ -4,6 +4,8 @@ import type {
   FetchWebContentResult,
   ListAssetsInput,
   ListAssetsResult,
+  PersonHighlightInput,
+  PersonHighlightResult,
   ProposeEditsInput,
   ProposeSectionVariationsInput,
 } from "@flock/agent";
@@ -261,6 +263,13 @@ export type GetBlockDetailsToolOutput = AnalysisToolOutput<BlockDetails>;
 export type FetchWebContentToolOutput = AnalysisToolOutput<FetchWebContentResult>;
 
 /**
+ * fetchPersonHighlight result data (Phase 7.4b): the attributed person payload
+ * or the structured refusal. Same rule as fetchWebContent — a refusal is a
+ * SUCCESSFUL tool output the model must relay, not an execution error.
+ */
+export type FetchPersonHighlightToolOutput = AnalysisToolOutput<PersonHighlightResult>;
+
+/**
  * Model-facing output of a widget tool (proposeSectionVariations,
  * proposeEdits): a COMPACT confirmation that the widget is on screen plus a
  * behavioral note ("the user picks; don't act yourself") — the full payload
@@ -318,6 +327,10 @@ export type FlockChatTools = {
   createPersona: { input: CreatePersonaInput; output: EditorToolOutput };
   getBlockDetails: { input: { blockId: BlockId }; output: GetBlockDetailsToolOutput };
   fetchWebContent: { input: { url: string }; output: FetchWebContentToolOutput };
+  fetchPersonHighlight: {
+    input: PersonHighlightInput;
+    output: FetchPersonHighlightToolOutput;
+  };
   // Widget tools (generative UI). askForClarification never executes — the
   // turn ends on the call and the user's answer arrives as their next message.
   askForClarification: { input: AskForClarificationInput; output: never };

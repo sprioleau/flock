@@ -50,6 +50,7 @@ const PIXEL_PROPERTY_KEYS = new Set([
   "verticalPadding",
   "borderRadius",
   "borderSize",
+  "borderWidth",
   "width",
   "thickness",
   "fontSize",
@@ -59,6 +60,7 @@ const PIXEL_PROPERTY_KEYS = new Set([
   "buttonBorderSize",
   "buttonHorizontalPadding",
   "buttonVerticalPadding",
+  "imageBorderRadius",
 ]);
 
 /** Properties whose numbers are percentages. */

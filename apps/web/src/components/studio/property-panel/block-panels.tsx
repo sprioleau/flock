@@ -1,8 +1,10 @@
 "use client";
 
 import {
+  BORDER_STYLES,
   CODE_BLOCK_LANGUAGES,
   resolveBlockStyles,
+  type BorderStyle,
   type ButtonBlock,
   type CodeBlock,
   type CodeBlockLanguage,
@@ -25,6 +27,7 @@ import {
   SelectField,
   TextField,
 } from "./fields";
+import { EMAIL_SAFE_FONT_OPTIONS } from "../text-editor/email-safe-fonts";
 import { BrandSocialFillRow } from "./BrandSocialFillRow";
 import { GenerateImageField } from "./GenerateImageField";
 import { ImageSourceField } from "./ImageSourceField";
@@ -47,6 +50,12 @@ import { useCommitBlockProperties, useResolvedGlobals } from "./usePanelDispatch
 
 const help = (blockType: DescribableBlockType) => (propertyKey: string) =>
   getBlockPropertyHelp({ blockType, propertyKey });
+
+/** Sentence-case labels for the SDK's border-style vocabulary. */
+const BORDER_STYLE_OPTIONS: ReadonlyArray<{ value: BorderStyle; label: string }> = BORDER_STYLES.map(
+  (style) => ({ value: style, label: `${style[0]!.toUpperCase()}${style.slice(1)}` }),
+);
+
 
 // ---------------------------------------------------------------------------
 // Button
@@ -104,6 +113,13 @@ export function ButtonPanel({ block }: { block: ButtonBlock }) {
         helpText={helpFor("borderColor")}
         onCommit={(value) => commit({ borderColor: value })}
       />
+      <DropdownField
+        label="Border style"
+        value={resolved.borderStyle}
+        options={BORDER_STYLE_OPTIONS}
+        helpText={helpFor("borderStyle")}
+        onCommit={(value) => commit({ borderStyle: value as BorderStyle })}
+      />
       <div className="grid grid-cols-2 gap-2">
         <NumberField
           label="Border radius"
@@ -142,6 +158,13 @@ export function ButtonPanel({ block }: { block: ButtonBlock }) {
           onCommit={(value) => commit({ verticalPadding: value })}
         />
       </div>
+      <DropdownField
+        label="Font"
+        value={resolved.fontFamily}
+        options={EMAIL_SAFE_FONT_OPTIONS}
+        helpText={helpFor("fontFamily")}
+        onCommit={(value) => commit({ fontFamily: value })}
+      />
       <PaddingFields blockType="button" properties={properties} resolvedPadding={resolved} onCommitPadding={commit} />
     </div>
   );
@@ -223,6 +246,48 @@ export function ImagePanel({ block }: { block: ImageBlock }) {
         helpText={helpFor("href")}
         onCommit={(value) => commit({ href: value })}
       />
+      {/* Border group. Corner radius is a theme-able property (it falls back
+          to globals.imageBorderRadius, the image counterpart of the button's
+          radius global), so its placeholder shows the inherited value; width,
+          style, and color are per-image only. */}
+      <div className="space-y-2">
+        <p className="text-xs font-medium text-muted-foreground">Border</p>
+        <div className="grid grid-cols-2 gap-2">
+          <NumberField
+            label="Corner radius"
+            value={properties.borderRadius}
+            isClearable
+            min={0}
+            placeholder={String(globals.imageBorderRadius)}
+            helpText={helpFor("borderRadius")}
+            onCommit={(value) => commit({ borderRadius: value })}
+          />
+          <NumberField
+            label="Width"
+            value={properties.borderWidth}
+            isClearable
+            min={0}
+            placeholder={String(resolved.borderWidth)}
+            helpText={helpFor("borderWidth")}
+            onCommit={(value) => commit({ borderWidth: value })}
+          />
+        </div>
+        <DropdownField
+          label="Style"
+          value={resolved.borderStyle}
+          options={BORDER_STYLE_OPTIONS}
+          helpText={helpFor("borderStyle")}
+          onCommit={(value) => commit({ borderStyle: value as BorderStyle })}
+        />
+        <ColorField
+          label="Color"
+          value={properties.borderColor}
+          fallbackColor={resolved.borderColor}
+          isClearable
+          helpText={helpFor("borderColor")}
+          onCommit={(value) => commit({ borderColor: value })}
+        />
+      </div>
       <PaddingFields blockType="image" properties={properties} resolvedPadding={resolved} onCommitPadding={commit} />
     </div>
   );
@@ -415,6 +480,16 @@ export function TextPanel({ block }: { block: TextBlock }) {
         helpText={helpFor("textColor")}
         onCommit={(value) => commit({ textColor: value })}
       />
+      <ColorField
+        label="Background"
+        value={properties.backgroundColor}
+        // Unset text backgrounds are transparent — the content background
+        // shows through, so it is the value the user actually sees.
+        fallbackColor={globals.contentBackgroundColor}
+        isClearable
+        helpText={helpFor("backgroundColor")}
+        onCommit={(value) => commit({ backgroundColor: value })}
+      />
       <AlignField
         label="Alignment"
         value={properties.textAlign}
@@ -479,6 +554,13 @@ export function LinkPanel({ block }: { block: LinkBlock }) {
             commit({ isUnderlined: value === "underlined" });
           }
         }}
+      />
+      <DropdownField
+        label="Font"
+        value={resolved.fontFamily}
+        options={EMAIL_SAFE_FONT_OPTIONS}
+        helpText={helpFor("fontFamily")}
+        onCommit={(value) => commit({ fontFamily: value })}
       />
       <NumberField
         label="Font size (px)"

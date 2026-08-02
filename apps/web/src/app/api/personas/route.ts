@@ -15,6 +15,7 @@ import { ConvexHttpClient } from "convex/browser";
 import type { FunctionReturnType } from "convex/server";
 import { z } from "zod";
 import { api } from "@convex/_generated/api";
+import { chargeCreditForRequest } from "@/lib/auth/credits";
 import { MOCK_MODEL_HEADER } from "@/lib/chat-contract";
 import { stableStringify } from "@/lib/suggestions/serialize-block";
 import { proposedEditSchema, runnerOutputSchema, truncateFindingProse } from "./finding-schema";
@@ -345,6 +346,20 @@ export async function POST(request: Request) {
   }
   const { documentId, personaSlugs, triggerSummary } = parsedBody.data;
   const isManualSweep = parsedBody.data.isManualSweep === true;
+
+  // AI ALLOWANCE (convex/authCredits.ts). Only a MANUAL sweep costs a credit:
+  // a human clicked, so they asked for this. The ambient trigger fires off the
+  // op log without anyone asking, and charging a person for work they did not
+  // request would make their balance unpredictable and punish them for
+  // editing. The ambient path is throttled instead by the per-persona cooldown
+  // and the server backstops below — a cooldown throttles the system, a credit
+  // throttles a person.
+  if (isManualSweep) {
+    const charge = await chargeCreditForRequest({ request });
+    if (!charge.isAllowed) {
+      return failureResponse({ status: 429, message: charge.message });
+    }
+  }
 
   const convexUrl = process.env.NEXT_PUBLIC_CONVEX_URL;
   if (convexUrl === undefined) {

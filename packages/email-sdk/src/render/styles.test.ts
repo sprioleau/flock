@@ -238,6 +238,45 @@ describe("resolveBlockStyles precedence (defaults → globals → block override
     expect(column.backgroundColor).toBeUndefined();
   });
 
+  it("images: border defaults are off, and radius chains through the global", () => {
+    const bare = resolveBlockStyles(undefined, imageBlock());
+    expect(bare.borderRadius).toBe(DEFAULT_GLOBAL_STYLES.imageBorderRadius);
+    expect(bare.borderWidth).toBe(0);
+    expect(bare.borderStyle).toBe("solid");
+    expect(bare.borderColor).toBe("#000000");
+
+    // globals.imageBorderRadius is the brand-level image shape…
+    expect(resolveBlockStyles({ imageBorderRadius: 12 }, imageBlock()).borderRadius).toBe(12);
+    // …and the block override still wins over it.
+    expect(
+      resolveBlockStyles({ imageBorderRadius: 12 }, imageBlock({ borderRadius: 4 })).borderRadius,
+    ).toBe(4);
+  });
+
+  it("images: explicit border overrides replace every renderer default", () => {
+    const resolved = resolveBlockStyles(
+      undefined,
+      imageBlock({ borderWidth: 3, borderStyle: "dashed", borderColor: "#ff00ff" }),
+    );
+    expect(resolved.borderWidth).toBe(3);
+    expect(resolved.borderStyle).toBe("dashed");
+    expect(resolved.borderColor).toBe("#ff00ff");
+  });
+
+  it("buttons: borderStyle defaults to solid and is overridable per block", () => {
+    expect(resolveBlockStyles(undefined, buttonBlock()).borderStyle).toBe("solid");
+    expect(resolveBlockStyles(undefined, buttonBlock({ borderStyle: "dotted" })).borderStyle).toBe(
+      "dotted",
+    );
+  });
+
+  it("text: the block background is transparent unless set", () => {
+    expect(resolveBlockStyles(undefined, textBlock()).backgroundColor).toBeUndefined();
+    expect(
+      resolveBlockStyles(undefined, textBlock({ backgroundColor: "#fff7ed" })).backgroundColor,
+    ).toBe("#fff7ed");
+  });
+
   it("rows: vertical padding defaults to 0", () => {
     expect(resolveBlockStyles(undefined, rowBlock())).toEqual({ paddingTop: 0, paddingBottom: 0 });
     expect(resolveBlockStyles(undefined, rowBlock({ paddingTop: 6 })).paddingTop).toBe(6);

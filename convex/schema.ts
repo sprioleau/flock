@@ -319,6 +319,62 @@ export default defineSchema({
      * Replaced wholesale by each save (revision bumps with every save).
      */
     socialLinks: v.optional(v.array(v.object({ platform: v.string(), url: v.string() }))),
+    /**
+     * The AUTHORED palette (brand-kit-user-control §3): named, categorized
+     * brand colors the human can edit. When present and non-empty it REPLACES
+     * the read-time derivation in getBrandKitPalette; absent means legacy and
+     * mock kits keep deriving, so no migration is needed.
+     *
+     * NOT a token layer: documents store literal hex values, so editing a hex
+     * here repaints nothing already placed (§3.5). The panel says so in words.
+     *
+     * `origin`/`userEditedAtMs` are the re-scrape lock (§8.2): a save
+     * reconciles instead of replacing, and human-owned entries survive.
+     */
+    colors: v.optional(
+      v.array(
+        v.object({
+          /** Stable id; survives renames and recolors. */
+          id: v.string(),
+          /** Normalized #rrggbb. */
+          hex: v.string(),
+          /** Human-meaningful name ("Banana") — metadata only, never rendered. */
+          name: v.string(),
+          category: v.union(v.literal("primary"), v.literal("secondary"), v.literal("accent")),
+          orderIndex: v.number(),
+          origin: v.union(v.literal("scraped"), v.literal("agent"), v.literal("user")),
+          /** The CSS custom property the scrape saw it declared as ("--banana"). */
+          sourceVariableName: v.optional(v.string()),
+          sourceUsageCount: v.optional(v.number()),
+          userEditedAtMs: v.optional(v.number()),
+        }),
+      ),
+    ),
+    /**
+     * Tone of voice (brand-kit-user-control §5): how the brand writes, so the
+     * agent knows how to write for it. Kit metadata — nothing renders from it,
+     * so writes here never bump `revision`.
+     *
+     * `guidance`/`avoid` are the only kit fields holding PROSE a model reads.
+     * They reach the agent exclusively through
+     * apps/web/src/lib/brand-voice.ts, which sanitizes them and wraps them in
+     * a delimited data block — scraped copy is untrusted input (§5.3).
+     */
+    toneOfVoice: v.optional(
+      v.object({
+        descriptors: v.array(v.string()),
+        formality: v.optional(
+          v.union(v.literal("casual"), v.literal("neutral"), v.literal("formal")),
+        ),
+        person: v.optional(
+          v.union(v.literal("first-person-plural"), v.literal("third-person")),
+        ),
+        guidance: v.optional(v.string()),
+        avoid: v.optional(v.array(v.string())),
+        origin: v.union(v.literal("scraped"), v.literal("agent"), v.literal("user")),
+        userEditedAtMs: v.optional(v.number()),
+      }),
+    ),
     /** ThemeVariation[]: complete `Required<GlobalStyles>` payloads (see guard note above). */
     variations: v.array(
       v.object({
@@ -572,4 +628,40 @@ export default defineSchema({
     doc: emailDocumentValidator,
     createdAtMs: v.number(),
   }).index("by_documentId_and_version", ["documentId", "version"]),
+
+  /**
+   * Inference allowance buckets (convex/authCredits.ts). One row per bucket,
+   * rewritten in place — a rolling window, not a ledger: what matters is "how
+   * many left right now", and a row per spend would be a write-amplified audit
+   * log nobody asked for.
+   *
+   * `periodStartMs` is the start of the current window. A spend arriving after
+   * the window elapsed resets the counter first, so expiry is LAZY — no cron,
+   * and an inactive visitor costs nothing.
+   *
+   * TWO KINDS OF BUCKET share this table, distinguished by the `bucketKey`
+   * prefix (see convex/authCredits.ts for the full reasoning):
+   *
+   *   "owner:<id>"   per identity. Follows a user across the anonymous →
+   *                  claimed transition for free, and `authMigration`
+   *                  deliberately does NOT move it: an allowance is a rate
+   *                  limit on a human, not an asset they own, and carrying it
+   *                  across would let someone bank balances by farming
+   *                  anonymous sessions.
+   *   "origin:<h>"   per network origin, charged for ANONYMOUS callers only.
+   *                  A per-identity cap alone is worthless against someone who
+   *                  clears storage in a loop — a fresh anonymous user is one
+   *                  click away. `<h>` is a salted hash of the coarsened
+   *                  client address, never the address itself, so this table
+   *                  cannot be read as an IP log.
+   */
+  authCredits: defineTable({
+    /** "owner:<better auth user id>" or "origin:<salted address hash>". */
+    bucketKey: v.string(),
+    /** Start of the current allowance window. */
+    periodStartMs: v.number(),
+    /** Credits consumed inside the current window. */
+    spentCount: v.number(),
+    updatedAtMs: v.number(),
+  }).index("by_bucketKey", ["bucketKey"]),
 });

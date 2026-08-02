@@ -1,5 +1,5 @@
 import { google } from "@ai-sdk/google";
-import { checkDocumentIntegrity } from "@flock/email-sdk";
+import { checkDocumentIntegrity, ROOT_BLOCK_ID } from "@flock/email-sdk";
 import { createUIMessageStream, createUIMessageStreamResponse, type LanguageModel } from "ai";
 import {
   chatRequestBodySchema,
@@ -91,6 +91,9 @@ export async function POST(request: Request) {
         // A trailing assistant message means this request is a continuation
         // round (tool results coming back) — the mock must close, not re-plan.
         isContinuationRequest: messages[messages.length - 1]?.role === "assistant",
+        // Where a composed Phase 7.4 section is appended (the mock has no
+        // document of its own — it only ever appends to the end).
+        rootSectionCount: document[ROOT_BLOCK_ID]?.childrenIds.length ?? 0,
       })
     : google(DEFAULT_GEMINI_MODEL_ID);
 

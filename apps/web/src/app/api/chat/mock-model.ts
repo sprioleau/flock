@@ -18,8 +18,13 @@ import type {
   UndoInput,
   UpdateBlockPropertiesOperation,
 } from "@flock/email-sdk";
+import type { FetchWebContentResult, PersonHighlightResult } from "@flock/agent";
 import { simulateReadableStream } from "ai";
 import { MockLanguageModelV4 } from "ai/test";
+import {
+  composeArticleSection,
+  composePersonSection,
+} from "@/lib/content-ingestion/compose-article-section";
 
 /**
  * Deterministic mock chat model (no API key needed — CI/tests use this via
@@ -80,6 +85,11 @@ export interface CreateMockChatModelInput {
    * would apply once per round.
    */
   isContinuationRequest?: boolean;
+  /**
+   * How many sections the document already has — where a composed 7.4 section
+   * is appended. Absent means "append at the top" (an empty draft).
+   */
+  rootSectionCount?: number;
 }
 
 interface MockToolCallPlan {
@@ -131,6 +141,13 @@ const MOCK_COUNT_WORDS: Readonly<Record<string, number>> = {
   four: 4,
   five: 5,
 };
+
+/**
+ * Person-spotlight vocabulary (Phase 7.4b). Only consulted when the message
+ * also carries a URL — "spotlight" alone is not a profile link.
+ */
+const PERSON_INTENT_REGEX =
+  /\b(spotlight|profile|bio|biography|introduce|introduction|highlight)\b/i;
 
 /** Catalog templateIds the mock recognizes by keyword in the user message. */
 const MOCK_SCAFFOLD_TEMPLATE_IDS = [
@@ -326,12 +343,20 @@ function planMockToolCall({
       acknowledgementText: `Requesting a test send to ${to}.`,
     };
   }
-  // A URL in the message → fetchWebContent (Phase 7.4a). Checked BEFORE the
-  // scaffold intent: "make a section from this article <url>" must fetch, not
-  // scaffold placeholder content. The server executes the REAL fetch +
-  // extraction, so tests exercise the whole read-only tool seam.
+  // A URL in the message → one of the Phase 7.4 ingestion tools. Checked
+  // BEFORE the scaffold intent: "make a section from this article <url>" must
+  // fetch, not scaffold placeholder content. The server executes the REAL
+  // fetch + extraction, so tests exercise the whole read-only tool seam.
   const urlMatch = lastUserText.match(/https?:\/\/[^\s"'<>)]+/i);
   if (urlMatch !== null) {
+    // Person-spotlight vocabulary routes to 7.4(b); everything else to 7.4(a).
+    if (PERSON_INTENT_REGEX.test(lastUserText)) {
+      return {
+        toolName: "fetchPersonHighlight",
+        input: { url: urlMatch[0] },
+        acknowledgementText: "Reading their profile now.",
+      };
+    }
     return {
       toolName: "fetchWebContent",
       input: { url: urlMatch[0] },
@@ -507,6 +532,123 @@ function buildMalformedProbeChunks(selectedBlockId: BlockId | undefined) {
   ];
 }
 
+// ---------------------------------------------------------------------------
+// Phase 7.4 compose step (the mock standing in for the model)
+// ---------------------------------------------------------------------------
+
+/** The ingestion tool results this mock knows how to compose from. */
+type IngestionToolResult =
+  | { toolName: "fetchWebContent"; result: FetchWebContentResult }
+  | { toolName: "fetchPersonHighlight"; result: PersonHighlightResult };
+
+/**
+ * Find the newest ingestion tool result in the prompt the SDK just handed us.
+ * Analysis tools execute server-side and their JSON output comes back as a
+ * tool-result part on the NEXT step of the same request — so on step 2 the
+ * mock is looking at the page the server really fetched.
+ */
+function findIngestionToolResult(prompt: unknown): IngestionToolResult | null {
+  if (!Array.isArray(prompt)) {
+    return null;
+  }
+  for (let messageIndex = prompt.length - 1; messageIndex >= 0; messageIndex -= 1) {
+    const content = (prompt[messageIndex] as { content?: unknown }).content;
+    if (!Array.isArray(content)) {
+      continue;
+    }
+    for (let partIndex = content.length - 1; partIndex >= 0; partIndex -= 1) {
+      const part = content[partIndex] as {
+        type?: string;
+        toolName?: string;
+        output?: { type?: string; value?: unknown };
+      };
+      if (part.type !== "tool-result" || part.output?.type !== "json") {
+        continue;
+      }
+      const data = (part.output.value as { isFound?: boolean; data?: unknown } | undefined)?.data;
+      if (data === undefined) {
+        continue;
+      }
+      if (part.toolName === "fetchWebContent") {
+        return { toolName: "fetchWebContent", result: data as FetchWebContentResult };
+      }
+      if (part.toolName === "fetchPersonHighlight") {
+        return { toolName: "fetchPersonHighlight", result: data as PersonHighlightResult };
+      }
+    }
+  }
+  return null;
+}
+
+/**
+ * The 7.4 compose step, scripted: turn the REAL fetched payload into one
+ * addSection call — or, when the page could not be read, into a plain-language
+ * relay of the refusal and NOTHING ELSE.
+ *
+ * That second branch is the deterministic proof of the plan's hardest rule:
+ * a blocked, paywalled, or robots-disallowed URL costs the document zero
+ * edits. The mock has the same information the model would have, and makes
+ * the same choice the guidance demands of it.
+ */
+function buildIngestionComposeChunks({
+  ingestion,
+  rootSectionCount,
+}: {
+  ingestion: IngestionToolResult;
+  rootSectionCount: number;
+}) {
+  const usage = {
+    inputTokens: { total: 10, noCache: 10, cacheRead: undefined, cacheWrite: undefined },
+    outputTokens: { total: 25, text: 10, reasoning: undefined },
+  };
+  const refusalMessage = ingestion.result.isOk ? null : ingestion.result.message;
+  if (refusalMessage !== null) {
+    return [
+      { type: "text-start" as const, id: "text-refusal" },
+      { type: "text-delta" as const, id: "text-refusal", delta: refusalMessage },
+      { type: "text-end" as const, id: "text-refusal" },
+      { type: "finish" as const, finishReason: { unified: "stop" as const, raw: undefined }, usage },
+    ];
+  }
+  const { operation, acknowledgement } =
+    ingestion.toolName === "fetchWebContent"
+      ? {
+          operation: composeArticleSection({
+            // Narrowed by refusalMessage === null above.
+            article: (ingestion.result as { isOk: true; article: never }).article,
+            index: rootSectionCount,
+          }),
+          acknowledgement: "Adding a section built from that story.",
+        }
+      : {
+          operation: composePersonSection({
+            person: (ingestion.result as { isOk: true; person: never }).person,
+            index: rootSectionCount,
+          }),
+          acknowledgement: "Adding a spotlight section from their profile.",
+        };
+  const toolCallId = `call_${crypto.randomUUID()}`;
+  const inputJson = JSON.stringify(operation);
+  return [
+    { type: "text-start" as const, id: "text-compose" },
+    { type: "text-delta" as const, id: "text-compose", delta: acknowledgement },
+    { type: "text-end" as const, id: "text-compose" },
+    { type: "tool-input-start" as const, id: toolCallId, toolName: "addSection" },
+    { type: "tool-input-end" as const, id: toolCallId },
+    {
+      type: "tool-call" as const,
+      toolCallId,
+      toolName: "addSection",
+      input: inputJson,
+    },
+    {
+      type: "finish" as const,
+      finishReason: { unified: "tool-calls" as const, raw: undefined },
+      usage,
+    },
+  ];
+}
+
 export function createMockChatModel(input: CreateMockChatModelInput) {
   const isContinuationRequest = input.isContinuationRequest ?? false;
   const isMalformedProbe = MALFORMED_PROBE_REGEX.test(input.lastUserText);
@@ -528,9 +670,34 @@ export function createMockChatModel(input: CreateMockChatModelInput) {
   };
 
   return new MockLanguageModelV4({
-    doStream: async () => {
+    doStream: async ({ prompt }) => {
       doStreamCallCount += 1;
       const isFirstStep = doStreamCallCount === 1 && !isContinuationRequest;
+      // Step 2 of a 7.4 turn: the server has really fetched the page and the
+      // payload is in the prompt. Compose from it, or relay the refusal.
+      // Continuation ROUNDS are excluded — the section was already composed in
+      // the round that fetched, and addSection is not idempotent.
+      const ingestion = isContinuationRequest ? null : findIngestionToolResult(prompt);
+      if (ingestion !== null) {
+        return {
+          stream: simulateReadableStream({
+            chunkDelayInMs: 20,
+            chunks: [
+              { type: "stream-start" as const, warnings: [] },
+              {
+                type: "response-metadata" as const,
+                id: `mock-response-${doStreamCallCount}`,
+                modelId: "flock-mock-chat-model",
+                timestamp: new Date(0),
+              },
+              ...buildIngestionComposeChunks({
+                ingestion,
+                rootSectionCount: input.rootSectionCount ?? 0,
+              }),
+            ],
+          }),
+        };
+      }
       if (isMalformedProbe && isFirstStep) {
         return {
           stream: simulateReadableStream({

@@ -17,6 +17,8 @@ export const PROPERTY_PHRASES: Record<string, string> = {
   borderColor: "border color",
   borderRadius: "corner radius",
   borderSize: "border size",
+  borderWidth: "border width",
+  borderStyle: "border style",
   paddingTop: "padding",
   paddingBottom: "padding",
   paddingLeft: "padding",
@@ -50,6 +52,7 @@ export const PROPERTY_PHRASES: Record<string, string> = {
   buttonHorizontalPadding: "button padding",
   buttonVerticalPadding: "button padding",
   buttonFontFamily: "button font",
+  imageBorderRadius: "image corner radius",
 };
 
 /** "borderRadius" → "corner radius"; unmapped keys → "heading 1 text align". */

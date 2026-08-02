@@ -8,10 +8,18 @@ import {
 import { ConvexError, v, type Infer } from "convex/values";
 import {
   findMatchingVariation,
+  getBrandColorsValidationErrors,
   getBrandKitValidationErrors,
   getConfirmedBrandAssetUrl,
+  getToneOfVoiceValidationErrors,
   type BrandKit,
+  type BrandToneOfVoice,
 } from "../apps/web/src/lib/brand-kit";
+import {
+  planBrandColorsUpdate,
+  reconcileBrandColors,
+  reconcileToneOfVoice,
+} from "../apps/web/src/lib/brand-kit-reconcile";
 import type { Doc, Id } from "./_generated/dataModel";
 import { mutation, query, type MutationCtx, type QueryCtx } from "./_generated/server";
 import {
@@ -64,6 +72,34 @@ import { commitVersions, loadDocumentState, type CommitEntry } from "./model/ema
  * See the table comment in schema.ts.
  */
 
+/**
+ * One AUTHORED brand color (brand-kit-user-control §3.2): the palette a human
+ * curates. `origin`/`userEditedAtMs` are the re-scrape lock — see
+ * reconcileBrandColors.
+ */
+const brandColorValidator = v.object({
+  id: v.string(),
+  hex: v.string(),
+  name: v.string(),
+  category: v.union(v.literal("primary"), v.literal("secondary"), v.literal("accent")),
+  orderIndex: v.number(),
+  origin: v.union(v.literal("scraped"), v.literal("agent"), v.literal("user")),
+  sourceVariableName: v.optional(v.string()),
+  sourceUsageCount: v.optional(v.number()),
+  userEditedAtMs: v.optional(v.number()),
+});
+
+/** Tone of voice (§5.2). Prose fields reach the model only via brand-voice.ts. */
+const toneOfVoiceValidator = v.object({
+  descriptors: v.array(v.string()),
+  formality: v.optional(v.union(v.literal("casual"), v.literal("neutral"), v.literal("formal"))),
+  person: v.optional(v.union(v.literal("first-person-plural"), v.literal("third-person"))),
+  guidance: v.optional(v.string()),
+  avoid: v.optional(v.array(v.string())),
+  origin: v.union(v.literal("scraped"), v.literal("agent"), v.literal("user")),
+  userEditedAtMs: v.optional(v.number()),
+});
+
 /** Save-args wire shape — mirrors the frontend scrape/save `BrandKit` shape. */
 export const brandKitValidator = v.object({
   name: v.string(),
@@ -72,6 +108,8 @@ export const brandKitValidator = v.object({
   logoUrl: v.optional(v.string()),
   socialImageUrl: v.optional(v.string()),
   socialLinks: v.optional(v.array(v.object({ platform: v.string(), url: v.string() }))),
+  colors: v.optional(v.array(brandColorValidator)),
+  toneOfVoice: v.optional(toneOfVoiceValidator),
   variations: v.array(
     v.object({
       id: v.string(),
@@ -97,6 +135,8 @@ const activeBrandKitValidator = v.object({
   logoUrl: v.optional(v.string()),
   socialImageUrl: v.optional(v.string()),
   socialLinks: v.optional(v.array(v.object({ platform: v.string(), url: v.string() }))),
+  colors: v.optional(v.array(brandColorValidator)),
+  toneOfVoice: v.optional(toneOfVoiceValidator),
   revision: v.number(),
   logoConfirmedAtMs: v.optional(v.number()),
   socialImageConfirmedAtMs: v.optional(v.number()),
@@ -111,6 +151,15 @@ const activeBrandKitValidator = v.object({
 
 const assetKindValidator = v.union(v.literal("logo"), v.literal("socialCard"));
 
+/**
+ * What a save reports back so the panel can SAY what it kept (§8.2): silent
+ * skipping is the failure mode provenance exists to avoid.
+ */
+const saveBrandKitResultValidator = v.object({
+  keptUserEditedColors: v.number(),
+  keptUserToneOfVoice: v.boolean(),
+});
+
 type BrandKitInput = Infer<typeof brandKitValidator>;
 type ActiveBrandKitPayload = Infer<typeof activeBrandKitValidator>;
 
@@ -124,6 +173,8 @@ function projectBrandKitRow(row: Doc<"brandKits">): ActiveBrandKitPayload {
     ...(row.logoUrl !== undefined ? { logoUrl: row.logoUrl } : {}),
     ...(row.socialImageUrl !== undefined ? { socialImageUrl: row.socialImageUrl } : {}),
     ...(row.socialLinks !== undefined ? { socialLinks: row.socialLinks } : {}),
+    ...(row.colors !== undefined ? { colors: row.colors } : {}),
+    ...(row.toneOfVoice !== undefined ? { toneOfVoice: row.toneOfVoice } : {}),
     revision: getEffectiveRevision(row),
     ...(row.logoConfirmedAtMs !== undefined ? { logoConfirmedAtMs: row.logoConfirmedAtMs } : {}),
     ...(row.socialImageConfirmedAtMs !== undefined
@@ -240,19 +291,28 @@ export const getActiveBrandKit = query({
 
 /**
  * Save the session's active brand kit — PATCH-IN-PLACE (Stage S): the row's
- * `_id` is stable across saves and `revision` bumps monotonically, which is
- * what the Stage M canvas binding will point at. Inserts only when the
- * session has no row yet. Asset confirmations survive a save only when the
- * incoming URL is unchanged; a new suggestion clears the confirmation and
- * deletes the orphaned storage file (§8.2). Rejects (ConvexError) without
- * writing when the kit fails the contract — see assertBrandKitIsValid.
+ * `_id` is stable across saves and `revision` bumps, which is what the Stage M
+ * canvas binding points at. Inserts only when the session has no row yet.
+ * Asset confirmations survive a save only when the incoming URL is unchanged;
+ * a new suggestion clears the confirmation and deletes the orphaned storage
+ * file (§8.2). Rejects (ConvexError) without writing when the kit fails the
+ * contract — see assertBrandKitIsValid.
+ *
+ * TWO CHANGES from Stage S, both from brand-kit-user-control:
+ *
+ * 1. **Not a wholesale replace any more.** Colors and tone of voice a HUMAN
+ *    authored survive an incoming scrape (§8.2 provenance + sticky edits);
+ *    the return value reports what was kept so the panel can say it out loud.
+ * 2. **`revision` bumps only on draft-renderable changes** (§8.3): variations
+ *    or an asset URL. Renaming a color must not re-arm the "Updated brand
+ *    available" pill on every draft of every bound canvas.
  */
 export const saveBrandKit = mutation({
   args: {
     sessionId: v.string(),
     brandKit: brandKitValidator,
   },
-  returns: v.null(),
+  returns: saveBrandKitResultValidator,
   handler: async (ctx, args) => {
     assertBrandKitIsValid(args.brandKit);
     const now = Date.now();
@@ -265,7 +325,7 @@ export const saveBrandKit = mutation({
         createdAtMs: now,
         updatedAtMs: now,
       });
-      return null;
+      return { keptUserEditedColors: 0, keptUserToneOfVoice: false };
     }
     // Defensive: the invariant is one row per session — fold any dupes away
     // (surrendering their storage files) and patch the primary in place.
@@ -274,23 +334,130 @@ export const saveBrandKit = mutation({
       await deleteStorageFilesUnlessRegistered(ctx, collectRowStorageIds(duplicate));
       await ctx.db.delete(duplicate._id);
     }
+    // §8: a save is no longer a wholesale replace for human-editable fields.
+    // Colors and tone the user authored SURVIVE a re-scrape; everything the
+    // machine produced is refreshed from the incoming payload.
+    const reconciledColors = reconcileBrandColors({
+      existing: primaryRow.colors,
+      incoming: args.brandKit.colors,
+    });
+    const reconciledTone = reconcileToneOfVoice({
+      existing: primaryRow.toneOfVoice,
+      incoming: args.brandKit.toneOfVoice,
+    });
     const { patch, storageIdsToDelete } = planBrandKitSavePatch({
       existing: primaryRow,
       incomingLogoUrl: args.brandKit.logoUrl,
       incomingSocialImageUrl: args.brandKit.socialImageUrl,
+      // §8.3: only draft-renderable changes re-arm the staleness pills.
+      hasRenderableChange:
+        JSON.stringify(primaryRow.variations) !== JSON.stringify(args.brandKit.variations),
     });
     await ctx.db.patch(primaryRow._id, {
       name: args.brandKit.name,
       sourceUrl: args.brandKit.sourceUrl,
       fonts: args.brandKit.fonts,
       variations: args.brandKit.variations,
-      // Replaced wholesale (undefined removes) — the save's revision bump
-      // covers social-link changes.
+      // Replaced wholesale (undefined removes): social links have no human
+      // edit path yet, so there is nothing of the user's to protect.
       socialLinks: args.brandKit.socialLinks,
+      colors: reconciledColors.colors.length > 0 ? reconciledColors.colors : undefined,
+      toneOfVoice: reconciledTone.toneOfVoice,
       updatedAtMs: now,
       ...patch,
     });
     await deleteStorageFilesUnlessRegistered(ctx, storageIdsToDelete);
+    return {
+      keptUserEditedColors: reconciledColors.keptUserEditedCount,
+      keptUserToneOfVoice: reconciledTone.keptUserEdit,
+    };
+  },
+});
+
+/**
+ * Replace the kit's AUTHORED palette (brand-kit-user-control §3.2) — the
+ * panel's Colors section commits the whole array in one write, the same
+ * wholesale stance `socialLinks` already takes.
+ *
+ * Does NOT bump `revision` (§8.3): the palette is a curated source for the
+ * picker and the agent, not something a draft renders. Blocks store literal
+ * hex values, so changing a color here repaints nothing already placed — the
+ * panel says that in words rather than implying a propagation that will not
+ * happen.
+ *
+ * Provenance is decided SERVER-SIDE (planBrandColorsUpdate): entries that
+ * differ from what is stored become `origin: "user"` and pick up a
+ * `userEditedAtMs`, which is what makes them survive the next re-scrape.
+ */
+export const updateBrandColors = mutation({
+  args: { sessionId: v.string(), colors: v.array(brandColorValidator) },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    const row = await requireSessionBrandKitRow(ctx, args.sessionId);
+    const colors = planBrandColorsUpdate({
+      existing: row.colors,
+      incoming: args.colors,
+      nowMs: Date.now(),
+    });
+    const errors = getBrandColorsValidationErrors(colors);
+    if (errors.length > 0) {
+      throw new ConvexError(errors.join(" "));
+    }
+    await ctx.db.patch(row._id, {
+      colors: colors.length > 0 ? colors : undefined,
+      updatedAtMs: Date.now(),
+    });
+    return null;
+  },
+});
+
+/**
+ * Set (or clear, with `toneOfVoice: null`) the kit's tone of voice. Always
+ * lands as `origin: "user"` — this mutation only ever runs from a human
+ * typing — which locks it against the next re-scrape (§8.2). Clearing hands
+ * the field back to the scrape.
+ *
+ * Does NOT bump `revision`: nothing renders tone of voice (§8.3).
+ */
+export const updateBrandToneOfVoice = mutation({
+  args: {
+    sessionId: v.string(),
+    toneOfVoice: v.union(
+      v.null(),
+      v.object({
+        descriptors: v.array(v.string()),
+        formality: v.optional(
+          v.union(v.literal("casual"), v.literal("neutral"), v.literal("formal")),
+        ),
+        person: v.optional(v.union(v.literal("first-person-plural"), v.literal("third-person"))),
+        guidance: v.optional(v.string()),
+        avoid: v.optional(v.array(v.string())),
+      }),
+    ),
+  },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    const row = await requireSessionBrandKitRow(ctx, args.sessionId);
+    if (args.toneOfVoice === null) {
+      await ctx.db.patch(row._id, { toneOfVoice: undefined, updatedAtMs: Date.now() });
+      return null;
+    }
+    const toneOfVoice: BrandToneOfVoice = {
+      ...args.toneOfVoice,
+      descriptors: args.toneOfVoice.descriptors.map((descriptor) => descriptor.trim()).filter(
+        (descriptor) => descriptor.length > 0,
+      ),
+      ...(args.toneOfVoice.avoid === undefined
+        ? {}
+        : { avoid: args.toneOfVoice.avoid.map((word) => word.trim()).filter((word) => word.length > 0) }),
+      origin: "user",
+      userEditedAtMs: Date.now(),
+    };
+    const errors = getToneOfVoiceValidationErrors(toneOfVoice);
+    if (errors.length > 0) {
+      throw new ConvexError(errors.join(" "));
+    }
+    await ctx.db.patch(row._id, { toneOfVoice, updatedAtMs: Date.now() });
     return null;
   },
 });

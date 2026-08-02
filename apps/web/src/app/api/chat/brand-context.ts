@@ -1,10 +1,12 @@
 import { ConvexHttpClient } from "convex/browser";
 import { api } from "@convex/_generated/api";
+import { formatBrandVoiceContextLine } from "@/lib/brand-voice";
 
 /**
  * Brand-kit context for the chat agent (item 26) — a compact, PER-REQUEST
- * line describing the session's brand social links, so "update the footer
- * links" turns into the brand's real profiles without the user pasting URLs.
+ * block describing the session's brand social links (so "update the footer
+ * links" turns into the brand's real profiles without the user pasting URLs)
+ * and its tone of voice (so generated copy sounds like the brand).
  *
  * Caching contract: this is FRESH data and must only ever ride the fresh
  * per-request document-context layer (the LAST user message) — never the
@@ -34,8 +36,8 @@ export function formatBrandSocialContextLine({
   return `Brand social links (from the user's saved brand kit "${brandName}" — use these exact URLs when adding or updating social/footer links): ${pairs}`;
 }
 
-/** Load the session's kit and build the context line (null = nothing to add). */
-export async function buildBrandSocialContextLine({
+/** Load the session's kit and build the context block (null = nothing to add). */
+export async function buildBrandContextBlock({
   sessionId,
 }: {
   sessionId: string | null;
@@ -47,13 +49,21 @@ export async function buildBrandSocialContextLine({
   try {
     const convexClient = new ConvexHttpClient(convexUrl);
     const brandKit = await convexClient.query(api.brandKits.getActiveBrandKit, { sessionId });
-    if (brandKit === null || brandKit.socialLinks === undefined) {
+    if (brandKit === null) {
       return null;
     }
-    return formatBrandSocialContextLine({
-      brandName: brandKit.name,
-      socialLinks: brandKit.socialLinks,
-    });
+    // Either half can be absent; a kit with only a voice still contributes.
+    const lines = [
+      formatBrandSocialContextLine({
+        brandName: brandKit.name,
+        socialLinks: brandKit.socialLinks ?? [],
+      }),
+      formatBrandVoiceContextLine({
+        brandName: brandKit.name,
+        toneOfVoice: brandKit.toneOfVoice,
+      }),
+    ].filter((line): line is string => line !== null);
+    return lines.length === 0 ? null : lines.join("\n\n");
   } catch (error) {
     console.error(
       JSON.stringify({

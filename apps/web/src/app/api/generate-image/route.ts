@@ -1,3 +1,4 @@
+import { chargeCreditForRequest } from "@/lib/auth/credits";
 import { MOCK_MODEL_HEADER } from "@/lib/chat-contract";
 import {
   generateImageRequestBodySchema,
@@ -45,6 +46,19 @@ export async function POST(request: Request) {
   const { prompt, aspectRatio } = parsedBody.data;
 
   const isMockForced = request.headers.get(MOCK_MODEL_HEADER) === "1";
+  // Mirrors generateEmailImage's own mock decision: a run that never reaches
+  // the provider must not cost the user anything.
+  const isMockRun =
+    isMockForced ||
+    process.env.FLOCK_MOCK_IMAGE_MODEL === "1" ||
+    !process.env.GOOGLE_GENERATIVE_AI_API_KEY;
+
+  // Image generation is user-initiated inference — it costs a credit.
+  const charge = await chargeCreditForRequest({ request, isMockRun });
+  if (!charge.isAllowed) {
+    return errorResponse(429, { error: "out_of_credits", message: charge.message });
+  }
+
   const outcome = await generateEmailImage({
     prompt,
     ...(aspectRatio === undefined ? {} : { aspectRatio }),

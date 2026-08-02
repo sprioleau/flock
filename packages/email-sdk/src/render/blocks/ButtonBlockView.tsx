@@ -15,7 +15,7 @@ export interface ButtonBlockViewProps {
  * text-align on the wrapping cell.
  */
 export function ButtonBlockView({ block, resolvedStyles }: ButtonBlockViewProps) {
-  const hasBorder = resolvedStyles.borderSize > 0;
+  const hasBorder = resolvedStyles.borderSize > 0 && resolvedStyles.borderStyle !== "none";
   return (
     <Row>
       <Column style={{ ...blockPaddingStyle(resolvedStyles), textAlign: resolvedStyles.align }}>
@@ -26,7 +26,9 @@ export function ButtonBlockView({ block, resolvedStyles }: ButtonBlockViewProps)
             color: resolvedStyles.textColor,
             borderRadius: `${resolvedStyles.borderRadius}px`,
             ...(hasBorder
-              ? { border: `${resolvedStyles.borderSize}px solid ${resolvedStyles.borderColor}` }
+              ? {
+                  border: `${resolvedStyles.borderSize}px ${resolvedStyles.borderStyle} ${resolvedStyles.borderColor}`,
+                }
               : {}),
             padding: `${resolvedStyles.verticalPadding}px ${resolvedStyles.horizontalPadding}px`,
             fontFamily: resolvedStyles.fontFamily,

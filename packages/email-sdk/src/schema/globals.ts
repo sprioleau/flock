@@ -102,6 +102,15 @@ export const globalStylesSchema = z
       ),
     buttonFontFamily: fontFamily("Font of all button labels.", DEFAULT_FONT_STACK).optional(),
 
+    // Images
+    imageBorderRadius: z
+      .number()
+      .min(0)
+      .optional()
+      .describe(
+        "Corner radius of all images in pixels — the brand's image shape, the counterpart of buttonBorderRadius. Renderer default: 0 (square corners).",
+      ),
+
     // Headings (levels 1–3, matching heading nodes inside text blocks)
     heading1FontFamily: fontFamily("Font of level-1 headings.", DEFAULT_FONT_STACK).optional(),
     heading1TextColor: cssColor("Text color of level-1 headings.", '"#111111"').optional(),
@@ -145,6 +154,7 @@ export const DEFAULT_GLOBAL_STYLES: Required<GlobalStyles> = {
   buttonHorizontalPadding: 24,
   buttonVerticalPadding: 12,
   buttonFontFamily: DEFAULT_FONT_STACK,
+  imageBorderRadius: 0,
   heading1FontFamily: DEFAULT_FONT_STACK,
   heading1TextColor: "#111111",
   heading1TextAlign: "left",

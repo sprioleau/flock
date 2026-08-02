@@ -21,6 +21,11 @@ import type { FetchWebContentResult, WebContentConfidence } from "@flock/agent";
  *
  * Metadata (title/byline/date/source/hero image/canonical URL) comes from
  * OpenGraph tags, JSON-LD Article objects, and standard fallbacks.
+ *
+ * The lower-level pieces (tag stripping, junk removal, scope selection, prose
+ * collection, metadata reading) are exported because the person-profile
+ * extractor (extract-person.ts) reads the same kind of page for a different
+ * shape of answer — one parser, two readers.
  */
 
 // ---------------------------------------------------------------------------
@@ -70,14 +75,14 @@ function decodeHtmlEntities(text: string): string {
 }
 
 /** Strip every tag, decode entities, collapse whitespace. */
-function toPlainText(html: string): string {
+export function toPlainText(html: string): string {
   return decodeHtmlEntities(html.replace(/<[^>]*>/g, " "))
     .replace(/\s+/g, " ")
     .trim();
 }
 
 /** One attribute's value from a single raw tag string. */
-function getAttribute({ tag, name }: { tag: string; name: string }): string | undefined {
+export function getAttribute({ tag, name }: { tag: string; name: string }): string | undefined {
   const match = tag.match(
     new RegExp(`(?:^|\\s)${name}\\s*=\\s*(?:"([^"]*)"|'([^']*)')`, "i"),
   );
@@ -111,7 +116,7 @@ function tokenizeTag(tagName: string, html: string): TagToken[] {
  * Remove every `<tagName>…</tagName>` subtree (depth-aware, so nested
  * same-name tags don't truncate the removal early).
  */
-function removeTagBlocks({ html, tagName }: { html: string; tagName: string }): string {
+export function removeTagBlocks({ html, tagName }: { html: string; tagName: string }): string {
   const tokens = tokenizeTag(tagName, html);
   if (tokens.length === 0) {
     return html;
@@ -169,7 +174,7 @@ function extractTagBlocks({ html, tagName }: { html: string; tagName: string }):
 // Junk removal (ads / menus / comments / promo chrome)
 // ---------------------------------------------------------------------------
 
-const NON_CONTENT_TAGS = [
+export const NON_CONTENT_TAGS = [
   "script",
   "style",
   "noscript",
@@ -195,7 +200,7 @@ const JUNK_CLASS_OR_ID_PATTERN =
 const JUNK_SCAN_TAGS = ["div", "section", "ul", "ol"];
 
 /** Remove subtrees whose opening tag's class/id matches the junk pattern. */
-function removeJunkBlocks(html: string): string {
+export function removeJunkBlocks(html: string): string {
   let cleaned = html;
   for (const tagName of JUNK_SCAN_TAGS) {
     // Re-scan until stable: removing an outer block can expose nothing new for
@@ -241,7 +246,7 @@ function removeJunkBlocks(html: string): string {
 // Metadata (OpenGraph, JSON-LD, standard fallbacks)
 // ---------------------------------------------------------------------------
 
-interface PageMetadata {
+export interface PageMetadata {
   ogTitle?: string;
   ogSiteName?: string;
   ogImage?: string;
@@ -276,11 +281,11 @@ function readMetaTags(html: string): Map<string, string> {
   return metaByKey;
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
+export function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-function asText(value: unknown): string | undefined {
+export function asText(value: unknown): string | undefined {
   if (typeof value === "string" && value.trim().length > 0) {
     return value.trim();
   }
@@ -293,21 +298,21 @@ function asText(value: unknown): string | undefined {
   return undefined;
 }
 
-/** The first JSON-LD object whose @type is an Article flavor, flattened. */
-function readJsonLdArticle(html: string): Record<string, unknown> | undefined {
+/** Every JSON-LD object on the page, `@graph` members flattened in. */
+export function readJsonLdNodes(html: string): Record<string, unknown>[] {
   const scriptPattern =
     /<script\b[^>]*type\s*=\s*["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi;
-  const candidates: Record<string, unknown>[] = [];
+  const nodes: Record<string, unknown>[] = [];
   for (const match of html.matchAll(scriptPattern)) {
     try {
       const parsed: unknown = JSON.parse(match[1].trim());
-      const nodes = Array.isArray(parsed) ? parsed : [parsed];
-      for (const node of nodes) {
+      const parsedNodes = Array.isArray(parsed) ? parsed : [parsed];
+      for (const node of parsedNodes) {
         if (!isRecord(node)) continue;
-        candidates.push(node);
+        nodes.push(node);
         if (Array.isArray(node["@graph"])) {
           for (const graphNode of node["@graph"]) {
-            if (isRecord(graphNode)) candidates.push(graphNode);
+            if (isRecord(graphNode)) nodes.push(graphNode);
           }
         }
       }
@@ -315,17 +320,26 @@ function readJsonLdArticle(html: string): Record<string, unknown> | undefined {
       // Malformed JSON-LD is common in the wild — skip it, never throw.
     }
   }
-  const isArticleType = (value: unknown): boolean => {
-    const types = Array.isArray(value) ? value : [value];
-    return types.some(
-      (type) =>
-        typeof type === "string" && /(news|blog|report|scholarly)?article|blogposting/i.test(type),
-    );
-  };
-  return candidates.find((candidate) => isArticleType(candidate["@type"]));
+  return nodes;
 }
 
-function readPageMetadata(html: string): PageMetadata {
+/** True when a JSON-LD node's `@type` (string or array) matches `pattern`. */
+export function hasJsonLdType({ node, pattern }: { node: Record<string, unknown>; pattern: RegExp }): boolean {
+  const rawType = node["@type"];
+  const types = Array.isArray(rawType) ? rawType : [rawType];
+  return types.some((type) => typeof type === "string" && pattern.test(type));
+}
+
+const ARTICLE_TYPE_PATTERN = /(news|blog|report|scholarly)?article|blogposting/i;
+
+/** The first JSON-LD object whose @type is an Article flavor, flattened. */
+function readJsonLdArticle(html: string): Record<string, unknown> | undefined {
+  return readJsonLdNodes(html).find((node) =>
+    hasJsonLdType({ node, pattern: ARTICLE_TYPE_PATTERN }),
+  );
+}
+
+export function readPageMetadata(html: string): PageMetadata {
   const meta = readMetaTags(html);
   const ldArticle = readJsonLdArticle(html);
 
@@ -365,7 +379,7 @@ function readPageMetadata(html: string): PageMetadata {
   };
 }
 
-function toAbsoluteHttpUrl({
+export function toAbsoluteHttpUrl({
   candidate,
   baseUrl,
 }: {
@@ -391,7 +405,7 @@ function toAbsoluteHttpUrl({
 
 type ScopeKind = "article" | "main" | "body";
 
-function selectContentScope(html: string): { scopeHtml: string; scopeKind: ScopeKind } {
+export function selectContentScope(html: string): { scopeHtml: string; scopeKind: ScopeKind } {
   for (const tagName of ["article", "main"] as const) {
     const blocks = extractTagBlocks({ html, tagName });
     if (blocks.length === 0) continue;
@@ -409,13 +423,13 @@ function selectContentScope(html: string): { scopeHtml: string; scopeKind: Scope
 const BOILERPLATE_PATTERN =
   /^(advertisement|sponsored( content)?|share this|follow us|sign up|subscribe( now)?|accept( all)? cookies|we use cookies|related (articles|stories|posts)|read more|more from|comments?|leave a (comment|reply)|skip to)/i;
 
-interface ProseBlock {
+export interface ProseBlock {
   kind: "heading" | "paragraph";
   text: string;
 }
 
 /** Link-density-aware prose collection — this is the ads/menus firewall. */
-function collectProseBlocks(scopeHtml: string): ProseBlock[] {
+export function collectProseBlocks(scopeHtml: string): ProseBlock[] {
   const blocks: ProseBlock[] = [];
   const blockPattern = /<(h1|h2|h3|p|li|blockquote)\b[^>]*>([\s\S]*?)<\/\1>/gi;
   for (const match of scopeHtml.matchAll(blockPattern)) {

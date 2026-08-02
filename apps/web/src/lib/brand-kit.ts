@@ -52,6 +52,74 @@ export interface ThemeVariation {
   globals: Required<GlobalStyles>;
 }
 
+/**
+ * Where a piece of kit data came from — the re-scrape reconciliation key
+ * (brand-kit-user-control §8.2). "scraped" = deterministic extraction,
+ * "agent" = the model proposed it, "user" = a human authored or overrode it.
+ * Anything marked "user" (or carrying `userEditedAtMs`) SURVIVES a re-scrape.
+ */
+export type BrandDataOrigin = "scraped" | "agent" | "user";
+
+/** Brand role a color plays. Fixed enum on purpose — see the note below. */
+export type BrandColorCategory = "primary" | "secondary" | "accent";
+
+/**
+ * One AUTHORED brand color (brand-kit-user-control §3.2).
+ *
+ * This is a curated PALETTE — a named source for the color picker and for the
+ * agent — NOT a token layer. Documents store literal hex values, so editing a
+ * hex here never repaints an existing draft; the panel says so in words.
+ * Renaming and deleting are always safe for the same reason.
+ */
+export interface BrandColor {
+  /** Stable id; survives renames and recolors. */
+  id: string;
+  /** Normalized #rrggbb — the only value that ever renders. */
+  hex: string;
+  /** Human-meaningful name ("Banana"). Agent-proposed, human-overridable. */
+  name: string;
+  /** Brand role (fixed enum: the agent needs a reliable "the primary color"). */
+  category: BrandColorCategory;
+  /** Ordering within a category. */
+  orderIndex: number;
+  origin: BrandDataOrigin;
+  /** The CSS custom property the scrape saw this color declared as ("--banana"). */
+  sourceVariableName?: string;
+  /** Harvested usage count (RankedColor.count) — provenance for "why this color?". */
+  sourceUsageCount?: number;
+  /** Set when a human touched this entry — the re-scrape lock (§8.2). */
+  userEditedAtMs?: number;
+}
+
+/** How formal the brand's copy reads. */
+export type BrandVoiceFormality = "casual" | "neutral" | "formal";
+/** Whether the brand speaks as "we" or refers to itself in the third person. */
+export type BrandVoicePerson = "first-person-plural" | "third-person";
+
+/**
+ * The brand's tone of voice (brand-kit-user-control §5.2): coarse axes with
+ * enough structure to be usable deterministically, plus the freeform space
+ * that actually carries nuance.
+ *
+ * SECURITY NOTE: `guidance` and `avoid` are the first kit fields whose content
+ * is PROSE the model reads. When scraped they are untrusted page-derived
+ * content — format them as a delimited data block, never as imperative system
+ * instructions (see lib/brand-voice.ts, which is the only sanctioned way to
+ * put this in front of a model).
+ */
+export interface BrandToneOfVoice {
+  /** 1–3 short adjectives ("warm", "irreverent", "precise"). */
+  descriptors: string[];
+  formality?: BrandVoiceFormality;
+  person?: BrandVoicePerson;
+  /** Freeform direction, shown to the model verbatim inside a data block. */
+  guidance?: string;
+  /** Words/phrases the brand does not use — the highest-signal field in practice. */
+  avoid?: string[];
+  origin: BrandDataOrigin;
+  userEditedAtMs?: number;
+}
+
 /** A brand kit: source provenance, brand basics, and its theme variations. */
 export interface BrandKit {
   /** The scraped site, once the pipeline exists. Absent for mock/manual kits. */
@@ -82,6 +150,14 @@ export interface BrandKit {
    * fill affordance and exposed to the chat agent's per-request context.
    */
   socialLinks?: BrandSocialLink[];
+  /**
+   * The AUTHORED palette (§3). When present and non-empty it REPLACES the
+   * derived palette in {@link getBrandKitPalette}; absent means legacy/mock
+   * kits keep today's derivation, so nothing needs migrating.
+   */
+  colors?: BrandColor[];
+  /** The brand's tone of voice (§5) — kit metadata; nothing renders from it. */
+  toneOfVoice?: BrandToneOfVoice;
   /** 3–4 agent-generated color variations; the theme dropdown's content. */
   variations: ThemeVariation[];
 }
@@ -230,7 +306,245 @@ export function getBrandKitValidationErrors(brandKit: BrandKit): string[] {
       }
     }
   }
+  errors.push(...getBrandColorsValidationErrors(brandKit.colors));
+  errors.push(...getToneOfVoiceValidationErrors(brandKit.toneOfVoice));
   return errors;
+}
+
+// ---------------------------------------------------------------------------
+// Authored colors — the palette a human curates (brand-kit-user-control §3)
+// ---------------------------------------------------------------------------
+
+/**
+ * Upper bound on authored colors per kit. Deliberately NOT the owner's 2+2+2:
+ * the counts are a shape the scrape TARGETS, not a cardinality it pads to
+ * (§3.3). A monochrome brand gets three colors and no empty slots; a rainbow
+ * brand gets its accents. The cap keeps the panel, the picker row and the
+ * agent prompt bounded.
+ */
+export const MAX_BRAND_COLORS = 12;
+
+/** How many colors per category the scrape aims for before it stops. */
+export const TARGET_COLORS_PER_CATEGORY = 2;
+
+/** Longest name a human (or the agent) may give a color. */
+export const MAX_BRAND_COLOR_NAME_LENGTH = 24;
+
+/** The three categories in panel display order (labeled groups, top to bottom). */
+export const BRAND_COLOR_CATEGORIES: readonly BrandColorCategory[] = [
+  "primary",
+  "secondary",
+  "accent",
+];
+
+/** User-facing category names — never render the raw keys. */
+export const BRAND_COLOR_CATEGORY_LABELS: Record<BrandColorCategory, string> = {
+  primary: "Primary",
+  secondary: "Secondary",
+  accent: "Accent",
+};
+
+/**
+ * Category order for the PICKER row (as opposed to the panel): primaries and
+ * accents lead, because the row is capped at 6 and those are the colors a
+ * person reaches for. The panel still groups primary → secondary → accent.
+ */
+const PICKER_CATEGORY_ORDER: readonly BrandColorCategory[] = ["primary", "accent", "secondary"];
+
+/** Hard (blocking) problems with an authored palette. Empty array = valid. */
+export function getBrandColorsValidationErrors(colors: BrandColor[] | undefined): string[] {
+  if (colors === undefined) {
+    return [];
+  }
+  const errors: string[] = [];
+  if (colors.length > MAX_BRAND_COLORS) {
+    errors.push(`A brand kit can hold ${MAX_BRAND_COLORS} colors; this one has ${colors.length}.`);
+  }
+  const seenIds = new Set<string>();
+  for (const color of colors) {
+    if (color.id.trim().length === 0) {
+      errors.push("Every brand color needs an id.");
+    } else if (seenIds.has(color.id)) {
+      errors.push(`Duplicate brand color id "${color.id}".`);
+    }
+    seenIds.add(color.id);
+    if (normalizeHexColor(color.hex) === null) {
+      errors.push(`"${color.hex}" isn't a color we can read — use a hex value like #ffc400.`);
+    }
+    if (color.name.trim().length === 0) {
+      errors.push("Every brand color needs a name.");
+    }
+    if (color.name.length > MAX_BRAND_COLOR_NAME_LENGTH) {
+      errors.push(
+        `Color names can be up to ${MAX_BRAND_COLOR_NAME_LENGTH} characters — "${color.name}" is longer.`,
+      );
+    }
+  }
+  return errors;
+}
+
+/** Longest freeform voice guidance we store (and hand to the model). */
+export const MAX_VOICE_GUIDANCE_LENGTH = 400;
+/** At most this many descriptors / avoid-words (a chore beyond that). */
+export const MAX_VOICE_DESCRIPTORS = 3;
+export const MAX_VOICE_AVOID_WORDS = 12;
+
+/** Hard (blocking) problems with a tone-of-voice payload. */
+export function getToneOfVoiceValidationErrors(tone: BrandToneOfVoice | undefined): string[] {
+  if (tone === undefined) {
+    return [];
+  }
+  const errors: string[] = [];
+  if (tone.descriptors.length > MAX_VOICE_DESCRIPTORS) {
+    errors.push(`Keep tone of voice to ${MAX_VOICE_DESCRIPTORS} descriptors or fewer.`);
+  }
+  if ((tone.guidance ?? "").length > MAX_VOICE_GUIDANCE_LENGTH) {
+    errors.push(`Voice guidance can be up to ${MAX_VOICE_GUIDANCE_LENGTH} characters.`);
+  }
+  if ((tone.avoid ?? []).length > MAX_VOICE_AVOID_WORDS) {
+    errors.push(`Keep the "avoid" list to ${MAX_VOICE_AVOID_WORDS} entries or fewer.`);
+  }
+  return errors;
+}
+
+/**
+ * Prefix noise stripped when deriving a name from a CSS custom property:
+ * `--ui-accent-1` is the site calling it "accent 1", not "ui accent 1".
+ */
+const COLOR_VARIABLE_NOISE_WORDS = new Set([
+  "ui",
+  "color",
+  "colour",
+  "c",
+  "clr",
+  "theme",
+  "brand",
+  "token",
+  "palette",
+  "var",
+  "global",
+  "ds",
+]);
+
+/**
+ * A human-meaningful name derived from the CSS custom property a color was
+ * declared as — the owner's `--banana` → "Banana" (§3.4, rung 1). Honest and
+ * boring: it names the color what the site itself called it. Returns null
+ * when nothing meaningful survives (`--c-4`, `--x`).
+ */
+export function deriveColorNameFromVariable(variableName: string): string | null {
+  const words = variableName
+    .replace(/^-+/, "")
+    .split(/[-_]+/)
+    .map((word) => word.trim().toLowerCase())
+    .filter((word) => word.length > 0);
+  // Leading noise words only: "--ui-accent" loses "ui"; "--brand" keeps
+  // "brand" rather than deriving nothing at all.
+  let start = 0;
+  while (start < words.length - 1 && COLOR_VARIABLE_NOISE_WORDS.has(words[start]!)) {
+    start += 1;
+  }
+  const meaningful = words.slice(start).filter((word) => !/^\d+$/.test(word) || words.length > 1);
+  if (meaningful.length === 0) {
+    return null;
+  }
+  // A name that is only digits or a single letter says nothing.
+  const isMeaningless = meaningful.every((word) => /^\d+$/.test(word) || word.length < 2);
+  if (isMeaningless) {
+    return null;
+  }
+  const name = meaningful
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(" ");
+  return name.slice(0, MAX_BRAND_COLOR_NAME_LENGTH);
+}
+
+/** Hue buckets for the last-resort deterministic name. */
+const HUE_NAMES: ReadonlyArray<{ maxDegrees: number; name: string }> = [
+  { maxDegrees: 15, name: "Red" },
+  { maxDegrees: 45, name: "Orange" },
+  { maxDegrees: 70, name: "Yellow" },
+  { maxDegrees: 100, name: "Lime" },
+  { maxDegrees: 160, name: "Green" },
+  { maxDegrees: 200, name: "Teal" },
+  { maxDegrees: 250, name: "Blue" },
+  { maxDegrees: 280, name: "Indigo" },
+  { maxDegrees: 320, name: "Violet" },
+  { maxDegrees: 345, name: "Pink" },
+  { maxDegrees: 360, name: "Red" },
+];
+
+/**
+ * A plain description of the color itself ("Deep Navy" territory: "Deep Blue",
+ * "Pale Yellow", "Charcoal") — the final fallback when there is no declared
+ * variable name and no model-proposed name. Never invents brand mythology:
+ * it describes what the color IS.
+ */
+export function describeHexColor(hex: string): string {
+  const rgb = parseHexColor(hex);
+  if (rgb === null) {
+    return "Brand color";
+  }
+  const [red, green, blue] = rgb.map((channel) => channel / 255) as [number, number, number];
+  const max = Math.max(red, green, blue);
+  const min = Math.min(red, green, blue);
+  const lightness = (max + min) / 2;
+  const chroma = max - min;
+  if (chroma < 0.08) {
+    if (lightness > 0.9) return "Off White";
+    if (lightness > 0.65) return "Light Gray";
+    if (lightness > 0.35) return "Gray";
+    if (lightness > 0.12) return "Charcoal";
+    return "Near Black";
+  }
+  let hue: number;
+  if (max === red) {
+    hue = ((green - blue) / chroma) % 6;
+  } else if (max === green) {
+    hue = (blue - red) / chroma + 2;
+  } else {
+    hue = (red - green) / chroma + 4;
+  }
+  const degrees = ((hue * 60) % 360 + 360) % 360;
+  const hueName = HUE_NAMES.find(({ maxDegrees }) => degrees <= maxDegrees)?.name ?? "Blue";
+  if (lightness > 0.78) return `Pale ${hueName}`;
+  if (lightness > 0.6) return `Light ${hueName}`;
+  if (lightness < 0.22) return `Deep ${hueName}`;
+  if (lightness < 0.4) return `Dark ${hueName}`;
+  return hueName;
+}
+
+/**
+ * The name a scraped color should carry, in the spec's order of preference
+ * (§3.4): the model's proposal (which the prompt constrains to the declared
+ * variable name or a plain color description) → the deterministic derivation
+ * from the CSS custom property → a description of the color itself. There is
+ * always a name; a human can always overwrite it.
+ */
+export function resolveBrandColorName({
+  proposedName,
+  variableName,
+  hex,
+}: {
+  proposedName?: string;
+  variableName?: string;
+  hex: string;
+}): string {
+  const trimmedProposal = (proposedName ?? "").trim();
+  if (trimmedProposal.length > 0) {
+    return trimmedProposal.slice(0, MAX_BRAND_COLOR_NAME_LENGTH);
+  }
+  const derived = variableName === undefined ? null : deriveColorNameFromVariable(variableName);
+  return derived ?? describeHexColor(hex);
+}
+
+/** Authored colors in panel order: category group, then orderIndex. */
+export function sortBrandColorsForDisplay(colors: BrandColor[]): BrandColor[] {
+  return [...colors].sort((a, b) => {
+    const categoryDelta =
+      BRAND_COLOR_CATEGORIES.indexOf(a.category) - BRAND_COLOR_CATEGORIES.indexOf(b.category);
+    return categoryDelta !== 0 ? categoryDelta : a.orderIndex - b.orderIndex;
+  });
 }
 
 // ---------------------------------------------------------------------------
@@ -351,9 +665,16 @@ interface ScoredPaletteColor {
 }
 
 /**
- * The kit's palette as prominence-ranked, labeled swatches — the "Brand
- * colors" row inside the color-picker popover (item 24 rework):
+ * The kit's palette as clickable, labeled swatches — the "Brand colors" row
+ * inside the color-picker popover.
  *
+ * READ RULE (brand-kit-user-control §3.2): when the kit carries an AUTHORED
+ * palette (`colors[]`), that palette IS the answer — verbatim names, human
+ * ordering, no re-derivation and no near-duplicate merging (a human who
+ * curated two close tints meant to). Only kits without one (legacy rows, the
+ * mock) fall through to the derivation below, so nothing needs migrating.
+ *
+ * The derived path, unchanged:
  * 1. The SIGNATURE ACCENT (first variation's button background — where the
  *    scraper's accentColor lands) is always first.
  * 2. Everything else ranks by prominence: role weight × frequency across
@@ -363,6 +684,21 @@ interface ScoredPaletteColor {
  * 4. Capped at {@link MAX_BRAND_PALETTE_SWATCHES}.
  */
 export function getBrandKitPalette(brandKit: BrandKit): BrandPaletteSwatch[] {
+  const authoredColors = brandKit.colors ?? [];
+  if (authoredColors.length > 0) {
+    return [...authoredColors]
+      .sort((a, b) => {
+        const categoryDelta =
+          PICKER_CATEGORY_ORDER.indexOf(a.category) - PICKER_CATEGORY_ORDER.indexOf(b.category);
+        return categoryDelta !== 0 ? categoryDelta : a.orderIndex - b.orderIndex;
+      })
+      .flatMap((color) => {
+        const normalized = normalizeHexColor(color.hex);
+        return normalized === null ? [] : [{ color: normalized, label: color.name }];
+      })
+      .slice(0, MAX_BRAND_PALETTE_SWATCHES);
+  }
+
   // 1. Score every occurrence.
   const scoredByColor = new Map<string, ScoredPaletteColor>();
   for (const variation of brandKit.variations) {
@@ -483,6 +819,7 @@ const SHARED_LAYOUT = {
   buttonBorderSize: 0,
   buttonHorizontalPadding: 24,
   buttonVerticalPadding: 12,
+  imageBorderRadius: 0,
   heading1TextAlign: "left",
   heading2TextAlign: "left",
   heading3TextAlign: "left",

@@ -37,6 +37,7 @@ describe("renderToHTML style resolution end to end", () => {
     expect(html).toContain("max-width:640px"); // contentWidth
     expect(html).toContain("background-color:#e63946"); // buttonBackgroundColor
     expect(html).toContain("border:2px solid #8d0801"); // button border globals
+    expect(html).toContain("border-radius:8px"); // imageBorderRadius global on the <img>
     expect(html).toContain("color:#1d3557"); // heading1TextColor
     expect(html).toContain("border-top:1px solid #1d3557"); // dividerColor, default thickness
   });
@@ -52,6 +53,22 @@ describe("renderToHTML style resolution end to end", () => {
     expect(html).toContain("text-align:right"); // button align override
     expect(html).toContain('href="https://example.com/gallery"'); // linked image
     expect(html).toContain("background-color:#dbeafe"); // image block backgroundColor override
+    expect(html).toContain("border-radius:16px"); // image corner radius override
+    expect(html).toContain("border:2px dashed #22223b"); // image border w/ style + color
+    expect(html).toContain("border:3px double #9a8c98"); // button borderStyle override
+    expect(html).toContain("background-color:#f2e9e4"); // text block background (callout)
+  });
+
+  it("omits image border markup entirely at the defaults", async () => {
+    // A document whose images set nothing must render byte-identically to the
+    // pre-border renderer: no border-radius, no border shorthand on the <img>.
+    const html = await renderToHTML(createMixedFixture());
+    const imageTag = /<img[^>]*>/.exec(html)?.[0] ?? "";
+    expect(imageTag).not.toBe("");
+    expect(imageTag).not.toContain("border-radius");
+    // React Email's own Img reset is the only `border` declaration present.
+    expect(imageTag).toContain("border:none");
+    expect(imageTag).not.toMatch(/border:\d/);
   });
 
   it("renders the new leaf blocks (link, code, spacer) from globals", async () => {

@@ -23,7 +23,15 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
-import type { BrandKit, BrandKitAssetKind, BrandKitGenerateResult } from "@/lib/brand-kit";
+import {
+  BRAND_COLOR_CATEGORY_LABELS,
+  sortBrandColorsForDisplay,
+  type BrandColor,
+  type BrandKit,
+  type BrandKitAssetKind,
+  type BrandKitGenerateResult,
+} from "@/lib/brand-kit";
+import { describeBrandKitReconciliation } from "@/lib/brand-kit-reconcile";
 import { SOCIAL_PLATFORM_LABELS, type SocialPlatform } from "@/lib/social-links";
 import { useEditorStore } from "@/lib/editor-store";
 import { useUiSurfaceOpenRequest } from "@/lib/ui-surfaces";
@@ -34,6 +42,8 @@ function getSocialPlatformLabel(platform: string): string {
 }
 import { ThemeSwatch } from "../theme/ThemeSwatch";
 import { BrandApplyDialog } from "./BrandApplyDialog";
+import { BrandColorsEditor } from "./BrandColorsEditor";
+import { BrandVoiceEditor, type BrandVoiceDraft } from "./BrandVoiceEditor";
 import { useSessionBrandKit } from "./useActiveBrandKit";
 
 /**
@@ -73,6 +83,8 @@ export function BrandKitPanel() {
   const saveBrandKit = useMutation(api.brandKits.saveBrandKit);
   const clearBrandKit = useMutation(api.brandKits.clearBrandKit);
   const renameBrandKit = useMutation(api.brandKits.renameBrandKit);
+  const updateBrandColors = useMutation(api.brandKits.updateBrandColors);
+  const updateBrandToneOfVoice = useMutation(api.brandKits.updateBrandToneOfVoice);
   const removeBrandKitAsset = useMutation(api.brandKits.removeBrandKitAsset);
   const bindSessionKitToCanvas = useMutation(api.brandKits.bindSessionKitToCanvas);
   const unbindCanvasBrandKit = useMutation(api.brandKits.unbindCanvasBrandKit);
@@ -90,6 +102,10 @@ export function BrandKitPanel() {
   const [isBindingBusy, setIsBindingBusy] = useState(false);
   const [bindingErrorMessage, setBindingErrorMessage] = useState<string | null>(null);
   const [isApplyPromptOpen, setIsApplyPromptOpen] = useState(false);
+  // §8.2: what a re-scrape KEPT of the human's, said out loud. Silent skipping
+  // is the failure mode provenance exists to prevent.
+  const [reconciliationMessage, setReconciliationMessage] = useState<string | null>(null);
+  const [contentErrorMessage, setContentErrorMessage] = useState<string | null>(null);
 
   const canvasBinding = brandStatus?.binding ?? null;
   const isCanvasBoundToMyKit =
@@ -106,6 +122,8 @@ export function BrandKitPanel() {
       setSaveErrorMessage(null);
       setBusyAssetKind(null);
       setAssetErrorMessage(null);
+      setReconciliationMessage(null);
+      setContentErrorMessage(null);
     }
   };
 
@@ -152,8 +170,9 @@ export function BrandKitPanel() {
     }
     setIsSaving(true);
     setSaveErrorMessage(null);
+    setReconciliationMessage(null);
     try {
-      await saveBrandKit({
+      const result = await saveBrandKit({
         sessionId,
         brandKit: {
           name: previewKit.name,
@@ -164,9 +183,18 @@ export function BrandKitPanel() {
             ? { socialImageUrl: previewKit.socialImageUrl }
             : {}),
           ...(previewKit.socialLinks !== undefined ? { socialLinks: previewKit.socialLinks } : {}),
+          ...(previewKit.colors !== undefined ? { colors: previewKit.colors } : {}),
+          ...(previewKit.toneOfVoice !== undefined ? { toneOfVoice: previewKit.toneOfVoice } : {}),
           variations: previewKit.variations,
         },
       });
+      // §8.2: say what survived the re-scrape instead of skipping silently.
+      setReconciliationMessage(
+        describeBrandKitReconciliation({
+          keptUserEditedColors: result.keptUserEditedColors,
+          keptUserToneOfVoice: result.keptUserToneOfVoice,
+        }),
+      );
       // The active-kit card (and every tab's ThemeMenu) updates reactively.
       setPreviewKit(null);
       setWebsiteUrl("");
@@ -220,6 +248,43 @@ export function BrandKitPanel() {
     } catch (error: unknown) {
       setAssetErrorMessage(
         error instanceof ConvexError ? String(error.data) : "Couldn't rename the kit. Try again.",
+      );
+    }
+  };
+
+  /**
+   * Commit the whole palette (§3.2): one write, no revision bump — the
+   * palette is a source for the picker and the agent, not something a draft
+   * renders. Provenance ("this one is the human's now") is stamped
+   * server-side, which is what makes the edit survive the next re-scrape.
+   */
+  const commitBrandColors = async (colors: BrandColor[]): Promise<void> => {
+    if (sessionId === null || !hasSavedKit) {
+      return;
+    }
+    setContentErrorMessage(null);
+    try {
+      await updateBrandColors({ sessionId, colors });
+    } catch (error: unknown) {
+      setContentErrorMessage(
+        error instanceof ConvexError ? String(error.data) : "Couldn't save those colors. Try again.",
+      );
+    }
+  };
+
+  /** Commit the tone of voice (§5). `null` clears it back to the scrape's. */
+  const commitToneOfVoice = async (draft: BrandVoiceDraft | null): Promise<void> => {
+    if (sessionId === null || !hasSavedKit) {
+      return;
+    }
+    setContentErrorMessage(null);
+    try {
+      await updateBrandToneOfVoice({ sessionId, toneOfVoice: draft });
+    } catch (error: unknown) {
+      setContentErrorMessage(
+        error instanceof ConvexError
+          ? String(error.data)
+          : "Couldn't save the tone of voice. Try again.",
       );
     }
   };
@@ -462,6 +527,11 @@ export function BrandKitPanel() {
                   : undefined
               }
             />
+            {reconciliationMessage !== null && (
+              <p className="text-sm text-muted-foreground" data-testid="brand-kit-reconciliation">
+                {reconciliationMessage}
+              </p>
+            )}
             {assetErrorMessage !== null && (
               <p className="text-sm text-destructive" data-testid="brand-kit-asset-error">
                 {assetErrorMessage}
@@ -481,6 +551,54 @@ export function BrandKitPanel() {
               </Button>
             )}
           </section>
+
+          {hasSavedKit && (
+            <section className="flex flex-col gap-3 border-t pt-5" data-testid="brand-kit-colors-section">
+              <h3 className="text-sm leading-none font-semibold">Colors</h3>
+              <p className="text-xs text-muted-foreground">
+                We named and grouped what we found on the site. Rename, recolor, regroup — this is
+                your palette.
+              </p>
+              <BrandColorsEditor
+                colors={activeBrandKit.colors ?? []}
+                isBusy={sessionId === null}
+                onCommit={(colors) => void commitBrandColors(colors)}
+              />
+            </section>
+          )}
+
+          {hasSavedKit && (
+            <section className="flex flex-col gap-3 border-t pt-5" data-testid="brand-kit-voice-section">
+              <div className="flex items-center justify-between gap-2">
+                <h3 className="text-sm leading-none font-semibold">Tone of voice</h3>
+                {activeBrandKit.toneOfVoice !== undefined && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-7 px-2 text-xs text-muted-foreground"
+                    onClick={() => void commitToneOfVoice(null)}
+                    data-testid="brand-kit-voice-clear"
+                  >
+                    Clear
+                  </Button>
+                )}
+              </div>
+              <p className="text-xs text-muted-foreground">
+                How your brand writes, so the assistant writes the same way.
+              </p>
+              <BrandVoiceEditor
+                toneOfVoice={activeBrandKit.toneOfVoice}
+                isBusy={sessionId === null}
+                onCommit={(draft) => void commitToneOfVoice(draft)}
+              />
+            </section>
+          )}
+
+          {contentErrorMessage !== null && (
+            <p className="text-sm text-destructive" data-testid="brand-kit-content-error">
+              {contentErrorMessage}
+            </p>
+          )}
 
           <section
             className="flex flex-col gap-3 border-t pt-5"
@@ -715,6 +833,32 @@ function BrandKitSummary({
               />
             )}
           </div>
+        </div>
+      )}
+      {brandKit.colors !== undefined && brandKit.colors.length > 0 && (
+        <div className="flex flex-col gap-1.5" data-testid="brand-kit-colors-preview">
+          <span className={KIT_GROUP_LABEL_CLASSNAME}>Colors</span>
+          <div className="flex flex-wrap items-center gap-2">
+            {sortBrandColorsForDisplay(brandKit.colors).map((color) => (
+              <span
+                key={color.id}
+                className="flex items-center gap-1.5 rounded-full border py-0.5 pr-2 pl-1 text-[11px] text-muted-foreground"
+                title={`${color.name} — ${color.hex} (${BRAND_COLOR_CATEGORY_LABELS[color.category].toLowerCase()})`}
+              >
+                <span
+                  className="size-3.5 shrink-0 rounded-full border border-input"
+                  style={{ backgroundColor: color.hex }}
+                />
+                {color.name}
+              </span>
+            ))}
+          </div>
+        </div>
+      )}
+      {brandKit.toneOfVoice !== undefined && brandKit.toneOfVoice.descriptors.length > 0 && (
+        <div className="flex flex-col gap-1.5" data-testid="brand-kit-voice-preview">
+          <span className={KIT_GROUP_LABEL_CLASSNAME}>Tone of voice</span>
+          <span className="text-sm">{brandKit.toneOfVoice.descriptors.join(", ")}</span>
         </div>
       )}
       {brandKit.socialLinks !== undefined && brandKit.socialLinks.length > 0 && (

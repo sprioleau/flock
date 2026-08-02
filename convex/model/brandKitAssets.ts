@@ -71,20 +71,31 @@ export interface BrandKitPatchPlan {
  * confirmed asset's row URL is the durable storage URL, so a re-scrape
  * (which carries the original site URL) intentionally lands as a fresh
  * unconfirmed suggestion.
+ *
+ * REVISION POLICY (brand-kit-user-control §8.3, risk 3). `revision` drives
+ * the "Updated brand available" pill on every draft of every bound canvas, so
+ * it may only bump when something a DRAFT COULD RENDER changed: the theme
+ * variations, or an asset URL. Everything else a save carries — the kit name,
+ * the authored palette, tone of voice, social links — is kit metadata that no
+ * draft renders, and bumping for it would re-arm every pill on the canvas
+ * every time somebody renames a color. `renameBrandKit` already declined to
+ * bump for exactly this reason; this generalizes the same rule.
  */
 export function planBrandKitSavePatch({
   existing,
   incomingLogoUrl,
   incomingSocialImageUrl,
+  hasRenderableChange,
 }: {
   existing: BrandKitAssetRowState;
   incomingLogoUrl: string | undefined;
   incomingSocialImageUrl: string | undefined;
+  /** True when the incoming variations differ from the stored ones. */
+  hasRenderableChange: boolean;
 }): BrandKitPatchPlan {
-  const patch: Record<string, unknown> = {
-    revision: getEffectiveRevision(existing) + 1,
-  };
+  const patch: Record<string, unknown> = {};
   const storageIdsToDelete: string[] = [];
+  let hasAssetChange = false;
   const incomingByKind: Record<BrandKitAssetKind, string | undefined> = {
     logo: incomingLogoUrl,
     socialCard: incomingSocialImageUrl,
@@ -96,6 +107,7 @@ export function planBrandKitSavePatch({
     if (isUrlUnchanged) {
       continue; // same suggestion (or same durable URL) — confirmation survives
     }
+    hasAssetChange = true;
     patch[fields.url] = incomingUrl; // undefined removes the field
     patch[fields.storageId] = undefined;
     patch[fields.sourceUrl] = undefined;
@@ -104,6 +116,9 @@ export function planBrandKitSavePatch({
     if (oldStorageId !== undefined) {
       storageIdsToDelete.push(oldStorageId);
     }
+  }
+  if (hasRenderableChange || hasAssetChange) {
+    patch.revision = getEffectiveRevision(existing) + 1;
   }
   return { patch, storageIdsToDelete };
 }

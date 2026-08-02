@@ -2,12 +2,11 @@
  * Email-safe font stacks — fonts reliably installed across mail clients, each
  * with fallbacks.
  *
- * DUPLICATED from property-panel/DocumentSettingsPanel.tsx's module-private
- * EMAIL_SAFE_FONT_OPTIONS (that file is owner-WIP/frozen territory, and the
- * constant is not exported). Keep the two lists byte-identical so a span
- * font and a block font chosen from either surface resolve to the same
- * stack — the Helvetica stack string also matches the SDK's
- * DEFAULT_FONT_STACK byte-for-byte.
+ * THE list: the bubble menu's span font picker, the block property panels'
+ * per-block font overrides, and the document settings' theme fonts all read
+ * it, so a font chosen on any surface resolves to the same stack. The
+ * Helvetica entry matches the SDK's DEFAULT_FONT_STACK byte-for-byte, so an
+ * untouched document/block shows "Helvetica" instead of "Custom".
  */
 export const EMAIL_SAFE_FONT_OPTIONS = [
   { value: "Helvetica, Arial, sans-serif", label: "Helvetica" },

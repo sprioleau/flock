@@ -10,6 +10,11 @@
 
 import type * as agentText from "../agentText.js";
 import type * as assets from "../assets.js";
+import type * as auth from "../auth.js";
+import type * as authCredits from "../authCredits.js";
+import type * as authEmail from "../authEmail.js";
+import type * as authIdentity from "../authIdentity.js";
+import type * as authMigration from "../authMigration.js";
 import type * as brandKits from "../brandKits.js";
 import type * as cleanup from "../cleanup.js";
 import type * as comments from "../comments.js";
@@ -19,6 +24,7 @@ import type * as files from "../files.js";
 import type * as ghost from "../ghost.js";
 import type * as healthcheck from "../healthcheck.js";
 import type * as history from "../history.js";
+import type * as http from "../http.js";
 import type * as model_assets from "../model/assets.js";
 import type * as model_brandKitAssets from "../model/brandKitAssets.js";
 import type * as model_cleanup from "../model/cleanup.js";
@@ -40,6 +46,11 @@ import type {
 declare const fullApi: ApiFromModules<{
   agentText: typeof agentText;
   assets: typeof assets;
+  auth: typeof auth;
+  authCredits: typeof authCredits;
+  authEmail: typeof authEmail;
+  authIdentity: typeof authIdentity;
+  authMigration: typeof authMigration;
   brandKits: typeof brandKits;
   cleanup: typeof cleanup;
   comments: typeof comments;
@@ -49,6 +60,7 @@ declare const fullApi: ApiFromModules<{
   ghost: typeof ghost;
   healthcheck: typeof healthcheck;
   history: typeof history;
+  http: typeof http;
   "model/assets": typeof model_assets;
   "model/brandKitAssets": typeof model_brandKitAssets;
   "model/cleanup": typeof model_cleanup;
@@ -91,4 +103,5 @@ export declare const internal: FilterApi<
 export declare const components: {
   prosemirrorSync: import("@convex-dev/prosemirror-sync/_generated/component.js").ComponentApi<"prosemirrorSync">;
   presence: import("@convex-dev/presence/_generated/component.js").ComponentApi<"presence">;
+  betterAuth: import("@convex-dev/better-auth/_generated/component.js").ComponentApi<"betterAuth">;
 };

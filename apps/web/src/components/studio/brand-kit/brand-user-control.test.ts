@@ -1,0 +1,259 @@
+// @vitest-environment edge-runtime
+import { describe, expect, it } from "vitest";
+import { convexTest } from "convex-test";
+import { api } from "@convex/_generated/api";
+import schema from "@convex/schema";
+import { MOCK_BRAND_KIT, type BrandColor } from "@/lib/brand-kit";
+
+/**
+ * Brand-kit user control (docs/proposals/brand-kit-user-control.md) against
+ * the REAL Convex functions: the authored palette and tone of voice are
+ * human-editable, human edits SURVIVE a re-scrape (§8), and metadata writes
+ * never re-arm the "Updated brand available" pills (§8.3).
+ *
+ * These are the two questions the proposal flagged as the ones most likely to
+ * make editable fields feel broken, so they are pinned end to end rather than
+ * only at the pure-function level.
+ */
+
+const modules = import.meta.glob([
+  "../../../../../../convex/**/*.{ts,js}",
+  "!**/*.d.ts",
+  "!**/*.test.ts",
+]);
+
+const SESSION_ID = "session-brand-user-control";
+
+function createBackend() {
+  return convexTest(schema, modules);
+}
+
+type Backend = ReturnType<typeof createBackend>;
+
+/** A valid kit payload (mock variations pass completeness + contrast). */
+function buildKitInput({
+  colors,
+  toneOfVoice,
+  spacingBump = 0,
+}: {
+  colors?: BrandColor[];
+  toneOfVoice?: { descriptors: string[]; origin: "scraped" | "agent" | "user"; guidance?: string };
+  spacingBump?: number;
+} = {}) {
+  return {
+    name: "Acme",
+    fonts: { heading: "Georgia, serif", body: "Helvetica, sans-serif" },
+    ...(colors === undefined ? {} : { colors }),
+    ...(toneOfVoice === undefined ? {} : { toneOfVoice }),
+    variations: [
+      {
+        id: "classic-light",
+        name: "Classic Light",
+        globals: {
+          ...MOCK_BRAND_KIT.variations[0]!.globals,
+          baseSpacing: MOCK_BRAND_KIT.variations[0]!.globals.baseSpacing + spacingBump,
+        },
+      },
+    ],
+  };
+}
+
+function brandColor(overrides: Partial<BrandColor> & { hex: string; name: string }): BrandColor {
+  return {
+    id: `color-${overrides.hex.slice(1)}`,
+    category: "primary",
+    orderIndex: 0,
+    origin: "agent",
+    ...overrides,
+  };
+}
+
+async function saveKit(t: Backend, input: ReturnType<typeof buildKitInput>) {
+  return await t.mutation(api.brandKits.saveBrandKit, { sessionId: SESSION_ID, brandKit: input });
+}
+
+async function readKit(t: Backend) {
+  const kit = await t.query(api.brandKits.getActiveBrandKit, { sessionId: SESSION_ID });
+  if (kit === null) {
+    throw new Error("expected a saved kit");
+  }
+  return kit;
+}
+
+describe("updateBrandColors — the palette is editable", () => {
+  it("persists a rename and stamps it as the human's, without bumping revision", async () => {
+    const t = createBackend();
+    await saveKit(t, {
+      ...buildKitInput({
+        colors: [brandColor({ hex: "#ffc400", name: "Yellow", sourceVariableName: "--banana" })],
+      }),
+    });
+    const before = await readKit(t);
+    expect(before.revision).toBe(1);
+
+    await t.mutation(api.brandKits.updateBrandColors, {
+      sessionId: SESSION_ID,
+      colors: [{ ...before.colors![0]!, name: "Banana" }],
+    });
+
+    const after = await readKit(t);
+    expect(after.colors![0]!.name).toBe("Banana");
+    expect(after.colors![0]!.origin).toBe("user");
+    expect(after.colors![0]!.userEditedAtMs).toBeGreaterThan(0);
+    // §8.3 / risk 3: renaming a color must NOT re-arm every draft's pill.
+    expect(after.revision).toBe(1);
+  });
+
+  it("accepts an added color and a removed one in one write", async () => {
+    const t = createBackend();
+    await saveKit(t, buildKitInput({ colors: [brandColor({ hex: "#ffc400", name: "Banana" })] }));
+    await t.mutation(api.brandKits.updateBrandColors, {
+      sessionId: SESSION_ID,
+      colors: [
+        brandColor({ hex: "#0b1120", name: "Ink", origin: "user" }),
+        brandColor({ hex: "#3730a3", name: "Indigo", category: "accent", origin: "user" }),
+      ],
+    });
+    const kit = await readKit(t);
+    expect(kit.colors!.map((color) => color.name)).toEqual(["Ink", "Indigo"]);
+  });
+
+  it("rejects an unreadable color with a message a person can act on", async () => {
+    const t = createBackend();
+    await saveKit(t, buildKitInput());
+    await expect(
+      t.mutation(api.brandKits.updateBrandColors, {
+        sessionId: SESSION_ID,
+        colors: [brandColor({ hex: "banana", name: "Banana" })],
+      }),
+    ).rejects.toThrow(/isn't a color we can read/);
+  });
+});
+
+describe("updateBrandToneOfVoice — the voice is editable", () => {
+  it("stores what the human typed as theirs, and clears back to nothing", async () => {
+    const t = createBackend();
+    await saveKit(t, buildKitInput());
+    await t.mutation(api.brandKits.updateBrandToneOfVoice, {
+      sessionId: SESSION_ID,
+      toneOfVoice: {
+        descriptors: [" warm ", "", "plain-spoken"],
+        formality: "casual",
+        guidance: "Short sentences.",
+      },
+    });
+    const saved = await readKit(t);
+    expect(saved.toneOfVoice!.descriptors).toEqual(["warm", "plain-spoken"]);
+    expect(saved.toneOfVoice!.formality).toBe("casual");
+    expect(saved.toneOfVoice!.origin).toBe("user");
+    expect(saved.revision).toBe(1); // nothing renders a voice
+
+    await t.mutation(api.brandKits.updateBrandToneOfVoice, {
+      sessionId: SESSION_ID,
+      toneOfVoice: null,
+    });
+    expect((await readKit(t)).toneOfVoice).toBeUndefined();
+  });
+});
+
+describe("re-scrape reconciliation (§8) — human edits survive", () => {
+  it("keeps the color the human renamed and adopts the new ones from the site", async () => {
+    const t = createBackend();
+    await saveKit(t, {
+      ...buildKitInput({
+        colors: [
+          brandColor({ hex: "#ffc400", name: "Yellow" }),
+          brandColor({ hex: "#0b1120", name: "Ink" }),
+        ],
+      }),
+    });
+    const kit = await readKit(t);
+    // The human renames one color; the other stays the agent's.
+    await t.mutation(api.brandKits.updateBrandColors, {
+      sessionId: SESSION_ID,
+      colors: [{ ...kit.colors![0]!, name: "Banana" }, kit.colors![1]!],
+    });
+
+    // A re-scrape of the redesigned site: different names, one new color.
+    const result = await saveKit(t, {
+      ...buildKitInput({
+        spacingBump: 4,
+        colors: [
+          brandColor({ hex: "#ffc400", name: "Golden" }), // would clobber "Banana"
+          brandColor({ hex: "#123456", name: "Steel" }),
+        ],
+      }),
+    });
+
+    const after = await readKit(t);
+    const names = after.colors!.map((color) => color.name);
+    expect(names).toContain("Banana"); // the human's rename survived
+    expect(names).not.toContain("Golden"); // the scrape did not clobber it
+    expect(names).toContain("Steel"); // new site colors still arrive
+    expect(names).not.toContain("Ink"); // stale machine entries are replaced
+    expect(result.keptUserEditedColors).toBe(1);
+  });
+
+  it("keeps a tone of voice the human wrote and reports it", async () => {
+    const t = createBackend();
+    await saveKit(t, buildKitInput());
+    await t.mutation(api.brandKits.updateBrandToneOfVoice, {
+      sessionId: SESSION_ID,
+      toneOfVoice: { descriptors: ["warm"], guidance: "Never shout." },
+    });
+
+    const result = await saveKit(t, {
+      ...buildKitInput({
+        spacingBump: 4,
+        toneOfVoice: { descriptors: ["bold", "disruptive"], origin: "agent" },
+      }),
+    });
+
+    const after = await readKit(t);
+    expect(after.toneOfVoice!.descriptors).toEqual(["warm"]);
+    expect(after.toneOfVoice!.guidance).toBe("Never shout.");
+    expect(result.keptUserToneOfVoice).toBe(true);
+  });
+
+  it("lets the scrape refresh a voice the human never touched", async () => {
+    const t = createBackend();
+    await saveKit(t, {
+      ...buildKitInput({ toneOfVoice: { descriptors: ["stale"], origin: "agent" } }),
+    });
+    const result = await saveKit(t, {
+      ...buildKitInput({
+        spacingBump: 4,
+        toneOfVoice: { descriptors: ["fresh"], origin: "agent" },
+      }),
+    });
+    expect((await readKit(t)).toneOfVoice!.descriptors).toEqual(["fresh"]);
+    expect(result.keptUserToneOfVoice).toBe(false);
+  });
+});
+
+describe("revision policy (§8.3) — pills only re-arm for what a draft renders", () => {
+  it("does not bump revision for a metadata-only save", async () => {
+    const t = createBackend();
+    await saveKit(t, buildKitInput());
+    expect((await readKit(t)).revision).toBe(1);
+    // Same variations, new palette + voice + name: nothing a draft renders.
+    await saveKit(t, {
+      ...buildKitInput({
+        colors: [brandColor({ hex: "#ffc400", name: "Banana" })],
+        toneOfVoice: { descriptors: ["warm"], origin: "agent" },
+      }),
+      name: "Acme Refreshed",
+    });
+    const after = await readKit(t);
+    expect(after.revision).toBe(1);
+    expect(after.name).toBe("Acme Refreshed");
+    expect(after.colors).toHaveLength(1);
+  });
+
+  it("still bumps revision when the theme variations change", async () => {
+    const t = createBackend();
+    await saveKit(t, buildKitInput());
+    await saveKit(t, buildKitInput({ spacingBump: 4 }));
+    expect((await readKit(t)).revision).toBe(2);
+  });
+});

@@ -1,8 +1,31 @@
-import { StarterKit } from "@react-email/editor/extensions";
+import { Heading, StarterKit } from "@react-email/editor/extensions";
 import type { Extensions } from "@tiptap/core";
 import { Highlight } from "@tiptap/extension-highlight";
 import { TextAlign } from "@tiptap/extension-text-align";
 import { Color, FontFamily, FontSize, TextStyle } from "@tiptap/extension-text-style";
+
+/**
+ * The kit's Heading with its React node view removed.
+ *
+ * Resend's heading node view renders `<Heading {...node.attrs}>` — react-email's
+ * Heading forwards unknown props straight to the `<h1>`, so EVERY registered
+ * node attribute lands on the DOM element as a raw attribute. Tiptap's own
+ * `renderHTML` pipeline (which the node view bypasses) exists precisely to
+ * avoid that: it asks each attribute for its rendered form, and the TextAlign
+ * extension's answer is `style: text-align: …`.
+ *
+ * The visible symptom was React warning `React does not recognize the
+ * textAlign prop on a DOM element` and emitting an invalid `textalign="center"`
+ * attribute instead of a style. Returning null from `addNodeView` (a supported
+ * return — Tiptap then registers no node view for the type) drops back to
+ * `renderHTML`, so aligned headings get a real inline `text-align` in the
+ * editor, exactly like paragraphs and exactly like the SDK renderer's export.
+ * It cannot be done by simply omitting `addNodeView`: getExtensionField walks
+ * up to the parent extension when a field is undefined, which would resurrect
+ * the node view. Nothing else was riding it — its only other contribution was
+ * a `node-h{level}` class no stylesheet references.
+ */
+const HeadingWithoutNodeView = Heading.extend({ addNodeView: () => null });
 
 /**
  * The Resend editor's StarterKit reduced to a per-text-block schema
@@ -25,6 +48,7 @@ import { Color, FontFamily, FontSize, TextStyle } from "@tiptap/extension-text-s
  */
 export function createTextBlockExtensions(): Extensions {
   return [
+    HeadingWithoutNodeView.configure({ levels: [1, 2, 3] }),
     // One mark type ("textStyle") whose attrs the three sub-extensions
     // register; renders as a plain inline-styled <span> — email-safe.
     TextStyle,
@@ -89,8 +113,9 @@ export function createTextBlockExtensions(): Extensions {
       // Single history authority: the store's undo replays SDK inverses —
       // one committed updateText op per editing session.
       UndoRedo: false,
-      // SDK headings are levels 1-3 only.
-      Heading: { levels: [1, 2, 3] },
+      // SDK headings are levels 1-3 only — registered above as
+      // HeadingWithoutNodeView, so the kit must not register its own.
+      Heading: false,
     }),
   ];
 }

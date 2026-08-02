@@ -142,6 +142,10 @@ export function expandSemanticVariation({
     buttonBorderSize: DEFAULT_GLOBAL_STYLES.buttonBorderSize,
     buttonHorizontalPadding: DEFAULT_GLOBAL_STYLES.buttonHorizontalPadding,
     buttonVerticalPadding: DEFAULT_GLOBAL_STYLES.buttonVerticalPadding,
+    // Image corner radius is brand-shapeable in principle (it is the image
+    // counterpart of buttonBorderRadius), but nothing extracts an image shape
+    // signal yet — so it holds the renderer default rather than guessing.
+    imageBorderRadius: DEFAULT_GLOBAL_STYLES.imageBorderRadius,
     heading1TextAlign: DEFAULT_GLOBAL_STYLES.heading1TextAlign,
     heading2TextAlign: DEFAULT_GLOBAL_STYLES.heading2TextAlign,
     heading3TextAlign: DEFAULT_GLOBAL_STYLES.heading3TextAlign,

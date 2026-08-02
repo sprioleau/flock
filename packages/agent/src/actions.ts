@@ -8,6 +8,7 @@ import {
 import { z } from "zod";
 import { describeBlock, type BlockDetails } from "./describe-block";
 import { defineFetchWebContentAction, type FetchWebArticleFn } from "./fetch-web-content";
+import { definePersonHighlightAction, type FetchPersonHighlightFn } from "./person-highlight";
 import { widgetActions } from "./widget-actions";
 
 /**
@@ -58,6 +59,14 @@ export interface BuildAgentActionRegistryOptions {
    */
   fetchWebArticle?: FetchWebArticleFn;
   /**
+   * Host-app implementation of the Phase 7.4(b) person research (guarded
+   * profile fetch + extraction + public-web search fan-out). When provided,
+   * the `fetchPersonHighlight` analysis action is registered and
+   * buildToolGuidance switches on the person-spotlight workflow guidance;
+   * when omitted, the tool and its guidance are absent.
+   */
+  fetchPersonHighlight?: FetchPersonHighlightFn;
+  /**
    * Register the generative-UI widget actions (askForClarification,
    * proposeSectionVariations, proposeEdits, listAssets — see
    * widget-actions.ts). Only a host that renders chat widgets AND fulfills
@@ -82,11 +91,16 @@ export function buildAgentActionRegistry(
     options?.fetchWebArticle === undefined
       ? []
       : [defineFetchWebContentAction({ fetchWebArticle: options.fetchWebArticle })];
+  const personHighlightActions =
+    options?.fetchPersonHighlight === undefined
+      ? []
+      : [definePersonHighlightAction({ fetchPersonHighlight: options.fetchPersonHighlight })];
   const optionalWidgetActions = options?.shouldIncludeWidgetActions === true ? widgetActions : [];
   return createActionRegistry([
     ...emailActionRegistry.actions,
     ...agentAnalysisActions,
     ...webContentActions,
+    ...personHighlightActions,
     ...optionalWidgetActions,
   ]);
 }

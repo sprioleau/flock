@@ -155,23 +155,9 @@
   outline-offset: 1px;
 }
 
-/* Per-node textAlign display for HEADING node views. Paragraphs get the
- * TextAlign extension's inline style (text-align on the <p>) directly, but
- * the Resend StarterKit renders headings through a React node view that
- * spreads node attrs as DOM attributes (level="1", textalign="…") instead of
- * emitting renderHTML's style — so the editor's WYSIWYG for aligned headings
- * comes from these attribute-selector rules. The exported HTML is unaffected
- * (the SDK renderer emits inline text-align from the TextDoc attr). These
- * out-specificity the congruence CSS's per-block defaults (attribute selector
- * + element beats element alone). */
-[data-inline-text-editor] .ProseMirror [textalign="left"] {
-  text-align: left;
-}
-
-[data-inline-text-editor] .ProseMirror [textalign="center"] {
-  text-align: center;
-}
-
-[data-inline-text-editor] .ProseMirror [textalign="right"] {
-  text-align: right;
-}
+/* Per-node textAlign needs no rules here: headings and paragraphs both carry
+ * the TextAlign extension's inline `text-align` style now that the kit's
+ * heading node view is off (text-block-extensions.ts, HeadingWithoutNodeView),
+ * and an inline style outranks the congruence CSS's per-block default. The
+ * `[textalign="…"]` attribute selectors this file used to carry were a
+ * workaround for that node view spreading raw node attrs onto the <h1>. */

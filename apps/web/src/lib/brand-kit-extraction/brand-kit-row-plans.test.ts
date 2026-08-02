@@ -30,13 +30,40 @@ describe("getEffectiveRevision", () => {
 });
 
 describe("planBrandKitSavePatch", () => {
-  it("bumps revision on every save (from the normalized floor)", () => {
+  it("bumps revision when the variations changed (from the normalized floor)", () => {
     const { patch } = planBrandKitSavePatch({
       existing: {},
       incomingLogoUrl: undefined,
       incomingSocialImageUrl: undefined,
+      hasRenderableChange: true,
     });
     expect(patch.revision).toBe(2); // absent = 1 → 2
+  });
+
+  /**
+   * brand-kit-user-control §8.3 / risk 3. `revision` re-arms the "Updated
+   * brand available" pill on every draft of every bound canvas. Once colors,
+   * names and tone of voice are human-editable, kit writes become frequent
+   * and small — so only changes a DRAFT COULD RENDER may bump it.
+   */
+  it("does NOT bump revision for a metadata-only save (no pill churn)", () => {
+    const { patch } = planBrandKitSavePatch({
+      existing: { revision: 3 },
+      incomingLogoUrl: undefined,
+      incomingSocialImageUrl: undefined,
+      hasRenderableChange: false,
+    });
+    expect(patch).not.toHaveProperty("revision");
+  });
+
+  it("bumps revision for an asset swap even when the variations are untouched", () => {
+    const { patch } = planBrandKitSavePatch({
+      existing: { revision: 3 },
+      incomingLogoUrl: "https://acme.test/logo.png",
+      incomingSocialImageUrl: undefined,
+      hasRenderableChange: false,
+    });
+    expect(patch.revision).toBe(4); // drafts re-source logos from this
   });
 
   it("keeps a confirmation when the incoming URL is unchanged", () => {
@@ -44,6 +71,7 @@ describe("planBrandKitSavePatch", () => {
       existing: confirmedLogoRow,
       incomingLogoUrl: confirmedLogoRow.logoUrl,
       incomingSocialImageUrl: confirmedLogoRow.socialImageUrl,
+      hasRenderableChange: true,
     });
     expect(patch).toEqual({ revision: 4 }); // nothing but the bump
     expect(storageIdsToDelete).toEqual([]);
@@ -54,6 +82,7 @@ describe("planBrandKitSavePatch", () => {
       existing: confirmedLogoRow,
       incomingLogoUrl: "https://acme.test/new-logo.svg", // a re-scrape
       incomingSocialImageUrl: confirmedLogoRow.socialImageUrl,
+      hasRenderableChange: false,
     });
     expect(patch.logoUrl).toBe("https://acme.test/new-logo.svg");
     expect(patch).toHaveProperty("logoStorageId", undefined); // field removals
@@ -69,6 +98,7 @@ describe("planBrandKitSavePatch", () => {
       existing: { socialImageUrl: "https://acme.test/og.png" },
       incomingLogoUrl: undefined,
       incomingSocialImageUrl: undefined,
+      hasRenderableChange: false,
     });
     expect(patch).toHaveProperty("socialImageUrl", undefined);
     expect(patch).not.toHaveProperty("logoUrl"); // was absent, stays absent

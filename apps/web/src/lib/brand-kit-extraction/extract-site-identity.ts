@@ -53,7 +53,8 @@ export interface SiteIdentity {
   /**
    * The brand's social profile links (item 26), at most one per platform.
    * Ladder: JSON-LD Organization `sameAs` (canonical) → footer/nav anchor
-   * scan for known social domains. Share/intent URLs are never profiles.
+   * scan for known social domains → `twitter:site`/`twitter:creator` handles
+   * synthesized into x.com URLs. Share/intent URLs are never profiles.
    */
   socialLinks: BrandSocialLink[];
 }
@@ -342,10 +343,49 @@ function findFooterRegions(html: string): string[] {
 }
 
 /**
+ * A Twitter/X handle as its profile URL, or null.
+ *
+ * `twitter:site` / `twitter:creator` are the ONE Open-Graph-family signal that
+ * actually encodes a social identity (OG itself has no property for profile
+ * links — see brand-kit-user-control §7.1). They carry a handle, not a URL, so
+ * this SYNTHESIZES `https://x.com/acme` — a mild departure from the module's
+ * "never invent a URL the brand didn't publish" stance, which is exactly why
+ * it sits LAST in the ladder: any published sameAs or footer anchor for X wins
+ * over a handle we turned into a link.
+ *
+ * Handle rules are Twitter's own: 1–15 characters, letters/digits/underscore.
+ */
+export function buildXProfileUrlFromHandle(rawHandle: string): string | null {
+  const handle = rawHandle.trim().replace(/^@/, "");
+  if (!/^[A-Za-z0-9_]{1,15}$/.test(handle)) {
+    return null;
+  }
+  return `https://x.com/${handle}`;
+}
+
+/** Profile URLs synthesized from the page's twitter card handles (lowest rung). */
+function extractTwitterHandleUrls(html: string): string[] {
+  const handles = [
+    findMetaContent({ html, key: "twitter:site" }),
+    findMetaContent({ html, key: "twitter:creator" }),
+  ];
+  return handles.flatMap((handle) => {
+    if (handle === null) {
+      return [];
+    }
+    const url = buildXProfileUrlFromHandle(handle);
+    return url === null ? [] : [url];
+  });
+}
+
+/**
  * The brand's social profile links. Ladder (first source per platform wins):
  * 1. JSON-LD Organization `sameAs` — the canonical, author-declared list.
- * 2. Fallback: anchors in footer/nav/header regions pointing at known
- *    social domains (share/intent chrome filtered by the classifier).
+ * 2. Anchors in footer/nav/header regions pointing at known social domains
+ *    (share/intent chrome filtered by the classifier).
+ * 3. `twitter:site` / `twitter:creator` handles, synthesized into x.com
+ *    profile URLs — last, because it is the only rung that builds a URL the
+ *    page never printed.
  * Every kept URL passes the SSRF syntax guard; one link per platform.
  */
 function extractSocialLinks({
@@ -380,6 +420,11 @@ function extractSocialLinks({
         pushCandidate(href);
       }
     }
+  }
+  // Rung 3 — twitter card handles, synthesized. dedupeSocialLinks keeps the
+  // FIRST candidate per platform, so this only ever fills a gap.
+  for (const url of extractTwitterHandleUrls(html)) {
+    pushCandidate(url);
   }
   return dedupeSocialLinks(candidates);
 }

@@ -20,7 +20,7 @@ import {
   PIPELINE_VARIANT,
   type PipelineVariant,
 } from "./constants";
-import { buildBrandSocialContextLine } from "./brand-context";
+import { buildBrandContextBlock } from "./brand-context";
 import { buildSavedSectionsContext } from "./saved-sections-context";
 import { buildSystemContext } from "./system-context";
 import { buildChatTools } from "./tools";
@@ -252,11 +252,12 @@ async function runSinglePassPipeline(input: ChatPipelineInput): Promise<void> {
     actionContext,
     doc,
     sessionId,
+    isUsingMockModel,
   });
   // Brand social links + saved sections ride the FRESH context layer only
   // (both fail soft to null; fetched concurrently — same Convex deployment).
   const [brandContextLine, savedSectionsContext] = await Promise.all([
-    buildBrandSocialContextLine({ sessionId }),
+    buildBrandContextBlock({ sessionId }),
     buildSavedSectionsContext({ sessionId }),
   ]);
   const { staticInstructions, documentContext } = buildSystemContext({

@@ -43,7 +43,12 @@ import { cn } from "@/lib/utils";
 
 type FlockToolPart = ToolUIPart<FlockChatTools>;
 
-const READ_ONLY_TOOL_NAMES = new Set(["getBlockDetails", "fetchWebContent", "listAssets"]);
+const READ_ONLY_TOOL_NAMES = new Set([
+  "getBlockDetails",
+  "fetchWebContent",
+  "fetchPersonHighlight",
+  "listAssets",
+]);
 
 function getToolName(part: FlockToolPart): string {
   return part.type.slice("tool-".length);
@@ -83,6 +88,7 @@ const TOOL_ACTIVITY_LABELS: Readonly<Record<string, string>> = {
   listAssets: "checking your library",
   getBlockDetails: "reading",
   fetchWebContent: "reading",
+  fetchPersonHighlight: "researching",
 };
 
 /** openPanel enum value → the human surface name shown after "opening panel ·". */

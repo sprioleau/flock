@@ -24,6 +24,7 @@ export interface GenerateImageResponseBody {
 }
 
 export interface GenerateImageErrorResponseBody {
-  error: "invalid_request" | "generation_failed";
+  /** "out_of_credits" is the AI allowance (convex/authCredits.ts), not a failure. */
+  error: "invalid_request" | "generation_failed" | "out_of_credits";
   message: string;
 }

@@ -58,6 +58,27 @@ const emptyChildrenIds = (noun: string) =>
     .length(0)
     .describe(`Always empty — ${noun} blocks are leaves and cannot have children.`);
 
+/**
+ * Border line styles blocks may use — the CSS keywords every mail client
+ * renders the same way, plus "none" as an explicit off switch that keeps the
+ * width/color values around.
+ *
+ * Deliberately excluded: `hidden` (a collapsed-table-only synonym for "none"),
+ * and `groove` / `ridge` / `inset` / `outset` (faux-3D borders that need a
+ * derived light/dark pair of the base color, which Word-engine Outlook does
+ * not compute — they degrade to a flat solid line there, so offering them
+ * would promise a look the medium cannot keep).
+ */
+export const BORDER_STYLES = ["solid", "dashed", "dotted", "double", "none"] as const;
+
+export type BorderStyle = (typeof BORDER_STYLES)[number];
+
+export const borderStyleSchema = z
+  .enum(BORDER_STYLES)
+  .describe(
+    'Border line style: "solid", "dashed", "dotted", "double", or "none" (no line drawn, whatever the width).',
+  );
+
 // ---------------------------------------------------------------------------
 // Containers
 // ---------------------------------------------------------------------------
@@ -214,6 +235,13 @@ export const textBlockSchema = z
           .describe(
             "Overrides the heading/paragraph text-color globals for every node in this block. Omit to use the per-node-type globals.",
           ),
+        backgroundColor: z
+          .string()
+          .min(1)
+          .optional()
+          .describe(
+            "Background color filling this text block's bounds, padding included — the callout/highlight treatment. Omit for transparent (the container background shows through).",
+          ),
         ...blockPaddingFields("text block"),
       })
       .describe(
@@ -267,6 +295,11 @@ export const buttonBlockSchema = z
           .min(1)
           .optional()
           .describe("Overrides globals.buttonBorderColor for this button only."),
+        borderStyle: borderStyleSchema
+          .optional()
+          .describe(
+            'Line style of the button border, drawn only when the border size is above 0. Renderer default: "solid".',
+          ),
         horizontalPadding: z
           .number()
           .min(0)
@@ -345,6 +378,28 @@ export const imageBlockSchema = z
           .describe(
             "Background color filling this image block's bounds around the image — visible through the block padding and wherever the image is narrower than the block. Omit for transparent (the container background shows through).",
           ),
+        borderRadius: z
+          .number()
+          .min(0)
+          .optional()
+          .describe(
+            "Corner radius of the image in pixels. Overrides globals.imageBorderRadius for this image only. Word-engine Outlook squares rounded corners off (same limitation as button corners), so treat it as a progressive enhancement.",
+          ),
+        borderWidth: z
+          .number()
+          .min(0)
+          .optional()
+          .describe("Border width around the image in pixels. Renderer default: 0 (no border)."),
+        borderStyle: borderStyleSchema
+          .optional()
+          .describe(
+            'Line style of the image border, drawn only when the border width is above 0. Renderer default: "solid".',
+          ),
+        borderColor: z
+          .string()
+          .min(1)
+          .optional()
+          .describe('Border color of the image. Renderer default: "#000000".'),
         role: z
           .literal("logo")
           .optional()

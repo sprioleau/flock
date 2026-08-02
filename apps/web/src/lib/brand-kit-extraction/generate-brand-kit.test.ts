@@ -33,8 +33,9 @@ const FIXTURE_HTML = `<!doctype html><html><head>
   <meta property="og:image" content="${SOCIAL_CARD_URL}" />
   <link rel="apple-touch-icon" href="/apple-touch.png" />
   <meta name="theme-color" content="#0f4c81" />
-  <style>.hero { color: #e0592a; background: #0f4c81; } .cta { color: #e0592a; }</style>
-</head><body><h1>Acme</h1></body></html>`;
+  <meta property="og:description" content="We build robots that get out of your way." />
+  <style>:root { --banana: #e0592a; } .hero { color: var(--banana); background: #0f4c81; } .cta { color: #e0592a; }</style>
+</head><body><h1>Acme</h1><p>We ship one robot at a time and tell you what it costs.</p></body></html>`;
 
 const semanticVariation = (name: string) => ({
   name,
@@ -51,6 +52,16 @@ const MODEL_OUTPUT = {
   bodyFont: "Helvetica",
   buttonShape: "rounded",
   logoUrl: "",
+  colors: [
+    { hex: "#e0592a", name: "Banana", category: "accent" as const },
+    { hex: "#0f4c81", name: "Ink", category: "primary" as const },
+  ],
+  toneOfVoice: {
+    descriptors: ["warm", "plain-spoken"],
+    formality: "casual" as const,
+    person: "first-person-plural" as const,
+    guidance: "Short sentences.",
+  },
   variations: [semanticVariation("Clean"), semanticVariation("Tint"), semanticVariation("Deep")],
 };
 
@@ -114,5 +125,67 @@ describe("generateBrandKit asset verification", () => {
     expect(result.isOk).toBe(true);
     if (!result.isOk) return;
     expect(result.brandKit.logoUrl).toBe(SOCIAL_CARD_URL);
+  });
+});
+
+/**
+ * The authored palette and tone of voice reaching the kit
+ * (brand-kit-user-control §3 and §5) — the pipeline wiring, as opposed to
+ * buildBrandColors/extractCopySignals in isolation.
+ */
+describe("generateBrandKit authored palette + tone of voice", () => {
+  it("ships a named, categorized palette carrying the --banana provenance", async () => {
+    stubProbes([LOGO_URL, SOCIAL_CARD_URL]);
+    const result = await generateBrandKit({ url: "acme.test" });
+    expect(result.isOk).toBe(true);
+    if (!result.isOk) return;
+    const banana = result.brandKit.colors?.find((color) => color.hex === "#e0592a");
+    expect(banana?.name).toBe("Banana");
+    expect(banana?.category).toBe("accent");
+    expect(banana?.origin).toBe("agent");
+    expect(banana?.sourceVariableName).toBe("--banana");
+  });
+
+  it("ships tone of voice when the page carried copy", async () => {
+    stubProbes([]);
+    const result = await generateBrandKit({ url: "acme.test" });
+    expect(result.isOk).toBe(true);
+    if (!result.isOk) return;
+    expect(result.brandKit.toneOfVoice).toEqual({
+      descriptors: ["warm", "plain-spoken"],
+      formality: "casual",
+      person: "first-person-plural",
+      guidance: "Short sentences.",
+      origin: "agent",
+    });
+  });
+
+  it("omits tone of voice for a page with NO copy — no invented voice", async () => {
+    fetchPageMock.mockResolvedValue({
+      isOk: true,
+      finalUrl: FINAL_URL,
+      html: '<!doctype html><html><head><style>.a{color:#e0592a}</style></head><body><div></div></body></html>',
+    });
+    stubProbes([]);
+    const result = await generateBrandKit({ url: "acme.test" });
+    expect(result.isOk).toBe(true);
+    if (!result.isOk) return;
+    expect(result.brandKit.toneOfVoice).toBeUndefined();
+    // The palette still ships: the two features fail independently.
+    expect(result.brandKit.colors?.length).toBeGreaterThan(0);
+  });
+
+  it("still ships a deterministic palette when the model proposes no colors", async () => {
+    generateObjectMock.mockResolvedValue({
+      object: { ...MODEL_OUTPUT, colors: [] },
+    });
+    stubProbes([]);
+    const result = await generateBrandKit({ url: "acme.test" });
+    expect(result.isOk).toBe(true);
+    if (!result.isOk) return;
+    const banana = result.brandKit.colors?.find((color) => color.hex === "#e0592a");
+    // Named from the CSS custom property, with no model help at all.
+    expect(banana?.name).toBe("Banana");
+    expect(banana?.origin).toBe("scraped");
   });
 });

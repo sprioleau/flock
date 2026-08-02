@@ -98,7 +98,17 @@ export function TextBlockView({ block, resolvedStyles }: TextBlockViewProps) {
 
   return (
     <Row>
-      <Column style={blockPaddingStyle(resolvedStyles)}>
+      {/* The block background rides the wrapping <Column> (a td — the same
+          email-safe surface the column and image blocks paint), so it fills
+          the block's bounds, padding included: the callout treatment. */}
+      <Column
+        style={{
+          ...(resolvedStyles.backgroundColor !== undefined
+            ? { backgroundColor: resolvedStyles.backgroundColor }
+            : {}),
+          ...blockPaddingStyle(resolvedStyles),
+        }}
+      >
         {block.properties.text.content.map((node, index) => {
           if (node.type === "heading") {
             const { level } = node.attrs;

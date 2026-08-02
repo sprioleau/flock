@@ -38,22 +38,30 @@ export function buildToolGuidance(registry: EmailActionRegistry): string {
         (template) => `- ${template.id} — ${template.useWhen}`,
       ).join("\n")}`
     : "";
+  // Generative-UI widget routing: gated on askForClarification (the widget
+  // action set ships together — see widget-actions.ts). Constant text —
+  // cache-stable. Resolved early: the web-content workflow's "ask the user"
+  // step names the clarification widget only when it is registered.
+  const hasWidgetTools = registry.actionsByName.has("askForClarification");
   // Phase 7.4(a) web-content workflow: faithfulness, attribution, and honest
   // failure rules for building from a fetched URL. Only advertised while the
   // host app has injected the fetchWebContent executor.
   const hasFetchWebContentTool = registry.actionsByName.has("fetchWebContent");
-  const webContentWorkflow = hasFetchWebContentTool ? `\n\n${WEB_CONTENT_WORKFLOW}` : "";
+  const webContentWorkflow = hasFetchWebContentTool
+    ? `\n\n${buildWebContentWorkflow({ hasClarificationTool: hasWidgetTools })}`
+    : "";
+  // Phase 7.4(b) person-spotlight workflow: same faithfulness law, sharpened
+  // because the subject is a person. Only advertised while the host app has
+  // injected the fetchPersonHighlight executor.
+  const hasPersonHighlightTool = registry.actionsByName.has("fetchPersonHighlight");
+  const personHighlightWorkflow = hasPersonHighlightTool ? `\n\n${PERSON_HIGHLIGHT_WORKFLOW}` : "";
   // Agent-parity capability summary: gated on openPanel (the UI-action set
   // ships together), so a registry without the parity actions never
   // advertises capabilities it lacks. Constant text — cache-stable.
   const hasOpenPanelTool = registry.actionsByName.has("openPanel");
   const capabilitySummary = hasOpenPanelTool ? `\n\n${CAPABILITY_SUMMARY}` : "";
-  // Generative-UI widget routing: gated on askForClarification (the widget
-  // action set ships together — see widget-actions.ts). Constant text —
-  // cache-stable.
-  const hasWidgetTools = registry.actionsByName.has("askForClarification");
   const widgetGuidance = hasWidgetTools ? `\n\n${WIDGET_GUIDANCE}` : "";
-  return `## Available tools\n\n${catalogHint}${lines.join("\n")}${sectionCatalogListing}${webContentWorkflow}${capabilitySummary}${widgetGuidance}`;
+  return `## Available tools\n\n${catalogHint}${lines.join("\n")}${sectionCatalogListing}${webContentWorkflow}${personHighlightWorkflow}${capabilitySummary}${widgetGuidance}`;
 }
 
 /**
@@ -81,12 +89,41 @@ const WIDGET_GUIDANCE = `## In-chat widgets
 - When the user asks for variations, options, or alternatives for a section, call proposeSectionVariations with 2-4 meaningfully different takes — never scaffold the candidates into the email; the user picks one from the chat.
 - When the user asks how to improve the email (feedback, review, suggestions) without asking you to change it, call proposeEdits — the suggestions render as Apply cards; do not also apply them yourself.`;
 
-const WEB_CONTENT_WORKFLOW = `## Building from a web page (fetchWebContent)
+function buildWebContentWorkflow({
+  hasClarificationTool,
+}: {
+  hasClarificationTool: boolean;
+}): string {
+  // The user picks the shape (plan §7.4: "the user chooses"). With the
+  // clarification widget registered the question is a widget call; without it,
+  // one plain-language question and a stop.
+  const askForShapeStep = hasClarificationTool
+    ? `call askForClarification with the question "Should this become a whole email, or one new section?" and the options "A whole email" and "One new section", then stop and wait for their answer`
+    : `ask them in one short question whether they want a whole email or one new section, then stop and wait for their answer`;
+  return `## Building from a web page (fetchWebContent)
 
 When the user shares a URL and asks you to build content from it, call fetchWebContent FIRST — never write about a page you have not fetched in this conversation.
 
 - Compose ONLY from the returned payload. Condense the real mainText faithfully; never add facts, quotes, names, or numbers that are not in it. If mainText was truncated, work with what you have — do not guess at the rest.
-- Default to ONE new section for the story; build out a whole email from it only when the user explicitly asks for one.
-- Hand-compose that section with addSection (not scaffoldSection — templates cannot carry a real image URL or link): a heading with the real title, one or two short paragraphs condensed from mainText, the returned heroImageUrl as an image (with meaningful alt text) when there is one, and ALWAYS a button labeled like "Read the full story" whose href is the returned canonicalUrl. Naming the source (sourceName) in the copy is good practice.
-- If the result has isOk: false, the page could not be read (blocked, paywalled, not an article, unreachable). Relay the returned message to the user in your own short words, make NO edits, and STOP — inventing plausible content for an unread page is the one unforgivable failure here.
+- THE USER CHOOSES the shape: a whole email, or one section added to the draft they are working on. When they already said which ("add a section from this", "turn this into an email"), do that. When they only shared a link, ${askForShapeStep}. Never guess between the two.
+- Hand-compose with addSection (not scaffoldSection — templates cannot carry a real image URL or link): a heading with the real title, one or two short paragraphs condensed from mainText, the returned heroImageUrl as an image (with meaningful alt text) when there is one, and ALWAYS a button labeled like "Read the full story" whose href is the returned canonicalUrl. Naming the source (sourceName) in the copy is good practice.
+- For a whole email, that is several addSection calls telling the story in order — headline section, body sections, a closing section with the read-the-full-story link — still built only from the payload.
+- Use heroImageUrl exactly as returned and only when it is present; it is already stored on our servers. A missing image means the page had none we could use — leave the image out rather than substituting a placeholder or an address you assembled yourself.
+- If the result has isOk: false, the page could not be read (blocked by the site's robots rules, paywalled, not an article, unreachable). Relay the returned message to the user in your own short words, make NO edits, and STOP — inventing plausible content for an unread page is the one unforgivable failure here.
 - If confidence is "low", tell the user the page was hard to read and the section may need their review.`;
+}
+
+/**
+ * The §7.4(b) person-spotlight rules. Constant text so the cached prefix stays
+ * byte-identical. Appended only when fetchPersonHighlight is registered.
+ */
+const PERSON_HIGHLIGHT_WORKFLOW = `## Spotlighting a person (fetchPersonHighlight)
+
+When the user links someone's profile and asks for an intro, spotlight, or highlight of them, call fetchPersonHighlight FIRST — never write about a person from memory or inference.
+
+- Write ONLY what the payload supports: the name, role, and organization as given, the bio as returned, and the listed facts. Every fact carries the page it came from; a claim with no fact behind it does not go in the email.
+- Attribute: the section ALWAYS links back to profileUrl (a button or link like "See their full profile"). When a fact came from a different page than the profile, name that source in the copy.
+- searchStatus tells you how wide the evidence is. "unavailable" means nothing beyond the profile page was consulted — write a spotlight from that page alone and do not imply wider research.
+- Use photoUrl exactly as returned, with alt text naming the person. When it is absent there is no usable photo: compose without an image and never describe how they look.
+- Never guess at pronouns, titles, achievements, or dates. If the user wants something the payload does not support, say what is missing and ask them for it.
+- If the result has isOk: false, the profile could not be read. Relay the returned message, make NO edits, and STOP.`;

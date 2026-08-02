@@ -1,5 +1,6 @@
 import type {
   Block,
+  BorderStyle,
   ButtonBlock,
   CodeBlock,
   ColumnBlock,
@@ -96,6 +97,8 @@ export interface ResolvedTextStyles extends ResolvedPadding {
   heading3: ResolvedTextNodeStyles;
   paragraph: ResolvedTextNodeStyles;
   linkTextColor: string;
+  /** Undefined means transparent (the container background shows through). */
+  backgroundColor: string | undefined;
 }
 
 export interface ResolvedButtonStyles extends ResolvedPadding {
@@ -104,6 +107,7 @@ export interface ResolvedButtonStyles extends ResolvedPadding {
   borderRadius: number;
   borderSize: number;
   borderColor: string;
+  borderStyle: BorderStyle;
   horizontalPadding: number;
   verticalPadding: number;
   fontFamily: string;
@@ -114,6 +118,10 @@ export interface ResolvedImageStyles extends ResolvedPadding {
   align: TextAlign;
   /** Undefined means transparent (the container background shows through). */
   backgroundColor: string | undefined;
+  borderRadius: number;
+  borderWidth: number;
+  borderStyle: BorderStyle;
+  borderColor: string;
 }
 
 export interface ResolvedDividerStyles extends ResolvedPadding {
@@ -192,6 +200,16 @@ function resolvePadding(overrides: PaddingOverrides, defaults: ResolvedPadding):
   };
 }
 
+/** Renderer default border line style wherever a block leaves it unset. */
+const DEFAULT_BORDER_STYLE: BorderStyle = "solid";
+
+/**
+ * Renderer default image border color. Images have no border-color global (the
+ * brand-level image knob is `imageBorderRadius`, the shape), so this mirrors
+ * the buttonBorderColor default: a visible line the moment a width is set.
+ */
+const DEFAULT_IMAGE_BORDER_COLOR = "#000000";
+
 /** Leaf blocks default to baseSpacing below (the space between blocks). */
 function leafPaddingDefaults(baseSpacing: number): ResolvedPadding {
   return { paddingTop: 0, paddingBottom: baseSpacing, paddingLeft: 0, paddingRight: 0 };
@@ -269,6 +287,7 @@ function resolveTextStyles(globals: Required<GlobalStyles>, block: TextBlock): R
     heading3: nodeStyles({ fontFamily: globals.heading3FontFamily, globalColor: globals.heading3TextColor, globalAlign: globals.heading3TextAlign }),
     paragraph: nodeStyles({ fontFamily: globals.paragraphFontFamily, globalColor: globals.paragraphTextColor, globalAlign: globals.paragraphTextAlign }),
     linkTextColor: globals.linkTextColor,
+    backgroundColor: block.properties.backgroundColor,
     ...resolvePadding(block.properties, leafPaddingDefaults(globals.baseSpacing)),
   };
 }
@@ -284,6 +303,7 @@ function resolveButtonStyles(
     borderRadius: properties.borderRadius ?? globals.buttonBorderRadius,
     borderSize: properties.borderSize ?? globals.buttonBorderSize,
     borderColor: properties.borderColor ?? globals.buttonBorderColor,
+    borderStyle: properties.borderStyle ?? DEFAULT_BORDER_STYLE,
     horizontalPadding: properties.horizontalPadding ?? globals.buttonHorizontalPadding,
     verticalPadding: properties.verticalPadding ?? globals.buttonVerticalPadding,
     fontFamily: properties.fontFamily ?? globals.buttonFontFamily,
@@ -293,10 +313,15 @@ function resolveButtonStyles(
 }
 
 function resolveImageStyles(globals: Required<GlobalStyles>, block: ImageBlock): ResolvedImageStyles {
+  const { properties } = block;
   return {
-    align: block.properties.align ?? "center",
-    backgroundColor: block.properties.backgroundColor,
-    ...resolvePadding(block.properties, leafPaddingDefaults(globals.baseSpacing)),
+    align: properties.align ?? "center",
+    backgroundColor: properties.backgroundColor,
+    borderRadius: properties.borderRadius ?? globals.imageBorderRadius,
+    borderWidth: properties.borderWidth ?? 0,
+    borderStyle: properties.borderStyle ?? DEFAULT_BORDER_STYLE,
+    borderColor: properties.borderColor ?? DEFAULT_IMAGE_BORDER_COLOR,
+    ...resolvePadding(properties, leafPaddingDefaults(globals.baseSpacing)),
   };
 }
 

@@ -93,9 +93,12 @@ export {
   spacerBlockSchema,
   CODE_BLOCK_LANGUAGES,
   CODE_BLOCK_THEMES,
+  BORDER_STYLES,
+  borderStyleSchema,
 } from "./schema/blocks";
 export type {
   Block,
+  BorderStyle,
   RootBlock,
   SectionBlock,
   RowBlock,
