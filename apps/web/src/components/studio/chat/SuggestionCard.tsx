@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useSyncExternalStore } from "react";
+import { useEffect, useState, useSyncExternalStore } from "react";
 import {
   CheckIcon,
   ChevronDownIcon,
@@ -12,6 +12,12 @@ import {
 import type { PersonaAdvisorsController, PersonaCard } from "@/lib/personas/use-persona-advisors";
 import type { SuggestionsController } from "@/lib/suggestions/use-suggestions";
 import type { Suggestion, SuggestionRungId } from "@/lib/suggestions/types";
+import {
+  formatSuggestionShortcutHint,
+  resolveSuggestionShortcut,
+} from "@/lib/suggestions/shortcuts";
+import { getIsEditableEventTarget } from "../shortcuts/keyboard-guards";
+import { getIsApplePlatform } from "../shortcuts/shortcut-keys";
 import { cn } from "@/lib/utils";
 import { handOffPromptToComposer } from "./composer-handoff";
 
@@ -24,6 +30,13 @@ import { handOffPromptToComposer } from "./composer-handoff";
  * - Rung buttons apply that scope's pre-validated ops instantly.
  * - The confirm-gated rung (whole-email re-theme) swaps the card body to an
  *   inline confirm before anything is dispatched.
+ * - ⌘↵ / Ctrl+Enter applies the DEFAULT (non-gated) rung and Esc dismisses,
+ *   so a suggestion never costs a trip to the mouse. The binding lives on
+ *   the body below rather than with the controllers in ChatPanel: it reads
+ *   the card-local confirm state it must not bypass, and it should exist
+ *   only while a suggestion is actually on screen. shortcuts.ts holds the
+ *   decision table (including why it declines every keystroke typed into
+ *   the composer).
  * - After Apply the card shows a brief "Applied — Revert" state wired to the
  *   same history.revertBatch path as chat-turn revert chips (suggestions
  *   apply outside a chat turn, so the affordance lives here — see
@@ -228,6 +241,7 @@ export function SuggestionCard({ isPanelExpanded, suggestions, personaAdvisors }
             key={visibleSuggestion.id}
             suggestion={visibleSuggestion}
             tabIndex={tabIndex}
+            isPanelExpanded={isPanelExpanded}
             applyRung={applyRung}
             dismiss={dismiss}
           />
@@ -363,11 +377,14 @@ function PersonaChip({ name, color }: { name: string; color: string }) {
 function SuggestionBody({
   suggestion,
   tabIndex,
+  isPanelExpanded,
   applyRung,
   dismiss,
 }: {
   suggestion: Suggestion;
   tabIndex: number;
+  /** Gates the shortcut: while collapsed the card is rendered but unreachable. */
+  isPanelExpanded: boolean;
   applyRung: (rungId: SuggestionRungId) => void;
   dismiss: () => void;
 }) {
@@ -376,6 +393,54 @@ function SuggestionBody({
     confirmingRungId !== null
       ? suggestion.rungs.find((rung) => rung.id === confirmingRungId)
       : undefined;
+
+  // ⌘↵ applies / Esc dismisses. This component mounts ONLY while a suggestion
+  // is live and the tray is open, so "no suggestion, no shortcut" is
+  // structural; shortcuts.ts re-checks it anyway and owns every other rule
+  // (gate, typing contexts, modifiers). The listener re-binds when any input
+  // to that decision changes — a keystroke must never read a stale rung
+  // ladder or a stale confirm state.
+  useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent): void => {
+      const action = resolveSuggestionShortcut({
+        event: {
+          key: event.key,
+          metaKey: event.metaKey,
+          ctrlKey: event.ctrlKey,
+          shiftKey: event.shiftKey,
+          altKey: event.altKey,
+          isDefaultPrevented: event.defaultPrevented,
+          isTypingContext: getIsEditableEventTarget(event.target),
+        },
+        suggestion,
+        confirmingRungId,
+        isCardInteractive: isPanelExpanded,
+      });
+      if (action.name === "ignore") {
+        return;
+      }
+      event.preventDefault();
+      if (action.name === "apply") {
+        applyRung(action.rungId);
+        return;
+      }
+      if (action.name === "dismiss") {
+        dismiss();
+        return;
+      }
+      setConfirmingRungId(null);
+    };
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [suggestion, confirmingRungId, isPanelExpanded, applyRung, dismiss]);
+
+  // Platform notation for the hint. Safe to read at render time: the card
+  // only ever appears after a client-side op-log evaluation, so it cannot
+  // render during SSR/hydration.
+  const shortcutHint = formatSuggestionShortcutHint({
+    isApplePlatform: getIsApplePlatform(),
+    isConfirming: confirmingRung !== undefined,
+  });
 
   return (
     <div className="flex flex-col gap-1">
@@ -424,6 +489,7 @@ function SuggestionBody({
               Cancel
             </button>
           </div>
+          <ShortcutHint text={shortcutHint} />
         </>
       ) : (
         <>
@@ -446,8 +512,28 @@ function SuggestionBody({
               </button>
             ))}
           </div>
+          <ShortcutHint text={shortcutHint} />
         </>
       )}
     </div>
+  );
+}
+
+/**
+ * The keyboard hint under the card's actions — the quietest thing on a
+ * deliberately quiet card: smallest type, muted, no motion. `aria-hidden`
+ * because it describes a shortcut, not content: every action it names is
+ * already reachable as a real, labeled button in the tab order, and screen
+ * reader users would otherwise hear the same offer twice.
+ */
+function ShortcutHint({ text }: { text: string }) {
+  return (
+    <p
+      className="pt-0.5 pl-5.5 text-[10px] text-muted-foreground"
+      data-testid="suggestion-shortcut-hint"
+      aria-hidden
+    >
+      {text}
+    </p>
   );
 }
