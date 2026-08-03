@@ -21,7 +21,9 @@ import { getOrCreateSessionId } from "@/lib/session";
  * text cursors) and every other presence consumer:
  *
  * - one presence room per DOCUMENT (roomId = the Convex document id string);
- * - userId = the Flock anonymous session id (two tabs of one browser are one
+ * - userId = {@link derivePresenceUserId} of the Flock anonymous session id —
+ *   NEVER the session id itself, which is also the pre-auth ownership key and
+ *   must not be published to the room (two tabs of one browser are still one
  *   roster user with two component sessions — the `data` payload is shared,
  *   last write wins);
  * - {@link PresenceProvider} is mounted ONCE at the studio shell level while
@@ -151,8 +153,37 @@ function hashString(input: string): number {
 }
 
 /**
+ * The roster id for a human, derived from their Flock session id.
+ *
+ * THE SESSION ID MUST NEVER GO ON THE WIRE HERE. The roster is published to
+ * every holder of the document link, so whatever we put in `userId` is handed
+ * to every collaborator — it is even rendered into the DOM as
+ * `data-presence-user` (PresenceFacepile). The session id is also the
+ * pre-auth ownership key for brand kits, assets, saved sections and personas
+ * (convex/authIdentity.ts), so publishing it raw handed strangers a key to
+ * those rows. Publishing a one-way derivation instead keeps everything the
+ * roster actually needs — a stable per-browser id, equal across tabs and
+ * reloads, distinct between users — while naming nothing the server accepts
+ * as an owner.
+ *
+ * Two FNV-1a passes over differently-salted inputs give 64 bits, which is
+ * ample against accidental collision at room scale. This is obfuscation of a
+ * capability, not a substitute for one: it removes the trivial "read it off
+ * the roster" path, and real ownership still comes from the verified identity.
+ */
+export function derivePresenceUserId(sessionId: string): string {
+  const high = hashString(`flock-presence-1|${sessionId}`);
+  const low = hashString(`flock-presence-2|${sessionId}`);
+  return `${high.toString(16).padStart(8, "0")}${low.toString(16).padStart(8, "0")}`;
+}
+
+/**
  * Stable auto-generated identity for any presence userId (self or remote):
  * same id → same adjective-animal name and same hue, on every client.
+ *
+ * Callers must pass the ROSTER id (derivePresenceUserId output for humans,
+ * `persona:<slug>` for agents) — never a raw session id, or a user's own
+ * name/colour would disagree with what everyone else renders for them.
  */
 export function deriveIdentity(userId: string): { name: string; color: string } {
   const hash = hashString(userId);
@@ -283,16 +314,18 @@ export function PresenceProvider({
   children: React.ReactNode;
 }) {
   const convexClient = useConvex();
-  const [sessionId] = useState(() => getOrCreateSessionId());
+  // The roster id, NOT the session id — see {@link derivePresenceUserId}.
+  // Nothing below may publish `getOrCreateSessionId()` itself.
+  const [presenceUserId] = useState(() => derivePresenceUserId(getOrCreateSessionId()));
   const [initialIdentity] = useState<PresenceData>(() => {
-    const derived = deriveIdentity(getOrCreateSessionId());
+    const derived = deriveIdentity(presenceUserId);
     return { ...derived, name: readStoredNickname() ?? derived.name };
   });
 
   // The full local payload, merged across broadcasts. Identity first.
   const payloadRef = useRef<PresenceData | null>(initialIdentity);
 
-  const presenceState = usePresence(api.presence, documentId, sessionId);
+  const presenceState = usePresence(api.presence, documentId, presenceUserId);
 
   // --- throttled + single-flighted updateRoomUser writes ---
   // The serialized payload most recently ACCEPTED by the server (null forces
@@ -305,7 +338,7 @@ export function PresenceProvider({
   // closure (see {@link createThrottledPresenceSender}).
   const senderRef = useRef<{ key: string; sender: ThrottledPresenceSender } | null>(null);
   const scheduleFlush = useCallback((): void => {
-    const key = `${documentId}|${sessionId}`;
+    const key = `${documentId}|${presenceUserId}`;
     if (senderRef.current === null || senderRef.current.key !== key) {
       senderRef.current?.sender.cancel();
       senderRef.current = {
@@ -313,14 +346,14 @@ export function PresenceProvider({
         sender: createThrottledPresenceSender({
           convexClient,
           roomId: documentId,
-          userId: sessionId,
+          userId: presenceUserId,
           payloadRef,
           lastSentRef,
         }),
       };
     }
     senderRef.current.sender.schedule();
-  }, [convexClient, documentId, sessionId]);
+  }, [convexClient, documentId, presenceUserId]);
 
   useEffect(() => {
     // A new room (document switch) has no memory of what we sent to the old
@@ -330,7 +363,7 @@ export function PresenceProvider({
       senderRef.current?.sender.cancel();
       senderRef.current = null;
     };
-  }, [documentId, sessionId]);
+  }, [documentId, presenceUserId]);
 
   const broadcast = useCallback(
     (partial: Partial<PresenceData>): void => {
@@ -361,7 +394,7 @@ export function PresenceProvider({
   // re-assert its own stale copy).
   const isSelfServerDataMissing =
     presenceState !== undefined &&
-    presenceState.some((entry) => entry.userId === sessionId && entry.data === undefined);
+    presenceState.some((entry) => entry.userId === presenceUserId && entry.data === undefined);
   useEffect(() => {
     if (isSelfServerDataMissing) {
       lastSentRef.current = null; // an earlier write was dropped server-side
@@ -386,11 +419,11 @@ export function PresenceProvider({
       const nickname = event.newValue !== null && event.newValue.trim().length > 0
         ? event.newValue.trim()
         : null;
-      payloadRef.current = { ...current, name: nickname ?? deriveIdentity(sessionId).name };
+      payloadRef.current = { ...current, name: nickname ?? deriveIdentity(presenceUserId).name };
     };
     window.addEventListener("storage", handleStorage);
     return () => window.removeEventListener("storage", handleStorage);
-  }, [sessionId]);
+  }, [presenceUserId]);
 
   // This provider OWNS the human editingBlockId/selectedBlockId signals:
   // broadcast when this client's inline text-editing session opens/closes or
@@ -413,9 +446,9 @@ export function PresenceProvider({
       } else {
         window.localStorage.removeItem(DISPLAY_NAME_STORAGE_KEY);
       }
-      broadcast({ name: trimmed.length > 0 ? trimmed : deriveIdentity(sessionId).name });
+      broadcast({ name: trimmed.length > 0 ? trimmed : deriveIdentity(presenceUserId).name });
     },
-    [broadcast, sessionId],
+    [broadcast, presenceUserId],
   );
 
   const roster = useMemo<PresenceRosterEntry[]>(() => {
@@ -424,12 +457,12 @@ export function PresenceProvider({
       const data = (entry.data ?? {}) as Partial<PresenceData>;
       return {
         userId: entry.userId,
-        isSelf: entry.userId === sessionId,
+        isSelf: entry.userId === presenceUserId,
         isOnline: entry.online,
         data: { ...data, name: data.name ?? fallback.name, color: data.color ?? fallback.color },
       };
     });
-  }, [presenceState, sessionId]);
+  }, [presenceState, presenceUserId]);
 
   const contextValue = useMemo<PresenceContextValue>(
     () => ({ roster, broadcast, setNickname }),
