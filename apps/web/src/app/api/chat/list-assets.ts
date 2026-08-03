@@ -1,6 +1,6 @@
-import { ConvexHttpClient } from "convex/browser";
 import type { AssetSummary, ListAssetsResult } from "@flock/agent";
 import { api } from "@convex/_generated/api";
+import { fetchAuthQuery } from "@/lib/auth/auth-server";
 
 /**
  * listAssets host executor — the session-scoped Convex query the agent
@@ -8,6 +8,12 @@ import { api } from "@convex/_generated/api";
  * Newest-first, capped: the model gets enough to answer "what images do I
  * have?" and to reuse an asset URL as an image src; the chat table widget
  * renders an even smaller slice (CHAT_TABLE_MAX_ROWS).
+ *
+ * Goes through fetchAuthQuery, NOT a bare ConvexHttpClient: `assets` is keyed
+ * by resolveOwnerId (convex/authIdentity.ts), so once identity exists this
+ * route must present the caller's token or it would read a different library
+ * than the browser writes to. With auth off there is no token and Convex falls
+ * back to the `sessionId` argument — today's behaviour, unchanged.
  */
 
 /** Cap on assets returned to the MODEL (the table part caps separately). */
@@ -26,13 +32,8 @@ export async function listSessionAssets({
     // No session yet — an empty library, not an error.
     return { isOk: true, result: { assets: [], totalCount: 0 } };
   }
-  const convexUrl = process.env.NEXT_PUBLIC_CONVEX_URL;
-  if (convexUrl === undefined || convexUrl === "") {
-    return { isOk: false, message: "The asset library is not available right now." };
-  }
   try {
-    const convexClient = new ConvexHttpClient(convexUrl);
-    const rows = await convexClient.query(api.assets.listForSession, { sessionId });
+    const rows = await fetchAuthQuery(api.assets.listForSession, { sessionId });
     const assets: AssetSummary[] = rows.slice(0, MAX_ASSETS_FOR_MODEL).map((row) => ({
       name: row.name,
       kind: row.kind,

@@ -1,6 +1,6 @@
 import type { CreatePersonaCommand } from "@flock/email-sdk";
-import { ConvexHttpClient } from "convex/browser";
 import { api } from "@convex/_generated/api";
+import { fetchAuthMutation } from "@/lib/auth/auth-server";
 
 /**
  * Agent-parity createPersona executor (server-only, imported by the /api/chat
@@ -89,7 +89,6 @@ export async function createPersonaForSession({
   command,
   sessionId,
 }: CreatePersonaForSessionInput): Promise<CreatePersonaOutcome> {
-  const convexUrl = process.env.NEXT_PUBLIC_CONVEX_URL;
   if (sessionId === null) {
     return {
       isOk: false,
@@ -97,12 +96,10 @@ export async function createPersonaForSession({
         "This browser has no active session yet, so the persona couldn't be saved — reload the editor and try again.",
     };
   }
-  if (convexUrl === undefined || convexUrl === "") {
-    return { isOk: false, message: "Persona storage isn't configured on this server." };
-  }
   try {
-    const convexClient = new ConvexHttpClient(convexUrl);
-    const { slug } = await convexClient.mutation(api.personas.createPersona, {
+    // Authenticated: personas are keyed by resolveOwnerId, and the copy slug
+    // embeds the owner id. See api/chat/list-assets.ts for the full rationale.
+    const { slug } = await fetchAuthMutation(api.personas.createPersona, {
       sessionId,
       name: command.name.trim(),
       color: pickPersonaColor(command.name.trim()),

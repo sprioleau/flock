@@ -1,8 +1,8 @@
-import { ConvexHttpClient } from "convex/browser";
 import { ConvexError } from "convex/values";
 import { z } from "zod";
 import { api } from "@convex/_generated/api";
 import type { Id } from "@convex/_generated/dataModel";
+import { fetchAuthMutation, fetchAuthQuery } from "@/lib/auth/auth-server";
 import {
   decodeSvgDataUri,
   MAX_ASSET_BYTES,
@@ -97,13 +97,6 @@ async function obtainAssetBinary(assetUrl: string): Promise<ObtainBinaryOutcome>
 }
 
 export async function POST(request: Request) {
-  const convexUrl = process.env.NEXT_PUBLIC_CONVEX_URL;
-  if (convexUrl === undefined || convexUrl === "") {
-    return failureResponse({
-      status: 503,
-      message: "Saving brand assets isn't configured on this server yet.",
-    });
-  }
 
   let json: unknown;
   try {
@@ -122,10 +115,12 @@ export async function POST(request: Request) {
   const assetNoun = ASSET_NOUNS[kind];
 
   try {
-    const convexClient = new ConvexHttpClient(convexUrl);
+    // Authenticated throughout: brandKits and assets are both keyed by
+    // resolveOwnerId (convex/authIdentity.ts). A bare client would read and
+    // write a different owner's rows than the browser once identity exists.
 
     // 1. Re-read the suggestion from the row — the source of truth.
-    const brandKit = await convexClient.query(api.brandKits.getActiveBrandKit, { sessionId });
+    const brandKit = await fetchAuthQuery(api.brandKits.getActiveBrandKit, { sessionId });
     if (brandKit === null) {
       return failureResponse({
         status: 404,
@@ -156,7 +151,7 @@ export async function POST(request: Request) {
     const { bytes, contentType } = obtained.binary;
 
     // 3. Upload — the shipped server-side pattern (generate-image route).
-    const postUrl = await convexClient.mutation(api.files.generateUploadUrl, {});
+    const postUrl = await fetchAuthMutation(api.files.generateUploadUrl, {});
     const uploadResponse = await fetch(postUrl, {
       method: "POST",
       headers: { "Content-Type": contentType },
@@ -168,7 +163,7 @@ export async function POST(request: Request) {
     const { storageId } = (await uploadResponse.json()) as { storageId: Id<"_storage"> };
 
     // 4. Patch the row (durable URL, provenance, revision bump).
-    const { url } = await convexClient.mutation(api.brandKits.confirmAsset, {
+    const { url } = await fetchAuthMutation(api.brandKits.confirmAsset, {
       sessionId,
       kind,
       storageId,
@@ -181,7 +176,7 @@ export async function POST(request: Request) {
     // Failure here never fails the confirm — the kit row already holds the
     // durable URL; the file is then merely an unregistered legacy upload.
     try {
-      await convexClient.mutation(api.assets.register, {
+      await fetchAuthMutation(api.assets.register, {
         sessionId,
         storageId,
         kind: kind === "logo" ? "logo" : "social-card",

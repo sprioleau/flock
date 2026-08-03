@@ -1,6 +1,6 @@
-import { ConvexHttpClient } from "convex/browser";
 import { api } from "@convex/_generated/api";
 import type { Id } from "@convex/_generated/dataModel";
+import { fetchAuthMutation, fetchAuthQuery } from "@/lib/auth/auth-server";
 import {
   MAX_ASSET_BYTES,
   normalizeImageContentType,
@@ -77,17 +77,12 @@ export async function rehostImageToStorage({
   name,
   sourceUrl,
 }: RehostImageInput): Promise<string | null> {
-  const convexUrl = process.env.NEXT_PUBLIC_CONVEX_URL;
-  if (convexUrl === undefined || convexUrl === "") {
-    return null;
-  }
   try {
     const binary = await obtainImageBinary(imageUrl);
     if (binary === null) {
       return null;
     }
-    const convexClient = new ConvexHttpClient(convexUrl);
-    const postUrl = await convexClient.mutation(api.files.generateUploadUrl, {});
+    const postUrl = await fetchAuthMutation(api.files.generateUploadUrl, {});
     const uploadResponse = await fetch(postUrl, {
       method: "POST",
       headers: { "Content-Type": binary.contentType },
@@ -102,7 +97,10 @@ export async function rehostImageToStorage({
     // seam every upload path funnels through — it also resolves the URL).
     // Without one: resolve the serving URL directly.
     if (sessionId !== null && sessionId.length > 0) {
-      const { url } = await convexClient.mutation(api.assets.register, {
+      // Authenticated: `assets` is keyed by resolveOwnerId, so a bare client
+      // would file the rehosted image under the legacy session id while the
+      // browser reads its library under the verified identity.
+      const { url } = await fetchAuthMutation(api.assets.register, {
         sessionId,
         storageId,
         kind: "uploaded",
@@ -111,7 +109,7 @@ export async function rehostImageToStorage({
       });
       return url;
     }
-    return await convexClient.query(api.files.getFileUrl, { storageId });
+    return await fetchAuthQuery(api.files.getFileUrl, { storageId });
   } catch (error) {
     console.error("[content-ingestion] hero image rehost failed:", error);
     return null;

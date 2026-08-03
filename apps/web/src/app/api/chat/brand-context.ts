@@ -1,6 +1,6 @@
-import { ConvexHttpClient } from "convex/browser";
 import { api } from "@convex/_generated/api";
 import { formatBrandVoiceContextLine } from "@/lib/brand-voice";
+import { fetchAuthQuery } from "@/lib/auth/auth-server";
 
 /**
  * Brand-kit context for the chat agent (item 26) — a compact, PER-REQUEST
@@ -42,13 +42,15 @@ export async function buildBrandContextBlock({
 }: {
   sessionId: string | null;
 }): Promise<string | null> {
-  const convexUrl = process.env.NEXT_PUBLIC_CONVEX_URL;
-  if (sessionId === null || convexUrl === undefined || convexUrl === "") {
+  if (sessionId === null) {
     return null;
   }
   try {
-    const convexClient = new ConvexHttpClient(convexUrl);
-    const brandKit = await convexClient.query(api.brandKits.getActiveBrandKit, { sessionId });
+    // fetchAuthQuery, not a bare client: brandKits is keyed by resolveOwnerId,
+    // so without the caller's token this would read a different kit than the
+    // browser writes once identity exists. Auth off ⇒ no token ⇒ Convex falls
+    // back to the sessionId argument, exactly as before.
+    const brandKit = await fetchAuthQuery(api.brandKits.getActiveBrandKit, { sessionId });
     if (brandKit === null) {
       return null;
     }

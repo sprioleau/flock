@@ -1,8 +1,8 @@
-import { ConvexHttpClient } from "convex/browser";
 import { ConvexError } from "convex/values";
 import { z } from "zod";
 import { api } from "@convex/_generated/api";
 import type { Id } from "@convex/_generated/dataModel";
+import { fetchAuthMutation, fetchAuthQuery } from "@/lib/auth/auth-server";
 
 /**
  * POST /api/library/import-image — the Asset Library's "From URL" import:
@@ -127,13 +127,6 @@ function deriveAssetName(importUrl: URL): string | null {
 }
 
 export async function POST(request: Request) {
-  const convexUrl = process.env.NEXT_PUBLIC_CONVEX_URL;
-  if (convexUrl === undefined || convexUrl === "") {
-    return failureResponse({
-      status: 503,
-      message: "Importing images isn't configured on this server yet.",
-    });
-  }
 
   let json: unknown;
   try {
@@ -211,10 +204,12 @@ export async function POST(request: Request) {
   }
 
   try {
-    const convexClient = new ConvexHttpClient(convexUrl);
+    // Authenticated: `assets.register` is keyed by resolveOwnerId, so the
+    // import must present the caller's token or it files the image under the
+    // legacy session id while the library reads under the verified identity.
 
     // 2. Upload — the shipped server-side pattern (generate-image route).
-    const postUrl = await convexClient.mutation(api.files.generateUploadUrl, {});
+    const postUrl = await fetchAuthMutation(api.files.generateUploadUrl, {});
     const uploadResponse = await fetch(postUrl, {
       method: "POST",
       headers: { "Content-Type": contentType },
@@ -229,7 +224,7 @@ export async function POST(request: Request) {
     // the row's `url` is the durable Convex serving URL; the external origin
     // is provenance only (sourceUrl), never served from.
     const assetName = deriveAssetName(importUrl);
-    const { url } = await convexClient.mutation(api.assets.register, {
+    const { url } = await fetchAuthMutation(api.assets.register, {
       sessionId,
       storageId,
       kind: "uploaded",

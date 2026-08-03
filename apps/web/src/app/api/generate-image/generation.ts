@@ -1,8 +1,8 @@
 import { google } from "@ai-sdk/google";
 import { generateImage } from "ai";
-import { ConvexHttpClient } from "convex/browser";
 import { api } from "@convex/_generated/api";
 import type { Id } from "@convex/_generated/dataModel";
+import { fetchAuthMutation, fetchAuthQuery } from "@/lib/auth/auth-server";
 import {
   GEMINI_IMAGE_MODEL_ID,
   IMAGE_GENERATION_MAX_RETRIES,
@@ -219,8 +219,6 @@ export interface StoreImageInConvexInput {
    * upload-and-resolve path with a server log, so generation still works.
    */
   registration?: StoreImageRegistrationInput;
-  /** Env source, overridable in tests. */
-  env?: Record<string, string | undefined>;
 }
 
 /**
@@ -228,22 +226,20 @@ export interface StoreImageInConvexInput {
  * calling session's asset library (Content Studio Stage S — EVERY successful
  * generation registers unconditionally, per binding owner decision), and
  * resolve the serving URL — the server-side mirror of the human path's
- * upload flow, via ConvexHttpClient like the personas route.
+ * upload flow. Goes through the AUTHENTICATED helpers (auth-server.ts), not a
+ * bare client: `assets.register` is keyed by resolveOwnerId.
  */
 export async function storeImageInConvex({
   base64,
   mimeType,
   registration,
-  env = process.env,
 }: StoreImageInConvexInput): Promise<StoreImageOutcome> {
-  const convexUrl = env.NEXT_PUBLIC_CONVEX_URL;
-  if (convexUrl === undefined || convexUrl === "") {
-    return { isStored: false, message: "image storage isn't configured on this server (NEXT_PUBLIC_CONVEX_URL is not set)." };
-  }
   try {
     const bytes = base64ToUint8Array(base64);
-    const convexClient = new ConvexHttpClient(convexUrl);
-    const postUrl = await convexClient.mutation(api.files.generateUploadUrl, {});
+    // Authenticated: `assets.register` below is keyed by resolveOwnerId, so a
+    // generated image filed by a bare client would never reach the browser's
+    // library once identity exists.
+    const postUrl = await fetchAuthMutation(api.files.generateUploadUrl, {});
     const response = await fetch(postUrl, {
       method: "POST",
       headers: { "Content-Type": mimeType },
@@ -255,7 +251,7 @@ export async function storeImageInConvex({
     }
     const { storageId } = (await response.json()) as { storageId: Id<"_storage"> };
     if (registration !== undefined) {
-      const { url } = await convexClient.mutation(api.assets.register, {
+      const { url } = await fetchAuthMutation(api.assets.register, {
         sessionId: registration.sessionId,
         storageId,
         kind: "generated",
@@ -272,7 +268,7 @@ export async function storeImageInConvex({
         message: "no session id on the request — the upload joined storage but not a library",
       }),
     );
-    const src = await convexClient.query(api.files.getFileUrl, { storageId });
+    const src = await fetchAuthQuery(api.files.getFileUrl, { storageId });
     if (src === null) {
       throw new Error("Uploaded image has no serving URL");
     }

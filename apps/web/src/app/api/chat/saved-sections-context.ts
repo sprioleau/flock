@@ -1,6 +1,6 @@
-import { ConvexHttpClient } from "convex/browser";
 import { api } from "@convex/_generated/api";
 import type { Doc } from "@convex/_generated/dataModel";
+import { fetchAuthQuery } from "@/lib/auth/auth-server";
 
 /**
  * Saved-sections context for the chat agent (owner V2 item 3): the user's
@@ -50,13 +50,12 @@ export async function buildSavedSectionsContext({
 }: {
   sessionId: string | null;
 }): Promise<string | null> {
-  const convexUrl = process.env.NEXT_PUBLIC_CONVEX_URL;
-  if (sessionId === null || convexUrl === undefined || convexUrl === "") {
+  if (sessionId === null) {
     return null;
   }
   try {
-    const convexClient = new ConvexHttpClient(convexUrl);
-    const rows = await convexClient.query(api.savedSections.listForSession, { sessionId });
+    // Authenticated: savedSections is keyed by resolveOwnerId. See list-assets.ts.
+    const rows = await fetchAuthQuery(api.savedSections.listForSession, { sessionId });
     return formatSavedSectionsContext(rows);
   } catch (error) {
     console.error(

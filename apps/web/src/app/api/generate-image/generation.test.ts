@@ -71,14 +71,17 @@ describe("generateEmailImage (mock selection — no network in tests)", () => {
 });
 
 describe("storeImageInConvex", () => {
-  it("fails cleanly when Convex is not configured", async () => {
+  it("fails cleanly when the Convex call cannot complete", async () => {
+    // The Convex address is a placeholder in tests, so the upload mutation
+    // cannot succeed. What matters is that a generation still degrades into
+    // an outcome union instead of throwing into the route — the base64 the
+    // caller already has stays usable as a preview.
     const outcome = await storeImageInConvex({
       base64: Buffer.from("png-bytes").toString("base64"),
       mimeType: "image/png",
-      env: {},
     });
     expect(outcome.isStored).toBe(false);
     if (outcome.isStored) return;
-    expect(outcome.message).toContain("NEXT_PUBLIC_CONVEX_URL");
+    expect(outcome.message.length).toBeGreaterThan(0);
   });
 });

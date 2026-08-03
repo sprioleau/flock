@@ -2,13 +2,14 @@ import { google } from "@ai-sdk/google";
 import { generateDocumentOutline } from "@flock/agent";
 import type { Block } from "@flock/email-sdk";
 import { generateObject } from "ai";
-import { ConvexHttpClient } from "convex/browser";
 import { z } from "zod";
 import { api } from "@convex/_generated/api";
 import type { Id } from "@convex/_generated/dataModel";
 import { MOCK_MODEL_HEADER } from "@/lib/chat-contract";
 import { buildStandaloneSectionDoc } from "@/lib/saved-sections";
 import { getSessionIdFromCookieHeader } from "@/lib/session-cookie";
+import { fetchAuthMutation, fetchAuthQuery } from "@/lib/auth/auth-server";
+import { chargeCreditForRequest } from "@/lib/auth/credits";
 import {
   buildDeterministicEnrichment,
   buildEnrichmentPrompt,
@@ -78,8 +79,7 @@ async function generateEnrichment({
 
 export async function POST(request: Request): Promise<Response> {
   const sessionId = getSessionIdFromCookieHeader(request.headers.get("cookie"));
-  const convexUrl = process.env.NEXT_PUBLIC_CONVEX_URL;
-  if (sessionId === null || convexUrl === undefined || convexUrl === "") {
+  if (sessionId === null) {
     return Response.json({ isEnriched: false }, { status: 401 });
   }
   const parsedBody = requestBodySchema.safeParse(await request.json().catch(() => null));
@@ -89,9 +89,9 @@ export async function POST(request: Request): Promise<Response> {
   const savedSectionId = parsedBody.data.savedSectionId as Id<"savedSections">;
 
   try {
-    const convexClient = new ConvexHttpClient(convexUrl);
-    // Session-checked read: a row the caller doesn't own reads as absent.
-    const row = await convexClient.query(api.savedSections.getForSession, {
+    // Authenticated: savedSections is keyed by resolveOwnerId, so the
+    // ownership check below only means anything with the caller's token.
+    const row = await fetchAuthQuery(api.savedSections.getForSession, {
       sessionId,
       savedSectionId,
     });
@@ -99,12 +99,24 @@ export async function POST(request: Request): Promise<Response> {
       return Response.json({ isEnriched: false }, { status: 404 });
     }
 
+    // Charged AFTER the ownership check (a 404 must not bill) and before the
+    // model call. Deterministic runs — forced, or no API key — reach only the
+    // deterministic floor below, spend no provider quota, and are free.
+    const isDeterministicForced = request.headers.get(MOCK_MODEL_HEADER) !== null;
+    const charge = await chargeCreditForRequest({
+      request,
+      isMockRun: isDeterministicForced || !process.env.GOOGLE_GENERATIVE_AI_API_KEY,
+    });
+    if (!charge.isAllowed) {
+      return Response.json({ isEnriched: false, message: charge.message }, { status: 429 });
+    }
+
     const { enrichment, source } = await generateEnrichment({
       name: row.name,
       blocks: row.blocks as Block[],
-      isDeterministicForced: request.headers.get(MOCK_MODEL_HEADER) !== null,
+      isDeterministicForced,
     });
-    await convexClient.mutation(api.savedSections.applyEnrichment, {
+    await fetchAuthMutation(api.savedSections.applyEnrichment, {
       sessionId,
       savedSectionId,
       useWhen: enrichment.useWhen,

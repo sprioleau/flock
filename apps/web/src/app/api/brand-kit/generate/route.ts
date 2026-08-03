@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { chargeCreditForRequest } from "@/lib/auth/credits";
 import { generateBrandKit } from "@/lib/brand-kit-extraction/generate-brand-kit";
 import { MAX_URL_LENGTH } from "@/lib/brand-kit-extraction/url-guard";
 
@@ -59,6 +60,17 @@ export async function POST(request: Request) {
       status: 400,
       message: "Please provide a website address (like your-brand.com).",
     });
+  }
+
+  // Scraping and summarising a site is real inference — it costs a credit.
+  // A deployment with no API key can only 503 below, so it is billed as a
+  // mock run (free) rather than charging for a request that cannot succeed.
+  const charge = await chargeCreditForRequest({
+    request,
+    isMockRun: !process.env.GOOGLE_GENERATIVE_AI_API_KEY,
+  });
+  if (!charge.isAllowed) {
+    return failureResponse({ status: 429, message: charge.message });
   }
 
   const result = await generateBrandKit({ url: parsedBody.data.url });

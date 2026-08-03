@@ -8,6 +8,7 @@ import {
   type FlockChatMessage,
 } from "@/lib/chat-contract";
 import { getSessionIdFromCookieHeader } from "@/lib/session-cookie";
+import { chargeCreditForRequest } from "@/lib/auth/credits";
 import { DEFAULT_GEMINI_MODEL_ID, MOCK_MODEL_ID } from "./constants";
 import { toChatErrorText } from "./errors";
 import { createMockChatModel } from "./mock-model";
@@ -84,6 +85,19 @@ export async function POST(request: Request) {
   const hasGoogleApiKey = Boolean(process.env.GOOGLE_GENERATIVE_AI_API_KEY);
   const isMockForced = request.headers.get(MOCK_MODEL_HEADER) === "1";
   const isUsingMockModel = isMockForced || !hasGoogleApiKey;
+
+  // A chat turn is the primary inference path — it costs a credit. Charged
+  // here, AFTER the request is known to be well-formed and BEFORE any stream
+  // opens, so a rejected turn never bills and a billed turn always runs. Mock
+  // runs spend no provider quota and are free (see lib/auth/credits.ts).
+  const charge = await chargeCreditForRequest({ request, isMockRun: isUsingMockModel });
+  if (!charge.isAllowed) {
+    return Response.json(
+      { error: "out_of_credits", message: charge.message },
+      { status: 429 },
+    );
+  }
+
   const model: LanguageModel = isUsingMockModel
     ? createMockChatModel({
         lastUserText: getLastUserText(messages),
