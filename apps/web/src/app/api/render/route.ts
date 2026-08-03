@@ -2,16 +2,23 @@ import {
   checkDocumentIntegrity,
   emailDocumentSchema,
   renderToHTML,
+  renderToPlainText,
 } from "@flock/email-sdk";
+import type { RenderResponseBody } from "./contract";
 
 /**
- * POST /api/render — flat email document in, email-safe HTML out.
+ * POST /api/render — flat email document in, every representation of the
+ * rendered email out.
  *
  * Body: { "document": EmailDocument }.
- * 200 → { html }
+ * 200 → { html, prettyHtml, plainText }
  * 400 → structured errors: invalid_json | missing_document |
  *       schema_validation_failed (Zod issues) | integrity_check_failed
  *       (checkDocumentIntegrity errors)
+ *
+ * All three come back together on purpose: the preview dialog shows them as
+ * three tabs of the same email, so producing them from one document read makes
+ * tab switching instant and keeps the tabs from ever disagreeing.
  */
 export async function POST(request: Request): Promise<Response> {
   let payload: unknown;
@@ -52,6 +59,10 @@ export async function POST(request: Request): Promise<Response> {
     );
   }
 
-  const html = await renderToHTML(parsed.data);
-  return Response.json({ html });
+  const [html, prettyHtml, plainText] = await Promise.all([
+    renderToHTML(parsed.data),
+    renderToHTML(parsed.data, { isPretty: true }),
+    renderToPlainText(parsed.data),
+  ]);
+  return Response.json({ html, prettyHtml, plainText } satisfies RenderResponseBody);
 }
