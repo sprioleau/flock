@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
   DropdownMenuContent,
+  DropdownMenuGroup,
   DropdownMenuLabel,
   DropdownMenuSeparator,
   DropdownMenuTrigger,
@@ -74,7 +75,14 @@ export function UserButton() {
 
       <DropdownMenuContent align="end" sideOffset={6} className="w-72 p-1.5">
         {isUnclaimed ? (
-          <div className="px-2 py-1.5">
+          /**
+           * DropdownMenuGroup is not optional dressing: DropdownMenuLabel
+           * renders Base UI's Menu.GroupLabel, which reads its group from
+           * context and THROWS without one. Dev only warns, so a bare label
+           * ships looking fine and then takes the whole page down in
+           * production as "Base UI error #31".
+           */
+          <DropdownMenuGroup className="px-2 py-1.5">
             <DropdownMenuLabel className="px-0 pt-0 pb-1 text-sm font-semibold text-foreground">
               Save your work
             </DropdownMenuLabel>
@@ -112,14 +120,14 @@ export function UserButton() {
                 ) : null}
               </form>
             )}
-          </div>
+          </DropdownMenuGroup>
         ) : (
-          <div className="px-2 py-1.5">
+          <DropdownMenuGroup className="px-2 py-1.5">
             <DropdownMenuLabel className="px-0 pt-0 pb-0.5 text-sm font-semibold text-foreground">
               Signed in
             </DropdownMenuLabel>
             <p className="truncate text-sm text-muted-foreground">{identity.email}</p>
-          </div>
+          </DropdownMenuGroup>
         )}
 
         <DropdownMenuSeparator />
