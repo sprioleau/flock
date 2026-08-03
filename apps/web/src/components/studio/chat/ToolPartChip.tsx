@@ -21,133 +21,45 @@ import {
   XIcon,
 } from "lucide-react";
 import type { ToolUIPart } from "ai";
-import type { BlockId } from "@flock/email-sdk";
 import { Button } from "@/components/ui/button";
 import type { FlockChatTools } from "@/lib/chat-contract";
 import { useEditorStore } from "@/lib/editor-store";
 import { cn } from "@/lib/utils";
+import {
+  getActivityLabel,
+  getBlockTypeLabel,
+  getNonBlockTargetLabel,
+  getTargetBlockId,
+  READ_ONLY_TOOL_NAMES,
+} from "./turn-activity";
 
 /**
- * One tool call rendered as a compact chip: "updating · button" plus a state
- * affordance (streaming spinner → applied check, or Approve/Deny buttons for
- * approval-gated tools like sendTestEmail). Failed calls (output-error)
- * render as a friendly error card instead — see {@link FailedToolPart}.
+ * One step of a turn rendered as a compact chip: "Adding a section" while it
+ * runs, "Added a section" once it lands, plus a state affordance (spinner →
+ * check, or Approve/Deny buttons for approval-gated steps like sending a test
+ * email). Failed steps (output-error) render as a friendly error card instead
+ * — see {@link FailedToolPart}.
  *
- * Nothing internal is user-facing here (owner principle): when an op targets
- * a block, the chip shows the block's TYPE (looked up live from the
- * document), never its raw id — and the chip label is a human ACTIVITY word
- * ({@link TOOL_ACTIVITY_LABELS}), never the internal tool name. Raw names
- * stay confined to data-* attributes and the failed card's collapsed
- * "Details" disclosure.
+ * Nothing internal is user-facing here (owner principle): when a step targets
+ * a block, the chip shows the block's TYPE (looked up live from the document),
+ * never its raw id — and the chip's label comes from the narration engine in
+ * turn-activity.ts, never from the internal tool name. Raw names stay confined
+ * to data-* attributes and the failed card's collapsed "Details" disclosure.
  */
 
 type FlockToolPart = ToolUIPart<FlockChatTools>;
-
-const READ_ONLY_TOOL_NAMES = new Set([
-  "getBlockDetails",
-  "fetchWebContent",
-  "fetchPersonHighlight",
-  "listAssets",
-]);
 
 function getToolName(part: FlockToolPart): string {
   return part.type.slice("tool-".length);
 }
 
-/** Internal tool name → the human activity word the chip shows. */
-const TOOL_ACTIVITY_LABELS: Readonly<Record<string, string>> = {
-  updateBlockProperties: "styling",
-  replaceBlockProperties: "styling",
-  updateDocumentSettings: "updating styles",
-  applyTheme: "applying theme",
-  addBlock: "adding",
-  addSection: "adding section",
-  scaffoldSection: "adding section",
-  restoreBlocks: "restoring",
-  removeBlock: "removing",
-  moveBlock: "moving",
-  reorderChildren: "reordering",
-  placeBlockBeside: "making columns",
-  unplaceBlockBeside: "removing column",
-  updateText: "editing text",
-  styleTextSpan: "styling text",
-  showPreview: "switching preview",
-  sendTestEmail: "test email",
-  generateImage: "generating image",
-  openPanel: "opening panel",
-  undo: "undoing",
-  redo: "redoing",
-  goToVersion: "restoring version",
-  createDraft: "creating draft",
-  createPersona: "creating persona",
-  // Widget tools: the chip shows only while the call streams in / when no
-  // widget part was written — the widget itself supersedes it otherwise.
-  askForClarification: "asking a question",
-  proposeSectionVariations: "preparing options",
-  proposeEdits: "drafting suggestions",
-  listAssets: "checking your library",
-  getBlockDetails: "reading",
-  fetchWebContent: "reading",
-  fetchPersonHighlight: "researching",
-};
-
-/** openPanel enum value → the human surface name shown after "opening panel ·". */
-const PANEL_TARGET_LABELS: Readonly<Record<string, string>> = {
-  theme: "theme",
-  "brand-kit": "brand kit",
-  library: "asset library",
-  agents: "agent personas",
-  recommendations: "recommendations",
-  history: "version history",
-  blocks: "blocks tab",
-  properties: "properties tab",
-  "send-test": "send test",
-};
-
 /**
- * The chip's user-facing label. Unmapped (future) tool names degrade to their
- * camelCase words — "someNewTool" → "some new tool" — so a raw internal
- * identifier can never leak by omission.
+ * True once the step has actually landed — the one signal that flips the
+ * chip's copy from present to past tense. A denied step never happened, so it
+ * stays in the present ("Sending a test email · denied").
  */
-function getToolActivityLabel(toolName: string): string {
-  return (
-    TOOL_ACTIVITY_LABELS[toolName] ??
-    toolName.replace(/([a-z0-9])([A-Z])/g, "$1 $2").toLowerCase()
-  );
-}
-
-/** The op's target blockId, if its input carries one (not user-facing). */
-function getTargetBlockId(part: FlockToolPart): BlockId | undefined {
-  const input = part.input as Record<string, unknown> | undefined;
-  return typeof input?.blockId === "string" ? (input.blockId as BlockId) : undefined;
-}
-
-/** Human-readable non-block target: a recipient, a viewport mode, a panel… */
-function getNonBlockTargetLabel(part: FlockToolPart): string | undefined {
-  const input = part.input as Record<string, unknown> | undefined;
-  if (input === undefined || input === null) {
-    return undefined;
-  }
-  if (typeof input.mode === "string") {
-    return input.mode;
-  }
-  if (typeof input.to === "string") {
-    return input.to;
-  }
-  if (typeof input.panel === "string") {
-    return PANEL_TARGET_LABELS[input.panel] ?? input.panel;
-  }
-  if (typeof input.version === "number") {
-    return `version ${input.version}`;
-  }
-  if (typeof input.count === "number" && input.count > 1) {
-    return `${input.count} drafts`;
-  }
-  // createPersona: the persona's display name is the target.
-  if (typeof input.name === "string" && getToolName(part) === "createPersona") {
-    return input.name;
-  }
-  return undefined;
+function getIsPartComplete(part: FlockToolPart): boolean {
+  return part.state === "output-available";
 }
 
 function getToolIcon(part: FlockToolPart): React.ReactNode {
@@ -273,10 +185,6 @@ function StateBadge({ part }: { part: FlockToolPart }) {
 
 /** Short trailing status text for terminal states. */
 function getStatusText(part: FlockToolPart): string | undefined {
-  const toolName = getToolName(part);
-  if (part.state === "output-available" && toolName === "sendTestEmail") {
-    return "sent";
-  }
   if (part.state === "approval-responded") {
     return part.approval.approved ? "approved, executing…" : "denied";
   }
@@ -295,13 +203,14 @@ export interface ToolPartChipProps {
 
 export function ToolPartChip({ part, onApprovalResponse, isRetryPending = false }: ToolPartChipProps) {
   const toolName = getToolName(part);
-  const targetBlockId = getTargetBlockId(part);
+  const targetBlockId = getTargetBlockId(part.input);
   // "· button", "· text"… — the target block's type, not its id. Undefined
   // when the block is gone (removed/reverted later): the chip just omits it.
   const targetBlockType = useEditorStore((state) =>
     targetBlockId === undefined ? undefined : state.doc[targetBlockId]?.type,
   );
-  const targetLabel = targetBlockType ?? getNonBlockTargetLabel(part);
+  const targetLabel =
+    getBlockTypeLabel(targetBlockType) ?? getNonBlockTargetLabel({ toolName, input: part.input });
   const isReadOnlyTool = READ_ONLY_TOOL_NAMES.has(toolName);
   const statusText = getStatusText(part);
   const isApprovalRequested = part.state === "approval-requested";
@@ -323,8 +232,12 @@ export function ToolPartChip({ part, onApprovalResponse, isRetryPending = false 
     >
       <div className="flex items-center gap-1.5">
         {getToolIcon(part)}
-        <span className="font-mono">
-          {getToolActivityLabel(toolName)}
+        <span className="min-w-0">
+          {getActivityLabel({
+            toolName,
+            input: part.input,
+            isComplete: getIsPartComplete(part),
+          })}
           {targetLabel !== undefined && (
             <span className="text-muted-foreground"> · {targetLabel}</span>
           )}

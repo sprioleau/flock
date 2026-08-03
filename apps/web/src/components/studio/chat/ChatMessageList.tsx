@@ -8,6 +8,8 @@ import { useEditorStore } from "@/lib/editor-store";
 import { cn } from "@/lib/utils";
 import { EditorCommandChip } from "./EditorCommandChip";
 import { ToolPartChip } from "./ToolPartChip";
+import { TurnActivityIndicator } from "./TurnActivityIndicator";
+import { toTurnParts } from "./turn-activity";
 import { ChatTableWidget } from "./widgets/ChatTableWidget";
 import { ClarificationWidget } from "./widgets/ClarificationWidget";
 import { EditSuggestionsWidget } from "./widgets/EditSuggestionsWidget";
@@ -351,7 +353,9 @@ export function ChatMessageList({
     if (scrollContainer !== null) {
       scrollContainer.scrollTop = scrollContainer.scrollHeight;
     }
-  }, [messages, error, isAwaitingResponse]);
+    // isTurnInProgress is a dep because the activity indicator appears and
+    // disappears with it — the newest content must stay in view either way.
+  }, [messages, error, isAwaitingResponse, isTurnInProgress]);
 
   if (messages.length === 0 && error === undefined) {
     return (
@@ -368,6 +372,16 @@ export function ChatMessageList({
   }
 
   const latestToolPartKeys = buildLatestToolPartKeys(messages);
+  // The in-flight turn's parts, empty until the agent opens its message —
+  // which is exactly the "nothing has come back yet" case the indicator
+  // narrates. A trailing USER message means the turn hasn't started streaming.
+  const lastMessage = messages.at(-1);
+  const liveTurnParts =
+    lastMessage?.role === "assistant" ? toTurnParts(lastMessage.parts) : [];
+  // Identity of the turn in flight: the user message that opened it. Stable
+  // for the whole turn, new on the next one — which is what gives the
+  // indicator a fresh elapsed clock per turn without resetting state.
+  const turnKey = messages.findLast((message) => message.role === "user")?.id ?? "turn";
 
   return (
     <div ref={scrollContainerRef} className="flex-1 overflow-y-auto">
@@ -400,11 +414,15 @@ export function ChatMessageList({
             />
           ),
         )}
-        {isAwaitingResponse && (
-          <p className="text-xs text-muted-foreground" data-chat-pending>
-            Thinking…
-          </p>
-        )}
+        {/* The live "what's happening now" line. It reads the turn's OWN parts
+            (the last message, when the agent already opened one) so it can
+            stay quiet while a step chip or streaming prose is narrating, and
+            speak up in the gaps between them. */}
+        <TurnActivityIndicator
+          key={turnKey}
+          isTurnInProgress={isTurnInProgress}
+          parts={liveTurnParts}
+        />
         {error !== undefined && <ErrorBubble error={error} />}
       </div>
     </div>
