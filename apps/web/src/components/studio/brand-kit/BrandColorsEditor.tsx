@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { PlusIcon, XIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -46,11 +46,21 @@ export function BrandColorsEditor({
     sortBrandColorsForDisplay(colors),
   );
   // Reactive resync: a save, a re-scrape, or another tab's edit re-seeds the
-  // draft. Serialized comparison keeps this from fighting local typing.
+  // draft. Serialized comparison keeps this from fighting local typing —
+  // `colors` is a fresh array identity on every render, so comparing the value
+  // is what makes "did it actually change?" answerable.
+  //
+  // Adjusted DURING RENDER rather than in an effect. React re-runs this
+  // component immediately with the new state before touching the DOM, so the
+  // user never sees the stale draft; an effect would paint the old colors
+  // first and then overwrite them, which is the cascading render the
+  // react-hooks/set-state-in-effect rule is pointing at.
   const serializedColors = JSON.stringify(colors);
-  useEffect(() => {
-    setDraftColors(sortBrandColorsForDisplay(JSON.parse(serializedColors) as BrandColor[]));
-  }, [serializedColors]);
+  const [seededFrom, setSeededFrom] = useState(serializedColors);
+  if (seededFrom !== serializedColors) {
+    setSeededFrom(serializedColors);
+    setDraftColors(sortBrandColorsForDisplay(colors));
+  }
 
   const commit = (nextColors: BrandColor[]): void => {
     setDraftColors(nextColors);

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import {
@@ -69,22 +69,36 @@ export function BrandVoiceEditor({
   isBusy: boolean;
   onCommit: (draft: BrandVoiceDraft) => void;
 }) {
-  const [descriptorsText, setDescriptorsText] = useState("");
-  const [avoidText, setAvoidText] = useState("");
-  const [guidance, setGuidance] = useState("");
-  const [formality, setFormality] = useState<BrandVoiceFormality | "">("");
-  const [person, setPerson] = useState<BrandVoicePerson | "">("");
+  const [descriptorsText, setDescriptorsText] = useState(
+    () => (toneOfVoice?.descriptors ?? []).join(", "),
+  );
+  const [avoidText, setAvoidText] = useState(() => (toneOfVoice?.avoid ?? []).join(", "));
+  const [guidance, setGuidance] = useState(() => toneOfVoice?.guidance ?? "");
+  const [formality, setFormality] = useState<BrandVoiceFormality | "">(
+    () => toneOfVoice?.formality ?? "",
+  );
+  const [person, setPerson] = useState<BrandVoicePerson | "">(() => toneOfVoice?.person ?? "");
 
   // Reseed whenever the stored voice changes (save, re-scrape, another tab).
+  // Compared by value, not identity: `toneOfVoice` is rebuilt on every Convex
+  // update even when nothing about it differs, and reseeding on identity would
+  // wipe whatever the user is halfway through typing.
+  //
+  // Adjusted DURING RENDER, not in an effect. React discards the in-progress
+  // render and re-runs with the new state before painting, so the fields never
+  // flash the previous kit's voice — which is exactly what an effect would do,
+  // and what react-hooks/set-state-in-effect flags. The fields above also seed
+  // themselves, so the first paint is correct without any resync at all.
   const serializedTone = JSON.stringify(toneOfVoice ?? null);
-  useEffect(() => {
-    const stored = JSON.parse(serializedTone) as BrandToneOfVoice | null;
-    setDescriptorsText((stored?.descriptors ?? []).join(", "));
-    setAvoidText((stored?.avoid ?? []).join(", "));
-    setGuidance(stored?.guidance ?? "");
-    setFormality(stored?.formality ?? "");
-    setPerson(stored?.person ?? "");
-  }, [serializedTone]);
+  const [seededFrom, setSeededFrom] = useState(serializedTone);
+  if (seededFrom !== serializedTone) {
+    setSeededFrom(serializedTone);
+    setDescriptorsText((toneOfVoice?.descriptors ?? []).join(", "));
+    setAvoidText((toneOfVoice?.avoid ?? []).join(", "));
+    setGuidance(toneOfVoice?.guidance ?? "");
+    setFormality(toneOfVoice?.formality ?? "");
+    setPerson(toneOfVoice?.person ?? "");
+  }
 
   const buildDraft = (overrides: Partial<BrandVoiceDraft> = {}): BrandVoiceDraft => {
     const trimmedGuidance = guidance.trim();
