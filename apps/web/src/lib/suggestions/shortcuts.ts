@@ -5,9 +5,25 @@ import type { Suggestion, SuggestionRung, SuggestionRungId } from "./types";
  * Keyboard reach for the live suggestion card (Phase 7.3).
  *
  * The card sits directly above the composer, so a suggestion that only
- * accepts a click makes the user leave the keyboard mid-edit. ⌘↵ (Ctrl+Enter
- * off Apple keyboards) applies it; Esc dismisses it through the same
- * persistence path as the × button.
+ * accepts a click makes the user leave the keyboard mid-edit. ⌥A (Alt+A)
+ * applies it; Esc dismisses it through the same persistence path as the ×
+ * button.
+ *
+ * WHY ⌥A AND NOT ⌘↵. ⌘↵ was the first choice and was wrong: the composer
+ * submits on Enter WITHOUT excluding modifiers (ChatPanel.tsx
+ * `handleComposerKeyDown`), so ⌘↵ already sends a chat message there, as
+ * does the queued-message editor. Yielding that chord in typing contexts
+ * made the shortcut unreachable exactly where the user's focus usually is —
+ * the composer, and the property fields whose edits GENERATE these
+ * suggestions in the first place. ⌥A is claimed by nothing (the hold-to-
+ * quick-add listener requires a bare "a" and bails on altKey), so it fires
+ * EVERYWHERE, text fields included. That reach is the whole point of the
+ * key; do not reintroduce a typing-context guard on the apply path.
+ *
+ * THE COST, DELIBERATELY ACCEPTED: while a suggestion is live, ⌥A will not
+ * type its character (`å` on a Mac) into the focused field, because the
+ * handler calls preventDefault. This is intentional — a live suggestion is
+ * rare, transient, and visibly hinted on the card. Please do not "fix" it.
  *
  * THREE RULES THIS MODULE EXISTS TO ENFORCE:
  *
@@ -16,17 +32,15 @@ import type { Suggestion, SuggestionRung, SuggestionRungId } from "./types";
  *    `needsConfirm` (see types.ts). A confirm-gated rung (the whole-email
  *    re-theme) is unreachable from the keyboard by construction: it is not
  *    "the default rung" before the confirm opens, and while the confirm IS
- *    open ⌘↵ resolves to `ignore` so the gate keeps its explicit click. The
+ *    open ⌥A resolves to `ignore` so the gate keeps its explicit click. The
  *    ladder is ordered smallest-scope first, so the default is also the
  *    least surprising thing to apply blind.
  *
- * 2. YIELD TO TYPING. The chat composer submits on Enter WITHOUT excluding
- *    modifiers (ChatPanel.tsx `handleComposerKeyDown`), so ⌘↵ already sends
- *    a chat message there; the queued-message editor does the same, and the
- *    inline text editor closes on a bare Esc. Rather than guess at how to
- *    split those keys, this shortcut declines the keystroke entirely
- *    whenever it lands in a typing context — the caller passes
- *    `isTypingContext` (keyboard-guards.ts). Existing behavior is untouched.
+ * 2. ESC STILL YIELDS TO TYPING. Unlike the apply key, Esc IS claimed by
+ *    typing contexts — the composer stops dictation with it, the queued
+ *    message editor cancels, the inline text editor closes. So Esc alone
+ *    declines the keystroke when it lands in a field (the caller passes
+ *    `isTypingContext`, keyboard-guards.ts).
  *
  * 3. STAY SILENT WHEN THERE IS NOTHING TO ACT ON. No live suggestion, or a
  *    card the user cannot currently see (collapsed chat panel), resolves to
@@ -37,14 +51,14 @@ import type { Suggestion, SuggestionRung, SuggestionRungId } from "./types";
  * table is unit-testable in the node test environment (no DOM required).
  */
 
-/** react-hotkeys-hook combo notation — `mod` is ⌘ on Apple, Ctrl elsewhere. */
-export const APPLY_SUGGESTION_COMBO = "mod+enter";
+/** react-hotkeys-hook combo notation — `alt` renders as ⌥ on Apple keyboards. */
+export const APPLY_SUGGESTION_COMBO = "alt+a";
 
 /** Dismiss the live suggestion (or back out of an open confirm). */
 export const DISMISS_SUGGESTION_COMBO = "escape";
 
 /**
- * The rung ⌘↵ applies: the first NON-gated rung on the ladder (smallest
+ * The rung ⌥A applies: the first NON-gated rung on the ladder (smallest
  * scope first). Null when every rung is confirm-gated — the keyboard path
  * then does nothing at all rather than promoting a gated rung.
  */
@@ -54,14 +68,23 @@ export function getDefaultRung(suggestion: Suggestion): SuggestionRung | null {
 
 /** The parts of a keydown this decision depends on (a real KeyboardEvent fits). */
 export interface SuggestionShortcutKeyEvent {
+  /** The produced character/name — used for Esc only (see `code`). */
   key: string;
+  /**
+   * The PHYSICAL key. The apply chord matches on this, never on `key`:
+   * macOS composes ⌥A into "å", so `key === "a"` silently never fires there.
+   */
+  code: string;
   metaKey: boolean;
   ctrlKey: boolean;
   shiftKey: boolean;
   altKey: boolean;
   /** Another handler already claimed this keystroke; leave it alone. */
   isDefaultPrevented: boolean;
-  /** The keystroke landed in a field, the composer, or a contenteditable. */
+  /**
+   * The keystroke landed in a field, the composer, or a contenteditable.
+   * Consulted for Esc ONLY — ⌥A deliberately fires inside text fields too.
+   */
   isTypingContext: boolean;
 }
 
@@ -95,11 +118,15 @@ export function resolveSuggestionShortcut({
   if (suggestion === null || !isCardInteractive) {
     return IGNORE;
   }
-  if (event.isDefaultPrevented || event.isTypingContext) {
+  if (event.isDefaultPrevented) {
     return IGNORE;
   }
 
   if (event.key === "Escape") {
+    // Rule 2: Esc belongs to whatever field the user is typing in.
+    if (event.isTypingContext) {
+      return IGNORE;
+    }
     // A bare Esc only. ⌥Esc / ⇧Esc belong to the OS and the browser.
     if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) {
       return IGNORE;
@@ -109,8 +136,15 @@ export function resolveSuggestionShortcut({
     return confirmingRungId === null ? { name: "dismiss" } : { name: "cancelConfirm" };
   }
 
+  // ⌥A on the PHYSICAL A key, alt and nothing else — so no larger chord
+  // (⌘⌥A, ⌥⇧A, browser and OS combos) can trip an apply. Note the absence of
+  // any isTypingContext check: this chord is meant to reach the user mid-type.
   const isApplyChord =
-    event.key === "Enter" && (event.metaKey || event.ctrlKey) && !event.shiftKey && !event.altKey;
+    event.code === "KeyA" &&
+    event.altKey &&
+    !event.metaKey &&
+    !event.ctrlKey &&
+    !event.shiftKey;
   if (!isApplyChord) {
     return IGNORE;
   }
@@ -124,9 +158,10 @@ export function resolveSuggestionShortcut({
 
 /**
  * The card's discoverability hint, in the reader's own keyboard notation:
- * "⌘↵ to apply · esc to dismiss" on Apple keyboards, "Ctrl+Enter to apply ·
- * Esc to dismiss" elsewhere. While a confirm is open the only live key is
- * Esc, so the hint says just that.
+ * "⌥A to apply · esc to dismiss" on Apple keyboards, "Alt+A to apply ·
+ * Esc to dismiss" elsewhere. Derived from the combo constants rather than
+ * written out, so the hint cannot drift from the binding. While a confirm is
+ * open the only live key is Esc, so the hint says just that.
  */
 export function formatSuggestionShortcutHint({
   isApplePlatform,

@@ -49,7 +49,8 @@ function makeSuggestion(rungs: SuggestionRung[]): Suggestion {
 /** A bare keystroke on the canvas: nothing typed into, nothing claimed. */
 function makeKeyEvent(overrides: Partial<SuggestionShortcutKeyEvent>): SuggestionShortcutKeyEvent {
   return {
-    key: "Enter",
+    key: "a",
+    code: "KeyA",
     metaKey: false,
     ctrlKey: false,
     shiftKey: false,
@@ -60,9 +61,14 @@ function makeKeyEvent(overrides: Partial<SuggestionShortcutKeyEvent>): Suggestio
   };
 }
 
-const applyOnApple = makeKeyEvent({ key: "Enter", metaKey: true });
-const applyOnWindows = makeKeyEvent({ key: "Enter", ctrlKey: true });
-const escape = makeKeyEvent({ key: "Escape" });
+/**
+ * ⌥A as a Mac actually reports it: the PHYSICAL key is "KeyA" but the
+ * composed character is "å". Matching on `key` would silently never fire.
+ */
+const applyOnApple = makeKeyEvent({ key: "å", code: "KeyA", altKey: true });
+/** The same physical chord on Windows/Linux, where Alt composes nothing. */
+const applyOnWindows = makeKeyEvent({ key: "a", code: "KeyA", altKey: true });
+const escape = makeKeyEvent({ key: "Escape", code: "Escape" });
 
 /** The full ladder, as the rules registry composes it for a button recolor. */
 const fullLadder = makeSuggestion([sectionRung, emailRung, rethemeRung]);
@@ -97,11 +103,12 @@ describe("getDefaultRung", () => {
 });
 
 describe("resolveSuggestionShortcut — applying", () => {
-  it("applies the default rung on ⌘↵", () => {
+  it("applies the default rung on ⌥A even though macOS composes it into 'å'", () => {
+    expect(applyOnApple.key).toBe("å");
     expect(resolve({ event: applyOnApple })).toEqual({ name: "apply", rungId: "section" });
   });
 
-  it("applies the default rung on Ctrl+Enter for non-Apple keyboards", () => {
+  it("applies the default rung on Alt+A for non-Apple keyboards", () => {
     expect(resolve({ event: applyOnWindows })).toEqual({ name: "apply", rungId: "section" });
   });
 
@@ -111,21 +118,25 @@ describe("resolveSuggestionShortcut — applying", () => {
     );
   });
 
-  it("ignores a bare Enter, so typing elsewhere never applies anything", () => {
-    expect(resolve({ event: makeKeyEvent({ key: "Enter" }) })).toEqual({ name: "ignore" });
+  it("ignores a bare A, so typing the letter never applies anything", () => {
+    expect(resolve({ event: makeKeyEvent({ key: "a", code: "KeyA" }) })).toEqual({ name: "ignore" });
   });
 
-  it("ignores the chord when Shift or Alt rides along", () => {
-    expect(resolve({ event: makeKeyEvent({ key: "Enter", metaKey: true, shiftKey: true }) })).toEqual({
-      name: "ignore",
-    });
-    expect(resolve({ event: makeKeyEvent({ key: "Enter", ctrlKey: true, altKey: true }) })).toEqual({
-      name: "ignore",
-    });
+  it("ignores any larger chord built on top of ⌥A", () => {
+    for (const extra of [{ metaKey: true }, { ctrlKey: true }, { shiftKey: true }]) {
+      expect(resolve({ event: makeKeyEvent({ code: "KeyA", altKey: true, ...extra }) })).toEqual({
+        name: "ignore",
+      });
+    }
   });
 
-  it("ignores unrelated keys", () => {
-    expect(resolve({ event: makeKeyEvent({ key: "a", metaKey: true }) })).toEqual({ name: "ignore" });
+  it("ignores Alt on any other physical key, including one that composes 'å'", () => {
+    expect(resolve({ event: makeKeyEvent({ key: "å", code: "KeyB", altKey: true }) })).toEqual({
+      name: "ignore",
+    });
+    expect(resolve({ event: makeKeyEvent({ key: "Enter", code: "Enter", metaKey: true }) })).toEqual({
+      name: "ignore",
+    });
   });
 });
 
@@ -175,10 +186,19 @@ describe("resolveSuggestionShortcut — staying silent", () => {
     expect(resolve({ event: escape, isCardInteractive: false })).toEqual({ name: "ignore" });
   });
 
-  it("yields both keys to the composer and every other typing context", () => {
-    expect(resolve({ event: { ...applyOnApple, isTypingContext: true } })).toEqual({ name: "ignore" });
-    expect(resolve({ event: { ...applyOnWindows, isTypingContext: true } })).toEqual({ name: "ignore" });
+  it("yields Esc to the composer and every other typing context", () => {
     expect(resolve({ event: { ...escape, isTypingContext: true } })).toEqual({ name: "ignore" });
+  });
+
+  it("still applies from INSIDE a text field — the whole reason ⌥A replaced ⌘↵", () => {
+    expect(resolve({ event: { ...applyOnApple, isTypingContext: true } })).toEqual({
+      name: "apply",
+      rungId: "section",
+    });
+    expect(resolve({ event: { ...applyOnWindows, isTypingContext: true } })).toEqual({
+      name: "apply",
+      rungId: "section",
+    });
   });
 
   it("yields a keystroke another handler already claimed", () => {
@@ -190,13 +210,13 @@ describe("resolveSuggestionShortcut — staying silent", () => {
 describe("formatSuggestionShortcutHint", () => {
   it("uses Apple glyphs on Apple keyboards", () => {
     expect(formatSuggestionShortcutHint({ isApplePlatform: true, isConfirming: false })).toBe(
-      "⌘↵ to apply · esc to dismiss",
+      "⌥A to apply · esc to dismiss",
     );
   });
 
   it("spells the keys out everywhere else", () => {
     expect(formatSuggestionShortcutHint({ isApplePlatform: false, isConfirming: false })).toBe(
-      "Ctrl+Enter to apply · Esc to dismiss",
+      "Alt+A to apply · Esc to dismiss",
     );
   });
 

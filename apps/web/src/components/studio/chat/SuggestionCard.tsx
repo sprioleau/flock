@@ -30,13 +30,14 @@ import { handOffPromptToComposer } from "./composer-handoff";
  * - Rung buttons apply that scope's pre-validated ops instantly.
  * - The confirm-gated rung (whole-email re-theme) swaps the card body to an
  *   inline confirm before anything is dispatched.
- * - ⌘↵ / Ctrl+Enter applies the DEFAULT (non-gated) rung and Esc dismisses,
- *   so a suggestion never costs a trip to the mouse. The binding lives on
- *   the body below rather than with the controllers in ChatPanel: it reads
- *   the card-local confirm state it must not bypass, and it should exist
- *   only while a suggestion is actually on screen. shortcuts.ts holds the
- *   decision table (including why it declines every keystroke typed into
- *   the composer).
+ * - ⌥A (Alt+A) applies the DEFAULT (non-gated) rung and Esc dismisses, so a
+ *   suggestion never costs a trip to the mouse. ⌥A deliberately fires inside
+ *   text fields too — the composer owns Enter, and the property fields whose
+ *   edits generate these suggestions are exactly where focus tends to be.
+ *   The binding lives on the body below rather than with the controllers in
+ *   ChatPanel: it reads the card-local confirm state it must not bypass, and
+ *   it should exist only while a suggestion is actually on screen.
+ *   shortcuts.ts holds the decision table and the full rationale.
  * - After Apply the card shows a brief "Applied — Revert" state wired to the
  *   same history.revertBatch path as chat-turn revert chips (suggestions
  *   apply outside a chat turn, so the affordance lives here — see
@@ -405,6 +406,7 @@ function SuggestionBody({
       const action = resolveSuggestionShortcut({
         event: {
           key: event.key,
+          code: event.code,
           metaKey: event.metaKey,
           ctrlKey: event.ctrlKey,
           shiftKey: event.shiftKey,
