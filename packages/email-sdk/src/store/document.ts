@@ -261,7 +261,7 @@ export function createSampleDocument(): EmailDocument {
               type: "paragraph",
               content: [
                 { type: "text", text: "You describe, " },
-                { type: "text", text: "your partner builds", marks: [{ type: "bold" }] },
+                { type: "text", text: "your flock builds", marks: [{ type: "bold" }] },
                 { type: "text", text: " — read the " },
                 {
                   type: "text",

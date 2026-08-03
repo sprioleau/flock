@@ -21,7 +21,7 @@ import {
  *
  * THE PRINCIPLE (owner working agreement): LLM-facing tools take SIMPLE
  * intent-level args; ALL complexity lives inside the tool as a deterministic
- * translation. The model says "make 'your partner builds' bold and green" as
+ * translation. The model says "make 'your flock builds' bold and green" as
  * `{ blockId, find, style }` — it NEVER sees or produces rich-text JSON. This
  * module is that translation: locate the exact text in the block's CURRENT
  * TextDoc, split/merge text nodes, apply or remove marks on exactly that

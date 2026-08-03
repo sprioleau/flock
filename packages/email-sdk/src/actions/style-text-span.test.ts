@@ -122,19 +122,19 @@ describe("applySpanStyle — find & occurrence resolution", () => {
           type: "paragraph",
           content: [
             { type: "text", text: "You describe, " },
-            { type: "text", text: "your partner builds", marks: [{ type: "bold" }] },
+            { type: "text", text: "your flock builds", marks: [{ type: "bold" }] },
             { type: "text", text: " together." },
           ],
         },
       ],
     };
-    const result = applySpanStyle({ text: doc, find: "partner builds together", style: { underline: true } });
+    const result = applySpanStyle({ text: doc, find: "flock builds together", style: { underline: true } });
     expect(result.isOk).toBe(true);
     if (!result.isOk) return;
     expect(textNodesOf(result.text)).toEqual([
       { type: "text", text: "You describe, " },
       { type: "text", text: "your ", marks: [{ type: "bold" }] },
-      { type: "text", text: "partner builds", marks: [{ type: "bold" }, { type: "underline" }] },
+      { type: "text", text: "flock builds", marks: [{ type: "bold" }, { type: "underline" }] },
       { type: "text", text: " together", marks: [{ type: "underline" }] },
       { type: "text", text: "." },
     ]);
@@ -374,7 +374,7 @@ describe("resolveStyleTextSpanOperation", () => {
       input: parseInput({
         name: "styleTextSpan",
         blockId: "txt_e5f6",
-        find: "your partner builds",
+        find: "your flock builds",
         style: { textColor: "#16a34a", fontSizePx: 18 },
       }),
     });
@@ -461,7 +461,7 @@ describe("styleTextSpanAction through dispatchContentAction", () => {
       input: {
         name: "styleTextSpan",
         blockId: "txt_e5f6",
-        find: "your partner builds",
+        find: "your flock builds",
         style: { bold: false, textColor: "#16a34a" },
       },
       context: agentContext,
@@ -475,7 +475,7 @@ describe("styleTextSpanAction through dispatchContentAction", () => {
     if (block.type !== "text") throw new Error("fixture");
     expect(textNodesOf(block.properties.text, 1)).toContainEqual({
       type: "text",
-      text: "your partner builds",
+      text: "your flock builds",
       marks: [{ type: "textStyle", attrs: { color: "#16a34a" } }],
     });
     const undone = applyOperation(result.doc, result.inverse);

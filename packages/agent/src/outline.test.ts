@@ -11,7 +11,7 @@ describe("generateDocumentOutline (default depth: blocks)", () => {
     expect(outline).toMatchInlineSnapshot(`
       "globals: buttonBackgroundColor=#1a1a2e, heading1TextAlign=center
       sec_a1b2 section
-        txt_e5f6 text h1,p "Welcome to Flock | You describe, your partner builds — read…" +bold+link
+        txt_e5f6 text h1,p "Welcome to Flock | You describe, your flock builds — read th…" +bold+link
         img_g7h8 image alt="Two riders on a flock bicycle" w=520 src=placehold.co
         div_i9j0 divider
       sec_c3d4 section
