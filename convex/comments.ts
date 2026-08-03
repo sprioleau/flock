@@ -1,6 +1,7 @@
 import { v } from "convex/values";
 import type { Doc, Id } from "./_generated/dataModel";
 import { mutation, query, type MutationCtx } from "./_generated/server";
+import { resolveOwnerId } from "./authIdentity";
 
 /**
  * Comments mode — canvas review threads (see the schema doc note for the
@@ -11,6 +12,20 @@ import { mutation, query, type MutationCtx } from "./_generated/server";
  * idempotent mutations, and NOTHING here dispatches document operations — an
  * agent "fix" runs as a normal chat turn through the one history spine; this
  * module only records the conversation around it.
+ *
+ * AUTHORSHIP IS NOT A SECRET AND MUST NOT BE ONE. Two rules, both load-bearing:
+ *
+ * 1. Author ids are WRITTEN through resolveOwnerId (convex/authIdentity.ts),
+ *    so nobody can post or resolve a thread as somebody else once identity
+ *    exists.
+ * 2. Author ids are never READ BACK OUT. A comment thread is visible to every
+ *    holder of the canvas link, so returning the raw author id handed each of
+ *    them an ownership key for that person's brand kit, assets, saved sections
+ *    and personas (better-auth-evaluation.md §2.4 item 4). The payloads below
+ *    carry the denormalized `authorName` — which is what the UI actually
+ *    renders — and nothing else about who wrote them. Adding an id back here
+ *    reopens the leak, so don't; if a surface ever needs "is this mine", take
+ *    the caller's session id as an argument and return a boolean.
  */
 
 /** Upper bound on comment rows read per canvas listing (demo scale). */
@@ -38,19 +53,19 @@ const anchorValidator = v.object({
   y: v.number(),
 });
 
+/** Wire shape for one thread entry. No author id — see the module note. */
 const threadEntryValidator = v.object({
   authorKind: v.union(v.literal("user"), v.literal("agent")),
-  authorSessionId: v.optional(v.string()),
   authorName: v.string(),
   text: v.string(),
   createdAtMs: v.number(),
 });
 
+/** Wire shape for one thread. No author id — see the module note. */
 const commentPayloadValidator = v.object({
   commentId: v.id("comments"),
   canvasId: v.id("canvases"),
   documentId: v.id("documents"),
-  sessionId: v.string(),
   anchor: anchorValidator,
   context: v.object({
     draftName: v.string(),
@@ -60,25 +75,30 @@ const commentPayloadValidator = v.object({
   }),
   thread: v.array(threadEntryValidator),
   status: commentStatusValidator,
-  resolvedBySessionId: v.optional(v.string()),
   resolvedAtMs: v.optional(v.number()),
   createdAtMs: v.number(),
   updatedAtMs: v.number(),
 });
 
+/**
+ * Row → wire. The projection is the redaction boundary: `sessionId`,
+ * `resolvedBySessionId` and each entry's `authorSessionId` stay in the row
+ * (the migration seam re-keys them) and never reach a reader.
+ */
 function toCommentPayload(row: Doc<"comments">) {
   return {
     commentId: row._id,
     canvasId: row.canvasId,
     documentId: row.documentId,
-    sessionId: row.sessionId,
     anchor: row.anchor,
     context: row.context,
-    thread: row.thread,
+    thread: row.thread.map((entry) => ({
+      authorKind: entry.authorKind,
+      authorName: entry.authorName,
+      text: entry.text,
+      createdAtMs: entry.createdAtMs,
+    })),
     status: row.status,
-    ...(row.resolvedBySessionId !== undefined
-      ? { resolvedBySessionId: row.resolvedBySessionId }
-      : {}),
     ...(row.resolvedAtMs !== undefined ? { resolvedAtMs: row.resolvedAtMs } : {}),
     createdAtMs: row.createdAtMs,
     updatedAtMs: row.updatedAtMs,
@@ -166,6 +186,7 @@ export const createComment = mutation({
   },
   returns: v.id("comments"),
   handler: async (ctx, args) => {
+    const ownerId = await resolveOwnerId(ctx, { claimedSessionId: args.sessionId });
     const document = await getLiveDocument(ctx, args.documentId);
     const text = truncate(args.text, MAX_COMMENT_TEXT_CHARS);
     if (text.length === 0) {
@@ -175,7 +196,7 @@ export const createComment = mutation({
     return await ctx.db.insert("comments", {
       canvasId: document.canvasId,
       documentId: args.documentId,
-      sessionId: args.sessionId,
+      sessionId: ownerId,
       anchor: args.anchor,
       context: {
         draftName: truncate(document.name, MAX_CONTEXT_FIELD_CHARS),
@@ -190,7 +211,7 @@ export const createComment = mutation({
       thread: [
         {
           authorKind: "user" as const,
-          authorSessionId: args.sessionId,
+          authorSessionId: ownerId,
           authorName: truncate(args.authorName, MAX_CONTEXT_FIELD_CHARS),
           text,
           createdAtMs: nowMs,
@@ -219,6 +240,13 @@ export const addThreadEntry = mutation({
   },
   returns: v.null(),
   handler: async (ctx, args) => {
+    // The agent's own progress notes carry no session id and need no owner;
+    // a human reply is attributed to the resolved owner, never to the string
+    // the client sent.
+    const authorOwnerId =
+      args.authorSessionId === undefined
+        ? undefined
+        : await resolveOwnerId(ctx, { claimedSessionId: args.authorSessionId });
     const row = await ctx.db.get(args.commentId);
     if (row === null) {
       return null; // thread deleted (draft cascade) — reply quietly lost
@@ -236,9 +264,7 @@ export const addThreadEntry = mutation({
         ...row.thread,
         {
           authorKind: args.authorKind,
-          ...(args.authorSessionId !== undefined
-            ? { authorSessionId: args.authorSessionId }
-            : {}),
+          ...(authorOwnerId === undefined ? {} : { authorSessionId: authorOwnerId }),
           authorName: truncate(args.authorName, MAX_CONTEXT_FIELD_CHARS),
           text,
           createdAtMs: nowMs,
@@ -282,14 +308,16 @@ async function closeComment({
 }: {
   ctx: MutationCtx;
   commentId: Id<"comments">;
+  /** The CLAIMED session id — resolved here, never stored as given. */
   sessionId: string;
   status: "resolved" | "dismissed";
 }): Promise<void> {
+  const ownerId = await resolveOwnerId(ctx, { claimedSessionId: sessionId });
   const row = await ctx.db.get(commentId);
   if (row !== null && row.status === "open") {
     await ctx.db.patch(commentId, {
       status,
-      resolvedBySessionId: sessionId,
+      resolvedBySessionId: ownerId,
       resolvedAtMs: Date.now(),
       updatedAtMs: Date.now(),
     });

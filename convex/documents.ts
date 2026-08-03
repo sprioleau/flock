@@ -518,8 +518,9 @@ export const getDocumentByKey = query({
 });
 
 /**
- * Lean existence check for the web app's access-gate proxy (apps/web/src/proxy.ts):
- * a URL carrying a valid `?doc=<id>` passes the gate without the password.
+ * Lean existence check for a share link: does this `?doc=<id>` name a real
+ * draft? Its caller (the retired access-gate proxy) is gone; kept because the
+ * answer is cheap and a share-link surface may want it again.
  * Keyed by an UNTRUSTED string — malformed/foreign ids normalize to null and
  * return false rather than throwing. Exposes nothing beyond a boolean per id,
  * and the id is only guessable if you already hold it (the id IS the

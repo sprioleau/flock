@@ -22,6 +22,7 @@ import {
 } from "../apps/web/src/lib/brand-kit-reconcile";
 import type { Doc, Id } from "./_generated/dataModel";
 import { mutation, query, type MutationCtx, type QueryCtx } from "./_generated/server";
+import { resolveOwnerId } from "./authIdentity";
 import {
   collectRowStorageIds,
   getEffectiveRevision,
@@ -66,6 +67,14 @@ import { commitVersions, loadDocumentState, type CommitEntry } from "./model/ema
  * (`getBrandKitValidationErrors` from apps/web/src/lib/brand-kit.ts — the
  * single source of the completeness + WCAG ≥ 4.5:1 contrast rules). A kit
  * failing any guarded contrast pairing is NEVER stored.
+ *
+ * OWNERSHIP: every `sessionId` argument below is a CLAIM, not a credential —
+ * the presence roster publishes it to every collaborator in the room. Each
+ * public function resolves it through resolveOwnerId (convex/authIdentity.ts)
+ * and keys the row off the result, so a caller with a verified identity can
+ * only ever reach their own kit no matter what they send. The one exception is
+ * `applyBrandToDocuments`, whose `sessionId` is the undo-stack author id for
+ * the ops it commits, not an ownership key — see the note on that mutation.
  *
  * NOTE: the Phase 6.1 cleanup cron (convex/cleanup.ts) reaps stale DOCUMENTS
  * only; brandKits rows are session-keyed and NOT reaped yet (they're tiny).
@@ -222,20 +231,26 @@ function assertBrandKitIsValid(brandKit: BrandKitInput): void {
   }
 }
 
-/** All kit rows for a session (invariant: 0 or 1; defensive against dupes). */
-async function loadSessionBrandKitRows(ctx: MutationCtx, sessionId: string) {
+/**
+ * All kit rows for one OWNER (invariant: 0 or 1; defensive against dupes).
+ *
+ * `ownerId` is always the output of resolveOwnerId — never a raw `sessionId`
+ * argument. The brand kit is the single most valuable thing a leaked session
+ * id used to unlock, so this file has exactly one way in.
+ */
+async function loadOwnerBrandKitRows(ctx: MutationCtx, ownerId: string) {
   return ctx.db
     .query("brandKits")
-    .withIndex("by_sessionId", (q) => q.eq("sessionId", sessionId))
+    .withIndex("by_sessionId", (q) => q.eq("sessionId", ownerId))
     .collect();
 }
 
-/** The session's kit row, or a friendly ConvexError when none exists. */
-async function requireSessionBrandKitRow(
+/** The owner's kit row, or a friendly ConvexError when none exists. */
+async function requireOwnerBrandKitRow(
   ctx: MutationCtx,
-  sessionId: string,
+  ownerId: string,
 ): Promise<Doc<"brandKits">> {
-  const rows = await loadSessionBrandKitRows(ctx, sessionId);
+  const rows = await loadOwnerBrandKitRows(ctx, ownerId);
   if (rows.length === 0) {
     throw new ConvexError("No saved brand kit found — save a kit first.");
   }
@@ -277,9 +292,10 @@ export const getActiveBrandKit = query({
   args: { sessionId: v.string() },
   returns: v.union(v.null(), activeBrandKitValidator),
   handler: async (ctx, args) => {
+    const ownerId = await resolveOwnerId(ctx, { claimedSessionId: args.sessionId });
     const row = await ctx.db
       .query("brandKits")
-      .withIndex("by_sessionId", (q) => q.eq("sessionId", args.sessionId))
+      .withIndex("by_sessionId", (q) => q.eq("sessionId", ownerId))
       .order("desc")
       .first();
     if (row === null) {
@@ -314,12 +330,13 @@ export const saveBrandKit = mutation({
   },
   returns: saveBrandKitResultValidator,
   handler: async (ctx, args) => {
+    const ownerId = await resolveOwnerId(ctx, { claimedSessionId: args.sessionId });
     assertBrandKitIsValid(args.brandKit);
     const now = Date.now();
-    const existingRows = await loadSessionBrandKitRows(ctx, args.sessionId);
+    const existingRows = await loadOwnerBrandKitRows(ctx, ownerId);
     if (existingRows.length === 0) {
       await ctx.db.insert("brandKits", {
-        sessionId: args.sessionId,
+        sessionId: ownerId,
         ...args.brandKit,
         revision: 1,
         createdAtMs: now,
@@ -393,7 +410,8 @@ export const updateBrandColors = mutation({
   args: { sessionId: v.string(), colors: v.array(brandColorValidator) },
   returns: v.null(),
   handler: async (ctx, args) => {
-    const row = await requireSessionBrandKitRow(ctx, args.sessionId);
+    const ownerId = await resolveOwnerId(ctx, { claimedSessionId: args.sessionId });
+    const row = await requireOwnerBrandKitRow(ctx, ownerId);
     const colors = planBrandColorsUpdate({
       existing: row.colors,
       incoming: args.colors,
@@ -437,7 +455,8 @@ export const updateBrandToneOfVoice = mutation({
   },
   returns: v.null(),
   handler: async (ctx, args) => {
-    const row = await requireSessionBrandKitRow(ctx, args.sessionId);
+    const ownerId = await resolveOwnerId(ctx, { claimedSessionId: args.sessionId });
+    const row = await requireOwnerBrandKitRow(ctx, ownerId);
     if (args.toneOfVoice === null) {
       await ctx.db.patch(row._id, { toneOfVoice: undefined, updatedAtMs: Date.now() });
       return null;
@@ -472,11 +491,12 @@ export const renameBrandKit = mutation({
   args: { sessionId: v.string(), name: v.string() },
   returns: v.null(),
   handler: async (ctx, args) => {
+    const ownerId = await resolveOwnerId(ctx, { claimedSessionId: args.sessionId });
     const trimmedName = args.name.trim();
     if (trimmedName.length === 0) {
       throw new ConvexError("The brand kit name can't be empty.");
     }
-    const row = await requireSessionBrandKitRow(ctx, args.sessionId);
+    const row = await requireOwnerBrandKitRow(ctx, ownerId);
     await ctx.db.patch(row._id, { name: trimmedName, updatedAtMs: Date.now() });
     return null;
   },
@@ -501,7 +521,8 @@ export const confirmAsset = mutation({
   },
   returns: v.object({ url: v.string() }),
   handler: async (ctx, args) => {
-    const row = await requireSessionBrandKitRow(ctx, args.sessionId);
+    const ownerId = await resolveOwnerId(ctx, { claimedSessionId: args.sessionId });
+    const row = await requireOwnerBrandKitRow(ctx, ownerId);
     const currentUrl = args.kind === "logo" ? row.logoUrl : row.socialImageUrl;
     if (currentUrl !== args.expectedSourceUrl) {
       await ctx.storage.delete(args.storageId).catch(() => undefined);
@@ -535,7 +556,8 @@ export const removeBrandKitAsset = mutation({
   args: { sessionId: v.string(), kind: assetKindValidator },
   returns: v.null(),
   handler: async (ctx, args) => {
-    const row = await requireSessionBrandKitRow(ctx, args.sessionId);
+    const ownerId = await resolveOwnerId(ctx, { claimedSessionId: args.sessionId });
+    const row = await requireOwnerBrandKitRow(ctx, ownerId);
     const { patch, storageIdsToDelete } = planAssetRemovalPatch({ existing: row, kind: args.kind });
     await ctx.db.patch(row._id, { ...patch, updatedAtMs: Date.now() });
     await deleteStorageFilesUnlessRegistered(ctx, storageIdsToDelete);
@@ -552,7 +574,8 @@ export const clearBrandKit = mutation({
   args: { sessionId: v.string() },
   returns: v.null(),
   handler: async (ctx, args) => {
-    const existingRows = await loadSessionBrandKitRows(ctx, args.sessionId);
+    const ownerId = await resolveOwnerId(ctx, { claimedSessionId: args.sessionId });
+    const existingRows = await loadOwnerBrandKitRows(ctx, ownerId);
     for (const row of existingRows) {
       await deleteStorageFilesUnlessRegistered(ctx, collectRowStorageIds(row));
       await ctx.db.delete(row._id);
@@ -624,11 +647,12 @@ export const bindSessionKitToCanvas = mutation({
   args: { canvasId: v.id("canvases"), sessionId: v.string() },
   returns: v.object({ kitId: v.id("brandKits"), revision: v.number() }),
   handler: async (ctx, args) => {
+    const ownerId = await resolveOwnerId(ctx, { claimedSessionId: args.sessionId });
     const canvas = await ctx.db.get(args.canvasId);
     if (canvas === null) {
       throw new ConvexError("That canvas no longer exists.");
     }
-    const kitRow = await requireSessionBrandKitRow(ctx, args.sessionId);
+    const kitRow = await requireOwnerBrandKitRow(ctx, ownerId);
     const revision = getEffectiveRevision(kitRow);
     await ctx.db.patch(canvas._id, {
       brandKitId: kitRow._id,
@@ -885,7 +909,17 @@ export const applyBrandToDocuments = mutation({
     canvasId: v.id("canvases"),
     /** Explicit list — exactly the drafts the user confirmed in the prompt. */
     documentIds: v.array(v.id("documents")),
-    /** The confirming author; the per-draft batches land in their undo stack. */
+    /**
+     * The confirming author; the per-draft batches land in their undo stack.
+     *
+     * DELIBERATELY NOT resolved through resolveOwnerId. This is not an
+     * ownership key — it is `operations.authorId`, which scopes per-browser
+     * undo/redo and is explicitly not migrated when an anonymous user claims
+     * an account (implementation notes §3.3). Swapping it for the verified
+     * identity would leave the user unable to undo their own restyle. The
+     * canvas the ops land on is capability-scoped by its id, exactly like the
+     * rest of documents.ts.
+     */
     sessionId: v.string(),
   },
   returns: applyBrandResultValidator,

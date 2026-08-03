@@ -9,11 +9,9 @@ import type { Auth } from "convex/server";
  * SUPPLIED string and trusted it. That would be tolerable if the id were a
  * secret, but the app hands it out — the presence roster publishes every
  * collaborator's `userId` (= their session id) to everyone in the room
- * (apps/web/src/lib/presence.tsx:295, convex/presence.ts:86–93) and comment
- * rows return author session ids to every capability holder
- * (convex/comments.ts:73). Anyone who opened a shared link with you could
- * therefore read and MUTATE your brand kit, asset library, saved sections and
- * persona copies.
+ * (apps/web/src/lib/presence.tsx:316, convex/presence.ts:50–56). Anyone who
+ * opened a shared link with you could therefore read and MUTATE your brand
+ * kit, asset library, saved sections and persona copies.
  *
  * The fix is not to hide the id. It is to stop it being a credential:
  *
@@ -33,13 +31,45 @@ import type { Auth } from "convex/server";
  * CLOSING THE HOLE COMPLETELY is one env var: set FLOCK_REQUIRE_AUTH_IDENTITY
  * to "true" on the Convex deployment and the fallback disappears — an
  * unauthenticated caller can no longer name an owner at all, so a leaked
- * session id is inert. Flip it once anonymous sign-in has been verified live;
- * see docs/proposals/better-auth-implementation-notes.md for the exact order.
+ * session id is inert.
+ *
+ * READ THE ORDER BEFORE FLIPPING ANYTHING. The two flags are not independent,
+ * and there is a third prerequisite that is easy to miss:
+ *
+ *   1. Adopt this function everywhere (done — assets, brandKits, comments,
+ *      personas, savedSections, authCredits). Safe with auth off: no caller
+ *      has an identity, so every call takes the fallback and behaves exactly
+ *      as before.
+ *   2. TEACH THE SERVER ROUTES TO AUTHENTICATE. Several Next route handlers
+ *      call Convex on the user's behalf through a bare `ConvexHttpClient` that
+ *      carries no token (`/api/brand-kit/confirm-asset`, `/api/chat/*`,
+ *      `/api/library/import-image`, `/api/generate-image`,
+ *      `/api/saved-sections/enrich`, `lib/content-ingestion/rehost-image`).
+ *      They forward the browser's `sessionId` as a plain argument. The moment
+ *      identity exists, the browser writes under its user id while those
+ *      routes write under the legacy UUID — generated images stop appearing in
+ *      the library, the agent loses brand context, enrichment fails the
+ *      ownership check. Each needs `client.setAuth(await getToken())`
+ *      (apps/web/src/lib/auth/auth-server.ts) BEFORE step 3.
+ *   3. NEXT_PUBLIC_FLOCK_AUTH_ENABLED=true. Identity starts existing.
+ *   4. FLOCK_REQUIRE_AUTH_IDENTITY=true. The fallback is gone; the hole is
+ *      shut. Rows still keyed to a pre-auth localStorage UUID become
+ *      unreachable until an operator re-keys them with
+ *      `authMigration:adoptLegacySessionData`.
+ *
+ * Step 4 without step 3 bricks the app: every session-scoped mutation would
+ * refuse, because nobody is signed in. Step 3 without step 2 breaks every
+ * server-mediated feature. There is NO setting in which the hole is shut while
+ * auth is off — with auth off, the only thing distinguishing two users is a
+ * string the server itself handed to both of them.
  *
  * WHAT THIS IS DELIBERATELY NOT USED FOR: documents and canvases. The doc URL
  * is the capability (convex/documents.ts:36–40) and the multiplayer demo
  * requires zero accounts. Adding identity to document read/write would break
- * share-by-link, which is the product. Ownership ≠ access.
+ * share-by-link, which is the product. Ownership ≠ access. The same exemption
+ * covers `operations.authorId` — that is undo-stack provenance scoped to a
+ * browser, deliberately not migrated at link time (implementation notes §3.3),
+ * so `brandKits.applyBrandToDocuments` still passes the client's own id there.
  */
 
 /** Convex ctx shapes that carry a verified identity (query, mutation, action). */
@@ -55,6 +85,31 @@ function isStrictIdentityRequired(): boolean {
 }
 
 /**
+ * The authoritative owner id, or null when the caller cannot name one.
+ *
+ * For callers whose session id is optional (listings that degrade to a
+ * built-in set) and for server-side work that has nothing to fall back on.
+ * `resolveOwnerId` is the same resolution with a friendly refusal instead of
+ * a null.
+ */
+export async function resolveOwnerIdOrNull(
+  ctx: AuthedCtx,
+  args?: { claimedSessionId?: string },
+): Promise<string | null> {
+  const identity = await ctx.auth.getUserIdentity();
+  if (identity !== null) {
+    return identity.subject;
+  }
+  if (isStrictIdentityRequired()) {
+    return null;
+  }
+  // Verbatim, including the empty string: `credits.ts` sends "" when a caller
+  // has no mirrored session cookie, and pooling those into one bucket is the
+  // pre-auth behavior. Only a caller with NO claim at all resolves to null.
+  return args?.claimedSessionId ?? null;
+}
+
+/**
  * The authoritative owner id for the calling user.
  *
  * Pass the client's `sessionId` argument as `claimedSessionId`; it is used ONLY
@@ -64,47 +119,11 @@ export async function resolveOwnerId(
   ctx: AuthedCtx,
   args: { claimedSessionId: string },
 ): Promise<string> {
-  const identity = await ctx.auth.getUserIdentity();
-  if (identity !== null) {
-    return identity.subject;
-  }
-  if (isStrictIdentityRequired()) {
+  const ownerId = await resolveOwnerIdOrNull(ctx, args);
+  if (ownerId === null) {
     throw new ConvexError(
       "You're signed out, so we can't tell whose library this is. Reload the page and try again.",
     );
   }
-  return args.claimedSessionId;
-}
-
-/**
- * Same resolution, but for callers that have no claimed id to fall back on
- * (server routes, background work). Returns null instead of guessing.
- */
-export async function resolveOwnerIdOrNull(ctx: AuthedCtx): Promise<string | null> {
-  const identity = await ctx.auth.getUserIdentity();
-  return identity === null ? null : identity.subject;
-}
-
-/**
- * Every owner id a caller may legitimately read under, newest key first.
- *
- * READS are widened where WRITES are narrowed: during the roll-out window an
- * authenticated browser still has un-migrated rows under its old localStorage
- * id, and a "your brand kit vanished" regression is worse than a read of data
- * the caller could already read a moment ago. Reads of another user's rows via
- * a guessed id were always possible and remain no worse; writes are what this
- * change locks down. In strict mode the claimed id is dropped here too.
- */
-export async function resolveReadableOwnerIds(
-  ctx: AuthedCtx,
-  args: { claimedSessionId: string },
-): Promise<string[]> {
-  const identity = await ctx.auth.getUserIdentity();
-  if (identity === null) {
-    return isStrictIdentityRequired() ? [] : [args.claimedSessionId];
-  }
-  if (isStrictIdentityRequired() || identity.subject === args.claimedSessionId) {
-    return [identity.subject];
-  }
-  return [identity.subject, args.claimedSessionId];
+  return ownerId;
 }

@@ -1,6 +1,7 @@
 import { v } from "convex/values";
 import type { Doc, Id } from "./_generated/dataModel";
 import { mutation, query, type MutationCtx, type QueryCtx } from "./_generated/server";
+import { resolveOwnerId, resolveOwnerIdOrNull } from "./authIdentity";
 import { presence } from "./presence";
 
 /**
@@ -21,6 +22,12 @@ import { presence } from "./presence";
  * around its lifecycle (idle → reading → thinking → idle). When the client
  * stops heartbeating (persona disabled, tab closed) the avatar drops off the
  * facepile naturally ~2.5× the interval later — no disconnect bookkeeping.
+ *
+ * OWNERSHIP: a session's persona copies are keyed by `createdBySessionId` and
+ * namespaced into their slug (`user/<ownerId>/<base>`). Both come from
+ * resolveOwnerId (convex/authIdentity.ts), never from the raw `sessionId`
+ * argument — the presence roster publishes that id to every collaborator, so
+ * trusting it would let anyone in the room edit or delete your personas.
  */
 
 /**
@@ -328,24 +335,24 @@ function validatePersonaMarkdown(personaMarkdown: string): string | null {
 }
 
 /**
- * THE copy-slug convention (single source of truth): a session's copy of
- * `builtin/<base>` is `user/<sessionId>/<base>`. Deterministic, namespaced
- * (§4.6 invariant 2), and slug-unique per (session, built-in) — so editing
+ * THE copy-slug convention (single source of truth): an owner's copy of
+ * `builtin/<base>` is `user/<ownerId>/<base>`. Deterministic, namespaced
+ * (§4.6 invariant 2), and slug-unique per (owner, built-in) — so editing
  * a built-in twice updates the same copy instead of forking again.
  */
-function buildSessionCopySlug({
-  sessionId,
+function buildOwnerCopySlug({
+  ownerId,
   builtInSlug,
 }: {
-  sessionId: string;
+  ownerId: string;
   builtInSlug: string;
 }): string {
   const baseName = builtInSlug.slice(builtInSlug.indexOf("/") + 1);
-  return `user/${sessionId}/${baseName}`;
+  return `user/${ownerId}/${baseName}`;
 }
 
 /**
- * The built-in slug a session copy shadows (inverse of buildSessionCopySlug),
+ * The built-in slug a session copy shadows (inverse of buildOwnerCopySlug),
  * or null when the row is not a copy of a built-in. Pure namespace mechanics
  * — no behavior ever branches on a SPECIFIC slug (§4.6 invariant 1).
  */
@@ -389,6 +396,7 @@ export const updatePersonaMarkdown = mutation({
   },
   returns: v.object({ savedSlug: v.string() }),
   handler: async (ctx, args) => {
+    const ownerId = await resolveOwnerId(ctx, { claimedSessionId: args.sessionId });
     const validationError = validatePersonaMarkdown(args.personaMarkdown);
     if (validationError !== null) {
       throw new Error(validationError);
@@ -422,7 +430,7 @@ export const updatePersonaMarkdown = mutation({
 
     // A user copy: edit in place (owner only).
     if (row.isBuiltIn === false) {
-      if (row.createdBySessionId !== args.sessionId) {
+      if (row.createdBySessionId !== ownerId) {
         throw new Error("This persona belongs to a different session.");
       }
       await ctx.db.patch(row._id, {
@@ -434,8 +442,8 @@ export const updatePersonaMarkdown = mutation({
     }
 
     // A built-in: fork (or update) the session's shadowing copy.
-    const copySlug = buildSessionCopySlug({
-      sessionId: args.sessionId,
+    const copySlug = buildOwnerCopySlug({
+      ownerId,
       builtInSlug: row.slug,
     });
     const existingCopy = await findPersonaBySlug(ctx, copySlug);
@@ -456,7 +464,7 @@ export const updatePersonaMarkdown = mutation({
       cooldownSeconds: row.cooldownSeconds,
       ...typedFieldChanges,
       isBuiltIn: false,
-      createdBySessionId: args.sessionId,
+      createdBySessionId: ownerId,
       createdAtMs: nowMs,
       updatedAtMs: nowMs,
     });
@@ -475,11 +483,12 @@ export const resetPersonaToBuiltIn = mutation({
   args: { slug: v.string(), sessionId: v.string() },
   returns: v.object({ builtInSlug: v.string() }),
   handler: async (ctx, args) => {
+    const ownerId = await resolveOwnerId(ctx, { claimedSessionId: args.sessionId });
     const row = await findPersonaBySlug(ctx, args.slug);
     if (row === null) {
       throw new Error(`No persona is registered under "${args.slug}".`);
     }
-    if (row.isBuiltIn !== false || row.createdBySessionId !== args.sessionId) {
+    if (row.isBuiltIn !== false || row.createdBySessionId !== ownerId) {
       throw new Error("Only this session's customized personas can be reset.");
     }
     const builtInSlug = getShadowedBuiltInSlug(row);
@@ -527,15 +536,15 @@ function slugifyPersonaName(name: string): string {
 }
 
 /**
- * First free `user/<sessionId>/<base>` slug for a created persona, suffixing
+ * First free `user/<ownerId>/<base>` slug for a created persona, suffixing
  * on collision ("…/reviewer", "…/reviewer-2", …). A base that matches a
- * built-in's base is ALSO a collision: `user/<sessionId>/<builtInBase>` is
- * the copy-slug convention (buildSessionCopySlug), and a created persona
- * squatting on it would shadow the built-in in this session's picker.
+ * built-in's base is ALSO a collision: `user/<ownerId>/<builtInBase>` is
+ * the copy-slug convention (buildOwnerCopySlug), and a created persona
+ * squatting on it would shadow the built-in in this owner's picker.
  */
 async function findAvailableCreatedPersonaSlug(
   ctx: MutationCtx,
-  { sessionId, name }: { sessionId: string; name: string },
+  { ownerId, name }: { ownerId: string; name: string },
 ): Promise<string> {
   const baseName = slugifyPersonaName(name);
   // Check the fixture list, not just seeded rows — the seed may not have run.
@@ -552,7 +561,7 @@ async function findAvailableCreatedPersonaSlug(
     if (isBuiltInSlugTaken) {
       continue;
     }
-    const candidateSlug = `user/${sessionId}/${candidateBase}`;
+    const candidateSlug = `user/${ownerId}/${candidateBase}`;
     if ((await findPersonaBySlug(ctx, candidateSlug)) === null) {
       return candidateSlug;
     }
@@ -579,6 +588,7 @@ export const createPersona = mutation({
   },
   returns: v.object({ slug: v.string() }),
   handler: async (ctx, args) => {
+    const ownerId = await resolveOwnerId(ctx, { claimedSessionId: args.sessionId });
     const validationError = validatePersonaMarkdown(args.personaMarkdown);
     if (validationError !== null) {
       throw new Error(validationError);
@@ -600,7 +610,7 @@ export const createPersona = mutation({
     }
     const sessionRows = await ctx.db
       .query("agents")
-      .withIndex("by_createdBySessionId", (q) => q.eq("createdBySessionId", args.sessionId))
+      .withIndex("by_createdBySessionId", (q) => q.eq("createdBySessionId", ownerId))
       .take(MAX_CREATED_PERSONAS_PER_SESSION + 1);
     if (sessionRows.length > MAX_CREATED_PERSONAS_PER_SESSION) {
       throw new Error(
@@ -608,7 +618,7 @@ export const createPersona = mutation({
       );
     }
     const slug = await findAvailableCreatedPersonaSlug(ctx, {
-      sessionId: args.sessionId,
+      ownerId,
       name: trimmedName,
     });
     const nowMs = Date.now();
@@ -620,7 +630,7 @@ export const createPersona = mutation({
       personaMarkdown: args.personaMarkdown,
       cooldownSeconds: args.cooldownSeconds,
       isBuiltIn: false,
-      createdBySessionId: args.sessionId,
+      createdBySessionId: ownerId,
       createdAtMs: nowMs,
       updatedAtMs: nowMs,
     });
@@ -638,6 +648,7 @@ export const deletePersona = mutation({
   args: { slug: v.string(), sessionId: v.string() },
   returns: v.null(),
   handler: async (ctx, args) => {
+    const ownerId = await resolveOwnerId(ctx, { claimedSessionId: args.sessionId });
     const row = await findPersonaBySlug(ctx, args.slug);
     if (row === null) {
       throw new Error(`No persona is registered under "${args.slug}".`);
@@ -645,7 +656,7 @@ export const deletePersona = mutation({
     if (row.isBuiltIn !== false) {
       throw new Error("Built-in agents cannot be deleted.");
     }
-    if (row.createdBySessionId !== args.sessionId) {
+    if (row.createdBySessionId !== ownerId) {
       throw new Error("This persona belongs to a different session.");
     }
     await ctx.db.delete(row._id);
@@ -713,18 +724,21 @@ export const listPersonas = query({
   args: { sessionId: v.optional(v.string()) },
   returns: v.array(personaPayloadValidator),
   handler: async (ctx, args) => {
+    // Optional by design: a caller with neither an identity nor a claimed id
+    // (and every caller at all in strict mode) simply gets the built-ins.
+    const ownerId = await resolveOwnerIdOrNull(ctx, { claimedSessionId: args.sessionId });
     const allRows = await ctx.db
       .query("agents")
       .withIndex("by_slug")
       .take(MAX_LISTED_PERSONAS);
     const builtIns = allRows.filter((row) => row.isBuiltIn !== false);
     const sessionCopies =
-      args.sessionId === undefined
+      ownerId === null
         ? []
         : await ctx.db
             .query("agents")
             .withIndex("by_createdBySessionId", (q) =>
-              q.eq("createdBySessionId", args.sessionId),
+              q.eq("createdBySessionId", ownerId),
             )
             .take(MAX_LISTED_PERSONAS);
     const builtInSlugs = new Set(builtIns.map((row) => row.slug));

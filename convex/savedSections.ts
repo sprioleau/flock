@@ -1,6 +1,7 @@
 import { ConvexError, v } from "convex/values";
 import { mutation, query, type MutationCtx } from "./_generated/server";
 import type { Doc, Id } from "./_generated/dataModel";
+import { resolveOwnerId } from "./authIdentity";
 import {
   ENRICHMENT_TEXT_CAPS,
   MAX_SAVED_SECTIONS_LISTED_PER_SESSION,
@@ -20,6 +21,10 @@ import {
  * duplicate-block pattern — so a saved section can be inserted into any
  * document any number of times without id collisions, and the stored row
  * never needs rewriting.
+ *
+ * OWNERSHIP: `sessionId` is a claim, not a credential. Every read and write
+ * here is keyed by resolveOwnerId (convex/authIdentity.ts), which prefers the
+ * caller's verified identity and ignores the argument once one exists.
  */
 
 const savedSectionRowValidator = v.object({
@@ -37,16 +42,21 @@ const savedSectionRowValidator = v.object({
   updatedAtMs: v.number(),
 });
 
-/** Load a row and require that `sessionId` owns it (shared by all row ops). */
+/**
+ * Load a row and require that the CALLER owns it (shared by all row ops).
+ * Takes the claimed session id and resolves it — never trust the argument on
+ * its own.
+ */
 async function requireOwnedRow(
   ctx: MutationCtx,
   args: { sessionId: string; savedSectionId: Id<"savedSections"> },
 ): Promise<Doc<"savedSections">> {
+  const ownerId = await resolveOwnerId(ctx, { claimedSessionId: args.sessionId });
   const row = await ctx.db.get(args.savedSectionId);
   if (row === null) {
     throw new ConvexError("That saved section no longer exists.");
   }
-  if (row.sessionId !== args.sessionId) {
+  if (row.sessionId !== ownerId) {
     throw new ConvexError("That saved section belongs to a different session.");
   }
   return row;
@@ -67,13 +77,14 @@ export const save = mutation({
   },
   returns: v.object({ savedSectionId: v.id("savedSections") }),
   handler: async (ctx, args) => {
+    const ownerId = await resolveOwnerId(ctx, { claimedSessionId: args.sessionId });
     const validation = validateSavedSectionSubtree(args.blocks);
     if (!validation.isValid) {
       throw new ConvexError(validation.message);
     }
     const nowMs = Date.now();
     const savedSectionId = await ctx.db.insert("savedSections", {
-      sessionId: args.sessionId,
+      sessionId: ownerId,
       name: seedSavedSectionName(args.name),
       blocks: args.blocks,
       blockCount: args.blocks.length,
@@ -93,9 +104,10 @@ export const listForSession = query({
   args: { sessionId: v.string() },
   returns: v.array(savedSectionRowValidator),
   handler: async (ctx, args) => {
+    const ownerId = await resolveOwnerId(ctx, { claimedSessionId: args.sessionId });
     return await ctx.db
       .query("savedSections")
-      .withIndex("by_sessionId", (q) => q.eq("sessionId", args.sessionId))
+      .withIndex("by_sessionId", (q) => q.eq("sessionId", ownerId))
       .order("desc")
       .take(MAX_SAVED_SECTIONS_LISTED_PER_SESSION);
   },
@@ -106,8 +118,9 @@ export const getForSession = query({
   args: { sessionId: v.string(), savedSectionId: v.id("savedSections") },
   returns: v.union(savedSectionRowValidator, v.null()),
   handler: async (ctx, args) => {
+    const ownerId = await resolveOwnerId(ctx, { claimedSessionId: args.sessionId });
     const row = await ctx.db.get(args.savedSectionId);
-    if (row === null || row.sessionId !== args.sessionId) {
+    if (row === null || row.sessionId !== ownerId) {
       return null;
     }
     return row;
@@ -179,11 +192,12 @@ export const remove = mutation({
   args: { sessionId: v.string(), savedSectionId: v.id("savedSections") },
   returns: v.null(),
   handler: async (ctx, args) => {
+    const ownerId = await resolveOwnerId(ctx, { claimedSessionId: args.sessionId });
     const row = await ctx.db.get(args.savedSectionId);
     if (row === null) {
       return null; // already gone — deletes are idempotent
     }
-    if (row.sessionId !== args.sessionId) {
+    if (row.sessionId !== ownerId) {
       throw new ConvexError("That saved section belongs to a different session.");
     }
     await ctx.db.delete(args.savedSectionId);

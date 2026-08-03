@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import type { Id } from "@convex/_generated/dataModel";
 import type { CommentThread } from "./comment-context";
 import {
   buildFixAllCommentsPrompt,
@@ -15,10 +16,9 @@ function makeComment(overrides: {
   texts: Array<{ authorKind: "user" | "agent"; text: string }>;
 }): CommentThread {
   return {
-    commentId: "c1",
-    canvasId: "canvas1",
-    documentId: "doc1",
-    sessionId: "session1",
+    commentId: "c1" as Id<"comments">,
+    canvasId: "canvas1" as Id<"canvases">,
+    documentId: "doc1" as Id<"documents">,
     anchor: { blockId: overrides.blockId === undefined ? "btn_t9u0" : overrides.blockId, x: 0.5, y: 0.5 },
     context: {
       draftName: "Draft 1",

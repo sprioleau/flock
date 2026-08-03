@@ -1,5 +1,6 @@
 import { ConvexError, v } from "convex/values";
 import { mutation, query } from "./_generated/server";
+import { resolveOwnerId } from "./authIdentity";
 import {
   assetKindValidator,
   MAX_ASSETS_LISTED_PER_SESSION,
@@ -25,6 +26,10 @@ import {
  *
  * Ownership consequence: the document-deletion cascade RETAINS registered
  * files (model/cleanup.ts) — a registered asset outlives its drafts.
+ *
+ * OWNERSHIP: `sessionId` is a claim, not a credential. Every row here is keyed
+ * by resolveOwnerId (convex/authIdentity.ts), which prefers the caller's
+ * verified identity and ignores the argument entirely once one exists.
  */
 
 const assetRowValidator = v.object({
@@ -66,6 +71,7 @@ export const register = mutation({
   },
   returns: v.object({ assetId: v.id("assets"), url: v.string() }),
   handler: async (ctx, args) => {
+    const ownerId = await resolveOwnerId(ctx, { claimedSessionId: args.sessionId });
     const existingRow = await ctx.db
       .query("assets")
       .withIndex("by_storageId", (q) => q.eq("storageId", args.storageId))
@@ -85,7 +91,7 @@ export const register = mutation({
     const trimmedAlt = args.alt?.trim() ?? "";
     const trimmedSourceUrl = args.sourceUrl?.trim() ?? "";
     const assetId = await ctx.db.insert("assets", {
-      sessionId: args.sessionId,
+      sessionId: ownerId,
       storageId: args.storageId,
       url,
       kind: args.kind,
@@ -111,9 +117,10 @@ export const listForSession = query({
   args: { sessionId: v.string() },
   returns: v.array(assetRowValidator),
   handler: async (ctx, args) => {
+    const ownerId = await resolveOwnerId(ctx, { claimedSessionId: args.sessionId });
     return await ctx.db
       .query("assets")
-      .withIndex("by_sessionId", (q) => q.eq("sessionId", args.sessionId))
+      .withIndex("by_sessionId", (q) => q.eq("sessionId", ownerId))
       .order("desc")
       .take(MAX_ASSETS_LISTED_PER_SESSION);
   },
