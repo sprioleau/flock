@@ -234,6 +234,13 @@ export interface EditorToolOutput {
   status: "dispatched";
   command: EditorCommand;
   /**
+   * A short model-facing sentence about what happened, for commands whose
+   * echoed payload is deliberately trimmed (a composed createDraft's plan is
+   * several whole emails — the client gets it on the data part, the model gets
+   * this instead of paying for it again on every continuation round).
+   */
+  note?: string;
+  /**
    * Phase 8.1: present only when the command was an executed sendTestEmail —
    * the Resend message id of the real send. The model quotes it when
    * confirming; failed sends never produce an output (the tool call errors

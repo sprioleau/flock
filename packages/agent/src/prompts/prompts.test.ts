@@ -50,10 +50,22 @@ describe("SYSTEM_STATIC (layer a — cacheable)", () => {
     );
     expect(SYSTEM_STATIC).toContain("never set colors, fonts, or padding on scaffolded sections");
     // Compose-new-email flows are steered to catalog composition too: a whole
-    // email is built from catalog sections chosen by their useWhen lines.
+    // email is built from catalog sections chosen by their useWhen lines —
+    // scoped to the draft on screen, so "a new draft" is not read as licence
+    // to rebuild this one.
     expect(SYSTEM_STATIC).toMatch(
-      /build a whole NEW email, compose it from catalog sections[\s\S]*chosen by its useWhen line/,
+      /build a whole NEW email IN THE DRAFT THE USER IS ON[\s\S]*chosen by its useWhen line/,
     );
+  });
+
+  it("teaches that editing operations reach only the draft on the canvas", () => {
+    expect(SYSTEM_STATIC).toContain("## The draft you are editing is not the only draft");
+    // The rule that prevents the reported failure: a request for a NEW draft
+    // must never be satisfied by emptying and rebuilding the current one.
+    expect(SYSTEM_STATIC).toMatch(
+      /asks for a NEW draft[\s\S]*do not empty the draft in front of them and rebuild it/,
+    );
+    expect(SYSTEM_STATIC).toContain("createDraft");
   });
 
   it("teaches per-section streaming for multi-section composition", () => {
@@ -116,13 +128,41 @@ describe("buildToolGuidance (layer b — cacheable per registry)", () => {
     expect(contentOnlyGuidance).not.toContain("## What you can do");
   });
 
+  it("routes new-draft requests to createDraft instead of rebuilding in place", () => {
+    expect(guidance).toContain("## Making a new draft (createDraft)");
+    // The three things that were unexpressible before the plan existed:
+    // don't touch the current draft, compose a whole email, keep the theme.
+    expect(guidance).toContain(
+      "NEVER clear, delete, or rewrite the draft on screen to make a new idea fit",
+    );
+    expect(guidance).toMatch(/header, one or more body sections[\s\S]*and a footer/);
+    expect(guidance).toContain("keep the theme the user already applied");
+    expect(guidance).toContain("carried over from the draft the user is on");
+    // Real variation for open-ended "explore ideas" asks.
+    expect(guidance).toMatch(
+      /make them genuinely different from each other[\s\S]*a plain hero in one, a split hero in another/,
+    );
+    expect(guidance).toContain("Never name the tool.");
+  });
+
+  it("omits the new-draft workflow for a registry without createDraft", () => {
+    const contentOnlyGuidance = buildToolGuidance(createActionRegistry([...contentEmailActions]));
+    expect(contentOnlyGuidance).not.toContain("## Making a new draft");
+  });
+
   it("lists the compact section catalog: one id + useWhen line per template", () => {
     expect(guidance).toContain("## Section catalog (scaffoldSection templateId values)");
     for (const template of SECTION_TEMPLATES) {
       expect(guidance).toContain(`- ${template.id} — ${template.useWhen}`);
     }
-    // Compact contract: exactly one line per template, nothing more.
-    const listing = guidance.slice(guidance.indexOf("## Section catalog"));
+    // Compact contract: exactly one line per template, nothing more. Bounded
+    // at the next heading — later sections carry bullet lists of their own.
+    const listingStart = guidance.indexOf("## Section catalog");
+    const nextHeading = guidance.indexOf("\n## ", listingStart + 1);
+    const listing = guidance.slice(
+      listingStart,
+      nextHeading === -1 ? undefined : nextHeading,
+    );
     const listingLines = listing.split("\n").filter((line) => line.startsWith("- "));
     expect(listingLines).toHaveLength(SECTION_TEMPLATES.length);
   });

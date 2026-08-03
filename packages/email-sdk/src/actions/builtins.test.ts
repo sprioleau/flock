@@ -344,7 +344,13 @@ describe("emailActionRegistry", () => {
     });
     expect(withDefault.isOk).toBe(true);
     if (!withDefault.isOk) return;
-    expect(withDefault.command).toEqual({ type: "createDraft", count: 1 });
+    // The bare form is unchanged apart from the resolved theme flag: one
+    // empty starter draft, no composition plan.
+    expect(withDefault.command).toEqual({
+      type: "createDraft",
+      count: 1,
+      shouldInheritTheme: true,
+    });
 
     const overCap = dispatchEditorAction({
       registry: emailActionRegistry,

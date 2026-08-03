@@ -438,3 +438,21 @@ export type {
   ResolveScaffoldSectionOperationInput,
   ResolveScaffoldSectionResult,
 } from "./actions/scaffold-section";
+
+// --- Actions: createDraft composition — plan → a whole new email (actions/compose-draft) --------
+export {
+  MAX_DRAFT_PLAN_SECTIONS,
+  DRAFT_NAME_MAX_LENGTH,
+  resolveCreateDraftCommand,
+  deriveDraftContentClues,
+  completeDraftSections,
+  diversifyDraftSections,
+  buildComposedDrafts,
+} from "./actions/compose-draft";
+export type {
+  DraftPlan,
+  DraftSectionPlan,
+  DraftContentClues,
+  ComposedDraft,
+  BuildComposedDraftsInput,
+} from "./actions/compose-draft";

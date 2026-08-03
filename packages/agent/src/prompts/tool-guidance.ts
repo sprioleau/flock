@@ -61,8 +61,36 @@ export function buildToolGuidance(registry: EmailActionRegistry): string {
   const hasOpenPanelTool = registry.actionsByName.has("openPanel");
   const capabilitySummary = hasOpenPanelTool ? `\n\n${CAPABILITY_SUMMARY}` : "";
   const widgetGuidance = hasWidgetTools ? `\n\n${WIDGET_GUIDANCE}` : "";
-  return `## Available tools\n\n${catalogHint}${lines.join("\n")}${sectionCatalogListing}${webContentWorkflow}${personHighlightWorkflow}${capabilitySummary}${widgetGuidance}`;
+  // New-draft routing: the rule that keeps "make me another version" from
+  // becoming "wipe and rebuild the draft on screen". Only advertised while
+  // createDraft is registered. Constant text — cache-stable.
+  const hasCreateDraftTool = registry.actionsByName.has("createDraft");
+  const draftCompositionWorkflow = hasCreateDraftTool ? `\n\n${DRAFT_COMPOSITION_WORKFLOW}` : "";
+  return `## Available tools\n\n${catalogHint}${lines.join("\n")}${sectionCatalogListing}${webContentWorkflow}${personHighlightWorkflow}${draftCompositionWorkflow}${capabilitySummary}${widgetGuidance}`;
 }
+
+/**
+ * The §10.2 new-draft rules. The failure this exists to prevent: asked for a
+ * new draft, the model reaches for the tools that can carry content
+ * (addSection / updateText / removeBlock), which all act on the draft ON
+ * SCREEN — so the user's work is cleared and rebuilt in place instead of a new
+ * draft appearing beside it. createDraft now carries content, so the routing
+ * rule below is expressible; this text is what makes the model take it.
+ *
+ * Constant text so the cached prefix stays byte-identical. Appended only when
+ * createDraft is registered (see buildToolGuidance).
+ */
+const DRAFT_COMPOSITION_WORKFLOW = `## Making a new draft (createDraft)
+
+The drafts bar can hold several drafts of the same email side by side. A new draft is created with createDraft — every other tool you have edits the ONE draft currently on the canvas.
+
+- When the user asks for a new draft, another version, a different take, options to compare, or ideas to explore, call createDraft with a \`drafts\` plan. NEVER clear, delete, or rewrite the draft on screen to make a new idea fit — their existing content stays exactly as it is unless they explicitly asked you to replace it.
+- Each entry in \`drafts\` is one complete email: give it a short user-facing name and its sections in reading order — a header, one or more body sections (hero, feature columns, article, call to action, testimonial, gallery, stats…), and a footer. A missing header, body, or footer is filled in for you, but plan the whole email deliberately.
+- Write real copy in the section params, drawn from what the current draft is about: its subject, its audience, its product, its offer, its calls to action. Anything you leave out is carried over from the draft the user is on — so leave a field out when the current wording should carry over, and set it when this draft should say something new.
+- The new drafts keep the theme the user already applied. Only pass shouldInheritTheme: false if they asked for a clean, unstyled start; to change the theme itself, ask them or open the theme picker.
+- Asked for several ideas at once, put them all in ONE createDraft call and make them genuinely different from each other — different section order, different templates (a plain hero in one, a split hero in another), different copy and imagery — while keeping the essence of the email the same. Do not send the same layout N times.
+- Use the bare \`count\` form ONLY when the user explicitly asked for blank drafts to fill in themselves.
+- After creating drafts, tell the user in plain language what each one is and that they can open it from the drafts bar. Never name the tool.`;
 
 /**
  * One cache-stable paragraph summarizing the agent's capability CATEGORIES,
@@ -71,7 +99,7 @@ export function buildToolGuidance(registry: EmailActionRegistry): string {
  */
 const CAPABILITY_SUMMARY = `## What you can do (capability summary)
 
-Beyond answering questions about this email, you can act on it and on the editor itself: edit the email's content, structure, and styling; generate AI images into image blocks; send a test email (with the user's approval); switch the canvas between desktop and mobile preview; open the editor's panels for the user — theme picker, brand kit, asset library, agent personas, recommendations history, version history, the blocks and properties tabs, and the send-test dialog; undo and redo changes; restore an earlier version from the history (with the user's approval); create new drafts in the drafts bar; and create advisory reviewer personas. When the user asks what you can do, summarize these capabilities in plain language — never list internal tool names.`;
+Beyond answering questions about this email, you can act on it and on the editor itself: edit the email's content, structure, and styling; generate AI images into image blocks; send a test email (with the user's approval); switch the canvas between desktop and mobile preview; open the editor's panels for the user — theme picker, brand kit, asset library, agent personas, recommendations history, version history, the blocks and properties tabs, and the send-test dialog; undo and redo changes; restore an earlier version from the history (with the user's approval); create new drafts in the drafts bar — whole ready-to-send emails, several at once when the user wants ideas to compare; and create advisory reviewer personas. When the user asks what you can do, summarize these capabilities in plain language — never list internal tool names.`;
 
 /**
  * The §7.4 faithfulness rules as model guidance — constant text so the cached

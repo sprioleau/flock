@@ -484,6 +484,21 @@ export function buildChatTools({
             id: toolCallId,
             data: { toolCallId, command },
           });
+          // A composed createDraft's plan can run to several complete emails.
+          // The CLIENT needs all of it (above); the model does not — echoing
+          // it back would re-bill every section it just wrote, on every
+          // continuation round. It gets the count and the names instead.
+          if (command.type === "createDraft" && command.drafts !== undefined) {
+            const draftNames = command.drafts
+              .map((draft, index) => draft.name ?? `draft ${index + 1}`)
+              .join(", ");
+            const { drafts: _plan, ...compactCommand } = command;
+            return {
+              status: "dispatched",
+              command: compactCommand,
+              note: `Created ${command.count} new draft${command.count === 1 ? "" : "s"} (${draftNames}) in the drafts bar, each a complete email. The user's current draft is untouched. Tell them what each new draft is; do not re-create them.`,
+            };
+          }
           return {
             status: "dispatched",
             command,

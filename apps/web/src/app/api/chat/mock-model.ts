@@ -143,6 +143,60 @@ const MOCK_COUNT_WORDS: Readonly<Record<string, number>> = {
 };
 
 /**
+ * The createDraft composition script: section shapes the mock cycles through
+ * so several drafts in one call differ the way the live model is told to make
+ * them differ (a plain hero in one, a split hero in another).
+ */
+const MOCK_DRAFT_SHAPES: readonly string[][] = [
+  ["header", "hero", "feature-columns", "cta", "footer"],
+  ["header-centered", "hero-split", "article", "footer-social"],
+  ["header", "testimonial", "hero", "stats", "footer"],
+  ["header-centered", "article", "image-gallery", "cta", "footer-social"],
+  ["header", "hero", "testimonial-columns", "footer"],
+];
+
+/** Draft names the mock gives its plans — the angle, not "Draft N". */
+const MOCK_DRAFT_ANGLES = [
+  "Bold and direct",
+  "Story first",
+  "Social proof",
+  "Visual showcase",
+  "Short and warm",
+] as const;
+
+/**
+ * Turn the user's own words into a subject line the composed drafts can talk
+ * about ("Create a new draft about our spring sale" → "our spring sale"), so
+ * the mock exercises the same copy-carrying path a live model would.
+ */
+function extractMockDraftSubject(lastUserText: string): string | null {
+  const match = lastUserText.match(/\b(?:about|for|on)\s+([^.?!]{3,60})/i);
+  return match?.[1]?.trim() ?? null;
+}
+
+function buildMockDraftPlans({
+  count,
+  lastUserText,
+}: {
+  count: number;
+  lastUserText: string;
+}): CreateDraftInput["drafts"] {
+  const subject = extractMockDraftSubject(lastUserText);
+  return Array.from({ length: count }, (_unused, index) => {
+    const shape = MOCK_DRAFT_SHAPES[index % MOCK_DRAFT_SHAPES.length]!;
+    return {
+      name: MOCK_DRAFT_ANGLES[index % MOCK_DRAFT_ANGLES.length]!,
+      sections: shape.map((templateId) => ({
+        templateId,
+        ...(subject !== null && (templateId === "hero" || templateId === "hero-split")
+          ? { params: { headline: `A fresh take on ${subject}` } }
+          : {}),
+      })),
+    };
+  });
+}
+
+/**
  * Person-spotlight vocabulary (Phase 7.4b). Only consulted when the message
  * also carries a URL — "spotlight" alone is not a profile link.
  */
@@ -218,17 +272,36 @@ function planMockToolCall({
       acknowledgementText: `Restoring version ${version} — approve to continue.`,
     };
   }
-  const draftMatch = lastUserText.match(/\b(?:create|make|start|new)\b[\s\S]*?\b(?:(\d+)|(\w+))?\s*(?:new\s+|blank\s+)?drafts?\b/i);
+  // The qualifier run repeats: "3 drafts", "3 new drafts" and "3 new blank
+  // drafts" all have to resolve the same count. A single optional qualifier
+  // stops at the first word and silently falls through to count 1.
+  const draftMatch = lastUserText.match(
+    /\b(?:create|make|start|new)\b[\s\S]*?\b(?:(\d+)|(\w+))?\s*(?:(?:new|blank|empty|starter)\s+)*drafts?\b/i,
+  );
   if (draftMatch !== null) {
     const count =
       draftMatch[1] !== undefined
         ? Number(draftMatch[1])
         : (MOCK_COUNT_WORDS[draftMatch[2]?.toLowerCase() ?? ""] ?? 1);
+    // "blank"/"empty" keeps the bare count form (starter drafts to fill in).
+    // Anything else is a request for a real email, so the mock plans one the
+    // way the live model is instructed to: a complete header/body/footer
+    // email per draft, and genuinely different plans when asked for several.
+    if (/\bblank\b|\bempty\b|\bstarter\b/i.test(lastUserText)) {
+      return {
+        toolName: "createDraft",
+        input: count === 1 ? {} : { count },
+        acknowledgementText:
+          count === 1 ? "Creating a new blank draft." : `Creating ${count} new blank drafts.`,
+      };
+    }
     return {
       toolName: "createDraft",
-      input: count === 1 ? {} : { count },
+      input: { drafts: buildMockDraftPlans({ count, lastUserText }) },
       acknowledgementText:
-        count === 1 ? "Creating a new draft." : `Creating ${count} new drafts.`,
+        count === 1
+          ? "Putting a new draft together for you."
+          : `Putting ${count} new drafts together for you.`,
     };
   }
   if (/\b(?:create|make|add)\b[\s\S]*\bpersona\b/i.test(lastUserText)) {

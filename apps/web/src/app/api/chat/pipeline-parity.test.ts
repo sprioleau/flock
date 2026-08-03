@@ -109,11 +109,15 @@ describe("agent-parity UI actions through the chat pipeline", () => {
   });
 
   it("createDraft resolves its count and streams the command", async () => {
-    const single = await runPipelineProbe("Create a new draft");
-    expect(getEditorCommands(single)).toEqual([{ type: "createDraft", count: 1 }]);
+    const single = await runPipelineProbe("Create a new blank draft");
+    expect(getEditorCommands(single)).toEqual([
+      { type: "createDraft", count: 1, shouldInheritTheme: true },
+    ]);
 
-    const several = await runPipelineProbe("Create 3 new drafts to compare");
-    expect(getEditorCommands(several)).toEqual([{ type: "createDraft", count: 3 }]);
+    const several = await runPipelineProbe("Create 3 new blank drafts to compare");
+    expect(getEditorCommands(several)).toEqual([
+      { type: "createDraft", count: 3, shouldInheritTheme: true },
+    ]);
   });
 
   it("createPersona without a Convex deployment fails the tool call, not the turn", async () => {

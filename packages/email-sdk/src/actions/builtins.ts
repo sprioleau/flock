@@ -17,6 +17,7 @@ import {
   withRemoveBlockCascadeDefault,
   type Operation,
 } from "../operations/ops";
+import { resolveCreateDraftCommand } from "./compose-draft";
 import { defineEmailAction, type ContentEmailAction } from "./define";
 import {
   createDraftInputSchema,
@@ -314,16 +315,27 @@ export const goToVersionAction = defineEmailAction({
   run: (input): GoToVersionCommand => ({ type: "goToVersion", version: input.version }),
 });
 
+/**
+ * THE way to make a new email that is not the one on screen. Give it a
+ * `drafts` plan and each entry becomes a complete, ready-to-send email in the
+ * drafts bar — the same affordance the human has from the drafts bar, with
+ * content. The SDK fills in whatever the plan leaves out (see compose-draft):
+ * a missing header/body/footer, the current theme, the current draft's own
+ * headline/CTA/brand, and real structural variation between siblings.
+ *
+ * The `count`-only form is preserved verbatim: N empty starter drafts, the
+ * pre-composition behavior, for "just give me a blank one to fill in".
+ */
 export const createDraftAction = defineEmailAction({
   name: "createDraft",
   description:
-    "Create one or more new starter drafts in the drafts bar (max 5 per call). The user's current draft stays active; each new draft starts from the standard starter email.",
+    "Create one or more NEW drafts in the drafts bar (max 5 per call), each a complete email of its own — header, body sections, and footer. The user's current draft is never modified and stays active. Give a `drafts` plan (one entry per draft: an optional name plus its sections, each a section-catalog templateId with its copy) whenever the user wants a new email, another version, or a few ideas to compare; for several at once, make the entries genuinely different from one another. New drafts keep the theme currently applied, and any copy you leave out is carried over from the draft the user is looking at. Use the bare `count` form ONLY when the user explicitly wants empty starter drafts to fill in themselves. Never rebuild or clear the current draft in order to produce a new one.",
   kind: "editor",
   schema: createDraftInputSchema,
   readOnly: false, // adds drafts to the user's canvas
   parallelSafe: false, // draft names are allocated sequentially
   needsApproval: false,
-  run: (input): CreateDraftCommand => ({ type: "createDraft", count: input.count ?? 1 }),
+  run: (input): CreateDraftCommand => resolveCreateDraftCommand(input),
 });
 
 /**

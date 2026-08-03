@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { imageBlockIdSchema } from "../schema/ids";
+import { createDraftCommandSchema } from "./compose-draft";
 
 /**
  * Editor commands — the typed client-command channel (plan §3.4).
@@ -218,38 +219,18 @@ export const goToVersionCommandSchema = z
 export type GoToVersionCommand = z.infer<typeof goToVersionCommandSchema>;
 
 // --- createDraft ---------------------------------------------------------------
+//
+// The createDraft input/command pair lives in ./compose-draft, next to the
+// plan→operations translation that gives it meaning (a composed draft is a
+// whole email, themed and content-aware). Re-exported here so the editor
+// command channel still reads as one file.
 
-/** Ceiling on drafts created by one createDraft call. */
-export const MAX_CREATE_DRAFT_COUNT = 5;
-
-export const createDraftInputSchema = z
-  .strictObject({
-    count: z
-      .int()
-      .min(1)
-      .max(MAX_CREATE_DRAFT_COUNT)
-      .optional()
-      .describe(`How many drafts to create (default 1, max ${MAX_CREATE_DRAFT_COUNT}).`),
-  })
-  .describe(
-    "Creates one or more new starter drafts in the drafts bar alongside the current one. " +
-      "The user's current draft stays active; the new drafts appear ready to open.",
-  );
-
-export type CreateDraftInput = z.infer<typeof createDraftInputSchema>;
-
-export const createDraftCommandSchema = z
-  .strictObject({
-    type: z.literal("createDraft").describe("Command discriminator."),
-    count: z
-      .int()
-      .min(1)
-      .max(MAX_CREATE_DRAFT_COUNT)
-      .describe("Resolved number of drafts to create."),
-  })
-  .describe("Client command: add new starter drafts to the drafts bar.");
-
-export type CreateDraftCommand = z.infer<typeof createDraftCommandSchema>;
+export {
+  MAX_CREATE_DRAFT_COUNT,
+  createDraftInputSchema,
+  createDraftCommandSchema,
+} from "./compose-draft";
+export type { CreateDraftInput, CreateDraftCommand } from "./compose-draft";
 
 // --- createPersona -------------------------------------------------------------
 

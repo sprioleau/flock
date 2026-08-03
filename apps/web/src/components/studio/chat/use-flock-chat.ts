@@ -17,6 +17,7 @@ import {
   type ActionDispatchError,
   type ActionFailureKind,
   type Block,
+  type CreateDraftCommand,
   type GenerateImageCommand,
   type ScaffoldSectionPosition,
 } from "@flock/email-sdk";
@@ -43,7 +44,7 @@ import { setPersonaEnabled } from "@/lib/personas/enabled-personas";
 import { getOrCreateSessionId } from "@/lib/session";
 import { requestUiSurfaceOpen } from "@/lib/ui-surfaces";
 import { scrollBlockIntoView } from "../add-blocks/scroll-block-into-view";
-import { computeNextDraftName } from "../drafts/draft-naming";
+import { createAgentDrafts } from "../drafts/create-agent-drafts";
 
 /**
  * The Phase 3 chat brain: wires AI SDK v7 `useChat` to the editor store.
@@ -108,9 +109,10 @@ interface FlockChatController {
   /**
    * Inject the createDraft command's executor (agent parity): the hook owns
    * the Convex client, so it builds the drafts-machinery loop and hands it
-   * to the controller's onData closure here.
+   * to the controller's onData closure here. Takes the whole command — a
+   * composed createDraft carries the plan its new drafts are built from.
    */
-  setCreateBlankDrafts: (createBlankDrafts: (count: number) => Promise<void>) => void;
+  setCreateDrafts: (createDrafts: (command: CreateDraftCommand) => Promise<void>) => void;
 }
 
 interface SavedSectionsRuntime {
@@ -155,7 +157,7 @@ function createFlockChatController(): FlockChatController {
 
   // The createDraft command executor (injected by the hook — it owns the
   // Convex client). No-op until injected; the hook wires it on mount.
-  let createBlankDrafts: (count: number) => Promise<void> = async () => {};
+  let createDrafts: (command: CreateDraftCommand) => Promise<void> = async () => {};
 
   /** Swap the chat's registry hold from the previous turn's doc to `documentId`. */
   const holdTurnDocument = (documentId: Id<"documents"> | null): void => {
@@ -331,7 +333,7 @@ function createFlockChatController(): FlockChatController {
         return;
       }
       if (command.type === "createDraft") {
-        void createBlankDrafts(command.count);
+        void createDrafts(command);
         return;
       }
       // undo / redo / goToVersion are DOCUMENT commands pinned to the turn's
@@ -624,8 +626,8 @@ function createFlockChatController(): FlockChatController {
     setSavedSectionsRuntime: (runtime) => {
       savedSectionsRuntime = runtime;
     },
-    setCreateBlankDrafts: (nextCreateBlankDrafts) => {
-      createBlankDrafts = nextCreateBlankDrafts;
+    setCreateDrafts: (nextCreateDrafts) => {
+      createDrafts = nextCreateDrafts;
     },
   };
 }
@@ -705,33 +707,28 @@ export function useFlockChat(): FlockChat {
   }, [controller, savedSections, recordSavedSectionUse, sessionId]);
 
   // The createDraft command executor (agent parity): the DraftSelector's own
-  // machinery — documents.createDocument on the active canvas, starter-seeded,
-  // "Draft N" names — WITHOUT activating the new drafts (the user's current
-  // draft stays where they are; the drafts bar updates reactively).
+  // machinery, on the active canvas, WITHOUT activating the new drafts (the
+  // user's current draft stays where they are; the drafts bar updates
+  // reactively). The loop itself lives beside that machinery in
+  // drafts/create-agent-drafts — a composed command builds whole emails there,
+  // a bare count still creates starter drafts.
   const convexClient = useConvex();
   useEffect(() => {
-    controller.setCreateBlankDrafts(async (count) => {
-      const { canvasId } = useEditorStore.getState();
+    controller.setCreateDrafts(async (command) => {
+      const { canvasId, doc } = useEditorStore.getState();
       if (canvasId === null) {
         return;
       }
-      try {
-        const drafts = await convexClient.query(api.documents.listDocumentsByCanvas, {
-          canvasId,
-        });
-        const existingNames = drafts.map((draft) => draft.name);
-        for (let created = 0; created < count; created++) {
-          const name = computeNextDraftName({ existingNames });
-          existingNames.push(name);
-          await convexClient.mutation(api.documents.createDocument, {
-            sessionId: getOrCreateSessionId(),
-            canvasId,
-            name,
-          });
-        }
-      } catch (error) {
-        console.error("createDocument (agent createDraft) failed", error);
-        useEditorStore.getState().showNotice("Couldn't create the draft (connection error).");
+      const { failureNotice } = await createAgentDrafts({
+        convexClient,
+        canvasId,
+        sessionId: getOrCreateSessionId(),
+        command,
+        sourceDoc: doc,
+        authorId: controller.chat.id,
+      });
+      if (failureNotice !== null) {
+        useEditorStore.getState().showNotice(failureNotice);
       }
     });
   }, [controller, convexClient]);

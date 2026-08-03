@@ -51,17 +51,37 @@ export function computeVariationDraftName({
 }
 
 /**
- * The next available "Draft N" for a blank draft: the SMALLEST unused
- * number, counting from 1 — variation names and renames don't inflate the
- * numbering (a canvas of "Draft 1" + "Draft 1 (variation)" yields "Draft
- * 2", not "Draft 3").
+ * The next available name for a new draft.
+ *
+ * Without a `preferredName` this is the SMALLEST unused "Draft N", counting
+ * from 1 — variation names and renames don't inflate the numbering (a canvas
+ * of "Draft 1" + "Draft 1 (variation)" yields "Draft 2", not "Draft 3").
+ *
+ * With one — the agent naming a composed draft for what it IS ("Spring sale —
+ * bold") — that name is used as given, and only if the canvas already has it
+ * does it take the next free ordinal ("Spring sale — bold 2"). A blank or
+ * whitespace-only preference falls back to the numbered form.
  */
 export function computeNextDraftName({
   existingNames,
+  preferredName,
 }: {
   existingNames: readonly string[];
+  preferredName?: string;
 }): string {
   const takenNames = new Set(existingNames);
+  const trimmedPreferredName = preferredName?.trim() ?? "";
+  if (trimmedPreferredName.length > 0) {
+    if (!takenNames.has(trimmedPreferredName)) {
+      return trimmedPreferredName;
+    }
+    for (let ordinal = 2; ; ordinal++) {
+      const candidate = `${trimmedPreferredName} ${ordinal}`;
+      if (!takenNames.has(candidate)) {
+        return candidate;
+      }
+    }
+  }
   for (let candidateNumber = 1; ; candidateNumber++) {
     const name = `Draft ${candidateNumber}`;
     if (!takenNames.has(name)) {
