@@ -88,6 +88,45 @@ export default defineSchema({
     updatedAtMs: v.number(),
   }).index("by_sessionId", ["sessionId"]),
 
+  /**
+   * WHO OWNS A CANVAS — the dashboard's index, and DELIBERATELY NOT an access
+   * gate (convex/canvases.ts carries the full reasoning).
+   *
+   * Why a separate table instead of a column on `canvases`. The canvas id IS
+   * the capability: share-by-link is the product, and `canvases`/`documents`
+   * are exempt from the identity checks every other table runs
+   * (convex/authIdentity.ts, closing note). An `ownerId` column sitting on
+   * `canvases` would be one plausible-looking refactor away from being read as
+   * permission — "we have the owner right here, why is the read not checking
+   * it?" — and that refactor silently breaks every shared link. Keeping
+   * ownership in a table that ONLY the dashboard reads makes the separation
+   * structural rather than a comment someone has to notice. Ownership answers
+   * "whose list does this appear in"; it never answers "may you open this".
+   *
+   * `ownerId` is ALWAYS the value resolved server-side by
+   * `resolveOwnerIdOrNull` — the verified Better Auth subject when identity
+   * exists, the pre-auth localStorage fallback otherwise — and is never
+   * written from a client-supplied argument. That is what keeps the listing
+   * honest once `FLOCK_REQUIRE_AUTH_IDENTITY` is on: quoting someone else's
+   * session id off the presence roster cannot put their canvases in your
+   * dashboard, because the id you send is not what gets stored.
+   *
+   * One row per (canvas, owner) pair rather than one per canvas, so the later
+   * "canvases shared with me" surface is a second row kind on this table
+   * instead of a migration. Nothing today writes more than one row per canvas.
+   */
+  canvasOwners: defineTable({
+    canvasId: v.id("canvases"),
+    /** Server-resolved owner key. NEVER a client-supplied argument. */
+    ownerId: v.string(),
+    createdAtMs: v.number(),
+  })
+    .index("by_ownerId", ["ownerId"])
+    .index("by_canvasId", ["canvasId"])
+    // Point lookup for "does this owner already own this canvas" (idempotent
+    // recording, and the ownership assertion behind rename/delete).
+    .index("by_ownerId_and_canvasId", ["ownerId", "canvasId"]),
+
   /** One row = one draft instance on a canvas, with its own independent version history. */
   documents: defineTable({
     canvasId: v.id("canvases"),

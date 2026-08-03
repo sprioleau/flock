@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
-import { isAuthEnabled, STUDIO_PATH } from "@/lib/auth/config";
+import { DASHBOARD_PATH, isAuthEnabled } from "@/lib/auth/config";
 import { isAuthenticated } from "@/lib/auth/auth-server";
 import { LoginPanel } from "./LoginPanel";
 import { InteractiveLineGrid } from "@/components/ui/interactive-line-grid";
@@ -43,11 +43,17 @@ export const metadata: Metadata = {
  *
  * Anyone who already has a session skips this page rather than being asked to
  * identify themselves twice.
+ *
+ * They land on the DASHBOARD, not the studio. Sending a returning user into a
+ * fresh blank draft was the single biggest hole in the product: it was the
+ * only route, so work you had not bookmarked was work you could not find.
+ * Starting something new is one button from the dashboard; the reverse was not
+ * true.
  */
 export default async function Home() {
   if (!isAuthEnabled() || (await isAuthenticatedSafely())) {
     // Flag off: no identity exists to establish, so there is nothing to ask.
-    redirect(STUDIO_PATH);
+    redirect(DASHBOARD_PATH);
   }
 
   return (

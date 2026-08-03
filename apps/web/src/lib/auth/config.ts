@@ -38,6 +38,13 @@ export const LOGIN_PATH = "/";
 export const STUDIO_PATH = "/studio";
 
 /**
+ * Home base: everything this identity owns. This is where an existing user
+ * belongs after signing in — dropping them straight into a NEW blank draft
+ * (which is what /studio does) hides the work they came back for.
+ */
+export const DASHBOARD_PATH = "/dashboard";
+
+/**
  * Where a magic link lands after it verifies: a route that confirms the
  * session server-side and forwards to a fresh studio draft, rather than
  * dropping a failed link into the editor as a stranger. See

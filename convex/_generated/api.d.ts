@@ -17,6 +17,7 @@ import type * as authIdentity from "../authIdentity.js";
 import type * as authMagicLink from "../authMagicLink.js";
 import type * as authMigration from "../authMigration.js";
 import type * as brandKits from "../brandKits.js";
+import type * as canvases from "../canvases.js";
 import type * as cleanup from "../cleanup.js";
 import type * as comments from "../comments.js";
 import type * as crons from "../crons.js";
@@ -54,6 +55,7 @@ declare const fullApi: ApiFromModules<{
   authMagicLink: typeof authMagicLink;
   authMigration: typeof authMigration;
   brandKits: typeof brandKits;
+  canvases: typeof canvases;
   cleanup: typeof cleanup;
   comments: typeof comments;
   crons: typeof crons;

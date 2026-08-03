@@ -247,7 +247,11 @@ export async function deleteDocumentCascade({
   stats.deletedDocuments += 1;
   budget.remaining -= 1;
 
-  // 8. The parent canvas, iff this was its last document.
+  // 8. The parent canvas, iff this was its last document — and with it the
+  // dashboard ownership rows that pointed at it. Those rows are inlined here
+  // rather than imported from convex/canvases.ts because that module imports
+  // THIS one (it reuses this cascade for whole-canvas deletion); a dangling
+  // owner row is otherwise immortal, since nothing else ever revisits it.
   const survivingSibling = await ctx.db
     .query("documents")
     .withIndex("by_canvasId", (q) => q.eq("canvasId", document.canvasId))
@@ -255,6 +259,13 @@ export async function deleteDocumentCascade({
   if (survivingSibling === null) {
     const canvas = await ctx.db.get(document.canvasId);
     if (canvas !== null) {
+      const ownerRows = await ctx.db
+        .query("canvasOwners")
+        .withIndex("by_canvasId", (q) => q.eq("canvasId", canvas._id))
+        .collect();
+      for (const ownerRow of ownerRows) {
+        await ctx.db.delete(ownerRow._id);
+      }
       await ctx.db.delete(canvas._id);
       stats.deletedCanvases += 1;
     }

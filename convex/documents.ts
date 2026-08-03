@@ -10,6 +10,7 @@ import { v } from "convex/values";
 import { internal } from "./_generated/api";
 import type { Id } from "./_generated/dataModel";
 import { mutation, query, type MutationCtx, type QueryCtx } from "./_generated/server";
+import { inheritCanvasOwners, recordCanvasOwnerFromCaller } from "./canvases";
 import {
   createEmptyCleanupStats,
   deleteDocumentCascade,
@@ -87,6 +88,15 @@ export const createDocument = mutation({
         ...(args.canvasTitle !== undefined ? { title: args.canvasTitle } : {}),
         createdAtMs: now,
         updatedAtMs: now,
+      });
+      // Put the new canvas in the creator's dashboard. LISTING ONLY — this
+      // grants no access and gates nothing (convex/canvases.ts header); the
+      // owner key is resolved server-side, never taken from `args.sessionId`.
+      // A caller with no resolvable identity records nothing and the canvas
+      // still works fully over its link.
+      await recordCanvasOwnerFromCaller(ctx, {
+        canvasId,
+        claimedSessionId: args.sessionId,
       });
     } else {
       const canvas = await ctx.db.get(canvasId);
@@ -327,6 +337,15 @@ export const promoteDocumentToNewCanvas = mutation({
       title: document.name,
       createdAtMs: now,
       updatedAtMs: now,
+    });
+    // The promoted draft leaves its old canvas, so the old canvas's owners
+    // must follow it or the draft silently drops out of their dashboard.
+    // Inheriting also means a link-holder who promotes does not quietly take
+    // the result into their own library — see canvases.inheritCanvasOwners.
+    await inheritCanvasOwners(ctx, {
+      fromCanvasId: document.canvasId,
+      toCanvasId: newCanvasId,
+      claimedSessionId: document.sessionId,
     });
     await ctx.db.patch(document._id, {
       canvasId: newCanvasId,
