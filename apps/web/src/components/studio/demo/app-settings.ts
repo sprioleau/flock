@@ -14,6 +14,10 @@ import { useSyncExternalStore } from "react";
  *   the ghost-collaborator control).
  * - Time-travel replay / Op inspector: reveal their toolbar buttons —
  *   power-user surfaces hidden by default.
+ * - Suggestions: whether proactive suggestion cards are SHOWN. Unlike the
+ *   others this defaults ON, because the feature shipped visible and with no
+ *   toggle at all — defaulting off would silently take away behavior users
+ *   already have. Flip the default below to change that.
  */
 
 const APP_SETTINGS_STORAGE_KEY = "flock:app-settings";
@@ -22,12 +26,19 @@ export interface AppSettings {
   isDemoModeEnabled: boolean;
   isTimeTravelReplayEnabled: boolean;
   isOpInspectorEnabled: boolean;
+  /**
+   * Show proactive suggestion cards. A VISIBILITY setting only — it never
+   * gates the op log, which is the shared history spine (see
+   * lib/suggestions/use-suggestions.ts).
+   */
+  isSuggestionsEnabled: boolean;
 }
 
 const DEFAULT_APP_SETTINGS: AppSettings = {
   isDemoModeEnabled: false,
   isTimeTravelReplayEnabled: false,
   isOpInspectorEnabled: false,
+  isSuggestionsEnabled: true,
 };
 
 /** Stable snapshot object (useSyncExternalStore requires reference equality). */
@@ -57,6 +68,11 @@ function readSettingsFromStorage(): AppSettings {
         : {}),
       ...(typeof candidate.isOpInspectorEnabled === "boolean"
         ? { isOpInspectorEnabled: candidate.isOpInspectorEnabled }
+        : {}),
+      // Absent for everyone who stored settings before this key existed —
+      // they keep the default (ON), which is the behavior they already had.
+      ...(typeof candidate.isSuggestionsEnabled === "boolean"
+        ? { isSuggestionsEnabled: candidate.isSuggestionsEnabled }
         : {}),
     };
   } catch {

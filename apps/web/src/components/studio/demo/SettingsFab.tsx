@@ -33,6 +33,10 @@ import { updateAppSettings, useAppSettings } from "./app-settings";
  *   (DemoQueueButton) and the ghost-collaborator control below.
  * - "Time-travel replay" / "Op inspector" toggles (persisted the same way):
  *   reveal those power-user toolbar buttons — both hidden by default.
+ * - "Suggest related edits": whether proactive suggestion cards appear. ON by
+ *   default (the feature shipped visible). Purely a visibility switch — the
+ *   op log keeps recording either way, so switching it back on surfaces
+ *   suggestions from edits already made rather than starting from scratch.
  * - "Ghost collaborator" (demo mode only): starts/stops the server-driven
  *   simulated collaborator (convex/ghost.ts) that types into a text block —
  *   one-person multiplayer. The running state is reactive (getGhostStatus),
@@ -40,7 +44,12 @@ import { updateAppSettings, useAppSettings } from "./app-settings";
  *   bounded run ends on its own.
  */
 export function SettingsFab() {
-  const { isDemoModeEnabled, isTimeTravelReplayEnabled, isOpInspectorEnabled } = useAppSettings();
+  const {
+    isDemoModeEnabled,
+    isTimeTravelReplayEnabled,
+    isOpInspectorEnabled,
+    isSuggestionsEnabled,
+  } = useAppSettings();
   const documentId = useEditorStore((state) => state.documentId);
   // App-chrome theme (light / dark / system), persisted by next-themes. Safe
   // to read here without a mounted guard: the menu content only renders after
@@ -117,6 +126,21 @@ export function SettingsFab() {
             {/* The "Agents…" entry moved to the studio header next to the
                 presence facepile (AgentCollaboratorsButton) — collaborators
                 are first-class, not a debug setting. */}
+            <DropdownMenuCheckboxItem
+              checked={isSuggestionsEnabled}
+              onCheckedChange={(isChecked) =>
+                updateAppSettings({ isSuggestionsEnabled: isChecked })
+              }
+              closeOnClick={false}
+              data-testid="settings-suggestions-toggle"
+            >
+              <span className="flex flex-col gap-0.5 py-0.5">
+                <span>Suggest related edits</span>
+                <span className="text-xs text-muted-foreground">
+                  Offers to apply a change you just made to similar blocks
+                </span>
+              </span>
+            </DropdownMenuCheckboxItem>
             <DropdownMenuCheckboxItem
               checked={isDemoModeEnabled}
               onCheckedChange={(isChecked) => updateAppSettings({ isDemoModeEnabled: isChecked })}

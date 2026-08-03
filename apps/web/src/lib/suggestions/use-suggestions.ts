@@ -10,6 +10,7 @@ import {
 } from "@flock/email-sdk";
 import { api } from "@convex/_generated/api";
 import type { Id } from "@convex/_generated/dataModel";
+import { useAppSettings } from "@/components/studio/demo/app-settings";
 import { useEditorStore } from "@/lib/editor-store";
 import { persistDismissedPatternKey, readDismissedPatternKeys } from "./dismissals";
 import { serializeBlock } from "./serialize-block";
@@ -42,6 +43,15 @@ import type { RecentPropertyEdit, Suggestion, SuggestionRungId } from "./types";
  * instant local overlay, so invalidation is immediate, not ack-delayed)
  * hides the card without applying anything. Regeneration then happens lazily
  * on the next qualifying gesture.
+ *
+ * THE "Suggest related edits" SETTING (app-settings.ts) gates GENERATION AND
+ * DISPLAY ONLY — never the op log. That log is the shared history spine
+ * (undo/redo, the history panel, revert, replay); a suggestions preference
+ * has no business switching it off, and this hook only ever READS it. So
+ * turning the setting back on re-runs the rules over the operations already
+ * recorded and surfaces a suggestion immediately, instead of making the user
+ * perform a fresh edit to coax the feature back. Turning it off clears any
+ * live card rather than stranding one the user can no longer act on.
  *
  * APPLY — dispatch the chosen rung's ops through the store's normal dispatch
  * with agent provenance: author "agent", caller "frontend", batchId
@@ -167,6 +177,7 @@ export function useSuggestions(): SuggestionsController {
   const convexClient = useConvex();
   const documentId = useEditorStore((state) => state.documentId);
   const serverHeadVersion = useEditorStore((state) => state.serverHeadVersion);
+  const { isSuggestionsEnabled } = useAppSettings();
 
   const [phase, setPhase] = useState<SuggestionPhase>({ name: "hidden" });
   // In-memory dismissals for this session (union'd with localStorage, which
@@ -185,6 +196,21 @@ export function useSuggestions(): SuggestionsController {
     setBoundDocumentId(documentId);
     setPhase({ name: "hidden" });
   }
+
+  // Setting switched OFF: clear the live card rather than strand one the user
+  // can no longer act on (same render-time adjustment as the document switch
+  // above). The switched-ON half is handled in the watch effect below, where
+  // rewinding the generation mark is legal.
+  const [wasSuggestionsEnabled, setWasSuggestionsEnabled] = useState(isSuggestionsEnabled);
+  if (wasSuggestionsEnabled !== isSuggestionsEnabled) {
+    setWasSuggestionsEnabled(isSuggestionsEnabled);
+    if (!isSuggestionsEnabled) {
+      setPhase({ name: "hidden" });
+    }
+  }
+  // Mirrors the setting, but written only from the effect below — the render
+  // pass must not touch refs.
+  const wasGenerationEnabledRef = useRef(isSuggestionsEnabled);
 
   const clearAppliedTimer = (): void => {
     if (appliedClearTimerRef.current !== null) {
@@ -206,6 +232,15 @@ export function useSuggestions(): SuggestionsController {
   // (the watch is re-established as the head advances — cheap indexed query).
   useEffect(() => {
     traceEvaluation({ step: "watch-effect", documentId, serverHeadVersion });
+    // Switched back ON: rewind the generation high-water mark so the op-log
+    // tail this hook has ALREADY seen is re-evaluated. That is what returns
+    // suggestions built from edits made while the setting was off, instead of
+    // making the user perform a fresh edit to coax the feature back.
+    if (isSuggestionsEnabled && !wasGenerationEnabledRef.current) {
+      traceEvaluation({ step: "suggestions-re-enabled" });
+      evaluationRef.current.lastEvaluatedVersion = 0;
+    }
+    wasGenerationEnabledRef.current = isSuggestionsEnabled;
     if (documentId === null) {
       return;
     }
@@ -216,6 +251,13 @@ export function useSuggestions(): SuggestionsController {
 
     const evaluatePage = (page: OperationsPage): void => {
       traceEvaluation({ step: "page", isDone: page.isDone, count: page.operations.length });
+      // Visibility gate. Deliberately BEFORE the high-water mark advances, so
+      // versions that stream past while the setting is off are not marked as
+      // evaluated and stay eligible when it comes back on.
+      if (!isSuggestionsEnabled) {
+        traceEvaluation({ step: "skip-suggestions-disabled" });
+        return;
+      }
       if (!page.isDone) {
         return; // the tail outran this window; the next anchor catches up
       }
@@ -313,7 +355,10 @@ export function useSuggestions(): SuggestionsController {
       isDisposed = true;
       unsubscribe();
     };
-  }, [convexClient, documentId, serverHeadVersion]);
+    // isSuggestionsEnabled is a dependency so switching it ON re-establishes
+    // the watch and re-runs the cached page through evaluatePage — the
+    // immediate-return path described in the header.
+  }, [convexClient, documentId, serverHeadVersion, isSuggestionsEnabled]);
 
   // STALENESS: subscribe to the rendered doc (local overlay included); the
   // moment any target block changes or disappears, the suggestion invalidates.
@@ -434,7 +479,12 @@ export function useSuggestions(): SuggestionsController {
   };
 
   return {
-    visibleSuggestion: phase.name === "visible" ? phase.suggestion : null,
+    // The `isSuggestionsEnabled` term is belt-and-braces: the render-time
+    // adjustment above already hides the card, but this guarantees no card
+    // (and so no ⌥A hint) can survive a single render with the setting off.
+    // appliedState is deliberately NOT gated — it is the revert affordance
+    // for a change the user already made, and hiding it would strand that.
+    visibleSuggestion: isSuggestionsEnabled && phase.name === "visible" ? phase.suggestion : null,
     appliedState:
       phase.name === "applied"
         ? { rungLabel: phase.rungLabel, revertErrorMessage: phase.revertErrorMessage }
