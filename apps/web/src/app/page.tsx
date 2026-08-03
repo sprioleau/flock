@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { isAuthEnabled, STUDIO_PATH } from "@/lib/auth/config";
 import { isAuthenticated } from "@/lib/auth/auth-server";
 import { LoginPanel } from "./LoginPanel";
+import { InteractiveLineGrid } from "@/components/ui/interactive-line-grid";
 
 export const metadata: Metadata = {
   title: "Flock",
@@ -50,24 +51,32 @@ export default async function Home() {
   }
 
   return (
-    <main className="flex flex-1 flex-col items-center justify-center gap-6 p-8">
-      <div className="flex flex-col items-center gap-2">
-        <h1 className="text-4xl font-semibold tracking-tight">Flock</h1>
-        <p className="max-w-sm text-center text-sm text-muted-foreground">
-          An AI-powered collaborative email editor. You describe, your partner
-          builds.
+    <div className="absolute w-full h-full bg-transparent overflow-hidden">
+      <InteractiveLineGrid />
+      {/*
+       * z-10 against the grid's z-0: both layers are positioned, so without
+       * explicit indices the sign-in UI would sit on top only by accident of
+       * DOM order — one reorder away from being painted over by the backdrop.
+       */}
+      <main className="relative z-10 w-full h-full flex flex-1 flex-col items-center justify-center gap-6 p-8">
+        <div className="flex flex-col items-center gap-2">
+          <h1 className="text-4xl font-semibold tracking-tight">Flock</h1>
+          <p className="max-w-xs text-center text-sm text-muted-foreground">
+            An AI-powered collaborative email editor. You describe, your flock
+            builds.
+          </p>
+        </div>
+
+        <div className="w-full max-w-xs rounded-xl border border-border bg-card/75 dark:bg-card/60 p-6 shadow-sm backdrop-blur-md">
+          <LoginPanel />
+        </div>
+
+        <p className="max-w-xs text-center text-xs text-muted-foreground">
+          Have a shared email link? Open it directly — it takes you straight to
+          the draft.
         </p>
-      </div>
-
-      <div className="w-full max-w-xs rounded-xl border border-border bg-card p-6 shadow-sm">
-        <LoginPanel />
-      </div>
-
-      <p className="max-w-sm text-center text-xs text-muted-foreground">
-        Have a shared email link? Open it directly — it takes you straight to
-        the draft.
-      </p>
-    </main>
+      </main>
+    </div>
   );
 }
 
