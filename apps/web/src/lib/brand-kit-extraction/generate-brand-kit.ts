@@ -30,7 +30,13 @@ import { google } from "@ai-sdk/google";
 import { globalStylesSchema } from "@flock/email-sdk";
 import { generateObject } from "ai";
 import { z } from "zod";
-import type { BrandKit, BrandKitFonts, BrandToneOfVoice } from "@/lib/brand-kit";
+import {
+  BRAND_VOICE_DESCRIPTOR_OPTIONS,
+  MAX_VOICE_DESCRIPTORS,
+  type BrandKit,
+  type BrandKitFonts,
+  type BrandToneOfVoice,
+} from "@/lib/brand-kit";
 import { EMAIL_SAFE_FONT_OPTIONS } from "@/components/studio/text-editor/email-safe-fonts";
 import { buildBrandColors } from "./build-brand-colors";
 import { describeCopySignals, extractCopySignals, type CopySignals } from "./extract-copy-signals";
@@ -69,6 +75,13 @@ const FONT_LABELS = EMAIL_SAFE_FONT_OPTIONS.map((option) => option.label) as [
   string,
   ...string[],
 ];
+
+/**
+ * The scrape proposes tone words from the SAME vocabulary the brand kit panel
+ * offers (brand-kit-v2 §4), so a scraped voice arrives as chips the user can
+ * toggle rather than free text they can only delete.
+ */
+const VOICE_DESCRIPTORS = [...BRAND_VOICE_DESCRIPTOR_OPTIONS] as [string, ...string[]];
 
 const hexColor = z
   .string()
@@ -126,10 +139,12 @@ const modelBrandColorSchema = z.object({
  */
 const modelToneOfVoiceSchema = z.object({
   descriptors: z
-    .array(z.string().min(2).max(20))
+    .array(z.enum(VOICE_DESCRIPTORS))
     .min(1)
-    .max(3)
-    .describe('1-3 adjectives describing how the site writes, e.g. ["warm", "plain-spoken"].'),
+    .max(MAX_VOICE_DESCRIPTORS)
+    .describe(
+      `Up to ${MAX_VOICE_DESCRIPTORS} words describing how the site writes, chosen from the list.`,
+    ),
   formality: z.enum(["casual", "neutral", "formal"]).describe("How formal the copy reads."),
   person: z
     .enum(["first-person-plural", "third-person"])
@@ -272,7 +287,7 @@ function buildPrompt({
     `- Each variation should feel distinct (e.g. a clean light theme, a tinted theme, a dark theme).`,
     `- Map the site's fonts to the CLOSEST email-safe option (web fonts don't ship in email): geometric/grotesque sans → Helvetica or Arial; humanist sans → Verdana, Tahoma or Trebuchet MS; serif → Georgia or Times New Roman; monospace → Courier New.`,
     `- For "colors": copy hex values VERBATIM from the harvested palette above (anything else is discarded). Name each one from its declared CSS variable when that name means something to a person — a yellow declared as "--banana" is "Banana" — and otherwise describe the color plainly ("Deep Navy"). Never invent brand mythology like "Sunrise Optimism".`,
-    `- For "toneOfVoice": describe how the copy sample ACTUALLY reads. If the sample is thin, stay generic rather than inventing a personality.`,
+    `- For "toneOfVoice": describe how the copy sample ACTUALLY reads. If the sample is thin, stay generic rather than inventing a personality. "descriptors" must come from this list: ${VOICE_DESCRIPTORS.join(", ")}.`,
   ].join("\n");
 }
 

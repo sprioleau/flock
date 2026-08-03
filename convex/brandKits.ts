@@ -16,6 +16,10 @@ import {
   type BrandToneOfVoice,
 } from "../apps/web/src/lib/brand-kit";
 import {
+  applyBrandFontsToVariations,
+  getBrandFontsValidationErrors,
+} from "../apps/web/src/lib/brand-kit-fonts";
+import {
   planBrandColorsUpdate,
   reconcileBrandColors,
   reconcileToneOfVoice,
@@ -423,6 +427,56 @@ export const updateBrandColors = mutation({
     }
     await ctx.db.patch(row._id, {
       colors: colors.length > 0 ? colors : undefined,
+      updatedAtMs: Date.now(),
+    });
+    return null;
+  },
+});
+
+/**
+ * Set the kit's heading/body fonts (brand-kit-v2 §1) — the scrape's inference
+ * is only a suggestion, exactly like the kit name and the palette.
+ *
+ * Both stacks must be email-safe (getBrandFontsValidationErrors): the panel
+ * offers the same dropdown as the block properties panel and the inline text
+ * tools, and this is the server half of that rule — a free-text stack never
+ * lands on the row no matter who calls.
+ *
+ * UNLIKE the other metadata mutations this DOES bump `revision`, because it
+ * rewrites every variation's font-family globals (applyBrandFontsToVariations
+ * — themes are composed from the kit's fonts, so a font edit that left them
+ * alone would change nothing anyone could see). Variations are what a draft
+ * renders, so the §8.3 rule says bump: bound canvases' drafts really are out
+ * of date now, and their pills should say so. Nothing is restyled here —
+ * applyBrandToDocuments is still the only path that touches a draft.
+ */
+export const updateBrandFonts = mutation({
+  args: {
+    sessionId: v.string(),
+    fonts: v.object({ heading: v.string(), body: v.string() }),
+  },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    const ownerId = await resolveOwnerId(ctx, { claimedSessionId: args.sessionId });
+    const row = await requireOwnerBrandKitRow(ctx, ownerId);
+    const fontErrors = getBrandFontsValidationErrors(args.fonts);
+    if (fontErrors.length > 0) {
+      throw new ConvexError(fontErrors.join(" "));
+    }
+    if (row.fonts.heading === args.fonts.heading && row.fonts.body === args.fonts.body) {
+      return null; // Nothing changed — don't re-arm every draft's pill for a no-op.
+    }
+    const variations = applyBrandFontsToVariations({
+      variations: row.variations as BrandKit["variations"],
+      fonts: args.fonts,
+    });
+    // Same gate every stored kit passes: completeness + WCAG contrast. Fonts
+    // can't move a contrast ratio, but the kit is never written unchecked.
+    assertBrandKitIsValid({ ...toBrandKitContract(row), fonts: args.fonts, variations });
+    await ctx.db.patch(row._id, {
+      fonts: args.fonts,
+      variations,
+      revision: getEffectiveRevision(row) + 1,
       updatedAtMs: Date.now(),
     });
     return null;

@@ -97,6 +97,70 @@ export type BrandVoiceFormality = "casual" | "neutral" | "formal";
 export type BrandVoicePerson = "first-person-plural" | "third-person";
 
 /**
+ * The vocabulary the "Sounds like" field offers (brand-kit-v2 §4). Picking
+ * from a set beats a free-text box here: a person asked to describe a voice
+ * in their own words either freezes or writes a sentence, and the model reads
+ * these words better when they are drawn from a small, consistent list — the
+ * scrape proposes from the SAME list (generate-brand-kit.ts).
+ *
+ * `descriptors` stays `string[]` on the row on purpose: kits saved before
+ * this list existed (and any future addition to it) keep their words instead
+ * of being silently dropped. The editor shows an off-vocabulary word as a
+ * selected chip the user can turn off.
+ */
+export const BRAND_VOICE_DESCRIPTOR_OPTIONS = [
+  "serious",
+  "playful",
+  "energetic",
+  "warm",
+  "authoritative",
+  "irreverent",
+  "plainspoken",
+  "optimistic",
+  "technical",
+] as const;
+
+export type BrandVoiceDescriptor = (typeof BRAND_VOICE_DESCRIPTOR_OPTIONS)[number];
+
+/** A descriptor as it reads in the UI ("plainspoken" → "Plainspoken"). */
+export function getBrandVoiceDescriptorLabel(descriptor: string): string {
+  return descriptor.charAt(0).toUpperCase() + descriptor.slice(1);
+}
+
+/**
+ * The words the editor offers: the vocabulary, plus anything already stored
+ * that is not in it (an older kit, or a scrape from before the vocabulary
+ * existed). An unknown stored word stays visible and removable instead of
+ * disappearing the first time the panel is opened.
+ */
+export function getBrandVoiceDescriptorChoices(selected: string[]): string[] {
+  const vocabulary: string[] = [...BRAND_VOICE_DESCRIPTOR_OPTIONS];
+  return [...vocabulary, ...selected.filter((descriptor) => !vocabulary.includes(descriptor))];
+}
+
+/**
+ * Turn one word on or off. Selecting past {@link MAX_VOICE_DESCRIPTORS} is a
+ * no-op (the chip is disabled too — the cap is shown, never enforced by
+ * silently dropping the user's earlier picks). Deselecting always works, so a
+ * kit that arrived over the cap can be edited back down.
+ */
+export function toggleBrandVoiceDescriptor({
+  selected,
+  descriptor,
+}: {
+  selected: string[];
+  descriptor: string;
+}): string[] {
+  if (selected.includes(descriptor)) {
+    return selected.filter((entry) => entry !== descriptor);
+  }
+  if (selected.length >= MAX_VOICE_DESCRIPTORS) {
+    return selected;
+  }
+  return [...selected, descriptor];
+}
+
+/**
  * The brand's tone of voice (brand-kit-user-control §5.2): coarse axes with
  * enough structure to be usable deterministically, plus the freeform space
  * that actually carries nuance.

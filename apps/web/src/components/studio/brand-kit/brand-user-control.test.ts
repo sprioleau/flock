@@ -130,6 +130,65 @@ describe("updateBrandColors — the palette is editable", () => {
   });
 });
 
+describe("updateBrandFonts — the fonts are editable (brand-kit-v2 §1)", () => {
+  const GEORGIA = "Georgia, 'Times New Roman', serif";
+  const VERDANA = "Verdana, Geneva, sans-serif";
+
+  it("stores the pick AND re-fonts every theme, so the edit is visible", async () => {
+    const t = createBackend();
+    await saveKit(t, buildKitInput());
+    const before = await readKit(t);
+    expect(before.revision).toBe(1);
+
+    await t.mutation(api.brandKits.updateBrandFonts, {
+      sessionId: SESSION_ID,
+      fonts: { heading: GEORGIA, body: VERDANA },
+    });
+
+    const after = await readKit(t);
+    expect(after.fonts).toEqual({ heading: GEORGIA, body: VERDANA });
+    const globals = after.variations[0]!.globals;
+    expect(globals.heading1FontFamily).toBe(GEORGIA);
+    expect(globals.heading2FontFamily).toBe(GEORGIA);
+    expect(globals.heading3FontFamily).toBe(GEORGIA);
+    expect(globals.paragraphFontFamily).toBe(VERDANA);
+    expect(globals.buttonFontFamily).toBe(VERDANA);
+    // Colors are untouched — a font edit re-fonts, it never recolors.
+    expect(globals.contentBackgroundColor).toBe(
+      before.variations[0]!.globals.contentBackgroundColor,
+    );
+    // Variations are what a draft renders (§8.3), so this one DOES bump.
+    expect(after.revision).toBe(2);
+  });
+
+  it("refuses a font that isn't email-safe — selection, never free text", async () => {
+    const t = createBackend();
+    await saveKit(t, buildKitInput());
+    await expect(
+      t.mutation(api.brandKits.updateBrandFonts, {
+        sessionId: SESSION_ID,
+        fonts: { heading: "Comic Sans MS, cursive", body: VERDANA },
+      }),
+    ).rejects.toThrow(/isn't one we can send in email/);
+    expect((await readKit(t)).revision).toBe(1); // nothing was written
+  });
+
+  it("does not re-arm every draft's pill when the pick didn't change", async () => {
+    const t = createBackend();
+    await saveKit(t, buildKitInput());
+    await t.mutation(api.brandKits.updateBrandFonts, {
+      sessionId: SESSION_ID,
+      fonts: { heading: GEORGIA, body: VERDANA },
+    });
+    expect((await readKit(t)).revision).toBe(2);
+    await t.mutation(api.brandKits.updateBrandFonts, {
+      sessionId: SESSION_ID,
+      fonts: { heading: GEORGIA, body: VERDANA },
+    });
+    expect((await readKit(t)).revision).toBe(2);
+  });
+});
+
 describe("updateBrandToneOfVoice — the voice is editable", () => {
   it("stores what the human typed as theirs, and clears back to nothing", async () => {
     const t = createBackend();

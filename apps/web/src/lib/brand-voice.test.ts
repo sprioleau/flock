@@ -13,7 +13,14 @@
  */
 import { describe, expect, it } from "vitest";
 import { formatBrandVoiceContextLine, sanitizeVoiceText } from "./brand-voice";
-import type { BrandToneOfVoice } from "./brand-kit";
+import {
+  BRAND_VOICE_DESCRIPTOR_OPTIONS,
+  getBrandVoiceDescriptorChoices,
+  getBrandVoiceDescriptorLabel,
+  toggleBrandVoiceDescriptor,
+  MAX_VOICE_DESCRIPTORS,
+  type BrandToneOfVoice,
+} from "./brand-kit";
 
 const FULL_VOICE: BrandToneOfVoice = {
   descriptors: ["warm", "plain-spoken"],
@@ -83,6 +90,63 @@ describe("formatBrandVoiceContextLine", () => {
       toneOfVoice: { descriptors: ["bold"], origin: "agent" },
     })!;
     expect(line.split("</brand-voice>")).toHaveLength(2);
+  });
+});
+
+/**
+ * "Sounds like" as a vocabulary rather than a blank box (brand-kit-v2 §4).
+ * The words are shared: the panel offers them and the scrape proposes from
+ * the same list, so a scraped voice arrives as chips the user can toggle.
+ */
+describe("tone-of-voice descriptor vocabulary", () => {
+  it("offers the words the owner named, plus room to say more", () => {
+    expect(BRAND_VOICE_DESCRIPTOR_OPTIONS).toContain("serious");
+    expect(BRAND_VOICE_DESCRIPTOR_OPTIONS).toContain("playful");
+    expect(BRAND_VOICE_DESCRIPTOR_OPTIONS).toContain("energetic");
+    expect(BRAND_VOICE_DESCRIPTOR_OPTIONS.length).toBeGreaterThanOrEqual(6);
+  });
+
+  it("is lowercase, single words, no duplicates — the stored form", () => {
+    const words = [...BRAND_VOICE_DESCRIPTOR_OPTIONS];
+    expect(new Set(words).size).toBe(words.length);
+    for (const word of words) {
+      expect(word).toMatch(/^[a-z]+$/);
+    }
+  });
+
+  it("labels a word for the chip without changing what is stored", () => {
+    expect(getBrandVoiceDescriptorLabel("plainspoken")).toBe("Plainspoken");
+    expect(getBrandVoiceDescriptorLabel("plain-spoken")).toBe("Plain-spoken");
+  });
+
+  it("keeps a stored word that is not in the vocabulary, so it stays removable", () => {
+    const choices = getBrandVoiceDescriptorChoices(["warm", "plain-spoken"]);
+    expect(choices).toContain("plain-spoken");
+    expect(choices.filter((choice) => choice === "warm")).toHaveLength(1);
+    expect(choices.slice(0, BRAND_VOICE_DESCRIPTOR_OPTIONS.length)).toEqual([
+      ...BRAND_VOICE_DESCRIPTOR_OPTIONS,
+    ]);
+  });
+
+  it("toggles a word on and off", () => {
+    expect(toggleBrandVoiceDescriptor({ selected: [], descriptor: "warm" })).toEqual(["warm"]);
+    expect(
+      toggleBrandVoiceDescriptor({ selected: ["warm", "playful"], descriptor: "warm" }),
+    ).toEqual(["playful"]);
+  });
+
+  it("refuses to select past the cap, and never drops an earlier pick to do it", () => {
+    const atCap = [...BRAND_VOICE_DESCRIPTOR_OPTIONS].slice(0, MAX_VOICE_DESCRIPTORS);
+    expect(toggleBrandVoiceDescriptor({ selected: atCap, descriptor: "technical" })).toEqual(atCap);
+  });
+
+  it("lets an over-cap kit be edited back down", () => {
+    const overCap = ["warm", "playful", "serious", "technical"];
+    expect(toggleBrandVoiceDescriptor({ selected: overCap, descriptor: "serious" })).toEqual([
+      "warm",
+      "playful",
+      "technical",
+    ]);
   });
 });
 

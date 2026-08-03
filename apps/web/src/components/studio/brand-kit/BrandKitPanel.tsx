@@ -29,6 +29,7 @@ import {
   type BrandColor,
   type BrandKit,
   type BrandKitAssetKind,
+  type BrandKitFonts,
   type BrandKitGenerateResult,
 } from "@/lib/brand-kit";
 import { describeBrandKitReconciliation } from "@/lib/brand-kit-reconcile";
@@ -43,6 +44,7 @@ function getSocialPlatformLabel(platform: string): string {
 import { ThemeSwatch } from "../theme/ThemeSwatch";
 import { BrandApplyDialog } from "./BrandApplyDialog";
 import { BrandColorsEditor } from "./BrandColorsEditor";
+import { BrandFontsEditor } from "./BrandFontsEditor";
 import { BrandVoiceEditor, type BrandVoiceDraft } from "./BrandVoiceEditor";
 import { useSessionBrandKit } from "./useActiveBrandKit";
 
@@ -84,6 +86,7 @@ export function BrandKitPanel() {
   const clearBrandKit = useMutation(api.brandKits.clearBrandKit);
   const renameBrandKit = useMutation(api.brandKits.renameBrandKit);
   const updateBrandColors = useMutation(api.brandKits.updateBrandColors);
+  const updateBrandFonts = useMutation(api.brandKits.updateBrandFonts);
   const updateBrandToneOfVoice = useMutation(api.brandKits.updateBrandToneOfVoice);
   const removeBrandKitAsset = useMutation(api.brandKits.removeBrandKitAsset);
   const bindSessionKitToCanvas = useMutation(api.brandKits.bindSessionKitToCanvas);
@@ -248,6 +251,26 @@ export function BrandKitPanel() {
     } catch (error: unknown) {
       setAssetErrorMessage(
         error instanceof ConvexError ? String(error.data) : "Couldn't rename the kit. Try again.",
+      );
+    }
+  };
+
+  /**
+   * Commit a font pick (v2 §1). The write re-fonts every theme in the kit, so
+   * it DOES bump the revision — bound drafts are legitimately out of date and
+   * their pills should say so. Nothing is restyled until somebody confirms
+   * "Update drafts…".
+   */
+  const commitBrandFonts = async (fonts: BrandKitFonts): Promise<void> => {
+    if (sessionId === null || !hasSavedKit) {
+      return;
+    }
+    setAssetErrorMessage(null);
+    try {
+      await updateBrandFonts({ sessionId, fonts });
+    } catch (error: unknown) {
+      setAssetErrorMessage(
+        error instanceof ConvexError ? String(error.data) : "Couldn't save that font. Try again.",
       );
     }
   };
@@ -517,6 +540,7 @@ export function BrandKitPanel() {
               brandKit={activeBrandKit}
               isDefaultKit={!hasSavedKit}
               onNameCommit={hasSavedKit ? (name) => void commitActiveKitName(name) : undefined}
+              onFontsCommit={hasSavedKit ? (fonts) => void commitBrandFonts(fonts) : undefined}
               assetActions={
                 hasSavedKit
                   ? {
@@ -587,6 +611,7 @@ export function BrandKitPanel() {
                 How your brand writes, so the assistant writes the same way.
               </p>
               <BrandVoiceEditor
+                brandName={activeBrandKit.name}
                 toneOfVoice={activeBrandKit.toneOfVoice}
                 isBusy={sessionId === null}
                 onCommit={(draft) => void commitToneOfVoice(draft)}
@@ -699,7 +724,8 @@ const KIT_GROUP_LABEL_CLASSNAME = "text-xs font-medium tracking-wide text-muted-
  * One kit rendered as a card: the name (editable when `onNameCommit` is
  * given — the extracted name is only a suggestion), a "Default" badge for
  * the mock fallback, source URL, then labeled groups — the heading/body
- * font stacks (each shown in itself), the confirmable logo/social-card
+ * fonts (email-safe dropdowns when `onFontsCommit` is given, otherwise the
+ * stacks shown in themselves), the confirmable logo/social-card
  * asset squares (uniform 1:1 tiles; click to enlarge in a lightbox), social
  * links, and every variation as a ThemeSwatch row — the same Aa+circles cue
  * the theme dropdown uses. `assetActions` present = the saved-kit context
@@ -711,11 +737,13 @@ function BrandKitSummary({
   brandKit,
   isDefaultKit,
   onNameCommit,
+  onFontsCommit,
   assetActions,
 }: {
   brandKit: BrandKit;
   isDefaultKit: boolean;
   onNameCommit?: (name: string) => void;
+  onFontsCommit?: (fonts: BrandKitFonts) => void;
   assetActions?: BrandKitAssetActions;
 }) {
   // ONE lightbox per card, pointed at whichever asset square was clicked.
@@ -778,23 +806,33 @@ function BrandKitSummary({
       </div>
       <div className="flex flex-col gap-1.5">
         <span className={KIT_GROUP_LABEL_CLASSNAME}>Fonts</span>
-        <dl className="flex flex-col gap-1.5">
-          <div className="flex items-baseline gap-3">
-            <dt className="w-16 shrink-0 text-xs text-muted-foreground">Heading</dt>
-            <dd
-              className="min-w-0 truncate text-sm"
-              style={{ fontFamily: brandKit.fonts.heading }}
-            >
-              {brandKit.fonts.heading}
-            </dd>
-          </div>
-          <div className="flex items-baseline gap-3">
-            <dt className="w-16 shrink-0 text-xs text-muted-foreground">Body</dt>
-            <dd className="min-w-0 truncate text-sm" style={{ fontFamily: brandKit.fonts.body }}>
-              {brandKit.fonts.body}
-            </dd>
-          </div>
-        </dl>
+        {onFontsCommit === undefined ? (
+          <dl className="flex flex-col gap-1.5">
+            <div className="flex items-baseline gap-3">
+              <dt className="w-16 shrink-0 text-xs text-muted-foreground">Heading</dt>
+              <dd
+                className="min-w-0 truncate text-sm"
+                style={{ fontFamily: brandKit.fonts.heading }}
+              >
+                {brandKit.fonts.heading}
+              </dd>
+            </div>
+            <div className="flex items-baseline gap-3">
+              <dt className="w-16 shrink-0 text-xs text-muted-foreground">Body</dt>
+              <dd className="min-w-0 truncate text-sm" style={{ fontFamily: brandKit.fonts.body }}>
+                {brandKit.fonts.body}
+              </dd>
+            </div>
+          </dl>
+        ) : (
+          <>
+            <BrandFontsEditor fonts={brandKit.fonts} onCommit={onFontsCommit} />
+            <p className="text-xs text-muted-foreground">
+              Changing a font updates every theme in this kit. Drafts keep their look until you
+              choose to update them.
+            </p>
+          </>
+        )}
       </div>
       {hasAnyAsset && (
         <div className="flex flex-col gap-1.5">
