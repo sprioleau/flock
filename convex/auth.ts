@@ -97,7 +97,29 @@ export const createAuth = (ctx: GenericCtx<DataModel>) => {
          */
         rateLimit: { window: 60, max: 3 },
         sendMagicLink: async ({ email, url }) => {
-          await sendMagicLinkEmail({ email, url });
+          try {
+            await sendMagicLinkEmail({ email, url });
+          } catch (error) {
+            // The `before` hook already charged the cooldown for this address,
+            // on the assumption the mail would go out. It did not, so give it
+            // back — otherwise the next attempt is told "a link is already on
+            // its way", which is both false and a lockout. Only the address
+            // half is refunded (convex/authMagicLink.ts explains why).
+            //
+            // Best-effort: if the release itself fails there is nothing useful
+            // left to do, and the original send error is the one worth
+            // surfacing, so it is rethrown either way.
+            const { addressKey } = await deriveMagicLinkBucketKeys({
+              email,
+              headers: undefined,
+            });
+            await requireRunMutationCtx(ctx)
+              .runMutation(internal.authMagicLink.releaseMagicLinkAddressCooldown, {
+                addressKey,
+              })
+              .catch(() => undefined);
+            throw error;
+          }
         },
       }),
       convex({ authConfig }),

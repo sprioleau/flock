@@ -170,10 +170,10 @@ export async function deriveMagicLinkBucketKeys(args: {
  * that was never sent. Convex mutations are transactional, so two requests
  * racing the same cooldown cannot both win.
  *
- * CHARGED BEFORE THE SEND, never after. If Resend then fails, the caller has
- * burned a cooldown for an email they never got — annoying for a few minutes,
- * and much cheaper than the alternative, where every send failure is a free
- * retry and a failing mail provider becomes an unmetered loop.
+ * CHARGED BEFORE THE SEND, never after — a send that is in flight has to be
+ * counted, or two tabs racing each other both get through. If the send then
+ * fails, `releaseMagicLinkAddressCooldown` gives the ADDRESS bucket back; see
+ * the note there for why the origin bucket is deliberately not refunded.
  */
 export const reserveMagicLinkSend = internalMutation({
   args: {
@@ -234,6 +234,40 @@ export const reserveMagicLinkSend = internalMutation({
     }
 
     return { isAllowed: true, refusalMessage: "" };
+  },
+});
+
+/**
+ * Hand back the address cooldown after a send that never actually went out.
+ *
+ * Without this, a failing mail provider reads to the person as "a link is
+ * already on its way" — the most misleading copy we could show, because it
+ * says the thing that just failed succeeded, and it locks them out of
+ * retrying for the whole cooldown. That is not hypothetical: the first real
+ * sign-in attempt in production hit exactly this, because RESEND_API_KEY was
+ * set on Vercel while `sendMagicLinkEmail` runs inside Convex.
+ *
+ * THE ORIGIN ALLOWANCE IS NOT REFUNDED, on purpose. The address cooldown
+ * exists to protect one inbox, and a mail that never arrived did not bury
+ * anyone — so returning it costs nothing and spares a real user. The origin
+ * allowance exists to stop a client walking a list of strangers, and an
+ * attacker who can make sends fail (bad addresses, a provider they have
+ * poisoned) would otherwise get infinite free attempts. Refunding only the
+ * half that protects the victim keeps the honest retry cheap and the abusive
+ * one expensive.
+ *
+ * Deleting rather than back-dating: the row's whole meaning is "a link went
+ * out at lastSentAtMs", and none did.
+ */
+export const releaseMagicLinkAddressCooldown = internalMutation({
+  args: { addressKey: v.string() },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    const row = await readBucket(ctx, args.addressKey);
+    if (row !== null) {
+      await ctx.db.delete(row._id);
+    }
+    return null;
   },
 });
 

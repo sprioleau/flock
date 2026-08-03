@@ -88,6 +88,49 @@ async function requestLink(
   });
 }
 
+/** The rollback the auth hook runs when the mail provider throws. */
+async function releaseAfterFailedSend(t: Backend, email: string): Promise<void> {
+  const { addressKey } = await deriveMagicLinkBucketKeys({ email, headers: undefined });
+  await t.mutation(internal.authMagicLink.releaseMagicLinkAddressCooldown, { addressKey });
+}
+
+describe("a send that never went out", () => {
+  beforeEach(() => {
+    process.env[COOLDOWN_FLAG] = "180";
+    process.env[SENDS_FLAG] = "3";
+  });
+
+  it("lets the person try again immediately instead of claiming a link is coming", async () => {
+    const t = createBackend();
+    expect((await requestLink(t, { email: "sam@example.com" })).isAllowed).toBe(true);
+    // Resend throws — the cooldown was charged for mail nobody received.
+    await releaseAfterFailedSend(t, "sam@example.com");
+
+    const retry = await requestLink(t, { email: "sam@example.com" });
+    expect(retry.isAllowed).toBe(true);
+    expect(retry.refusalMessage).toBe("");
+  });
+
+  it("still spends the origin allowance, so failures are not free retries", async () => {
+    const t = createBackend();
+    // Three sends that all fail. The address is released every time, but the
+    // origin allowance (3/hour) is not — otherwise a client that can force
+    // failures gets unlimited attempts at strangers.
+    for (const email of ["a@example.com", "b@example.com", "c@example.com"]) {
+      expect((await requestLink(t, { email })).isAllowed).toBe(true);
+      await releaseAfterFailedSend(t, email);
+    }
+    const fourth = await requestLink(t, { email: "d@example.com" });
+    expect(fourth.isAllowed).toBe(false);
+    expect(fourth.refusalMessage).toBe(MAGIC_LINK_ORIGIN_LIMIT_MESSAGE);
+  });
+
+  it("is harmless when there is no cooldown row to give back", async () => {
+    const t = createBackend();
+    await expect(releaseAfterFailedSend(t, "never-asked@example.com")).resolves.toBeUndefined();
+  });
+});
+
 describe("a stranger's first sign-in link", () => {
   beforeEach(() => {
     // Roomy enough that the origin allowance is never what refuses these.
