@@ -14,6 +14,7 @@ import type * as auth from "../auth.js";
 import type * as authCredits from "../authCredits.js";
 import type * as authEmail from "../authEmail.js";
 import type * as authIdentity from "../authIdentity.js";
+import type * as authMagicLink from "../authMagicLink.js";
 import type * as authMigration from "../authMigration.js";
 import type * as brandKits from "../brandKits.js";
 import type * as cleanup from "../cleanup.js";
@@ -50,6 +51,7 @@ declare const fullApi: ApiFromModules<{
   authCredits: typeof authCredits;
   authEmail: typeof authEmail;
   authIdentity: typeof authIdentity;
+  authMagicLink: typeof authMagicLink;
   authMigration: typeof authMigration;
   brandKits: typeof brandKits;
   cleanup: typeof cleanup;

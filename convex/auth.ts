@@ -10,6 +10,12 @@ import type { DataModel } from "./_generated/dataModel";
 import { query } from "./_generated/server";
 import authConfig from "./auth.config";
 import { sendMagicLinkEmail } from "./authEmail";
+import {
+  deriveMagicLinkBucketKeys,
+  MAGIC_LINK_EMPTY_EMAIL_MESSAGE,
+  MAGIC_LINK_UNAVAILABLE_MESSAGE,
+  normalizeMagicLinkEmail,
+} from "./authMagicLink";
 
 /**
  * Flock identity: the anonymous → magic-link pair
@@ -82,7 +88,13 @@ export const createAuth = (ctx: GenericCtx<DataModel>) => {
         expiresIn: 60 * 15,
         /** Tokens are single-use already; hashing keeps a DB read from being a live credential. */
         storeToken: "hashed",
-        /** Tighter than the plugin default (5/60s) — one person needs one link. */
+        /**
+         * A backstop, not the real limit. `rateLimit.customRules` below
+         * overrides this for the two paths that actually exist, because these
+         * buckets turn out to be deployment-wide rather than per-caller (the
+         * long note down there). This value only still covers hypothetical
+         * sub-paths, so it stays tight.
+         */
         rateLimit: { window: 60, max: 3 },
         sendMagicLink: async ({ email, url }) => {
           await sendMagicLinkEmail({ email, url });
@@ -93,57 +105,84 @@ export const createAuth = (ctx: GenericCtx<DataModel>) => {
 
     hooks: {
       /**
-       * DON'T LET US BE USED TO MAIL STRANGERS.
+       * THE FRONT DOOR, AND THE LOCK ON THE MAIL CHANNEL.
        *
-       * `/sign-in/magic-link` sends real email to any address handed to it. A
-       * signed-out caller scripting that endpoint turns this deployment into a
-       * way to drop mail into someone else's inbox from our verified domain —
-       * which costs us the domain's reputation, not just the send.
+       * Anyone may ask for a sign-in link — a first-time visitor typing their
+       * own address, a returning person on a new device, or someone claiming
+       * the anonymous session they are already using. All three are the same
+       * request and all three are allowed. Nothing here consults the user
+       * table, which is worth stating plainly: signing up and signing in are
+       * INDISTINGUISHABLE from outside, so this endpoint cannot be used to ask
+       * "does this person have an account?".
        *
-       * `disableSignUp: true` would stop it and is the WRONG fix: it also
-       * blocks the claim flow, because claiming means creating a durable user
-       * for an address this deployment has never seen.
+       * That is safe because of WHEN Better Auth creates the user: at link
+       * VERIFICATION, not at link request (the magic-link plugin only calls
+       * `createUser` inside its verify handler). Requesting a link for an
+       * address therefore creates nothing — an address that never opens its
+       * link never becomes an account.
        *
-       * So the policy is stated directly. A magic link may be requested by:
-       *   - anyone holding a session (the claim flow — they are naming an
-       *     account they are already using);
-       *   - anyone whose email already belongs to a user (a returning person
-       *     on a new device, the entire point of the feature).
-       * Everyone else is refused, before any mail is sent.
+       * WHAT IS STILL DANGEROUS is the mail itself. This endpoint sends real
+       * email from our verified domain to whatever address it is handed, so an
+       * open door here is an open door into other people's inboxes, and the
+       * bill for that is the domain's reputation. Two limits price it, both in
+       * convex/authMagicLink.ts: a per-address cooldown so one inbox cannot be
+       * buried, and a per-origin hourly allowance so one client cannot walk a
+       * list of strangers. Neither refusal says anything about whether the
+       * address is registered.
        *
-       * Note what this does NOT do: it is not an invite gate. Anonymous entry
-       * is one click, so anyone can obtain a session and then claim an
-       * address. That is deliberate (see apps/web/src/app/page.tsx) — this
-       * hook protects the mail channel, not the front door.
+       * The limits apply to SESSION HOLDERS TOO. Anonymous entry is one click,
+       * so "has a session" is not evidence of anything — exempting it would
+       * hand the whole guard to anyone willing to click once.
        *
-       * The refusal is a fixed message that does not reveal whether the
-       * address is known, so it is not an account-enumeration oracle.
+       * FAILS CLOSED, unlike the credit meter (apps/web/src/lib/auth/credits.ts
+       * lets a metering outage through on purpose). The calculus is different
+       * on the mail path: a credit that escapes costs one model call, whereas a
+       * send that escapes a broken limiter costs deliverability we cannot buy
+       * back — and the limiter runs on the same Convex deployment that is
+       * serving this request, so if it is down, auth is down anyway and there
+       * is no working product to keep alive by letting mail through.
        */
-      before: createAuthMiddleware(async (ctx) => {
-        if (ctx.path !== "/sign-in/magic-link") {
+      // `requestCtx`, not `ctx`: the Convex context this factory closes over is
+      // what runs the limiter mutation, and shadowing it here would silently
+      // reach for the wrong one.
+      before: createAuthMiddleware(async (requestCtx) => {
+        if (requestCtx.path !== "/sign-in/magic-link") {
           return;
         }
-        const hasSession = ctx.context.session !== null;
-        if (hasSession) {
-          return;
-        }
-        const requestedEmail = String(
-          (ctx.body as { email?: unknown } | undefined)?.email ?? "",
-        )
-          .trim()
-          .toLowerCase();
+        const requestedEmail = normalizeMagicLinkEmail(
+          (requestCtx.body as { email?: unknown } | undefined)?.email,
+        );
         if (requestedEmail.length === 0) {
           throw new APIError("BAD_REQUEST", {
-            message: "Add an email address and we'll send you a link.",
+            message: MAGIC_LINK_EMPTY_EMAIL_MESSAGE,
           });
         }
-        const existingUser = await ctx.context.internalAdapter.findUserByEmail(
-          requestedEmail,
-        );
-        if (existingUser === null) {
-          throw new APIError("FORBIDDEN", {
-            message:
-              "We don't have an account for that address yet. Start building first, then save your work to this email from inside the editor.",
+
+        // Derived here, not inside the mutation: the request headers are the
+        // only place the client address exists, and Convex functions never see
+        // them. The mutation only ever receives opaque digests.
+        const keys = await deriveMagicLinkBucketKeys({
+          email: requestedEmail,
+          headers: requestCtx.headers,
+        });
+
+        let decision: { isAllowed: boolean; refusalMessage: string };
+        try {
+          decision = await requireRunMutationCtx(ctx).runMutation(
+            internal.authMagicLink.reserveMagicLinkSend,
+            {
+              addressKey: keys.addressKey,
+              ...(keys.originKey === undefined ? {} : { originKey: keys.originKey }),
+            },
+          );
+        } catch {
+          throw new APIError("SERVICE_UNAVAILABLE", {
+            message: MAGIC_LINK_UNAVAILABLE_MESSAGE,
+          });
+        }
+        if (!decision.isAllowed) {
+          throw new APIError("TOO_MANY_REQUESTS", {
+            message: decision.refusalMessage,
           });
         }
       }),
@@ -165,6 +204,40 @@ export const createAuth = (ctx: GenericCtx<DataModel>) => {
       storage: "database",
       window: 10,
       max: 100,
+
+      /**
+       * READ THIS BEFORE TIGHTENING ANYTHING HERE: these buckets are NOT
+       * per-caller on this deployment. Better Auth keys its rate limiter on
+       * the client IP, and behind Convex it cannot resolve one — the
+       * `x-forwarded-for` that reaches the Convex HTTP action has more than one
+       * hop in it (Vercel egress, then Convex's own edge) and Better Auth
+       * refuses to trust a multi-hop header without a `trustedProxies` list,
+       * which we cannot write because those hops are not ours and not stable.
+       * Verified against a live deployment: three requests from one address
+       * exhausted a rule, and a request from a completely different address was
+       * refused immediately after. Every caller shares ONE bucket per path.
+       *
+       * So a "3 per hour" rule here would be three sign-in links per hour for
+       * the ENTIRE product, not per person. These two rules are therefore sized
+       * as flood brakes — high enough that real traffic never sees them, low
+       * enough that a script cannot run unbounded. The genuinely per-person
+       * limits live in the magic-link hook above, where the request headers are
+       * readable (convex/authMagicLink.ts).
+       *
+       * Both paths also need an explicit rule because the magic-link plugin
+       * defaults them to 3 per 60s — which, shared, is a deployment-wide cap of
+       * three sign-ins a minute.
+       */
+      customRules: {
+        /** Sends mail: the brake that matters, backed by the per-person guard. */
+        "/sign-in/magic-link": { window: 60, max: 20 },
+        /**
+         * Sends nothing — it redeems a single-use, hashed, 15-minute token, so
+         * the token IS the limit. Rate limiting it only risks turning a burst
+         * of people opening their email into failed sign-ins.
+         */
+        "/magic-link/verify": { window: 60, max: 60 },
+      },
     },
 
     advanced: {

@@ -664,4 +664,39 @@ export default defineSchema({
     spentCount: v.number(),
     updatedAtMs: v.number(),
   }).index("by_bucketKey", ["bucketKey"]),
+
+  /**
+   * Magic-link send buckets (convex/authMagicLink.ts). Anyone may now ask for
+   * a sign-in link, so these rows are what keeps `/sign-in/magic-link` from
+   * being usable as a way to mail strangers from our verified domain. Same
+   * rolling-window-not-a-ledger shape as `authCredits` above, and the same
+   * lazy expiry: an elapsed window restarts on the next send, so there is no
+   * cron and an idle bucket costs nothing.
+   *
+   * TWO KINDS OF BUCKET share the table, distinguished by the `bucketKey`
+   * prefix:
+   *
+   *   "address:<h>"  one recipient. `lastSentAtMs` is the whole limit: no
+   *                  second link to the same inbox inside the cooldown. Stops
+   *                  one address being buried, and makes repeated taps on
+   *                  "send" produce one email.
+   *   "origin:<h>"   one coarsened client address. `sentCount` within the
+   *                  hourly window. The address cooldown alone is defeated by
+   *                  walking a list of DIFFERENT strangers, which is the
+   *                  actual mail-relay attack; this is what caps that.
+   *
+   * `<h>` is a salted SHA-256 digest in both cases — never the address and
+   * never the email — so the table cannot be read as a log of who was mailed
+   * or from where.
+   */
+  authMagicLinkSends: defineTable({
+    /** "address:<salted email hash>" or "origin:<salted address hash>". */
+    bucketKey: v.string(),
+    /** Start of the current hourly window (meaningful for origin buckets). */
+    windowStartMs: v.number(),
+    /** Links sent from this bucket inside the current window. */
+    sentCount: v.number(),
+    /** When the last link went out — the cooldown clock for address buckets. */
+    lastSentAtMs: v.number(),
+  }).index("by_bucketKey", ["bucketKey"]),
 });
