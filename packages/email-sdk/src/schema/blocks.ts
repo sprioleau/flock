@@ -156,8 +156,14 @@ export const rowBlockSchema = z
       .describe("Ordered ids of this row's columns, left to right. Rows may only contain columns."),
     properties: z
       .strictObject({
-        paddingTop: padding("top", "of this row"),
-        paddingBottom: padding("bottom", "of this row"),
+        backgroundColor: z
+          .string()
+          .min(1)
+          .optional()
+          .describe(
+            "Background color filling this row's full width, padding included — the band behind a side-by-side group. Omit for transparent (the section background shows through).",
+          ),
+        ...blockPaddingFields("row"),
       })
       .describe("Row-level style overrides."),
   })

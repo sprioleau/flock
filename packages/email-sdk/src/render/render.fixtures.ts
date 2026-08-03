@@ -294,7 +294,13 @@ export function createBlockOverridesOnlyFixture(): EmailDocument {
       paddingLeft: 16,
       paddingRight: 16,
     },
-    rowProperties: { paddingTop: 8, paddingBottom: 8 },
+    rowProperties: {
+      backgroundColor: "#e0f2fe",
+      paddingTop: 8,
+      paddingBottom: 8,
+      paddingLeft: 10,
+      paddingRight: 10,
+    },
     columnProperties: [
       { widthPercent: 65, verticalAlign: "middle", backgroundColor: "#eef0f2", paddingRight: 12 },
       { widthPercent: 35, verticalAlign: "bottom" },

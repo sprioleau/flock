@@ -343,26 +343,17 @@ export function RowPanel({ block }: { block: RowBlock }) {
 
   return (
     <div className="space-y-4 p-4">
-      <div className="grid grid-cols-2 gap-2">
-        <NumberField
-          label="Padding top"
-          value={properties.paddingTop}
-          isClearable
-          min={0}
-          placeholder={String(resolved.paddingTop)}
-          helpText={helpFor("paddingTop")}
-          onCommit={(value) => commit({ paddingTop: value })}
-        />
-        <NumberField
-          label="Padding bottom"
-          value={properties.paddingBottom}
-          isClearable
-          min={0}
-          placeholder={String(resolved.paddingBottom)}
-          helpText={helpFor("paddingBottom")}
-          onCommit={(value) => commit({ paddingBottom: value })}
-        />
-      </div>
+      <ColorField
+        label="Background"
+        value={properties.backgroundColor}
+        // Unset row backgrounds are transparent — the section background shows
+        // through, so it is the value the user actually sees.
+        fallbackColor={globals.contentBackgroundColor}
+        isClearable
+        helpText={helpFor("backgroundColor")}
+        onCommit={(value) => commit({ backgroundColor: value })}
+      />
+      <PaddingFields blockType="row" properties={properties} resolvedPadding={resolved} onCommitPadding={commit} />
     </div>
   );
 }

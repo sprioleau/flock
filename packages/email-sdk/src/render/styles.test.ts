@@ -277,9 +277,24 @@ describe("resolveBlockStyles precedence (defaults → globals → block override
     ).toBe("#fff7ed");
   });
 
-  it("rows: vertical padding defaults to 0", () => {
-    expect(resolveBlockStyles(undefined, rowBlock())).toEqual({ paddingTop: 0, paddingBottom: 0 });
+  it("rows: padding defaults to 0 on all four sides", () => {
+    expect(resolveBlockStyles(undefined, rowBlock())).toEqual({
+      backgroundColor: undefined,
+      paddingTop: 0,
+      paddingBottom: 0,
+      paddingLeft: 0,
+      paddingRight: 0,
+    });
     expect(resolveBlockStyles(undefined, rowBlock({ paddingTop: 6 })).paddingTop).toBe(6);
+    expect(resolveBlockStyles(undefined, rowBlock({ paddingLeft: 12 })).paddingLeft).toBe(12);
+    expect(resolveBlockStyles(undefined, rowBlock({ paddingRight: 12 })).paddingRight).toBe(12);
+  });
+
+  it("rows: the block background is transparent unless set", () => {
+    expect(resolveBlockStyles(undefined, rowBlock()).backgroundColor).toBeUndefined();
+    expect(
+      resolveBlockStyles(undefined, rowBlock({ backgroundColor: "#f4f4f5" })).backgroundColor,
+    ).toBe("#f4f4f5");
   });
 
   it("root: canvas values resolve through the same chain", () => {

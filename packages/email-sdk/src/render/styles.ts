@@ -71,9 +71,9 @@ export interface ResolvedSectionStyles extends ResolvedPadding {
   contentWidth: number;
 }
 
-export interface ResolvedRowStyles {
-  paddingTop: number;
-  paddingBottom: number;
+export interface ResolvedRowStyles extends ResolvedPadding {
+  /** Undefined means transparent (the section background shows through). */
+  backgroundColor: string | undefined;
 }
 
 export interface ResolvedColumnStyles extends ResolvedPadding {
@@ -243,9 +243,15 @@ function resolveSectionStyles(
 }
 
 function resolveRowStyles(block: RowBlock): ResolvedRowStyles {
+  const { properties } = block;
   return {
-    paddingTop: block.properties.paddingTop ?? 0,
-    paddingBottom: block.properties.paddingBottom ?? 0,
+    backgroundColor: properties.backgroundColor,
+    ...resolvePadding(properties, {
+      paddingTop: 0,
+      paddingBottom: 0,
+      paddingLeft: 0,
+      paddingRight: 0,
+    }),
   };
 }
 

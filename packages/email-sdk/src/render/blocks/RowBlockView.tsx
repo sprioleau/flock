@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 import { Row } from "react-email";
 import type { RowBlock } from "../../schema/blocks";
 import type { ResolvedRowStyles } from "../styles";
+import { blockPaddingStyle } from "./shared";
 
 export interface RowBlockViewProps {
   block: RowBlock;
@@ -12,17 +13,23 @@ export interface RowBlockViewProps {
 /**
  * row → React Email <Row>. Children must be ColumnBlockViews (td cells).
  *
- * Row padding lives on a wrapping table cell, not the <Row> table itself:
- * <Row> renders a border-collapsed table, and collapsed tables ignore
- * padding (both in browsers and email clients). Padding on a <td> is the
- * one spacing primitive every client honors — the same trick React Email's
- * Section uses internally.
+ * Row padding and background live on a wrapping table cell, not the <Row>
+ * table itself: <Row> renders a border-collapsed table, and collapsed tables
+ * ignore padding (both in browsers and email clients). A <td> is the one
+ * surface every client honors for BOTH padding and background-color — the
+ * same trick React Email's Section uses internally, and the same surface the
+ * column, text, and image blocks paint their own backgrounds on.
+ *
+ * The wrapper is emitted ONLY when the row actually carries padding or a
+ * background, so an unstyled row still renders the bare <Row> markup it
+ * always has (the golden snapshots are the proof).
  */
 export function RowBlockView({ resolvedStyles, children }: RowBlockViewProps) {
-  const hasVerticalPadding = resolvedStyles.paddingTop > 0 || resolvedStyles.paddingBottom > 0;
+  const { paddingTop, paddingBottom, paddingLeft, paddingRight, backgroundColor } = resolvedStyles;
+  const hasPadding = paddingTop > 0 || paddingBottom > 0 || paddingLeft > 0 || paddingRight > 0;
   const row = <Row>{children}</Row>;
 
-  if (!hasVerticalPadding) {
+  if (!hasPadding && backgroundColor === undefined) {
     return row;
   }
 
@@ -38,8 +45,8 @@ export function RowBlockView({ resolvedStyles, children }: RowBlockViewProps) {
         <tr>
           <td
             style={{
-              paddingTop: `${resolvedStyles.paddingTop}px`,
-              paddingBottom: `${resolvedStyles.paddingBottom}px`,
+              ...blockPaddingStyle(resolvedStyles),
+              ...(backgroundColor === undefined ? {} : { backgroundColor }),
             }}
           >
             {row}
