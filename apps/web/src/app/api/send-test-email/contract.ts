@@ -25,7 +25,17 @@ export interface SendTestEmailResponseBody {
 }
 
 export interface SendTestEmailErrorResponseBody {
-  error: "invalid_request" | "invalid_document" | "invalid_recipient" | "send_failed";
+  /**
+   * `not_configured` is called out separately from `send_failed` because it is
+   * not a failure the user can retry their way out of — this server has no
+   * email service connected, so the UI says so instead of offering "try again".
+   */
+  error:
+    | "invalid_request"
+    | "invalid_document"
+    | "invalid_recipient"
+    | "not_configured"
+    | "send_failed";
   /** User-facing copy — raw provider errors never reach this field. */
   message: string;
 }

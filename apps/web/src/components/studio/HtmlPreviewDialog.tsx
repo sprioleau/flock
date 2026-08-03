@@ -12,6 +12,8 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import { useEditorStore } from "@/lib/editor-store";
+import { SendTestEmailForm } from "./SendTestEmailForm";
+import { useSendTestEmail } from "./use-send-test-email";
 
 type RenderState =
   | { status: "idle" }
@@ -25,6 +27,13 @@ type RenderState =
  * renderToHTML server-side) and shows it in a sandboxed iframe. Reads the
  * store's doc at open time, so it always exports the ACTIVE draft.
  *
+ * The footer carries the SAME test-send control as the dedicated Send-test
+ * dialog ({@link SendTestEmailForm} over {@link useSendTestEmail}): seeing the
+ * email as it will arrive and mailing it to yourself are one gesture, so the
+ * preview does not have to be closed to act on it. Both surfaces read the same
+ * store doc at submit time and POST to the same route, so what gets sent is
+ * what the iframe above is showing.
+ *
  * `isIconTrigger` renders the compact icon-only trigger used by the floating
  * per-frame toolbar (§10.2 frames UX); default is the labeled header button.
  */
@@ -32,6 +41,7 @@ export function HtmlPreviewDialog({ isIconTrigger = false }: { isIconTrigger?: b
   const [isOpen, setIsOpen] = useState(false);
   const [renderState, setRenderState] = useState<RenderState>({ status: "idle" });
   const requestIdRef = useRef(0);
+  const sendControl = useSendTestEmail();
 
   const startRender = () => {
     const requestId = requestIdRef.current + 1;
@@ -65,6 +75,11 @@ export function HtmlPreviewDialog({ isIconTrigger = false }: { isIconTrigger?: b
     setIsOpen(nextIsOpen);
     if (nextIsOpen) {
       startRender();
+      sendControl.prepareToSend();
+    } else {
+      // Orphan both in-flight responses so neither can set state after close.
+      requestIdRef.current += 1;
+      sendControl.discardInFlightSend();
     }
   };
 
@@ -86,7 +101,7 @@ export function HtmlPreviewDialog({ isIconTrigger = false }: { isIconTrigger?: b
           HTML
         </DialogTrigger>
       )}
-      <DialogContent className="grid h-[85vh] grid-rows-[auto_1fr] sm:max-w-4xl">
+      <DialogContent className="grid h-[85vh] grid-rows-[auto_1fr_auto] sm:max-w-4xl">
         <DialogHeader>
           <DialogTitle>Email HTML</DialogTitle>
           <DialogDescription>
@@ -108,6 +123,9 @@ export function HtmlPreviewDialog({ isIconTrigger = false }: { isIconTrigger?: b
             <LoaderCircleIcon className="size-5 animate-spin" />
           </div>
         )}
+        <div className="border-t pt-4" data-testid="html-preview-send-test">
+          <SendTestEmailForm control={sendControl} />
+        </div>
       </DialogContent>
     </Dialog>
   );

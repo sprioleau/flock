@@ -100,6 +100,24 @@ describe("POST /api/send-test-email", () => {
     });
   });
 
+  it("maps a not_configured outcome to a 503 the client can tell apart", async () => {
+    // Not a retryable provider fault — this deployment has no email service
+    // connected, so the UI says "not set up" instead of "try again".
+    sendTestEmailWithResendMock.mockResolvedValue({
+      isSent: false,
+      reason: "not_configured",
+      message: "this server can't send email yet — no email service has been connected.",
+    });
+    const response = await POST(
+      makeRequest({ document: createEmptyDocument(), to: "delivered@resend.dev" }),
+    );
+    expect(response.status).toBe(503);
+    const body = (await response.json()) as { error: string; message: string };
+    expect(body.error).toBe("not_configured");
+    // Missing env keys are logged server-side, never returned to the browser.
+    expect(body.message).not.toContain("RESEND");
+  });
+
   it("maps provider/server failures to a 502 with user-facing copy", async () => {
     sendTestEmailWithResendMock.mockResolvedValue({
       isSent: false,

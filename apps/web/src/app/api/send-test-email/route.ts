@@ -73,10 +73,19 @@ export async function POST(request: Request): Promise<Response> {
 
   const outcome = await sendTestEmailWithResend({ doc: document, to });
   if (!outcome.isSent) {
-    // invalid_recipient is the caller's input (400); the rest are provider or
-    // server conditions (502). Copy is already user-facing from the module.
+    // invalid_recipient is the caller's input (400). not_configured is this
+    // deployment missing a capability rather than a provider fault, so it is a
+    // 503 the client renders as "not set up" instead of a retryable error. The
+    // rest are provider or server conditions (502). Copy is already user-facing
+    // from the module — the missing env keys are logged there, never returned.
     if (outcome.reason === "invalid_recipient") {
       return errorResponse(400, { error: "invalid_recipient", message: outcome.message });
+    }
+    if (outcome.reason === "not_configured") {
+      return errorResponse(503, {
+        error: "not_configured",
+        message: `The test email wasn't sent: ${outcome.message}`,
+      });
     }
     return errorResponse(502, {
       error: "send_failed",

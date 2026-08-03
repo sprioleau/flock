@@ -53,6 +53,15 @@ interface ResendSendConfig {
   replyToEmail?: string;
 }
 
+/** The env keys sending needs but this server doesn't have — operator-facing. */
+export function getMissingSendConfigKeys(env: Record<string, string | undefined>): string[] {
+  const requiredKeys = ["RESEND_API_KEY", "RESEND_FROM_EMAIL"] as const;
+  return requiredKeys.filter((key) => {
+    const value = env[key]?.trim();
+    return value === undefined || value === "";
+  });
+}
+
 /** Undefined when sending is not configured (missing key or from address). */
 function getResendSendConfig(env: Record<string, string | undefined>): ResendSendConfig | undefined {
   const apiKey = env.RESEND_API_KEY?.trim();
@@ -181,11 +190,19 @@ export async function sendTestEmailWithResend({
 
   const config = getResendSendConfig(env);
   if (config === undefined) {
+    // WHICH settings are missing is an operator's problem, so it goes to the
+    // server log. The person reading the outcome (in the dialog, or relayed by
+    // the agent) gets a sentence about the product, not about env vars.
+    console.error(
+      JSON.stringify({
+        tag: "flock.sendTestEmail.notConfigured",
+        missing: getMissingSendConfigKeys(env),
+      }),
+    );
     return {
       isSent: false,
       reason: "not_configured",
-      message:
-        "email sending isn't configured on this server yet (RESEND_API_KEY / RESEND_FROM_EMAIL are not set).",
+      message: "this server can't send email yet — no email service has been connected.",
     };
   }
 
