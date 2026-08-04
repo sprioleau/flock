@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { DASHBOARD_PATH, isAuthEnabled } from "@/lib/auth/config";
-import { isAuthenticated } from "@/lib/auth/auth-server";
+import { isAuthenticatedSafely } from "@/lib/auth/auth-server";
 import { LoginPanel } from "./LoginPanel";
 import { InteractiveLineGrid } from "@/components/ui/interactive-line-grid";
 
@@ -84,17 +84,4 @@ export default async function Home() {
       </main>
     </div>
   );
-}
-
-/**
- * A misconfigured or unreachable auth backend must not strand a visitor on the
- * login page. Treating the failure as "not signed in" leaves them with two
- * working buttons instead of a dead end.
- */
-async function isAuthenticatedSafely(): Promise<boolean> {
-  try {
-    return await isAuthenticated();
-  } catch {
-    return false;
-  }
 }

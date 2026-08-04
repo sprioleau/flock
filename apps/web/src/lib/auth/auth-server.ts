@@ -31,6 +31,27 @@ export const {
 });
 
 /**
+ * Is this request signed in? The ONE answer both sides of the front door use:
+ * `/` decides whether to show the login panel, and `/dashboard` decides
+ * whether to send you there. They must agree — two surfaces disagreeing about
+ * who is allowed in is how the retired access gate went wrong (see the note in
+ * app/page.tsx), and here it would be worse than a wrong answer: a
+ * disagreement is a redirect loop.
+ *
+ * An unreachable or misconfigured auth backend answers "no" rather than
+ * throwing. That strands nobody: `/` shows its two working buttons, and
+ * `/dashboard` forwards to `/`. The loop is impossible in that state precisely
+ * because both pages take the answer from here.
+ */
+export async function isAuthenticatedSafely(): Promise<boolean> {
+  try {
+    return await isAuthenticated();
+  } catch {
+    return false;
+  }
+}
+
+/**
  * The site URL is derivable from the cloud URL, so a missing
  * NEXT_PUBLIC_CONVEX_SITE_URL is recoverable rather than fatal — one less env
  * var for a deploy to get wrong. A missing cloud URL is not recoverable.
