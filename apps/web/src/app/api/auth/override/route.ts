@@ -4,12 +4,14 @@ import {
   OWNER_OVERRIDE_COOKIE_NAME,
   deriveOwnerOverrideCookieValue,
   getOwnerOverridePassword,
+  hasOwnerOverride,
   isMatchingOverrideSecret,
 } from "@/lib/auth/owner-override";
 
 /**
  * POST /api/auth/override — redeem the owner override password for an
- * uncapped credit allowance. DELETE gives it back.
+ * uncapped credit allowance. DELETE gives it back. GET reports whether the
+ * caller already holds one.
  *
  * The expected value never leaves the server; the response says only "yes" or
  * "no". A wrong password and a disabled feature return the SAME 403 with the
@@ -37,6 +39,35 @@ function isRateLimited(clientKey: string): boolean {
   }
   entry.count += 1;
   return entry.count > MAX_ATTEMPTS_PER_WINDOW;
+}
+
+/**
+ * GET /api/auth/override — does THIS browser already hold a valid override?
+ *
+ * The UI needs the answer twice (the /override page, so it can offer to give
+ * the override back rather than ask for a password nobody needs to retype; and
+ * the settings menu, so the owner-only provider control can be absent rather
+ * than merely disabled). Without this, the only way to know was to try a
+ * password, which is exactly the thing worth not doing casually.
+ *
+ * Deliberately NOT run through `isRateLimited`. That limiter exists to bound
+ * guessing, and this endpoint offers nothing to guess at: it reads a cookie
+ * the caller already has and returns a boolean about it. Metering it would
+ * only mean a page refresh could lock the owner out of their own UI.
+ *
+ * What it discloses: `true` implies the feature is configured here — but a
+ * caller can only get `true` by already holding a valid cookie, which they
+ * could only have obtained by knowing the password. `false` is returned
+ * identically whether the password is wrong, the cookie is stale, or the
+ * feature was never switched on for this deployment, preserving the same
+ * ambiguity POST is careful about.
+ *
+ * `no-store` is load-bearing, not hygiene: the answer varies per cookie, and a
+ * shared cache that kept one `true` would hand an override's UI to strangers.
+ */
+export function GET(request: Request): Response {
+  const isUnlocked = hasOwnerOverride(request.headers.get("cookie"));
+  return Response.json({ isUnlocked }, { headers: { "Cache-Control": "no-store" } });
 }
 
 export async function POST(request: Request): Promise<Response> {
