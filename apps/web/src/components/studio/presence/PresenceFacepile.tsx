@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import Link from "next/link";
 import { Popover } from "@base-ui/react/popover";
 import { useQuery } from "convex/react";
 import { SparklesIcon } from "lucide-react";
@@ -16,6 +17,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
+import { DASHBOARD_PATH } from "@/lib/auth/config";
 import { useEditorStore } from "@/lib/editor-store";
 import { useArePersonasPaused } from "@/lib/personas/enabled-personas";
 import { buildNextCheckLabel, usePersonaLastRunAtMs } from "@/lib/personas/persona-run-clock";
@@ -353,8 +355,8 @@ function SelfAvatar({ entry }: { entry: PresenceRosterEntry }) {
       <Popover.Trigger
         className={cn(HUMAN_AVATAR_CLASSES, "cursor-pointer hover:brightness-110")}
         style={{ backgroundColor: entry.data.color }}
-        title="Edit your display name"
-        aria-label={`${memberLabel(entry)} — edit your display name`}
+        title="Your account"
+        aria-label={`${memberLabel(entry)} — your display name and emails`}
         data-testid="presence-avatar-self"
       >
         <AvatarGlyph entry={entry} />
@@ -387,6 +389,25 @@ function SelfAvatar({ entry }: { entry: PresenceRosterEntry }) {
                 </Button>
               </div>
             </form>
+            {/*
+             * The way OUT of the studio. Until this existed the editor was a
+             * one-way door — no link back to the dashboard anywhere, so work
+             * you had not bookmarked was reachable only via browser back.
+             *
+             * A plain Link, deliberately: routing it through the Button's
+             * `render` prop is the composition that throws in production
+             * unless `nativeButton={false}` rides along, and this needs no
+             * button styling to earn its place.
+             */}
+            <div className="mt-3 border-t pt-2">
+              <Link
+                href={DASHBOARD_PATH}
+                className="block rounded-sm px-1 py-1 text-sm text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
+                data-testid="presence-dashboard-link"
+              >
+                Your emails
+              </Link>
+            </div>
           </Popover.Popup>
         </Popover.Positioner>
       </Popover.Portal>
