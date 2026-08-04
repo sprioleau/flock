@@ -2,7 +2,7 @@
 
 import { api } from "@convex/_generated/api";
 import { useMutation, useQuery } from "convex/react";
-import { PlusIcon, SparklesIcon } from "lucide-react";
+import { LogInIcon, PlusIcon, SparklesIcon } from "lucide-react";
 import Link from "next/link";
 import { useCallback, useState, type FormEvent } from "react";
 import { Button } from "@/components/ui/button";
@@ -17,11 +17,15 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { STUDIO_PATH } from "@/lib/auth/config";
+import { LOGIN_PATH, STUDIO_PATH } from "@/lib/auth/config";
 import { UserButton } from "@/lib/auth/UserButton";
 import { useFlockAuth } from "@/lib/auth/use-flock-auth";
 import { getOrCreateSessionId } from "@/lib/session";
 import { CanvasCard, type CanvasCardEntry } from "./CanvasCard";
+import {
+  resolveDashboardAttribution,
+  type DashboardAttribution,
+} from "./dashboard-attribution";
 
 /**
  * The dashboard: everything a signed-in person has made, and the way back into
@@ -36,9 +40,20 @@ import { CanvasCard, type CanvasCardEntry } from "./CanvasCard";
  * convenience index over `canvasOwners` (convex/canvases.ts) — share links
  * keep working for people who are not signed in and never appear here, because
  * ownership answers "whose list is this" and not "who may open it".
+ *
+ * That non-gating stance is exactly why the page has to be careful with its
+ * WORDS. A visitor the server cannot attribute anything to still gets in, still
+ * gets the full page, and still gets an empty list — so the copy is the only
+ * thing that can tell them the list is empty because nobody is named, not
+ * because they have made nothing. See ./dashboard-attribution.ts.
  */
 export function DashboardShell() {
   const { credits, identity, isEnabled } = useFlockAuth();
+  const attribution = resolveDashboardAttribution({
+    isAuthEnabled: isEnabled,
+    identity,
+    credits,
+  });
 
   // Read once and lazily: this component also renders on the server, where
   // there is no localStorage. The value is only the PRE-AUTH fallback key —
@@ -116,13 +131,30 @@ export function DashboardShell() {
         <div className="flex flex-col gap-1">
           <h1 className="text-2xl font-semibold tracking-tight">Your emails</h1>
           <p className="text-sm text-muted-foreground">
-            {identity !== null && identity !== undefined && !identity.isAnonymous
-              ? "Everything you've made, on every device you sign in from."
-              : "Everything you've made in this browser."}
+            {/* "…in this browser" is a PROMISE about where the list comes from,
+                and it is false for a caller the server cannot name: nothing in
+                this browser is being read on their behalf. Say what is actually
+                true instead. */}
+            {attribution === "unattributed"
+              ? "Sign in and the emails saved to your account show up here."
+              : identity !== null && identity !== undefined && !identity.isAnonymous
+                ? "Everything you've made, on every device you sign in from."
+                : "Everything you've made in this browser."}
           </p>
         </div>
         <div className="flex items-center gap-2">
-          <UserButton />
+          {/* UserButton renders nothing without an identity, so a signed-out
+              visitor who reached this URL directly (a bookmark, a link) would
+              otherwise have no way in from the page that is telling them to
+              sign in. This is an offer, never a gate — "New email" stays right
+              next to it and still works. */}
+          {attribution === "unattributed" ? (
+            <Button variant="outline" nativeButton={false} render={<Link href={LOGIN_PATH} />}>
+              Sign in
+            </Button>
+          ) : (
+            <UserButton />
+          )}
           {/* nativeButton={false}: this renders an <a>, not a <button>. Base UI
               warns otherwise, and in a production build that warning throws. */}
           <Button nativeButton={false} render={<Link href={STUDIO_PATH} />}>
@@ -138,10 +170,15 @@ export function DashboardShell() {
         </p>
       ) : null}
 
-      {canvases === undefined ? (
+      {/* An empty list is held on the skeleton until we know WHY it is empty.
+          The two empty states say opposite things ("you've made nothing" vs
+          "we can't tell whose this is"), so flashing one and replacing it with
+          the other reads as a glitch. A non-empty list needs no such wait: rows
+          coming back is itself proof the server named an owner. */}
+      {canvases === undefined || (canvases.length === 0 && attribution === "resolving") ? (
         <LoadingGrid />
       ) : canvases.length === 0 ? (
-        <EmptyState credits={credits} isAuthEnabled={isEnabled} />
+        <EmptyState credits={credits} isAuthEnabled={isEnabled} attribution={attribution} />
       ) : (
         <div
           className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3"
@@ -274,10 +311,15 @@ function LoadingGrid() {
 function EmptyState({
   credits,
   isAuthEnabled,
+  attribution,
 }: {
   credits: ReturnType<typeof useFlockAuth>["credits"];
   isAuthEnabled: boolean;
+  attribution: DashboardAttribution;
 }) {
+  if (attribution === "unattributed") {
+    return <UnattributedState />;
+  }
   return (
     <div
       className="flex flex-col items-center gap-4 rounded-xl border border-dashed border-border px-6 py-16 text-center"
@@ -298,12 +340,78 @@ function EmptyState({
         <PlusIcon />
         Write your first email
       </Button>
-      {isAuthEnabled && credits !== undefined ? (
+      {/* Null is not "still loading" — it is the server saying it can attribute
+          no allowance to this caller (convex/authCredits.ts). Printing a
+          fabricated "5 of 5" under a sentence that promises a real number is
+          the one thing this line must not do, so it simply is not shown. */}
+      {isAuthEnabled && credits !== undefined && credits !== null ? (
         <p className="text-xs text-muted-foreground">
           {credits.remaining} of {credits.limit} AI requests left today
           {credits.isClaimedTier ? "." : " — saving your work to an email raises this."}
         </p>
       ) : null}
+    </div>
+  );
+}
+
+/**
+ * What a signed-out visitor sees on a deployment that will not accept a
+ * client-supplied ownership key (see ./dashboard-attribution.ts for how we
+ * know we are in that state).
+ *
+ * It is NOT the empty state with different words. The empty state's whole
+ * message — "everything you make shows up here" — is the one thing that is not
+ * true here, so this replaces it rather than dressing it. Three facts, in the
+ * order they matter to the person reading:
+ *
+ *   1. WHY it is blank. Not "you have nothing"; "we don't know who you are".
+ *      Getting this wrong is what makes someone think their work was deleted.
+ *   2. WHAT IS SAFE. Nothing was lost and no link stopped working — the
+ *      document id is the capability and never consulted identity
+ *      (convex/canvases.ts). The blank list is a listing problem, not a data
+ *      problem, and that distinction is the whole reason not to panic.
+ *   3. WHAT WRITING NOW ACTUALLY GETS THEM. A canvas created with no owner id
+ *      records no `canvasOwners` row at all (`recordCanvasOwner`), so it will
+ *      never appear here — not now, and not later after they sign in. Offering
+ *      "Write your first email" under a promise it cannot keep is exactly the
+ *      failure this whole page is being fixed for, so the button stays (never
+ *      gate) and the sentence above it tells the truth about it.
+ *
+ * Sign in leads, because it is the action that makes the page work. But it is
+ * an offer: there is no redirect, no interstitial, and the studio is one click
+ * away for someone who genuinely just wants to write something.
+ */
+function UnattributedState() {
+  return (
+    <div
+      className="flex flex-col items-center gap-4 rounded-xl border border-dashed border-border px-6 py-16 text-center"
+      data-testid="dashboard-signed-out-state"
+    >
+      <div className="flex size-10 items-center justify-center rounded-full bg-accent text-accent-foreground">
+        <LogInIcon className="size-5" aria-hidden="true" />
+      </div>
+      <div className="flex max-w-sm flex-col gap-1.5">
+        <h2 className="text-base font-semibold">Sign in to see your emails</h2>
+        <p className="text-sm text-muted-foreground">
+          You&rsquo;re not signed in, so we can&rsquo;t tell which emails are
+          yours. Nothing has been lost — any link you saved still opens the
+          draft it points to.
+        </p>
+        <p className="text-sm text-muted-foreground">
+          You can still write one now without signing in; it just won&rsquo;t be
+          listed here.
+        </p>
+      </div>
+      <div className="flex flex-wrap items-center justify-center gap-2">
+        {/* See the header buttons: an <a> render target needs nativeButton={false}. */}
+        <Button nativeButton={false} render={<Link href={LOGIN_PATH} />}>
+          Sign in
+        </Button>
+        <Button variant="outline" nativeButton={false} render={<Link href={STUDIO_PATH} />}>
+          <PlusIcon />
+          Write one anyway
+        </Button>
+      </div>
     </div>
   );
 }

@@ -47,8 +47,14 @@ export function useFlockAuth(): {
   identity: FlockIdentity | null | undefined;
   /** True when there is an identity that has not yet been claimed by email. */
   isUnclaimed: boolean;
-  /** Undefined until the allowance query resolves. */
-  credits: CreditBalance | undefined;
+  /**
+   * Undefined until the allowance query resolves; null when the server can
+   * attribute no allowance to this caller at all — a signed-out visitor on a
+   * strict deployment, whose claimed session id names nobody
+   * (convex/authCredits.ts). Callers must render nothing rather than a number:
+   * there is no honest number to show.
+   */
+  credits: CreditBalance | null | undefined;
   magicLinkRequest: MagicLinkRequestState;
   sendMagicLink: (args: { email: string }) => Promise<void>;
   resetMagicLinkRequest: () => void;
@@ -63,6 +69,12 @@ export function useFlockAuth(): {
   const [claimedSessionId] = useState(() =>
     typeof window === "undefined" ? "" : getOrCreateSessionId(),
   );
+  // DELIBERATELY NOT GATED ON `identity`. It is tempting, since on a strict
+  // deployment a signed-out caller can only ever be told null — but with strict
+  // mode OFF the claimed id IS the ownership key, so a signed-out caller has a
+  // real, meaningful balance and skipping the query would hide it. The server
+  // decides what it can attribute and answers null when it cannot
+  // (convex/authCredits.ts); asking is always safe and never throws.
   const credits = useQuery(
     api.authCredits.getBalance,
     isEnabled && claimedSessionId.length > 0 ? { sessionId: claimedSessionId } : "skip",

@@ -130,25 +130,34 @@ export function UserButton() {
           </DropdownMenuGroup>
         )}
 
-        <DropdownMenuSeparator />
-
-        <div className="px-2 py-1.5">
-          <p className="text-sm font-medium text-foreground">Today&rsquo;s AI allowance</p>
-          {credits === undefined ? (
-            <p className="text-sm text-muted-foreground">Checking…</p>
-          ) : (
-            <>
-              <p className="text-sm text-muted-foreground">
-                {credits.remaining} of {credits.limit} left
-              </p>
-              {!credits.isClaimedTier ? (
-                <p className="mt-1 text-xs text-muted-foreground">
-                  Saving your work to an email raises this.
-                </p>
-              ) : null}
-            </>
-          )}
-        </div>
+        {/* Null means the server could attribute no allowance to this caller
+            (convex/authCredits.ts). There is no honest number to print, so the
+            section AND its separator go, rather than leaving a rule above a
+            made-up number. In practice this pairs with the early return above —
+            a caller with no identity has no menu to open — so it is a
+            belt-and-braces branch, not a state a person is expected to reach. */}
+        {credits === null ? null : (
+          <>
+            <DropdownMenuSeparator />
+            <div className="px-2 py-1.5">
+              <p className="text-sm font-medium text-foreground">Today&rsquo;s AI allowance</p>
+              {credits === undefined ? (
+                <p className="text-sm text-muted-foreground">Checking…</p>
+              ) : (
+                <>
+                  <p className="text-sm text-muted-foreground">
+                    {credits.remaining} of {credits.limit} left
+                  </p>
+                  {!credits.isClaimedTier ? (
+                    <p className="mt-1 text-xs text-muted-foreground">
+                      Saving your work to an email raises this.
+                    </p>
+                  ) : null}
+                </>
+              )}
+            </div>
+          </>
+        )}
 
         {!isUnclaimed ? (
           <>

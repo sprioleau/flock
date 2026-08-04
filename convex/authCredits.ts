@@ -1,7 +1,7 @@
 import { v } from "convex/values";
 import { mutation, query, type MutationCtx, type QueryCtx } from "./_generated/server";
 import { authComponent } from "./auth";
-import { resolveOwnerId } from "./authIdentity";
+import { resolveOwnerIdOrNull } from "./authIdentity";
 
 /**
  * The inference allowance: how much model work one person may ask for per
@@ -64,6 +64,40 @@ import { resolveOwnerId } from "./authIdentity";
  * can exhaust it between them. Treat credits as per-person fairness and the
  * provider quota as the hard ceiling — on a free key, set the numbers well
  * below it; on a paid key, size them for the experience you want.
+ *
+ * THE CALLER WHO NAMES NOBODY. On a strict deployment
+ * (FLOCK_REQUIRE_AUTH_IDENTITY=true, which is how production is configured) a
+ * visitor with no verified identity resolves to NO owner id at all — the
+ * `sessionId` they send is a scraped, published string and is deliberately
+ * inert (convex/authIdentity.ts). That is not an error condition here, it is a
+ * normal visitor, so both functions below use the NON-throwing resolver and
+ * simply drop the owner bucket:
+ *
+ *   identity  →  owner bucket (+ origin bucket while anonymous), as always.
+ *   no owner  →  the ORIGIN bucket alone. It is keyed to a salted address
+ *                hash, not to anything the client chose, so it meters that
+ *                visitor honestly without ever letting a quoted session id
+ *                select someone's bucket.
+ *   neither   →  no bucket exists, so the balance is `null` — "we cannot
+ *                attribute an allowance to you" — and a spend goes through.
+ *
+ * WHY NOT THROW, which is what this used to do. `getBalance` is run on page
+ * load by a SHARED hook (apps/web/src/lib/auth/use-flock-auth.ts), and a Convex
+ * query error re-throws during render: refusing took `/dashboard` and `/studio`
+ * down entirely for signed-out visitors, in production only, because Convex dev
+ * has the flag unset. A read-only balance must degrade, exactly as
+ * `canvases.listMyCanvases` degrades to an empty list.
+ *
+ * `spend` throwing was worse than it looked: `chargeCreditForRequest`
+ * (apps/web/src/lib/auth/credits.ts) FAILS OPEN by design, so the refusal was
+ * swallowed and every signed-out request ran entirely UNMETERED. Charging the
+ * origin bucket is what actually closes that.
+ *
+ * WHY NOT FABRICATE A NUMBER for the no-bucket case. Reporting the anonymous
+ * 5/24h tier to someone whose requests are metered against a shared 20/24h
+ * origin bucket — or against nothing at all — would put a false number in front
+ * of the user, and the UI says "N of M AI requests left today" in words. Null
+ * is the truth, and the UI omits the line rather than lying.
  */
 
 const DEFAULT_CLAIMED_CREDITS = 25;
@@ -124,14 +158,22 @@ async function peekBucket(
   return { spent: row.spentCount, periodStartMs: row.periodStartMs };
 }
 
-/** The buckets a caller is charged against. */
+/**
+ * The buckets a caller is charged against. May be EMPTY: a caller who names no
+ * owner and shows no origin has nothing to charge (see the header note).
+ */
 function resolveBuckets(args: {
-  ownerId: string;
+  ownerId: string | null;
   isClaimed: boolean;
   originKey: string | undefined;
 }): Bucket[] {
-  const buckets: Bucket[] = [
-    {
+  const buckets: Bucket[] = [];
+  // No owner id means strict mode refused the claimed session id. Skipping the
+  // bucket is the point: keying one off `args.sessionId` here would hand a
+  // scraped id the power to read and burn its owner's allowance, which is the
+  // exact hole strict mode exists to shut.
+  if (args.ownerId !== null) {
+    buckets.push({
       key: `owner:${args.ownerId}`,
       limit: args.isClaimed
         ? readPositiveInt({
@@ -142,8 +184,8 @@ function resolveBuckets(args: {
             name: "FLOCK_ANONYMOUS_CREDITS_PER_PERIOD",
             fallback: DEFAULT_ANONYMOUS_CREDITS,
           }),
-    },
-  ];
+    });
+  }
   // Claimed accounts are exempt from the shared bucket: they are the escape
   // hatch for a throttled network, and pooling them would punish a whole
   // office for one person's usage.
@@ -159,11 +201,19 @@ function resolveBuckets(args: {
   return buckets;
 }
 
-/** The tightest of a set of bucket states — the one that will actually stop you. */
+/**
+ * The tightest of a set of bucket states — the one that will actually stop you,
+ * or null when there is no bucket to report. Null rather than a zero-filled
+ * object on purpose: "no allowance applies to you" and "your allowance is zero"
+ * are opposite facts, and the UI says one of them out loud.
+ */
 function pickTightest(
   entries: { limit: number; spent: number; periodStartMs: number }[],
   args: { nowMs: number; periodMs: number },
-): { limit: number; spent: number; remaining: number; resetsAtMs: number } {
+): { limit: number; spent: number; remaining: number; resetsAtMs: number } | null {
+  if (entries.length === 0) {
+    return null;
+  }
   let tightest = {
     limit: 0,
     spent: 0,
@@ -185,8 +235,10 @@ function pickTightest(
 }
 
 /**
- * The caller's current balance. Never writes, so polling it does not start a
- * window.
+ * The caller's current balance, or null when no allowance can be attributed to
+ * them. Never writes, so polling it does not start a window, and never throws,
+ * so a signed-out visitor loading a page gets an answer instead of an error
+ * boundary (see the header note).
  */
 export const getBalance = query({
   args: {
@@ -194,9 +246,9 @@ export const getBalance = query({
     /** Salted, coarsened origin hash; omitted by callers that cannot see one. */
     originKey: v.optional(v.string()),
   },
-  returns: balanceValidator,
+  returns: v.union(v.null(), balanceValidator),
   handler: async (ctx, args) => {
-    const ownerId = await resolveOwnerId(ctx, { claimedSessionId: args.sessionId });
+    const ownerId = await resolveOwnerIdOrNull(ctx, { claimedSessionId: args.sessionId });
     const isClaimed = await isClaimedIdentity(ctx);
     const periodMs = readPeriodMs();
     const nowMs = Date.now();
@@ -207,10 +259,11 @@ export const getBalance = query({
       const state = await peekBucket(ctx, { bucket, nowMs, periodMs });
       states.push({ limit: bucket.limit, ...state });
     }
-    return {
-      ...pickTightest(states, { nowMs, periodMs }),
-      isClaimedTier: isClaimed,
-    };
+    const tightest = pickTightest(states, { nowMs, periodMs });
+    if (tightest === null) {
+      return null;
+    }
+    return { ...tightest, isClaimedTier: isClaimed };
   },
 });
 
@@ -229,6 +282,11 @@ export const getBalance = query({
  * Charged BEFORE the model call, never after. A refund path would be a second
  * write on the error path and a way to spend without paying if it ever
  * misfired; a rare lost credit on a provider error is the cheaper trade.
+ *
+ * `balance` is null when no bucket applies to the caller at all — the work went
+ * through and there was nothing to count it against. On a real deployment that
+ * is rare: a signed-out visitor still has an origin bucket, because the address
+ * headers a proxy sets are what derives it.
  */
 export const spend = mutation({
   args: {
@@ -237,9 +295,9 @@ export const spend = mutation({
     /** How many credits this piece of work costs. Defaults to one. */
     amount: v.optional(v.number()),
   },
-  returns: v.object({ isAllowed: v.boolean(), balance: balanceValidator }),
+  returns: v.object({ isAllowed: v.boolean(), balance: v.union(v.null(), balanceValidator) }),
   handler: async (ctx, args) => {
-    const ownerId = await resolveOwnerId(ctx, { claimedSessionId: args.sessionId });
+    const ownerId = await resolveOwnerIdOrNull(ctx, { claimedSessionId: args.sessionId });
     const isClaimed = await isClaimedIdentity(ctx);
     const periodMs = readPeriodMs();
     const nowMs = Date.now();
@@ -294,12 +352,10 @@ export const spend = mutation({
       });
     }
 
+    const tightest = pickTightest(states, { nowMs, periodMs });
     return {
       isAllowed: true,
-      balance: {
-        ...pickTightest(states, { nowMs, periodMs }),
-        isClaimedTier: isClaimed,
-      },
+      balance: tightest === null ? null : { ...tightest, isClaimedTier: isClaimed },
     };
   },
 });

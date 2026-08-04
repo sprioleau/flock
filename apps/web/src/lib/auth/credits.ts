@@ -79,7 +79,9 @@ export async function chargeCreditForRequest(args: {
     return {
       isAllowed: result.isAllowed,
       isUnlimited: false,
-      remaining: result.balance.remaining,
+      // A null balance means no bucket applied to this caller at all, so there
+      // is no count to report — which `remaining: number | null` already says.
+      remaining: result.balance === null ? null : result.balance.remaining,
       message: result.isAllowed ? "" : OUT_OF_CREDITS_MESSAGE,
     };
   } catch (error) {
