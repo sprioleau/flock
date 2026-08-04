@@ -1,5 +1,6 @@
 import { jsonSchema, type JSONSchema7, type Schema } from "ai";
 import { z } from "zod";
+import { normalizeToolInput } from "./tool-input-normalizer";
 
 /**
  * Gemini-compatible model-facing schemas.
@@ -89,7 +90,10 @@ export function unwrapStringifiedToolInput(value: unknown): unknown {
 /**
  * Build the model-facing input schema for one tool: Gemini-compatible JSON
  * Schema declaration, original Zod schema for validation (with the
- * stringified-args unwrap above applied first).
+ * stringified-args unwrap above, then the near-miss tool-input normalization
+ * of ./tool-input-normalizer, applied first). Both are deterministic
+ * pre-validation coercions for known model quirks; the Zod schema stays the
+ * authority, and anything neither coercion can close fails exactly as before.
  */
 export function toModelInputSchema(zodInputSchema: z.ZodType): Schema<unknown> {
   const rawJsonSchema = z.toJSONSchema(zodInputSchema, {
@@ -100,7 +104,9 @@ export function toModelInputSchema(zodInputSchema: z.ZodType): Schema<unknown> {
 
   return jsonSchema(compatibleJsonSchema, {
     validate: (value) => {
-      const parsed = zodInputSchema.safeParse(unwrapStringifiedToolInput(value));
+      const parsed = zodInputSchema.safeParse(
+        normalizeToolInput(zodInputSchema, unwrapStringifiedToolInput(value)),
+      );
       return parsed.success
         ? { success: true, value: parsed.data }
         : { success: false, error: parsed.error };
