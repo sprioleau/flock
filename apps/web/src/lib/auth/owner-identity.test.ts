@@ -201,9 +201,13 @@ describe("strict mode: a scraped session id names nobody", () => {
     const { t } = await setUp();
     const signedOut = /signed out/i;
 
-    await expect(
-      t.query(api.brandKits.getActiveBrandKit, { sessionId: VICTIM_OWNER_ID }),
-    ).rejects.toThrow(signedOut);
+    // Reads that mount on page load answer "nobody" with the EMPTY answer
+    // rather than an exception — throwing there took the studio down for
+    // every signed-out visitor. What matters for ownership is unchanged and
+    // asserted here: the scraped id yields none of the victim's data.
+    expect(
+      await t.query(api.brandKits.getActiveBrandKit, { sessionId: VICTIM_OWNER_ID }),
+    ).toBeNull();
     await expect(
       t.mutation(api.brandKits.saveBrandKit, {
         sessionId: VICTIM_OWNER_ID,
@@ -223,9 +227,8 @@ describe("strict mode: a scraped session id names nobody", () => {
   it("refuses every asset-library call made with the victim's id", async () => {
     const { t, seeded } = await setUp();
 
-    await expect(
-      t.query(api.assets.listForSession, { sessionId: VICTIM_OWNER_ID }),
-    ).rejects.toThrow(/signed out/i);
+    // Empty, not the victim's library — see the brand-kit case above.
+    expect(await t.query(api.assets.listForSession, { sessionId: VICTIM_OWNER_ID })).toEqual([]);
     await expect(
       t.mutation(api.assets.register, {
         sessionId: VICTIM_OWNER_ID,
@@ -241,15 +244,16 @@ describe("strict mode: a scraped session id names nobody", () => {
     const { t, seeded } = await setUp();
     const signedOut = /signed out/i;
 
-    await expect(
-      t.query(api.savedSections.listForSession, { sessionId: VICTIM_OWNER_ID }),
-    ).rejects.toThrow(signedOut);
-    await expect(
-      t.query(api.savedSections.getForSession, {
+    // Empty / null, not the victim's rows — see the brand-kit case above.
+    expect(
+      await t.query(api.savedSections.listForSession, { sessionId: VICTIM_OWNER_ID }),
+    ).toEqual([]);
+    expect(
+      await t.query(api.savedSections.getForSession, {
         sessionId: VICTIM_OWNER_ID,
         savedSectionId: seeded.savedSectionId,
       }),
-    ).rejects.toThrow(signedOut);
+    ).toBeNull();
     await expect(
       t.mutation(api.savedSections.rename, {
         sessionId: VICTIM_OWNER_ID,

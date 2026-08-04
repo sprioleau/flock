@@ -26,7 +26,7 @@ import {
 } from "../apps/web/src/lib/brand-kit-reconcile";
 import type { Doc, Id } from "./_generated/dataModel";
 import { mutation, query, type MutationCtx, type QueryCtx } from "./_generated/server";
-import { resolveOwnerId } from "./authIdentity";
+import { resolveOwnerId, resolveOwnerIdOrNull } from "./authIdentity";
 import {
   collectRowStorageIds,
   getEffectiveRevision,
@@ -296,7 +296,12 @@ export const getActiveBrandKit = query({
   args: { sessionId: v.string() },
   returns: v.union(v.null(), activeBrandKitValidator),
   handler: async (ctx, args) => {
-    const ownerId = await resolveOwnerId(ctx, { claimedSessionId: args.sessionId });
+    // See savedSections.listForSession. No owner means no kit — which is
+    // already this query's answer for a session that has never made one.
+    const ownerId = await resolveOwnerIdOrNull(ctx, { claimedSessionId: args.sessionId });
+    if (ownerId === null) {
+      return null;
+    }
     const row = await ctx.db
       .query("brandKits")
       .withIndex("by_sessionId", (q) => q.eq("sessionId", ownerId))

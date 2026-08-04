@@ -1,7 +1,7 @@
 import { ConvexError, v } from "convex/values";
 import { mutation, query, type MutationCtx } from "./_generated/server";
 import type { Doc, Id } from "./_generated/dataModel";
-import { resolveOwnerId } from "./authIdentity";
+import { resolveOwnerId, resolveOwnerIdOrNull } from "./authIdentity";
 import {
   ENRICHMENT_TEXT_CAPS,
   MAX_SAVED_SECTIONS_LISTED_PER_SESSION,
@@ -104,7 +104,14 @@ export const listForSession = query({
   args: { sessionId: v.string() },
   returns: v.array(savedSectionRowValidator),
   handler: async (ctx, args) => {
-    const ownerId = await resolveOwnerId(ctx, { claimedSessionId: args.sessionId });
+    // Runs on mount for every visitor, so "nobody is signed in" needs a real
+    // answer rather than an exception — under strict identity that state is
+    // normal, not a glitch. An empty library is the truthful one; refusing to
+    // name an owner from the client-supplied session id is the point.
+    const ownerId = await resolveOwnerIdOrNull(ctx, { claimedSessionId: args.sessionId });
+    if (ownerId === null) {
+      return [];
+    }
     return await ctx.db
       .query("savedSections")
       .withIndex("by_sessionId", (q) => q.eq("sessionId", ownerId))
@@ -118,8 +125,8 @@ export const getForSession = query({
   args: { sessionId: v.string(), savedSectionId: v.id("savedSections") },
   returns: v.union(savedSectionRowValidator, v.null()),
   handler: async (ctx, args) => {
-    const ownerId = await resolveOwnerId(ctx, { claimedSessionId: args.sessionId });
-    const row = await ctx.db.get(args.savedSectionId);
+    const ownerId = await resolveOwnerIdOrNull(ctx, { claimedSessionId: args.sessionId });
+    const row = ownerId === null ? null : await ctx.db.get(args.savedSectionId);
     if (row === null || row.sessionId !== ownerId) {
       return null;
     }

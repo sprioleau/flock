@@ -1,6 +1,6 @@
 import { ConvexError, v } from "convex/values";
 import { mutation, query } from "./_generated/server";
-import { resolveOwnerId } from "./authIdentity";
+import { resolveOwnerId, resolveOwnerIdOrNull } from "./authIdentity";
 import {
   assetKindValidator,
   MAX_ASSETS_LISTED_PER_SESSION,
@@ -117,7 +117,12 @@ export const listForSession = query({
   args: { sessionId: v.string() },
   returns: v.array(assetRowValidator),
   handler: async (ctx, args) => {
-    const ownerId = await resolveOwnerId(ctx, { claimedSessionId: args.sessionId });
+    // See savedSections.listForSession: a listing that mounts for everyone
+    // must answer "nobody" with an empty list, not an exception.
+    const ownerId = await resolveOwnerIdOrNull(ctx, { claimedSessionId: args.sessionId });
+    if (ownerId === null) {
+      return [];
+    }
     return await ctx.db
       .query("assets")
       .withIndex("by_sessionId", (q) => q.eq("sessionId", ownerId))
