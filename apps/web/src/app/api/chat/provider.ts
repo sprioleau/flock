@@ -61,6 +61,7 @@ import {
  * - `FLOCK_CHAT_PROVIDER`         — "gemini" | "openrouter". The deployment
  *                                   default. Unset or unrecognised → Gemini.
  * - `GOOGLE_GENERATIVE_AI_API_KEY`— Gemini's key. Unset → Gemini unavailable.
+ * - `GEMINI_MODEL_ID`            — overrides {@link DEFAULT_GEMINI_MODEL_ID}.
  * - `OPENROUTER_API_KEY`          — OpenRouter's key. Unset → unavailable.
  * - `OPENROUTER_MODEL_ID`         — overrides {@link DEFAULT_OPENROUTER_MODEL_ID}.
  *                                   Unset → the default constant.
@@ -71,6 +72,7 @@ import {
 const PROVIDER_ENV_VARS = {
   chatProvider: "FLOCK_CHAT_PROVIDER",
   geminiApiKey: "GOOGLE_GENERATIVE_AI_API_KEY",
+  geminiModelId: "GEMINI_MODEL_ID",
   openRouterApiKey: "OPENROUTER_API_KEY",
   openRouterModelId: "OPENROUTER_MODEL_ID",
 } as const;
@@ -121,7 +123,7 @@ export interface ResolveChatModelArgs {
 
 function getModelId(providerId: ChatProviderId): string {
   return providerId === "gemini"
-    ? DEFAULT_GEMINI_MODEL_ID
+    ? (readEnv(PROVIDER_ENV_VARS.geminiModelId) ?? DEFAULT_GEMINI_MODEL_ID)
     : (readEnv(PROVIDER_ENV_VARS.openRouterModelId) ?? DEFAULT_OPENROUTER_MODEL_ID);
 }
 

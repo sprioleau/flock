@@ -4,14 +4,26 @@
  */
 
 /**
- * Default Gemini model for the chat pipeline.
+ * Default Gemini model for the chat pipeline. Override with GEMINI_MODEL_ID.
  *
- * Fast tier (flash-class) per the Phase 3.2 latency budget. `gemini-3.6-flash`
- * is the newest stable flash id in the installed @ai-sdk/google@4.0.27 typed
- * model union (newer than 3.5-flash; the 3.1-flash-* ids are preview-only).
- * Verified against a real streamed tool-call request on 2026-07-29.
+ * Chosen for REQUEST HEADROOM, not capability. Measured from the project's
+ * rate-limit dashboard on 2026-08-04, free tier:
+ *
+ *   gemini-3.6-flash       5 RPM ·  20 requests/day   (was hitting 9/5, 33/20)
+ *   gemini-3.5-flash      5 RPM ·  20 requests/day
+ *   gemini-3.5-flash-lite   15 RPM · 500 requests/day
+ *
+ * Twenty requests a day for the WHOLE deployment is not enough to work
+ * against; five hundred is. That is a 25x difference and it is the entire
+ * reason for this choice.
+ *
+ * The tradeoff, stated plainly: Lite is the smaller model, and this pipeline
+ * is tool-heavy (31 tools, a ~47k-char addBlock schema). If tool selection
+ * degrades, set GEMINI_MODEL_ID=gemini-3.6-flash to go back without a code
+ * change. Ids are constrained by the installed @ai-sdk/google typed union —
+ * an invalid one fails at the call, not at boot.
  */
-export const DEFAULT_GEMINI_MODEL_ID = "gemini-3.6-flash";
+export const DEFAULT_GEMINI_MODEL_ID = "gemini-3.5-flash-lite";
 
 /**
  * Default OpenRouter model, used when OPENROUTER_MODEL_ID is unset.
