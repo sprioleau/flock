@@ -13,7 +13,14 @@ import {
   type UIMessageStreamWriter,
 } from "ai";
 import type { FlockChatMessage } from "@/lib/chat-contract";
-import { toChatErrorText } from "./errors";
+import { extractValidationIssues, hashIdentifier, logRecord } from "@/lib/observability/log";
+import {
+  createModelTelemetry,
+  logToolInputRejected,
+  logToolInputUnrepaired,
+  type ModelTelemetryContext,
+} from "@/lib/observability/model-telemetry";
+import { createChatErrorLogger } from "./errors";
 import {
   MAX_MODEL_CALL_RETRIES,
   MAX_REPAIR_ATTEMPTS_PER_TOOL_CALL,
@@ -54,6 +61,13 @@ export interface ChatPipelineInput {
    * generation under this session's asset library (Content Studio Stage S).
    */
   sessionId: string | null;
+  /**
+   * Correlation id for this turn, minted by the route. Every observability
+   * record this turn produces — the main call, each repair round, each
+   * rejected tool input, the stream error — carries it, so one id pasted into
+   * Vercel Logs pulls the whole turn.
+   */
+  traceId: string;
   writer: UIMessageStreamWriter<FlockChatMessage>;
 }
 
@@ -67,6 +81,8 @@ interface CreateToolCallRepairerInput {
   schemaOnlyTools: ToolSet;
   staticInstructions: string;
   onRepairAttempt: () => void;
+  /** Turn context, so every repair record correlates with the main call. */
+  telemetryContext: ModelTelemetryContext;
 }
 
 /**
@@ -127,15 +143,42 @@ export function createToolCallRepairer({
   schemaOnlyTools,
   staticInstructions,
   onRepairAttempt,
+  telemetryContext,
 }: CreateToolCallRepairerInput): ToolCallRepairFunction<ToolSet> {
   const repairAttemptCountsByToolCallId = new Map<string, number>();
+  const repairTelemetryContext: ModelTelemetryContext = {
+    ...telemetryContext,
+    operation: "chat.repair",
+  };
 
   return async ({ toolCall, messages, error }) => {
+    const previousAttemptCount = repairAttemptCountsByToolCallId.get(toolCall.toolCallId) ?? 0;
+    // Fires on EVERY rejected tool call, before any decision about repairing
+    // it: the issue codes/paths and the offending payload are the whole
+    // diagnostic, and they were previously logged nowhere at all.
+    logToolInputRejected({
+      context: telemetryContext,
+      toolName: toolCall.toolName,
+      toolCallId: toolCall.toolCallId,
+      issues: extractValidationIssues(error),
+      rejectedInput: toolCall.input,
+      previousAttemptCount,
+    });
+    const logUnrepaired = (reason: Parameters<typeof logToolInputUnrepaired>[0]["reason"]) => {
+      logToolInputUnrepaired({
+        context: telemetryContext,
+        toolName: toolCall.toolName,
+        toolCallId: toolCall.toolCallId,
+        reason,
+      });
+    };
+
     if (NoSuchToolError.isInstance(error)) {
+      logUnrepaired("no_such_tool");
       return null;
     }
-    const previousAttemptCount = repairAttemptCountsByToolCallId.get(toolCall.toolCallId) ?? 0;
     if (previousAttemptCount >= MAX_REPAIR_ATTEMPTS_PER_TOOL_CALL) {
+      logUnrepaired("repair_budget_exhausted");
       return null;
     }
     repairAttemptCountsByToolCallId.set(toolCall.toolCallId, previousAttemptCount + 1);
@@ -187,12 +230,17 @@ export function createToolCallRepairer({
         messages: repairMessages,
         tools: schemaOnlyTools,
         maxRetries: MAX_MODEL_CALL_RETRIES,
+        telemetry: {
+          functionId: repairTelemetryContext.operation,
+          integrations: [createModelTelemetry(repairTelemetryContext)],
+        },
       });
 
       const repairedToolCall = repairResult.toolCalls.find(
         (candidate) => candidate.toolName === toolCall.toolName,
       );
       if (repairedToolCall === undefined) {
+        logUnrepaired("repair_produced_no_call");
         return null;
       }
       return {
@@ -201,19 +249,15 @@ export function createToolCallRepairer({
         toolName: toolCall.toolName,
         input: JSON.stringify(repairedToolCall.input),
       };
-    } catch (repairRequestError) {
+    } catch {
       // Never throw (see the hook contract above): a failed re-ask degrades
       // to "unrepaired" and the SDK's invalid-call path keeps the turn alive.
-      console.error(
-        JSON.stringify({
-          tag: "flock.chat.repairRequestFailed",
-          toolName: toolCall.toolName,
-          message:
-            repairRequestError instanceof Error
-              ? repairRequestError.message.slice(0, 500)
-              : String(repairRequestError),
-        }),
-      );
+      //
+      // The thrown value itself is NOT re-logged here — the repair call's own
+      // telemetry integration already emitted flock.model.failed for it with a
+      // classified error code. This record adds the thing that record cannot
+      // know: which tool call was abandoned as a result.
+      logUnrepaired("repair_request_failed");
       return null;
     }
   };
@@ -233,12 +277,20 @@ async function runSinglePassPipeline(input: ChatPipelineInput): Promise<void> {
     selectedBlockId,
     threadId,
     sessionId,
+    traceId,
     writer,
   } = input;
 
   const requestStartMs = performance.now();
   let firstChunkMs: number | undefined;
   let repairAttemptCount = 0;
+
+  const telemetryContext: ModelTelemetryContext = {
+    operation: "chat.main",
+    traceId,
+    isMock: isUsingMockModel,
+    sessionHash: hashIdentifier(sessionId),
+  };
 
   // Provenance for everything this turn dispatches (op-log ready, Phase 4).
   const actionContext: ActionContext = {
@@ -300,10 +352,18 @@ async function runSinglePassPipeline(input: ChatPipelineInput): Promise<void> {
     toolApproval,
     maxRetries: MAX_MODEL_CALL_RETRIES,
     stopWhen: stepCountIs(MAX_STEP_COUNT),
+    // Every provider round-trip inside this streamText — including the ones
+    // the tool loop makes on later steps — emits flock.model.call /
+    // flock.model.failed through here.
+    telemetry: {
+      functionId: telemetryContext.operation,
+      integrations: [createModelTelemetry(telemetryContext)],
+    },
     repairToolCall: createToolCallRepairer({
       model,
       schemaOnlyTools,
       staticInstructions,
+      telemetryContext,
       onRepairAttempt: () => {
         repairAttemptCount += 1;
       },
@@ -319,20 +379,23 @@ async function runSinglePassPipeline(input: ChatPipelineInput): Promise<void> {
     // Per-request latency/cost log line (plan §4.4 brought forward): one JSON
     // object per request on stdout — greppable, ingestible.
     onEnd: ({ finishReason, usage, toolCalls }) => {
-      console.log(
-        JSON.stringify({
-          tag: "flock.chat.request",
-          variant: "single-pass" satisfies PipelineVariant,
-          model: modelId,
-          isMock: isUsingMockModel,
-          ttftMs: firstChunkMs === undefined ? null : Math.round(firstChunkMs - requestStartMs),
-          totalMs: Math.round(performance.now() - requestStartMs),
-          toolCallCount: toolCalls.length,
-          repairAttemptCount,
-          finishReason,
-          usage,
-        }),
-      );
+      logRecord({
+        tag: "flock.chat.request",
+        variant: "single-pass" satisfies PipelineVariant,
+        traceId,
+        sessionHash: telemetryContext.sessionHash,
+        model: modelId,
+        isMock: isUsingMockModel,
+        ttftMs: firstChunkMs === undefined ? null : Math.round(firstChunkMs - requestStartMs),
+        totalMs: Math.round(performance.now() - requestStartMs),
+        toolCallCount: toolCalls.length,
+        // The names, not just the count — "which tool does the model get
+        // wrong most often" is unanswerable without them.
+        toolNames: toolCalls.map((toolCall) => toolCall.toolName),
+        repairAttemptCount,
+        finishReason,
+        usage,
+      });
     },
   });
 
@@ -342,7 +405,7 @@ async function runSinglePassPipeline(input: ChatPipelineInput): Promise<void> {
       tools,
       // Model-stream errors funnel through here (createUIMessageStream's
       // onError only sees pipeline/setup failures).
-      onError: toChatErrorText,
+      onError: createChatErrorLogger({ traceId, source: "model-stream" }),
     }),
   );
 }

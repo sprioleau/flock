@@ -50,6 +50,7 @@ function buildCaptureThenThrowRepairer(capturedPrompts: unknown[]) {
     schemaOnlyTools: buildSchemaOnlyTools(),
     staticInstructions: "test instructions",
     onRepairAttempt: () => {},
+    telemetryContext: { operation: "chat.main", traceId: "test-trace", isMock: true },
   });
 }
 

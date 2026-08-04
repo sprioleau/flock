@@ -6,6 +6,8 @@ import { z } from "zod";
 import { api } from "@convex/_generated/api";
 import type { Id } from "@convex/_generated/dataModel";
 import { MOCK_MODEL_HEADER } from "@/lib/chat-contract";
+import { createTraceId, logFailure, logRecord, summarizeError } from "@/lib/observability/log";
+import { modelTelemetryFor } from "@/lib/observability/model-telemetry";
 import { buildStandaloneSectionDoc } from "@/lib/saved-sections";
 import { getSessionIdFromCookieHeader } from "@/lib/session-cookie";
 import { fetchAuthMutation, fetchAuthQuery } from "@/lib/auth/auth-server";
@@ -45,10 +47,12 @@ async function generateEnrichment({
   name,
   blocks,
   isDeterministicForced,
+  traceId,
 }: {
   name: string;
   blocks: Block[];
   isDeterministicForced: boolean;
+  traceId: string;
 }): Promise<EnrichmentOutcome> {
   const hasGoogleApiKey = Boolean(process.env.GOOGLE_GENERATIVE_AI_API_KEY);
   if (!isDeterministicForced && hasGoogleApiKey) {
@@ -61,16 +65,21 @@ async function generateEnrichment({
           schema: savedSectionEnrichmentSchema,
           prompt: buildEnrichmentPrompt({ name, outline }),
           abortSignal: AbortSignal.timeout(GENERATION_TIMEOUT_MS),
+          // Emits flock.model.call / flock.model.failed. The catch below stays
+          // because this path FAILS SOFT to the deterministic floor, which is
+          // a different fact than "the provider call failed".
+          telemetry: modelTelemetryFor({
+            operation: "savedSections.enrich",
+            traceId,
+            isMock: false,
+          }),
         });
         return { enrichment: object, source: "model" };
       }
-    } catch (error) {
-      console.error(
-        JSON.stringify({
-          tag: "flock.savedSections.enrichModelFailed",
-          message: error instanceof Error ? error.message.slice(0, 300) : String(error),
-        }),
-      );
+    } catch {
+      // The thrown value is already logged as flock.model.failed by the
+      // telemetry integration above, with a classified error code.
+      logRecord({ tag: "flock.savedSections.enrichFellBack", traceId });
       // fall through to the deterministic floor
     }
   }
@@ -78,6 +87,7 @@ async function generateEnrichment({
 }
 
 export async function POST(request: Request): Promise<Response> {
+  const traceId = createTraceId();
   const sessionId = getSessionIdFromCookieHeader(request.headers.get("cookie"));
   if (sessionId === null) {
     return Response.json({ isEnriched: false }, { status: 401 });
@@ -115,6 +125,7 @@ export async function POST(request: Request): Promise<Response> {
       name: row.name,
       blocks: row.blocks as Block[],
       isDeterministicForced,
+      traceId,
     });
     await fetchAuthMutation(api.savedSections.applyEnrichment, {
       sessionId,
@@ -122,17 +133,18 @@ export async function POST(request: Request): Promise<Response> {
       useWhen: enrichment.useWhen,
       description: enrichment.description,
     });
-    console.log(
-      JSON.stringify({ tag: "flock.savedSections.enriched", savedSectionId, source }),
-    );
+    logRecord({ tag: "flock.savedSections.enriched", traceId, savedSectionId, source });
     return Response.json({ isEnriched: true, source });
   } catch (error) {
-    console.error(
-      JSON.stringify({
-        tag: "flock.savedSections.enrichFailed",
-        message: error instanceof Error ? error.message.slice(0, 300) : String(error),
-      }),
-    );
+    const summary = summarizeError(error);
+    logFailure({
+      tag: "flock.savedSections.enrichFailed",
+      traceId,
+      errorCode: summary.code,
+      errorName: summary.name,
+      statusCode: summary.statusCode,
+      message: summary.message,
+    });
     return Response.json({ isEnriched: false }, { status: 500 });
   }
 }

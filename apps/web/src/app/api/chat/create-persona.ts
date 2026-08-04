@@ -1,6 +1,7 @@
 import type { CreatePersonaCommand } from "@flock/email-sdk";
 import { api } from "@convex/_generated/api";
 import { fetchAuthMutation } from "@/lib/auth/auth-server";
+import { hashIdentifier, logFailure, summarizeError } from "@/lib/observability/log";
 
 /**
  * Agent-parity createPersona executor (server-only, imported by the /api/chat
@@ -113,12 +114,16 @@ export async function createPersonaForSession({
     return { isOk: true, command: { ...command, slug } };
   } catch (error) {
     const rawMessage = error instanceof Error ? error.message : String(error);
-    console.error(
-      JSON.stringify({
-        tag: "flock.chat.createPersonaFailed",
-        message: rawMessage.slice(0, 300),
-      }),
-    );
+    // No model call happens in this module — the persona row comes from a
+    // Convex mutation — so this is a plain failure record, not a model record.
+    const summary = summarizeError(error);
+    logFailure({
+      tag: "flock.chat.createPersonaFailed",
+      errorCode: summary.code,
+      errorName: summary.name,
+      sessionHash: hashIdentifier(sessionId),
+      message: summary.message,
+    });
     // Convex surfaces the mutation's thrown Error message inside a longer
     // envelope; extract the human sentence when present.
     const humanMessage = rawMessage.match(/Uncaught Error: ([^\n]+)/)?.[1] ?? null;

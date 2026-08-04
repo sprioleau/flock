@@ -9,7 +9,8 @@ import {
 import { getSessionIdFromCookieHeader } from "@/lib/session-cookie";
 import { chargeCreditForRequest } from "@/lib/auth/credits";
 import { hasOwnerOverride } from "@/lib/auth/owner-override";
-import { toChatErrorText } from "./errors";
+import { createTraceId } from "@/lib/observability/log";
+import { createChatErrorLogger } from "./errors";
 import { createMockChatModel } from "./mock-model";
 import { runChatPipeline } from "./pipeline";
 import { resolveChatModel } from "./provider";
@@ -71,6 +72,9 @@ export async function POST(request: Request) {
   // mirrors localStorage into it) — the generateImage executor registers
   // every generation under this session's library (Content Studio Stage S).
   const sessionId = getSessionIdFromCookieHeader(request.headers.get("cookie"));
+  // One id for the whole turn. Minted here rather than in the pipeline so the
+  // route-level error funnel below shares it with everything the pipeline logs.
+  const traceId = createTraceId();
 
   // Schema-valid but structurally broken documents (orphans, cycles, pointer
   // disagreements) are rejected before any model call — integrity failures
@@ -136,9 +140,10 @@ export async function POST(request: Request) {
         selectedBlockId,
         threadId,
         sessionId,
+        traceId,
         writer,
       }),
-    onError: toChatErrorText,
+    onError: createChatErrorLogger({ traceId, source: "pipeline" }),
   });
 
   return createUIMessageStreamResponse({ stream });

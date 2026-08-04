@@ -3,6 +3,12 @@ import { generateImage } from "ai";
 import { api } from "@convex/_generated/api";
 import type { Id } from "@convex/_generated/dataModel";
 import { fetchAuthMutation, fetchAuthQuery } from "@/lib/auth/auth-server";
+import { createTraceId, logFailure, logRecord, summarizeError } from "@/lib/observability/log";
+import {
+  logModelCall,
+  logModelFailure,
+  type ModelTelemetryContext,
+} from "@/lib/observability/model-telemetry";
 import {
   GEMINI_IMAGE_MODEL_ID,
   IMAGE_GENERATION_MAX_RETRIES,
@@ -134,19 +140,25 @@ export async function generateEmailImage({
     isMockForced || env[MOCK_IMAGE_MODEL_ENV_VAR] === "1" || !hasGoogleApiKey;
   const modelId = isUsingMock ? MOCK_IMAGE_MODEL_ID : GEMINI_IMAGE_MODEL_ID;
   const alt = deriveImageAltFromPrompt(prompt);
+  const traceId = createTraceId();
+  const telemetryContext: ModelTelemetryContext = {
+    operation: "image.generate",
+    traceId,
+    isMock: isUsingMock,
+  };
 
   const logRequest = (details: { isOk: boolean; outputBytes?: number; reason?: string }) => {
-    console.log(
-      JSON.stringify({
-        tag: "flock.image.request",
-        model: modelId,
-        isMock: isUsingMock,
-        totalMs: Math.round(performance.now() - startMs),
-        promptChars: prompt.length,
-        ...(aspectRatio === undefined ? {} : { aspectRatio }),
-        ...details,
-      }),
-    );
+    logRecord({
+      tag: "flock.image.request",
+      traceId,
+      model: modelId,
+      isMock: isUsingMock,
+      totalMs: Math.round(performance.now() - startMs),
+      // The prompt LENGTH, never the prompt — prompts are user content.
+      promptChars: prompt.length,
+      ...(aspectRatio === undefined ? {} : { aspectRatio }),
+      ...details,
+    });
   };
 
   if (isUsingMock) {
@@ -161,12 +173,21 @@ export async function generateEmailImage({
     };
   }
 
+  const providerCallStartMs = performance.now();
   try {
     const { image } = await generateImage({
       model: google.image(GEMINI_IMAGE_MODEL_ID),
       prompt,
       ...(aspectRatio === undefined ? {} : { aspectRatio }),
       maxRetries: IMAGE_GENERATION_MAX_RETRIES,
+    });
+    // generateImage is NOT one of the AI SDK's telemetry-instrumented
+    // operations (no `telemetry` option, no lifecycle callbacks), so this path
+    // emits the shared flock.model.call record by hand.
+    logModelCall(telemetryContext, {
+      provider: "google",
+      modelId,
+      latencyMs: performance.now() - providerCallStartMs,
     });
     logRequest({ isOk: true, outputBytes: Math.round(image.base64.length * 0.75) });
     return {
@@ -178,13 +199,7 @@ export async function generateEmailImage({
     };
   } catch (error) {
     // Raw provider error: server log only — never the user-facing outcome.
-    console.error(
-      JSON.stringify({
-        tag: "flock.image.generationFailed",
-        model: modelId,
-        message: error instanceof Error ? error.message : String(error),
-      }),
-    );
+    logModelFailure(telemetryContext, error);
     const failure = toFriendlyGenerationFailureMessage(error);
     logRequest({ isOk: false, reason: failure.reason });
     return { isGenerated: false, ...failure };
@@ -262,24 +277,24 @@ export async function storeImageInConvex({
     }
     // No session context: keep the pre-registry behavior (the file is a
     // legacy unregistered upload) and leave a trace for the Stage M backfill.
-    console.warn(
-      JSON.stringify({
-        tag: "flock.image.storedUnregistered",
-        message: "no session id on the request — the upload joined storage but not a library",
-      }),
-    );
+    logRecord({
+      tag: "flock.image.storedUnregistered",
+      message: "no session id on the request — the upload joined storage but not a library",
+    });
     const src = await fetchAuthQuery(api.files.getFileUrl, { storageId });
     if (src === null) {
       throw new Error("Uploaded image has no serving URL");
     }
     return { isStored: true, src };
   } catch (error) {
-    console.error(
-      JSON.stringify({
-        tag: "flock.image.storeFailed",
-        message: error instanceof Error ? error.message : String(error),
-      }),
-    );
+    const summary = summarizeError(error);
+    logFailure({
+      tag: "flock.image.storeFailed",
+      errorCode: summary.code,
+      errorName: summary.name,
+      statusCode: summary.statusCode,
+      message: summary.message,
+    });
     return { isStored: false, message: "the generated image couldn't be saved to storage." };
   }
 }

@@ -78,6 +78,7 @@ async function runTurn(lastUserText: string): Promise<RecordedChunk[]> {
     messages,
     doc,
     sessionId: "session_e2e",
+    traceId: "test-trace",
     writer,
   });
 

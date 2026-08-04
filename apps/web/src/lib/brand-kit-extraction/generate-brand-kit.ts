@@ -30,6 +30,8 @@ import { google } from "@ai-sdk/google";
 import { globalStylesSchema } from "@flock/email-sdk";
 import { generateObject } from "ai";
 import { z } from "zod";
+import { createTraceId, logRecord } from "@/lib/observability/log";
+import { modelTelemetryFor } from "@/lib/observability/model-telemetry";
 import {
   BRAND_VOICE_DESCRIPTOR_OPTIONS,
   MAX_VOICE_DESCRIPTORS,
@@ -357,6 +359,7 @@ export async function generateBrandKit({ url }: { url: string }): Promise<BrandK
   }
 
   // 3. ONE structured Gemini call — semantic assignments only.
+  const traceId = createTraceId();
   let modelOutput: z.infer<typeof brandKitModelOutputSchema>;
   try {
     const { object } = await generateObject({
@@ -364,6 +367,7 @@ export async function generateBrandKit({ url }: { url: string }): Promise<BrandK
       schema: brandKitModelOutputSchema,
       prompt: buildPrompt({ signals, copySignals, sourceUrl: page.finalUrl }),
       abortSignal: AbortSignal.timeout(GENERATION_TIMEOUT_MS),
+      telemetry: modelTelemetryFor({ operation: "brandKit.extract", traceId, isMock: false }),
       // One retry only — the free-tier quota is small and a quota failure
       // would otherwise be retried into the ground.
       maxRetries: 1,
@@ -377,8 +381,9 @@ export async function generateBrandKit({ url }: { url: string }): Promise<BrandK
       },
     });
     modelOutput = object;
-  } catch (error) {
-    console.error("[brand-kit] generation call failed:", error);
+  } catch {
+    // Already logged as flock.model.failed by the telemetry integration above.
+    logRecord({ tag: "flock.brandKit.generationAbandoned", traceId });
     return { isOk: false, statusCode: 502, message: FRIENDLY_GENERATION_FAILURE };
   }
 

@@ -51,6 +51,7 @@ async function runPipelineProbe(lastUserText: string): Promise<PipelineProbeResu
     messages,
     doc: createSampleDocument(),
     sessionId: null,
+    traceId: "test-trace",
     writer,
   });
 

@@ -63,6 +63,7 @@ async function runPipelineProbe({
     messages: [{ id: "msg-1", role: "user", parts: [{ type: "text", text: lastUserText }] }],
     doc,
     sessionId: null,
+    traceId: "test-trace",
     writer,
   });
 

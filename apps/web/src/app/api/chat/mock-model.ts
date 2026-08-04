@@ -46,6 +46,10 @@ import {
  *   unwrap) plus one with unparseable truncated args (must degrade to a
  *   single failure chip without killing the turn; the repair re-ask against
  *   this mock throws, exercising the repairer's never-throw path)
+ * - mentions "schema-invalid tool call" → one addSection call whose args
+ *   PARSE but fail the Zod schema, in the exact shape of the live production
+ *   failure (see SCHEMA_INVALID_PROBE_REGEX). Exercises the observability
+ *   records that carry validation issue codes and paths.
  * - mentions "reviewer comment(s)"  → updateBlockProperties acknowledging a
  *   comments-mode fix turn (the comment-dispatch prompts embed the phrase)
  * - mentions preview/mobile/desktop → showPreview editor tool call
@@ -490,6 +494,21 @@ function planMockToolCall({
 const MALFORMED_PROBE_REGEX = /\bmalformed tool calls\b/i;
 
 /**
+ * Schema-invalid probe: args that PARSE as JSON and then fail the tool's Zod
+ * schema — the other half of the malformed space, and the one the malformed
+ * probe above cannot reach (its two calls fail at JSON parse time, so they
+ * produce no Zod issue list at all).
+ *
+ * The scripted payload is the real production failure, verbatim in shape: an
+ * `addSection` call where the model wrapped `children[0].text` in a
+ * `type: "text"` envelope instead of using `properties`, omitted `childrenIds`
+ * and `properties`, and got the `name` discriminator wrong. It exists so the
+ * observability records that carry Zod issue codes and paths
+ * (flock.chat.toolInputRejected) can be exercised without a provider call.
+ */
+const SCHEMA_INVALID_PROBE_REGEX = /\bschema-invalid tool call\b/i;
+
+/**
  * Full-email compose script: intent regex + the sections it streams, in
  * reading order. Checked BEFORE the single-section scaffold intent ("build
  * the whole email" must not degrade to one hero section).
@@ -593,6 +612,39 @@ function buildMalformedProbeChunks(selectedBlockId: BlockId | undefined) {
       toolCallId: `call_${crypto.randomUUID()}`,
       toolName: "updateBlockProperties",
       input: unparseableArgs,
+    },
+    {
+      type: "finish" as const,
+      finishReason: { unified: "tool-calls" as const, raw: undefined },
+      usage: {
+        inputTokens: { total: 10, noCache: 10, cacheRead: undefined, cacheWrite: undefined },
+        outputTokens: { total: 25, text: 10, reasoning: undefined },
+      },
+    },
+  ];
+}
+
+function buildSchemaInvalidProbeChunks() {
+  // Parseable JSON, wrong SHAPE — see SCHEMA_INVALID_PROBE_REGEX.
+  const schemaInvalidArgs = JSON.stringify({
+    name: "section",
+    section: { id: "sec_probe", type: "section", parentId: "root" },
+    index: 0,
+    children: [{ id: "txt_probe", type: "text", parentId: "sec_probe", text: { type: "text", text: "Hello" } }],
+  });
+  return [
+    { type: "text-start" as const, id: "text-1" },
+    {
+      type: "text-delta" as const,
+      id: "text-1",
+      delta: "Sending one tool call whose arguments parse but fail the schema.",
+    },
+    { type: "text-end" as const, id: "text-1" },
+    {
+      type: "tool-call" as const,
+      toolCallId: `call_${crypto.randomUUID()}`,
+      toolName: "addSection",
+      input: schemaInvalidArgs,
     },
     {
       type: "finish" as const,
@@ -725,6 +777,7 @@ function buildIngestionComposeChunks({
 export function createMockChatModel(input: CreateMockChatModelInput) {
   const isContinuationRequest = input.isContinuationRequest ?? false;
   const isMalformedProbe = MALFORMED_PROBE_REGEX.test(input.lastUserText);
+  const isSchemaInvalidProbe = SCHEMA_INVALID_PROBE_REGEX.test(input.lastUserText);
   const isComposeEmailProbe = COMPOSE_EMAIL_REGEX.test(input.lastUserText);
   const plan = planMockToolCall(input);
   const inputJson = JSON.stringify(plan.input);
@@ -784,6 +837,23 @@ export function createMockChatModel(input: CreateMockChatModelInput) {
                 timestamp: new Date(0),
               },
               ...buildMalformedProbeChunks(input.selectedBlockId),
+            ],
+          }),
+        };
+      }
+      if (isSchemaInvalidProbe && isFirstStep) {
+        return {
+          stream: simulateReadableStream({
+            chunkDelayInMs: 20,
+            chunks: [
+              { type: "stream-start" as const, warnings: [] },
+              {
+                type: "response-metadata" as const,
+                id: `mock-response-${doStreamCallCount}`,
+                modelId: "flock-mock-chat-model",
+                timestamp: new Date(0),
+              },
+              ...buildSchemaInvalidProbeChunks(),
             ],
           }),
         };

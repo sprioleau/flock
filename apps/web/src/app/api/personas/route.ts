@@ -17,6 +17,11 @@ import { z } from "zod";
 import { api } from "@convex/_generated/api";
 import { chargeCreditForRequest } from "@/lib/auth/credits";
 import { MOCK_MODEL_HEADER } from "@/lib/chat-contract";
+import { createTraceId, logFailure, logRecord, summarizeError } from "@/lib/observability/log";
+import {
+  modelTelemetryFor,
+  type ModelTelemetryContext,
+} from "@/lib/observability/model-telemetry";
 import { stableStringify } from "@/lib/suggestions/serialize-block";
 import { proposedEditSchema, runnerOutputSchema, truncateFindingProse } from "./finding-schema";
 
@@ -411,6 +416,9 @@ export async function POST(request: Request) {
   }
   runState.isRunInFlight = true;
   runState.lastRunStartedAtMs = now;
+  // One id for this sweep — shared by the model-call record, any failure
+  // record, and the budget ledger line below.
+  const traceId = createTraceId();
 
   const setStatusForAll = async (
     status: "idle" | "reading" | "thinking",
@@ -486,6 +494,11 @@ export async function POST(request: Request) {
     // downstream pipeline (dry-run, persistence, statuses) stays real.
     const hasGoogleApiKey = Boolean(process.env.GOOGLE_GENERATIVE_AI_API_KEY);
     const isMockRun = request.headers.get(MOCK_MODEL_HEADER) === "1" || !hasGoogleApiKey;
+    const telemetryContext: ModelTelemetryContext = {
+      operation: "personas.review",
+      traceId,
+      isMock: isMockRun,
+    };
     let object: z.infer<typeof runnerOutputSchema>;
     let usage: unknown;
     if (isMockRun) {
@@ -498,6 +511,7 @@ export async function POST(request: Request) {
         system,
         prompt,
         abortSignal: AbortSignal.timeout(GENERATION_TIMEOUT_MS),
+        telemetry: modelTelemetryFor(telemetryContext),
       });
       object = generated.object;
       usage = generated.usage;
@@ -605,19 +619,28 @@ export async function POST(request: Request) {
     );
 
     // The budget ledger line (plan §4.4 cost-logging convention).
-    console.log(
-      JSON.stringify({
-        tag: "flock.personas.request",
-        model: PERSONA_MODEL_ID,
-        personaSlugs: personas.map((persona) => persona.slug),
-        findingCount: findings.length,
-        usage,
-      }),
-    );
+    logRecord({
+      tag: "flock.personas.request",
+      traceId,
+      model: PERSONA_MODEL_ID,
+      isMock: isMockRun,
+      personaSlugs: personas.map((persona) => persona.slug),
+      findingCount: findings.length,
+      usage,
+    });
 
     return Response.json({ isOk: true, findings, usage });
   } catch (error) {
-    console.error("[personas] runner failed:", error);
+    const summary = summarizeError(error);
+    logFailure({
+      tag: "flock.personas.failed",
+      traceId,
+      model: PERSONA_MODEL_ID,
+      errorCode: summary.code,
+      errorName: summary.name,
+      statusCode: summary.statusCode,
+      message: summary.message,
+    });
     await setStatusForAll("idle").catch(() => undefined);
     return failureResponse({
       status: 502,

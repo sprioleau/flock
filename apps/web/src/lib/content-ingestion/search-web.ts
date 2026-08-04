@@ -1,5 +1,7 @@
 import { google } from "@ai-sdk/google";
 import { generateText, type ToolSet } from "ai";
+import { createTraceId, logRecord } from "@/lib/observability/log";
+import { modelTelemetryFor } from "@/lib/observability/model-telemetry";
 
 /**
  * The Phase 7.4(b) public-web search fan-out.
@@ -147,9 +149,11 @@ export async function searchPublicWeb({
   if (isMockRun || !isWebSearchEnabled()) {
     return { status: "unavailable" };
   }
+  const traceId = createTraceId();
   try {
     const result = await generateText({
       model: google(SEARCH_GROUNDING_MODEL_ID),
+      telemetry: modelTelemetryFor({ operation: "ingest.webSearch", traceId, isMock: false }),
       // The provider-executed search tool: Google runs it, we only read the
       // grounding metadata it attaches. Widened to ToolSet because a
       // provider-executed tool has no client-side input schema to infer.
@@ -163,8 +167,11 @@ export async function searchPublicWeb({
     }
     const { claims, sources } = toAttributedClaims(metadata);
     return claims.length === 0 ? { status: "no_results" } : { status: "searched", claims, sources };
-  } catch (error) {
-    console.error("[content-ingestion] public-web search failed:", error);
+  } catch {
+    // Already logged as flock.model.failed (with a classified error code) by
+    // the telemetry integration above. This line records the CONSEQUENCE: the
+    // caller gets "unavailable" and states no facts at all.
+    logRecord({ tag: "flock.ingest.webSearchUnavailable", traceId, reason: "call_failed" });
     return { status: "unavailable" };
   }
 }
