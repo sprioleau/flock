@@ -2,6 +2,8 @@
 
 import { useSyncExternalStore } from "react";
 
+import { chatProviderIdSchema, type ChatProviderId } from "@/lib/chat-provider";
+
 /**
  * App-wide settings, persisted in localStorage (per-browser, like the
  * anonymous session id) and exposed through `useSyncExternalStore` so the
@@ -32,6 +34,14 @@ export interface AppSettings {
    * lib/suggestions/use-suggestions.ts).
    */
   isSuggestionsEnabled: boolean;
+  /**
+   * Which inference provider chat turns ask for, or `null` for "whatever the
+   * deployment is configured for" — the state everyone is in until an owner
+   * deliberately picks one. Only ever HONOURED for a caller holding a valid
+   * owner override; the server decides, this is a request (see
+   * lib/chat-provider.ts and the providerId field in lib/chat-contract.ts).
+   */
+  chatProviderId: ChatProviderId | null;
 }
 
 const DEFAULT_APP_SETTINGS: AppSettings = {
@@ -39,6 +49,7 @@ const DEFAULT_APP_SETTINGS: AppSettings = {
   isTimeTravelReplayEnabled: false,
   isOpInspectorEnabled: false,
   isSuggestionsEnabled: true,
+  chatProviderId: null,
 };
 
 /** Stable snapshot object (useSyncExternalStore requires reference equality). */
@@ -73,6 +84,12 @@ function readSettingsFromStorage(): AppSettings {
       // they keep the default (ON), which is the behavior they already had.
       ...(typeof candidate.isSuggestionsEnabled === "boolean"
         ? { isSuggestionsEnabled: candidate.isSuggestionsEnabled }
+        : {}),
+      // A provider id retired between releases must not pin a browser to a
+      // provider that no longer exists — an unparseable value reverts to the
+      // deployment default rather than persisting.
+      ...(chatProviderIdSchema.safeParse(candidate.chatProviderId).success
+        ? { chatProviderId: candidate.chatProviderId as ChatProviderId }
         : {}),
     };
   } catch {
@@ -129,6 +146,16 @@ export function updateAppSettings(partial: Partial<AppSettings>): void {
     // still applies for this tab's lifetime.
   }
   notifyListeners();
+}
+
+/**
+ * Current settings, read imperatively. For the non-React callers that need a
+ * value at the moment of an action rather than on render — the chat
+ * transport's per-request body is the reason this exists. Components should
+ * use {@link useAppSettings} so they re-render when a setting changes.
+ */
+export function getAppSettings(): AppSettings {
+  return getSnapshot();
 }
 
 /** Reactive app settings (defaults during SSR/first paint, stored values after mount). */

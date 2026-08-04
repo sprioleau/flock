@@ -22,6 +22,7 @@
     "@dnd-kit/utilities": "^3.2.2",
     "@flock/agent": "workspace:*",
     "@flock/email-sdk": "workspace:*",
+    "@openrouter/ai-sdk-provider": "^3.0.0",
     "@react-email/editor": "^1.6.11",
     "@tiptap/core": "^3.29.0",
     "@tiptap/extension-collaboration": "^3.29.0",

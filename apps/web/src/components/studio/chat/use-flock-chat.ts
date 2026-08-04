@@ -43,6 +43,7 @@ import {
 import { setPersonaEnabled } from "@/lib/personas/enabled-personas";
 import { getOrCreateSessionId } from "@/lib/session";
 import { requestUiSurfaceOpen } from "@/lib/ui-surfaces";
+import { getAppSettings } from "../demo/app-settings";
 import { scrollBlockIntoView } from "../add-blocks/scroll-block-into-view";
 import { createAgentDrafts } from "../drafts/create-agent-drafts";
 
@@ -212,7 +213,16 @@ function createFlockChatController(): FlockChatController {
       const store = getIsTurnDocumentActive()
         ? useEditorStore.getState()
         : (getTurnDocumentStore()?.getState() ?? useEditorStore.getState());
-      return { document: store.doc, selectedBlockId: store.selectedBlockId ?? undefined };
+      // The provider preference rides every turn rather than being stashed
+      // server-side, so switching provider takes effect on the NEXT send with
+      // no reload. Omitted unless an owner deliberately picked one — the
+      // route treats it as a request and ignores it without a valid override.
+      const { chatProviderId } = getAppSettings();
+      return {
+        document: store.doc,
+        selectedBlockId: store.selectedBlockId ?? undefined,
+        ...(chatProviderId === null ? {} : { providerId: chatProviderId }),
+      };
     },
   });
 

@@ -11,6 +11,7 @@ import type {
 } from "@flock/agent";
 import type { UIMessage } from "ai";
 import { z } from "zod";
+import { chatProviderIdSchema } from "./chat-provider";
 import {
   blockIdSchema,
   classifyActionErrors,
@@ -105,6 +106,13 @@ export const chatRequestBodySchema = z.object({
   document: emailDocumentSchema,
   /** The block currently selected in the editor, if any. */
   selectedBlockId: blockIdSchema.optional(),
+  /**
+   * Which inference provider to run this turn on. A REQUEST, not a decision:
+   * the route honours it only for a caller holding a valid owner override
+   * (lib/auth/owner-override.ts) and otherwise falls back to the deployment
+   * default. Absent means "whatever the deployment is configured for".
+   */
+  providerId: chatProviderIdSchema.optional(),
 });
 
 export type ChatRequestBody = z.infer<typeof chatRequestBodySchema>;

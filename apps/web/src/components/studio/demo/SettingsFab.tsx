@@ -18,6 +18,13 @@ import {
   DropdownMenuShortcut,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { useOwnerOverride } from "@/lib/auth/use-owner-override";
+import {
+  CHAT_PROVIDER_IDS,
+  CHAT_PROVIDER_LABELS,
+  chatProviderIdSchema,
+  type ChatProviderId,
+} from "@/lib/chat-provider";
 import { useEditorStore } from "@/lib/editor-store";
 import { getShortcutDisplay } from "../shortcuts/ShortcutKbd";
 import { updateAppSettings, useAppSettings } from "./app-settings";
@@ -42,6 +49,8 @@ import { updateAppSettings, useAppSettings } from "./app-settings";
  *   one-person multiplayer. The running state is reactive (getGhostStatus),
  *   so the label flips to Stop while the ghost is typing and back when the
  *   bounded run ends on its own.
+ * - "Chat service" (owner override only): which provider answers chat turns.
+ *   See ChatProviderSetting below for why it is absent rather than disabled.
  */
 export function SettingsFab() {
   const {
@@ -49,7 +58,11 @@ export function SettingsFab() {
     isTimeTravelReplayEnabled,
     isOpInspectorEnabled,
     isSuggestionsEnabled,
+    chatProviderId,
   } = useAppSettings();
+  // UI convenience only — the server re-checks the cookie on every chat turn
+  // and ignores a provider request from a caller without one.
+  const { isUnlocked: hasOwnerOverride } = useOwnerOverride();
   const documentId = useEditorStore((state) => state.documentId);
   // App-chrome theme (light / dark / system), persisted by next-themes. Safe
   // to read here without a mounted guard: the menu content only renders after
@@ -200,8 +213,90 @@ export function SettingsFab() {
               </DropdownMenuItem>
             )}
           </DropdownMenuGroup>
+          <ChatProviderSetting
+            isUnlocked={hasOwnerOverride}
+            chatProviderId={chatProviderId}
+          />
         </DropdownMenuContent>
       </DropdownMenu>
     </div>
+  );
+}
+
+/**
+ * The value standing for `chatProviderId: null`. A radio group needs a value
+ * per option and `null` is not one — it is the ABSENCE of a choice, which is
+ * exactly the third state this control has to offer. The sentinel lives only
+ * between the group and its handler; what gets persisted is still `null`.
+ */
+const DEPLOYMENT_DEFAULT_VALUE = "deployment-default";
+
+/**
+ * Which service answers chat messages — the owner's provider switch.
+ *
+ * ABSENT, NOT DISABLED, for everyone without the override. A greyed-out row
+ * announces that a hidden capability exists and invites people to go looking
+ * for the way in; there is nothing here for them to enable, so there is
+ * nothing here to show. Returning `null` takes the separator with it, so the
+ * menu below "Op inspector" simply ends where it always did.
+ *
+ * This is presentation, not enforcement. Anyone can set the underlying value
+ * (it is localStorage), and it changes nothing: the server honours a provider
+ * request only from a caller holding a valid override, and quietly uses the
+ * deployment's own provider otherwise. Hiding the control keeps a
+ * non-functional choice out of the way — it is not what makes it safe.
+ *
+ * Three options because `null` is meaningful. "Automatic" is not a synonym for
+ * Gemini: it means "don't pin anything", so if the deployment's provider
+ * changes, a browser on Automatic follows it and a browser pinned to Gemini
+ * does not.
+ */
+export function ChatProviderSetting(props: {
+  isUnlocked: boolean;
+  chatProviderId: ChatProviderId | null;
+}) {
+  if (!props.isUnlocked) {
+    return null;
+  }
+  return (
+    <>
+      <DropdownMenuSeparator />
+      <DropdownMenuGroup>
+        {/* "Yours only" rather than "owner override" / "admin": it says why
+            this row is here and nobody else's menu has it, without naming a
+            mechanism the reader has no use for. */}
+        <DropdownMenuLabel className="flex flex-col gap-0.5">
+          <span>Chat service (yours only)</span>
+          <span className="font-normal">
+            Which service answers your chat messages
+          </span>
+        </DropdownMenuLabel>
+        <DropdownMenuRadioGroup
+          value={props.chatProviderId ?? DEPLOYMENT_DEFAULT_VALUE}
+          onValueChange={(value) => {
+            const parsed = chatProviderIdSchema.safeParse(value);
+            updateAppSettings({ chatProviderId: parsed.success ? parsed.data : null });
+          }}
+        >
+          <DropdownMenuRadioItem
+            value={DEPLOYMENT_DEFAULT_VALUE}
+            closeOnClick={false}
+            data-testid="settings-chat-provider-default"
+          >
+            Automatic
+          </DropdownMenuRadioItem>
+          {CHAT_PROVIDER_IDS.map((providerId) => (
+            <DropdownMenuRadioItem
+              key={providerId}
+              value={providerId}
+              closeOnClick={false}
+              data-testid={`settings-chat-provider-${providerId}`}
+            >
+              {CHAT_PROVIDER_LABELS[providerId]}
+            </DropdownMenuRadioItem>
+          ))}
+        </DropdownMenuRadioGroup>
+      </DropdownMenuGroup>
+    </>
   );
 }

@@ -1,6 +1,5 @@
-import { google } from "@ai-sdk/google";
 import { checkDocumentIntegrity, ROOT_BLOCK_ID } from "@flock/email-sdk";
-import { createUIMessageStream, createUIMessageStreamResponse, type LanguageModel } from "ai";
+import { createUIMessageStream, createUIMessageStreamResponse } from "ai";
 import {
   chatRequestBodySchema,
   MOCK_MODEL_HEADER,
@@ -9,10 +8,11 @@ import {
 } from "@/lib/chat-contract";
 import { getSessionIdFromCookieHeader } from "@/lib/session-cookie";
 import { chargeCreditForRequest } from "@/lib/auth/credits";
-import { DEFAULT_GEMINI_MODEL_ID, MOCK_MODEL_ID } from "./constants";
+import { hasOwnerOverride } from "@/lib/auth/owner-override";
 import { toChatErrorText } from "./errors";
 import { createMockChatModel } from "./mock-model";
 import { runChatPipeline } from "./pipeline";
+import { resolveChatModel } from "./provider";
 
 /**
  * POST /api/chat — Phase 3.2/3.3: natural language in, streamed validated
@@ -21,9 +21,13 @@ import { runChatPipeline } from "./pipeline";
  * Wire contract: src/lib/chat-contract.ts (request body, part types, error
  * payloads — the chat UI imports the same module).
  *
- * Model selection: Gemini (DEFAULT_GEMINI_MODEL_ID) when
- * GOOGLE_GENERATIVE_AI_API_KEY is set; the deterministic mock otherwise, or
- * whenever the request carries `x-flock-mock: 1` (CI/tests never need a key).
+ * Model selection lives entirely in ./provider.ts — this route makes no
+ * provider decision of its own. In one line: Gemini by default, OpenRouter
+ * when the deployment (FLOCK_CHAT_PROVIDER) or an OWNER-OVERRIDDEN request
+ * asks for it and its key is set, and the deterministic mock whenever the
+ * request carries `x-flock-mock: 1` or no provider key exists at all (so CI
+ * and tests never need a key). A request's `providerId` from an ordinary
+ * visitor is ignored — see the security rule in ./provider.ts.
  */
 
 function badRequest(body: ChatRequestErrorResponse): Response {
@@ -61,7 +65,8 @@ export async function POST(request: Request) {
       })),
     });
   }
-  const { id: threadId, messages, document, selectedBlockId } = parsedBody.data;
+
+  const { id: threadId, messages, document, selectedBlockId, providerId } = parsedBody.data;
   // The anonymous session id rides the same-origin cookie (lib/session.ts
   // mirrors localStorage into it) — the generateImage executor registers
   // every generation under this session's library (Content Studio Stage S).
@@ -82,9 +87,26 @@ export async function POST(request: Request) {
     });
   }
 
-  const hasGoogleApiKey = Boolean(process.env.GOOGLE_GENERATIVE_AI_API_KEY);
-  const isMockForced = request.headers.get(MOCK_MODEL_HEADER) === "1";
-  const isUsingMockModel = isMockForced || !hasGoogleApiKey;
+  // The whole provider decision, in one call. Resolved BEFORE the charge
+  // because `isUsingMockModel` decides whether this turn is billable at all.
+  const { model, modelId, isUsingMockModel } = resolveChatModel({
+    requestedProviderId: providerId,
+    // A client-supplied providerId is honoured only for the owner; everyone
+    // else gets the deployment default no matter what they send.
+    hasOwnerOverride: hasOwnerOverride(request.headers.get("cookie")),
+    isMockForced: request.headers.get(MOCK_MODEL_HEADER) === "1",
+    createMockModel: () =>
+      createMockChatModel({
+        lastUserText: getLastUserText(messages),
+        selectedBlockId,
+        // A trailing assistant message means this request is a continuation
+        // round (tool results coming back) — the mock must close, not re-plan.
+        isContinuationRequest: messages[messages.length - 1]?.role === "assistant",
+        // Where a composed Phase 7.4 section is appended (the mock has no
+        // document of its own — it only ever appends to the end).
+        rootSectionCount: document[ROOT_BLOCK_ID]?.childrenIds.length ?? 0,
+      }),
+  });
 
   // A chat turn is the primary inference path — it costs a credit. Charged
   // here, AFTER the request is known to be well-formed and BEFORE any stream
@@ -98,19 +120,6 @@ export async function POST(request: Request) {
     );
   }
 
-  const model: LanguageModel = isUsingMockModel
-    ? createMockChatModel({
-        lastUserText: getLastUserText(messages),
-        selectedBlockId,
-        // A trailing assistant message means this request is a continuation
-        // round (tool results coming back) — the mock must close, not re-plan.
-        isContinuationRequest: messages[messages.length - 1]?.role === "assistant",
-        // Where a composed Phase 7.4 section is appended (the mock has no
-        // document of its own — it only ever appends to the end).
-        rootSectionCount: document[ROOT_BLOCK_ID]?.childrenIds.length ?? 0,
-      })
-    : google(DEFAULT_GEMINI_MODEL_ID);
-
   const stream = createUIMessageStream<FlockChatMessage>({
     // Reusing the incoming message history lets continuation rounds (tool
     // results, approval responses) merge into the SAME assistant message id
@@ -120,7 +129,7 @@ export async function POST(request: Request) {
     execute: ({ writer }) =>
       runChatPipeline({
         model,
-        modelId: isUsingMockModel ? MOCK_MODEL_ID : DEFAULT_GEMINI_MODEL_ID,
+        modelId,
         isUsingMockModel,
         messages,
         doc: document,
