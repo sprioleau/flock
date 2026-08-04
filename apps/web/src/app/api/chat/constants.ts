@@ -92,6 +92,23 @@ export const PIPELINE_VARIANT: PipelineVariant = resolvePipelineVariant(
 );
 
 /**
+ * Transport retries per model call, on top of the first attempt. ZERO: one
+ * attempt, no retries.
+ *
+ * The AI SDK defaults to 2 (three attempts). That default multiplies quota
+ * spend by 3x exactly when quota is the thing that failed — a 429 retried
+ * twice is three requests burned to deliver one error. Measured 2026-08-04:
+ * one turn already costs up to MAX_STEP_COUNT calls plus repairs, so the
+ * per-minute ceiling arrives long before the daily one.
+ *
+ * The tradeoff, stated plainly: a transient 429 or 503 that would have healed
+ * on its own now fails the turn, and the user retries by hand. That is the
+ * intended trade — a visible retry the person chose beats three invisible
+ * ones that empty the budget.
+ */
+export const MAX_MODEL_CALL_RETRIES = 0;
+
+/**
  * Validation gate (Phase 3.3): at most ONE server-side repair round-trip per
  * failed tool call. After that the failure surfaces to the client.
  */

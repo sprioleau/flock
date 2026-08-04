@@ -15,6 +15,7 @@ import {
 import type { FlockChatMessage } from "@/lib/chat-contract";
 import { toChatErrorText } from "./errors";
 import {
+  MAX_MODEL_CALL_RETRIES,
   MAX_REPAIR_ATTEMPTS_PER_TOOL_CALL,
   MAX_STEP_COUNT,
   PIPELINE_VARIANT,
@@ -185,6 +186,7 @@ export function createToolCallRepairer({
         system: staticInstructions,
         messages: repairMessages,
         tools: schemaOnlyTools,
+        maxRetries: MAX_MODEL_CALL_RETRIES,
       });
 
       const repairedToolCall = repairResult.toolCalls.find(
@@ -296,6 +298,7 @@ async function runSinglePassPipeline(input: ChatPipelineInput): Promise<void> {
     messages: modelMessages,
     tools,
     toolApproval,
+    maxRetries: MAX_MODEL_CALL_RETRIES,
     stopWhen: stepCountIs(MAX_STEP_COUNT),
     repairToolCall: createToolCallRepairer({
       model,
