@@ -7,6 +7,7 @@ import { useEditorStore } from "@/lib/editor-store";
 import { cn } from "@/lib/utils";
 import { BlockActionRow } from "./BlockActionRow";
 import { BlockBreadcrumb } from "./BlockBreadcrumb";
+import { BlockSuggestionPill } from "./BlockSuggestionPill";
 import { buildCanvasDraggableId, useCanvasDragStore } from "./dnd/drag-drop-store";
 import { BlockPresenceIndicator } from "./presence/BlockPresenceIndicator";
 
@@ -146,9 +147,14 @@ export function BlockShell({ block, children, className }: BlockShellProps) {
       )}
     >
       {isSelected && (
-        // Selection chrome in two non-colliding zones: the ancestor chip
+        // Selection chrome in three non-colliding zones: the ancestor chip
         // stack outside the block's left edge (grows downward from its top),
-        // the action row floating above the block's top-right.
+        // the action row floating above the block's top-right, and — only
+        // when the live suggestion is about THIS block — the suggestion pill
+        // below it. The pill takes the bottom zone precisely because the
+        // other two are taken and a narrow block (a button) is narrower than
+        // the action row; see BlockSuggestionPill for the full reasoning.
+        // It renders itself as null on every other block.
         <>
           <BlockBreadcrumb blockId={block.id} />
           <BlockActionRow
@@ -157,6 +163,7 @@ export function BlockShell({ block, children, className }: BlockShellProps) {
             dragListeners={listeners}
             dragAttributes={attributes}
           />
+          <BlockSuggestionPill blockId={block.id} />
         </>
       )}
       {/* Presence chrome (merge-notify): who ELSE is editing this block. */}

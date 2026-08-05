@@ -14,6 +14,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { useEditorStore } from "@/lib/editor-store";
 import { usePersonaAdvisors } from "@/lib/personas/use-persona-advisors";
+import { usePublishBlockSuggestion } from "@/lib/suggestions/suggestion-surface-store";
 import { useSuggestions } from "@/lib/suggestions/use-suggestions";
 import { cn } from "@/lib/utils";
 import { DemoQueueButton } from "../demo/DemoQueueButton";
@@ -114,6 +115,10 @@ export function ChatPanel() {
   // heartbeat + the batched runner). ChatPanel always mounts, collapsed or
   // not, so hosting here preserves the always-on behavior.
   const suggestions = useSuggestions();
+  // ...and it feeds a SECOND surface: the pill under the block that was just
+  // edited. Same controller, mirrored across a module store because the
+  // canvas is a different subtree entirely (suggestion-surface-store.ts).
+  usePublishBlockSuggestion(suggestions);
   const personaAdvisors = usePersonaAdvisors();
   const pendingRecommendationCount =
     personaAdvisors.cards.filter((card) => card.appliedState === null).length +

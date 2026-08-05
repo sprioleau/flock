@@ -63,6 +63,13 @@ export interface Suggestion {
   /** At least one non-gated rung is guaranteed (see rules.ts). */
   rungs: SuggestionRung[];
   /**
+   * The block the pattern hangs off — the one the user JUST edited. Carried
+   * explicitly (rather than read off `targetBlockIds[0]`, which is only the
+   * anchor by Set insertion order) because the canvas surface anchors real UI
+   * to it: the suggestion pill renders inside that block's shell.
+   */
+  anchorBlockId: BlockId;
+  /**
    * Every block this suggestion depends on: all rung target blocks, the
    * anchor block the pattern hangs off, and the root block when a re-theme
    * rung reads the current globals. Any change to one of these (including

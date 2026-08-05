@@ -263,7 +263,7 @@ const repeatedPropertyEditRule: SuggestionRule = {
   id: "repeated-property-edit",
   detect: (context: SuggestionRuleContext): Suggestion | null => {
     const { doc, recentEdits, anchorEdit, isPatternDismissed } = context;
-    const { blockType, propertyKey, value } = anchorEdit;
+    const { blockId, blockType, propertyKey, value } = anchorEdit;
     const patternKey = getPatternKey({ blockType, propertyKey });
     if (isPatternDismissed(patternKey)) {
       return null;
@@ -317,6 +317,9 @@ const repeatedPropertyEditRule: SuggestionRule = {
         blockType,
       })}. Apply it to the rest?`,
       rungs,
+      // The block whose edit triggered this evaluation — the one the user is
+      // looking at, and so where the canvas pill anchors.
+      anchorBlockId: blockId,
       targetBlockIds,
     };
   },
@@ -380,6 +383,8 @@ const siblingAsymmetryRule: SuggestionRule = {
         sectionCandidates.length === 1 ? "has" : "have"
       } a different ${getPropertyLabel(propertyKey)}.`,
       rungs,
+      // The styled block — the one the user is looking at (see rule 1).
+      anchorBlockId: blockId,
       targetBlockIds,
     };
   },

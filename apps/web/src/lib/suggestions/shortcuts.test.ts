@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   formatSuggestionShortcutHint,
   getDefaultRung,
+  getIsSuggestionReachable,
   resolveSuggestionShortcut,
   type SuggestionShortcutKeyEvent,
 } from "./shortcuts";
@@ -42,6 +43,7 @@ function makeSuggestion(rungs: SuggestionRung[]): Suggestion {
     title: "Make the other buttons match?",
     description: "You set the same background color on 2 buttons. Apply it to the rest?",
     rungs,
+    anchorBlockId: "b1",
     targetBlockIds: ["b1", "b2"],
   };
 }
@@ -204,6 +206,48 @@ describe("resolveSuggestionShortcut — staying silent", () => {
   it("yields a keystroke another handler already claimed", () => {
     expect(resolve({ event: { ...applyOnApple, isDefaultPrevented: true } })).toEqual({ name: "ignore" });
     expect(resolve({ event: { ...escape, isDefaultPrevented: true } })).toEqual({ name: "ignore" });
+  });
+});
+
+describe("getIsSuggestionReachable", () => {
+  /**
+   * The owner's second complaint: the suggestion existed, was correct, and ⌥A
+   * did nothing because the chat panel happened to be collapsed. Reachability
+   * is about whether the user can SEE the offer anywhere, not about one panel.
+   */
+  it("is reachable from the chat card while the panel is expanded", () => {
+    expect(
+      getIsSuggestionReachable({ isChatPanelExpanded: true, isCanvasPillVisible: false }),
+    ).toBe(true);
+  });
+
+  it("is reachable from the canvas pill even with the chat panel collapsed", () => {
+    expect(
+      getIsSuggestionReachable({ isChatPanelExpanded: false, isCanvasPillVisible: true }),
+    ).toBe(true);
+  });
+
+  it("stays reachable when both surfaces are showing it", () => {
+    expect(getIsSuggestionReachable({ isChatPanelExpanded: true, isCanvasPillVisible: true })).toBe(
+      true,
+    );
+  });
+
+  it("is unreachable when no surface is showing it, so ⌥A claims nothing", () => {
+    expect(
+      getIsSuggestionReachable({ isChatPanelExpanded: false, isCanvasPillVisible: false }),
+    ).toBe(false);
+  });
+
+  it("feeds resolveSuggestionShortcut's gate directly", () => {
+    const isCardInteractive = getIsSuggestionReachable({
+      isChatPanelExpanded: false,
+      isCanvasPillVisible: true,
+    });
+    expect(resolve({ event: applyOnApple, isCardInteractive })).toEqual({
+      name: "apply",
+      rungId: "section",
+    });
   });
 });
 

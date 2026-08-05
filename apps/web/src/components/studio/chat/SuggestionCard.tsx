@@ -14,8 +14,10 @@ import type { SuggestionsController } from "@/lib/suggestions/use-suggestions";
 import type { Suggestion, SuggestionRungId } from "@/lib/suggestions/types";
 import {
   formatSuggestionShortcutHint,
+  getIsSuggestionReachable,
   resolveSuggestionShortcut,
 } from "@/lib/suggestions/shortcuts";
+import { useIsBlockSuggestionPillMounted } from "@/lib/suggestions/suggestion-surface-store";
 import { getIsEditableEventTarget } from "../shortcuts/keyboard-guards";
 import { getIsApplePlatform } from "../shortcuts/shortcut-keys";
 import { cn } from "@/lib/utils";
@@ -27,13 +29,25 @@ import { handOffPromptToComposer } from "./composer-handoff";
  * it renders nothing at all when no suggestion is live (passive v1: it
  * appears after a settled user gesture and never interrupts).
  *
+ * THIS IS NOW THE SECOND-CLOSEST SURFACE, NOT THE ONLY ONE. The same live
+ * suggestion also renders as a pill under the block that produced it
+ * (BlockSuggestionPill) — correct here but ~1400px from where the user was
+ * looking, and invisible entirely with the panel collapsed, was the whole of
+ * the owner's complaint. The card keeps EVERYTHING: the full escalation
+ * ladder, the confirm-gated re-theme, the "Applied — Revert" state, and the
+ * permanent per-pattern dismissal. The pill carries only the default rung and
+ * a hide. One controller (useSuggestions in ChatPanel) drives both.
+ *
  * - Rung buttons apply that scope's pre-validated ops instantly.
  * - The confirm-gated rung (whole-email re-theme) swaps the card body to an
  *   inline confirm before anything is dispatched.
  * - ⌥A (Alt+A) applies the DEFAULT (non-gated) rung and Esc dismisses, so a
  *   suggestion never costs a trip to the mouse. ⌥A deliberately fires inside
  *   text fields too — the composer owns Enter, and the property fields whose
- *   edits generate these suggestions are exactly where focus tends to be.
+ *   edits generate these suggestions are exactly where focus tends to be. It
+ *   also fires while this panel is COLLAPSED whenever the canvas pill is
+ *   showing the same suggestion (getIsSuggestionReachable) — the panel is no
+ *   longer the only place a suggestion can be seen.
  *   The binding lives on the body below rather than with the controllers in
  *   ChatPanel: it reads the card-local confirm state it must not bypass, and
  *   it should exist only while a suggestion is actually on screen.
@@ -384,12 +398,20 @@ function SuggestionBody({
 }: {
   suggestion: Suggestion;
   tabIndex: number;
-  /** Gates the shortcut: while collapsed the card is rendered but unreachable. */
+  /** Part of the shortcut gate: while collapsed THIS card is unreachable. */
   isPanelExpanded: boolean;
   applyRung: (rungId: SuggestionRungId) => void;
   dismiss: () => void;
 }) {
   const [confirmingRungId, setConfirmingRungId] = useState<SuggestionRungId | null>(null);
+  // ...but the canvas pill may still be showing this very suggestion, in
+  // which case the user CAN see it and ⌥A must work. Gating on this panel
+  // alone was the second half of "I wasn't sure the feature worked".
+  const isCanvasPillVisible = useIsBlockSuggestionPillMounted();
+  const isSuggestionReachable = getIsSuggestionReachable({
+    isChatPanelExpanded: isPanelExpanded,
+    isCanvasPillVisible,
+  });
   const confirmingRung =
     confirmingRungId !== null
       ? suggestion.rungs.find((rung) => rung.id === confirmingRungId)
@@ -416,7 +438,7 @@ function SuggestionBody({
         },
         suggestion,
         confirmingRungId,
-        isCardInteractive: isPanelExpanded,
+        isCardInteractive: isSuggestionReachable,
       });
       if (action.name === "ignore") {
         return;
@@ -434,7 +456,7 @@ function SuggestionBody({
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [suggestion, confirmingRungId, isPanelExpanded, applyRung, dismiss]);
+  }, [suggestion, confirmingRungId, isSuggestionReachable, applyRung, dismiss]);
 
   // Platform notation for the hint. Safe to read at render time: the card
   // only ever appears after a client-side op-log evaluation, so it cannot
