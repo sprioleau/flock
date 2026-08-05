@@ -5,6 +5,7 @@ import { ArrowUpRightIcon, BookmarkIcon, ChevronLeftIcon, LayoutGridIcon } from 
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { cn } from "@/lib/utils";
+import { ClearContentAction } from "../ClearContentAction";
 import {
   EMPTY_SECTION_ITEM,
   PALETTE_GROUPS,
@@ -125,6 +126,10 @@ export function AddBlocksPanel() {
           onOpenChange={setIsSavedSectionsOpen}
         />
       </section>
+      {/* Last, under a rule of its own: everything above ADDS to the email,
+          this one empties it. Separated so it is never mistaken for a tile. */}
+      <div className="h-px bg-border" aria-hidden />
+      <ClearContentAction />
     </div>
   );
 }

@@ -199,7 +199,27 @@ export interface DraftContentClues {
   ctaLabel?: string;
   /** The primary call to action's destination. */
   ctaHref?: string;
+  /** What the first illustrative (non-logo) image shows. */
+  imageAlt?: string;
+  /**
+   * The copy of the source's LATER body sections, one entry per section in
+   * reading order, so the second and third sections of a composed draft
+   * continue the source email instead of falling back to the templates' own
+   * sample copy. Header and footer sections are excluded: their text is
+   * structural (logo alt, address, unsubscribe), not something a body section
+   * should ever repeat.
+   */
+  supportingCopy?: SectionCopy[];
 }
+
+/** One section's own lead copy, as the templates would name it. */
+export interface SectionCopy {
+  headline?: string;
+  body?: string;
+}
+
+/** Ceiling on later-section copy carried over (a long newsletter stays bounded). */
+const MAX_SUPPORTING_SECTIONS = 4;
 
 /** Depth-first plain text of a Tiptap-style rich-text node tree. */
 function extractPlainText(node: unknown): string {
@@ -224,23 +244,50 @@ function clampClue(text: string): string | undefined {
   return trimmed.length <= MAX_CLUE_LENGTH ? trimmed : trimmed.slice(0, MAX_CLUE_LENGTH);
 }
 
-/** Blocks in document reading order, depth-first from the root. */
-function walkBlocksInReadingOrder(doc: EmailDocument): EmailDocument[string][] {
-  const ordered: EmailDocument[string][] = [];
-  const visit = (blockId: string): void => {
-    const block = doc[blockId];
-    if (block === undefined) {
-      return;
-    }
-    ordered.push(block);
-    for (const childId of block.childrenIds) {
-      visit(childId);
-    }
-  };
-  for (const sectionId of doc[ROOT_BLOCK_ID]?.childrenIds ?? []) {
+/** Blocks per top-level section, each in reading order, depth-first. */
+function walkSectionsInReadingOrder(doc: EmailDocument): EmailDocument[string][][] {
+  return (doc[ROOT_BLOCK_ID]?.childrenIds ?? []).map((sectionId) => {
+    const ordered: EmailDocument[string][] = [];
+    const visit = (blockId: string): void => {
+      const block = doc[blockId];
+      if (block === undefined) {
+        return;
+      }
+      ordered.push(block);
+      for (const childId of block.childrenIds) {
+        visit(childId);
+      }
+    };
     visit(sectionId);
+    return ordered;
+  });
+}
+
+/** The lead heading and lead paragraph of one section's blocks. */
+function readSectionCopy(blocks: EmailDocument[string][]): SectionCopy {
+  const copy: SectionCopy = {};
+  for (const block of blocks) {
+    if (block.type !== "text") {
+      continue;
+    }
+    const content = (block.properties as { text?: { content?: unknown } }).text?.content;
+    if (!Array.isArray(content)) {
+      continue;
+    }
+    for (const node of content) {
+      const text = clampClue(extractPlainText(node));
+      if (text === undefined) {
+        continue;
+      }
+      const nodeType = (node as { type?: unknown }).type;
+      if (nodeType === "heading" && copy.headline === undefined) {
+        copy.headline = text;
+      } else if (nodeType === "paragraph" && copy.body === undefined) {
+        copy.body = text;
+      }
+    }
   }
-  return ordered;
+  return copy;
 }
 
 /**
@@ -249,14 +296,27 @@ function walkBlocksInReadingOrder(doc: EmailDocument): EmailDocument[string][] {
  */
 export function deriveDraftContentClues(doc: EmailDocument): DraftContentClues {
   const clues: DraftContentClues = {};
-  for (const block of walkBlocksInReadingOrder(doc)) {
+  const sections = walkSectionsInReadingOrder(doc);
+  /** The last section the lead headline/body was taken from; -1 = none yet. */
+  let leadSectionIndex = -1;
+  const blocksInReadingOrder = sections.flatMap((blocks, sectionIndex) =>
+    blocks.map((block) => ({ block, sectionIndex })),
+  );
+  for (const { block, sectionIndex } of blocksInReadingOrder) {
     const properties = block.properties as Record<string, unknown>;
-    if (block.type === "image" && clues.brandName === undefined) {
+    if (block.type === "image") {
       // Header logos are conventionally alt-texted "<Brand> logo".
       const alt = typeof properties.alt === "string" ? properties.alt : "";
-      const brandName = clampClue(alt.replace(/\s*logo\s*$/i, ""));
-      if (brandName !== undefined && /logo/i.test(alt)) {
-        clues.brandName = brandName;
+      const isLogo = /logo/i.test(alt);
+      if (isLogo && clues.brandName === undefined) {
+        const brandName = clampClue(alt.replace(/\s*logo\s*$/i, ""));
+        if (brandName !== undefined) {
+          clues.brandName = brandName;
+        }
+      } else if (!isLogo && clues.imageAlt === undefined) {
+        // What the email actually pictures — better than every template's
+        // "Product preview" placeholder.
+        clues.imageAlt = clampClue(alt);
       }
       continue;
     }
@@ -273,8 +333,10 @@ export function deriveDraftContentClues(doc: EmailDocument): DraftContentClues {
         }
         if (nodeType === "heading" && clues.headline === undefined) {
           clues.headline = text;
+          leadSectionIndex = Math.max(leadSectionIndex, sectionIndex);
         } else if (nodeType === "paragraph" && clues.body === undefined) {
           clues.body = text;
+          leadSectionIndex = Math.max(leadSectionIndex, sectionIndex);
         }
       }
       continue;
@@ -294,6 +356,17 @@ export function deriveDraftContentClues(doc: EmailDocument): DraftContentClues {
   // first few words rather than leaving every header saying "Acme".
   if (clues.brandName === undefined && clues.headline !== undefined) {
     clues.brandName = clues.headline.split(" ").slice(0, 3).join(" ");
+  }
+  // Everything the source says AFTER its lead, one entry per section, so a
+  // multi-section draft has real copy for its second and third sections. The
+  // last section is the footer — structural text, never body copy.
+  const supportingCopy = sections
+    .slice(leadSectionIndex + 1, Math.max(sections.length - 1, leadSectionIndex + 1))
+    .map(readSectionCopy)
+    .filter((copy) => copy.headline !== undefined || copy.body !== undefined)
+    .slice(0, MAX_SUPPORTING_SECTIONS);
+  if (supportingCopy.length > 0) {
+    clues.supportingCopy = supportingCopy;
   }
   return clues;
 }
@@ -470,10 +543,13 @@ function getTemplateParamKeys(templateId: string): ReadonlySet<string> | null {
 
 /**
  * Fill the params the model left out from the source draft's own content.
- * `headline`/`body` land on the FIRST section that takes them (repeating one
- * headline down the whole email would read like a mistake); brand and CTA
- * clues apply wherever a template accepts them, which is how a real email
- * repeats them.
+ * The FIRST section that takes a headline gets the source's lead copy;
+ * subsequent headline-taking sections get the source's LATER sections in
+ * order (repeating one headline down the whole email would read like a
+ * mistake, and leaving them empty means every one of them silently falls back
+ * to the template's own sample marketing copy). Brand, CTA and image clues
+ * apply wherever a template accepts them, which is how a real email repeats
+ * them. Copy the model actually specified always wins.
  */
 function applyContentClues({
   sections,
@@ -482,7 +558,15 @@ function applyContentClues({
   sections: DraftSectionPlan[];
   clues: DraftContentClues;
 }): DraftSectionPlan[] {
-  let hasPlacedLeadCopy = false;
+  /** Lead copy first, then one entry per later source section, consumed in order. */
+  const leadFirstCopy: SectionCopy[] = [
+    {
+      ...(clues.headline === undefined ? {} : { headline: clues.headline }),
+      ...(clues.body === undefined ? {} : { body: clues.body }),
+    },
+    ...(clues.supportingCopy ?? []),
+  ];
+  let nextCopyIndex = 0;
   return sections.map((section) => {
     const paramKeys = getTemplateParamKeys(section.templateId);
     if (paramKeys === null) {
@@ -499,10 +583,12 @@ function applyContentClues({
     fill("companyName", clues.brandName);
     fill("ctaLabel", clues.ctaLabel);
     fill("ctaHref", clues.ctaHref);
-    if (!hasPlacedLeadCopy && paramKeys.has("headline")) {
-      fill("headline", clues.headline);
-      fill("body", clues.body);
-      hasPlacedLeadCopy = true;
+    fill("imageAlt", clues.imageAlt);
+    if (paramKeys.has("headline") && nextCopyIndex < leadFirstCopy.length) {
+      const copy = leadFirstCopy[nextCopyIndex]!;
+      fill("headline", copy.headline);
+      fill("body", copy.body);
+      nextCopyIndex += 1;
     }
     return Object.keys(filled).length === 0 ? section : { ...section, params: filled };
   });

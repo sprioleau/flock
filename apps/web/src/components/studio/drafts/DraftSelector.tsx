@@ -51,8 +51,10 @@ import { publishGenerationTargetDocument, useIsAgentBusy } from "../chat/agent-s
 import { sendPromptThroughComposer } from "../chat/composer-handoff";
 import {
   buildDesignVariationPrompt,
-  buildDraftOutline,
   buildIdeateDraftPrompt,
+  buildIdeationOutline,
+  buildVariationBrief,
+  readSourceThemeGlobals,
 } from "./draft-generation";
 import { computeNextDraftName, computeVariationDraftName } from "./draft-naming";
 import { useCanvasDrafts, type DraftListEntry } from "./use-canvas-drafts";
@@ -80,6 +82,11 @@ export function DraftSelector({
   const [isDeletePending, setIsDeletePending] = useState(false);
   const [isPromotePending, setIsPromotePending] = useState(false);
   const [isGenerationPending, setIsGenerationPending] = useState(false);
+  const [isVariationDialogOpen, setIsVariationDialogOpen] = useState(false);
+  // The one channel a person has to say "…but in lighter colours" at the
+  // moment they ask for a variation. Kept verbatim: it is quoted into the
+  // prompt and read by the model, never pattern-matched here.
+  const [variationDirection, setVariationDirection] = useState("");
   // An AI generation waiting for its freshly created draft to become ACTIVE
   // (store-connected). The prompt must not send earlier: the chat pins each
   // turn to the document that is active at send time, so sending before the
@@ -274,21 +281,37 @@ export function DraftSelector({
   /**
    * The AI generation actions: create an EMPTY sibling draft, activate it,
    * and hand a composed prompt to the chat (sent by the effect above once the
-   * new draft is store-connected). "ideate" asks for a fresh concept; a
-   * design variation asks for a new take on the ACTIVE draft's content. Both
-   * carry the source outline in the prompt — the request body only ever
-   * describes the new blank draft — and both leave theme choice to the agent.
+   * new draft is store-connected). The request body only ever describes the
+   * new blank draft, so everything the model learns about the source travels
+   * in the prompt text.
+   *
+   * "ideate" asks for a fresh concept from a deliberately lossy outline, and
+   * leaves the theme to the agent.
+   *
+   * A design variation is the opposite contract: same email, new shape. Its
+   * theme is NOT left to the agent — the source draft's globals are written
+   * into the new draft as one `applyTheme` op BEFORE it is activated, so the
+   * variation opens already wearing the theme the person was looking at
+   * instead of hoping the model reapplies it. (Routing this through the SDK's
+   * composed `createDraft` path was the alternative; it needs a complete
+   * section plan up front, which only the model can produce, and it would
+   * cost the per-section streaming the drafts menu deliberately shows. Seeding
+   * the theme keeps the streaming and makes the guarantee deterministic.)
+   * The person's own words are the only thing that can release the theme
+   * again — they ride verbatim into the prompt for the model to weigh.
    */
-  const startAiGeneration = (mode: "ideate" | "designVariation"): void => {
+  const startAiGeneration = ({
+    mode,
+    direction = "",
+  }: {
+    mode: "ideate" | "designVariation";
+    direction?: string;
+  }): void => {
     if (activeDraft === null || isGenerationPending || isAgentBusy) {
       return;
     }
-    const sourceOutline = buildDraftOutline(useEditorStore.getState().doc);
-    const promptInput = { sourceDraftName: activeDraft.name, sourceOutline };
-    const prompt =
-      mode === "ideate"
-        ? buildIdeateDraftPrompt(promptInput)
-        : buildDesignVariationPrompt(promptInput);
+    const sourceDoc = useEditorStore.getState().doc;
+    const sourceGlobals = readSourceThemeGlobals(sourceDoc);
     // Naming rules live in draft-naming.ts: variations carry exactly ONE
     // "(variation N)" marker (a marked source increments, never stacks) and
     // both paths dedupe against the live canvas draft list.
@@ -297,22 +320,58 @@ export function DraftSelector({
       mode === "designVariation"
         ? computeVariationDraftName({ sourceName: activeDraft.name, existingNames })
         : computeNextDraftName({ existingNames });
+    const sessionId = getOrCreateSessionId();
     setIsGenerationPending(true);
-    convexClient
-      .mutation(api.documents.createDocument, {
-        sessionId: getOrCreateSessionId(),
+
+    const run = async (): Promise<void> => {
+      const { documentId } = await convexClient.mutation(api.documents.createDocument, {
+        sessionId,
         canvasId: activeDraft.canvasId,
         name,
         shouldSeedEmpty: true,
-      })
-      .then(({ documentId }) => {
-        pendingGenerationSendRef.current = {
-          sourceDocumentId: activeDraft._id,
-          targetDocumentId: documentId,
-          prompt,
-        };
-        onActivateDraft(documentId);
-      })
+      });
+      let prompt: string;
+      if (mode === "ideate") {
+        prompt = buildIdeateDraftPrompt({
+          sourceDraftName: activeDraft.name,
+          sourceOutline: buildIdeationOutline(sourceDoc),
+        });
+      } else {
+        // A null here means the source is on the shared defaults, which the
+        // blank draft already wears — the themes match with nothing to copy.
+        let hasSourceTheme = true;
+        if (sourceGlobals !== null) {
+          const themeResult = await convexClient.mutation(api.documents.applyOperations, {
+            documentId,
+            ops: [{ name: "applyTheme", globals: sourceGlobals }],
+            context: {
+              authorId: sessionId,
+              author: "user",
+              caller: "frontend",
+              batchId: crypto.randomUUID(),
+            },
+          });
+          hasSourceTheme = themeResult.isOk;
+          if (!themeResult.isOk) {
+            console.error("applyOperations (variation theme) rejected", themeResult.errors);
+          }
+        }
+        prompt = buildDesignVariationPrompt({
+          sourceDraftName: activeDraft.name,
+          sourceBrief: buildVariationBrief(sourceDoc),
+          hasSourceTheme,
+          direction,
+        });
+      }
+      pendingGenerationSendRef.current = {
+        sourceDocumentId: activeDraft._id,
+        targetDocumentId: documentId,
+        prompt,
+      };
+      onActivateDraft(documentId);
+    };
+
+    run()
       .catch((error: unknown) => {
         console.error("createDocument (AI generation) failed", error);
         useEditorStore.getState().showNotice("Couldn't start the AI draft (connection error).");
@@ -320,6 +379,12 @@ export function DraftSelector({
       .finally(() => {
         setIsGenerationPending(false);
       });
+  };
+
+  const confirmDesignVariation = (): void => {
+    setIsVariationDialogOpen(false);
+    startAiGeneration({ mode: "designVariation", direction: variationDirection });
+    setVariationDirection("");
   };
 
   const createDraft = (): void => {
@@ -486,7 +551,7 @@ export function DraftSelector({
               >
                 <DropdownMenuItem
                   disabled={isAgentBusy || isGenerationPending}
-                  onClick={() => startAiGeneration("ideate")}
+                  onClick={() => startAiGeneration({ mode: "ideate" })}
                   data-testid="draft-menu-generate"
                 >
                   <SparklesIcon /> Ideate with AI
@@ -498,7 +563,10 @@ export function DraftSelector({
               >
                 <DropdownMenuItem
                   disabled={isAgentBusy || isGenerationPending}
-                  onClick={() => startAiGeneration("designVariation")}
+                  onClick={() => {
+                    // Defer past the menu's close/focus-return, same as rename.
+                    setTimeout(() => setIsVariationDialogOpen(true), 0);
+                  }}
                   data-testid="draft-menu-design-variation"
                 >
                   <WandSparklesIcon /> Add design variation
@@ -529,6 +597,59 @@ export function DraftSelector({
           <TooltipContent side="bottom">Next draft</TooltipContent>
         </Tooltip>
       </TooltipProvider>
+
+      {/*
+        A variation keeps the current draft's words and colours by default, so
+        the only thing left to ask is what should be DIFFERENT. Optional — the
+        primary button is the whole one-click flow — but it is also the single
+        place a person can say "in lighter colours" and have that reach the
+        colour decision at all.
+      */}
+      <Dialog open={isVariationDialogOpen} onOpenChange={setIsVariationDialogOpen}>
+        <DialogContent className="max-w-sm" data-testid="draft-variation-dialog">
+          <DialogHeader>
+            <DialogTitle>Add a design variation</DialogTitle>
+            <DialogDescription>
+              Flock will lay “{activeDraft?.name ?? "this draft"}” out a new way, keeping the same
+              words and the same colours.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="flex flex-col gap-1.5">
+            <label
+              htmlFor="draft-variation-direction"
+              className="text-xs font-medium text-muted-foreground"
+            >
+              Anything you want changed? (optional)
+            </label>
+            <input
+              id="draft-variation-direction"
+              value={variationDirection}
+              onChange={(event) => setVariationDirection(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter") {
+                  confirmDesignVariation();
+                }
+              }}
+              autoFocus
+              maxLength={200}
+              placeholder="Lighter colours, bigger photo…"
+              className="h-8 rounded-md bg-background px-2 text-xs outline-none ring-1 ring-border focus:ring-ring"
+              data-testid="draft-variation-direction"
+            />
+          </div>
+          <DialogFooter>
+            <DialogClose render={<Button variant="outline" size="sm" />}>Cancel</DialogClose>
+            <Button
+              size="sm"
+              disabled={isGenerationPending}
+              onClick={confirmDesignVariation}
+              data-testid="draft-variation-confirm"
+            >
+              Create variation
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <Dialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
         <DialogContent className="max-w-sm" data-testid="draft-delete-dialog">

@@ -77,6 +77,110 @@ function getAllText(doc: EmailDocument): string {
     .join(" | ");
 }
 
+// ---------------------------------------------------------------------------
+// A source email built to order
+// ---------------------------------------------------------------------------
+
+/**
+ * Content-clue tests need a source whose sections they control. They must NOT
+ * lean on `createStarterDocument()` beyond "it is a real email": the starter
+ * is a designed marketing asset that gets rewritten, and pinning assertions to
+ * its exact section list makes every copy edit a red test.
+ */
+type LeafSpec = { id: string; block: (parentId: string) => EmailDocument[string] };
+
+let leafCounter = 0;
+
+function logoImage(alt: string): LeafSpec {
+  const id = `img_l${(leafCounter += 1)}`;
+  return {
+    id,
+    block: (parentId) =>
+      ({
+        id,
+        type: "image",
+        parentId,
+        childrenIds: [],
+        properties: { src: "https://cdn.example/logo.png", alt },
+      }) as unknown as EmailDocument[string],
+  };
+}
+
+function photoImage(alt: string): LeafSpec {
+  const id = `img_p${(leafCounter += 1)}`;
+  return {
+    id,
+    block: (parentId) =>
+      ({
+        id,
+        type: "image",
+        parentId,
+        childrenIds: [],
+        properties: { src: "https://cdn.example/photo.jpg", alt },
+      }) as unknown as EmailDocument[string],
+  };
+}
+
+function copyText({ headline, body }: { headline?: string; body?: string }): LeafSpec {
+  const id = `txt_c${(leafCounter += 1)}`;
+  return {
+    id,
+    block: (parentId) =>
+      ({
+        id,
+        type: "text",
+        parentId,
+        childrenIds: [],
+        properties: {
+          text: {
+            type: "doc",
+            content: [
+              ...(headline === undefined
+                ? []
+                : [
+                    {
+                      type: "heading",
+                      attrs: { level: 1 },
+                      content: [{ type: "text", text: headline }],
+                    },
+                  ]),
+              ...(body === undefined
+                ? []
+                : [{ type: "paragraph", content: [{ type: "text", text: body }] }]),
+            ],
+          },
+        },
+      }) as unknown as EmailDocument[string],
+  };
+}
+
+/** One section per entry, each holding the given leaves directly. */
+function buildSourceEmail(sections: LeafSpec[][]): EmailDocument {
+  const doc: EmailDocument = {};
+  const sectionIds = sections.map((_, index) => `sec_s${index}`);
+  doc[ROOT_BLOCK_ID] = {
+    id: ROOT_BLOCK_ID,
+    type: "root",
+    parentId: null,
+    childrenIds: sectionIds,
+    properties: { globals: {} },
+  } as unknown as EmailDocument[string];
+  sections.forEach((leaves, index) => {
+    const sectionId = sectionIds[index]!;
+    doc[sectionId] = {
+      id: sectionId,
+      type: "section",
+      parentId: ROOT_BLOCK_ID,
+      childrenIds: leaves.map((leaf) => leaf.id),
+      properties: {},
+    } as unknown as EmailDocument[string];
+    for (const leaf of leaves) {
+      doc[leaf.id] = leaf.block(sectionId);
+    }
+  });
+  return doc;
+}
+
 describe("createDraft input schema", () => {
   it("accepts a content plan — the shape the old count-only schema could not express", () => {
     const parsed = createDraftInputSchema.safeParse({
@@ -187,14 +291,62 @@ describe("deriveDraftContentClues", () => {
   it("reads the starter email's brand, headline, body and call to action", () => {
     const clues = deriveDraftContentClues(createStarterDocument());
     expect(clues.brandName).toBe("Acme");
-    expect(clues.headline).toBe("Welcome to Acme");
-    expect(clues.body).toContain("Thanks for signing up");
+    expect(clues.headline).toBe("Welcome to Flock.");
+    expect(clues.body).toContain("not a blank page");
     expect(clues.ctaLabel).toBeDefined();
     expect(clues.ctaHref).toBeDefined();
   });
 
   it("returns nothing for a blank document", () => {
     expect(deriveDraftContentClues(createEmptyDocument())).toEqual({});
+  });
+
+  it("reads what the email PICTURES from the first non-logo image", () => {
+    const clues = deriveDraftContentClues(
+      buildSourceEmail([
+        [logoImage("Petal Studio logo"), photoImage("A workbench at first light")],
+        [copyText({ headline: "Spring is here", body: "Everything new, in one place." })],
+        [copyText({ body: "Petal Studio · Unsubscribe" })],
+      ]),
+    );
+    expect(clues.imageAlt).toBe("A workbench at first light");
+    // The logo still names the brand — a logo is never the email's picture.
+    expect(clues.brandName).toBe("Petal Studio");
+  });
+
+  it("keeps each later section's own copy, so a long source has more than one story", () => {
+    const clues = deriveDraftContentClues(
+      buildSourceEmail([
+        [logoImage("Petal Studio logo")],
+        [copyText({ headline: "Spring is here", body: "Everything new, in one place." })],
+        [
+          copyText({
+            headline: "What shipped in March",
+            body: "Three new integrations and a faster editor.",
+          }),
+        ],
+        [copyText({ headline: "Coming in April", body: "Scheduling, finally." })],
+        [copyText({ body: "Petal Studio · 1 Garden Way · Unsubscribe" })],
+      ]),
+    );
+    expect(clues.headline).toBe("Spring is here");
+    expect(clues.supportingCopy).toEqual([
+      { headline: "What shipped in March", body: "Three new integrations and a faster editor." },
+      { headline: "Coming in April", body: "Scheduling, finally." },
+    ]);
+  });
+
+  it("never mistakes the footer's small print for body copy", () => {
+    // header / body / footer: everything after the lead is the footer, so
+    // there is no supporting copy to carry.
+    const clues = deriveDraftContentClues(
+      buildSourceEmail([
+        [logoImage("Petal Studio logo")],
+        [copyText({ headline: "Spring is here", body: "Everything new, in one place." })],
+        [copyText({ body: "Petal Studio · 1 Garden Way · Unsubscribe" })],
+      ]),
+    );
+    expect(clues.supportingCopy).toBeUndefined();
   });
 });
 
@@ -380,7 +532,7 @@ describe("buildComposedDrafts", () => {
     expect(text).not.toContain("Acme");
     // …and the copy the model DID specify wins over the carried-over headline.
     expect(text).toContain("Ready when you are");
-    expect(text).not.toContain("Welcome to Acme");
+    expect(text).not.toContain("Welcome to Flock.");
   });
 
   it("does not repeat the carried-over headline in every section", () => {
@@ -402,8 +554,51 @@ describe("buildComposedDrafts", () => {
       },
       createStarterDocument(),
     );
-    const occurrences = getAllText(doc).split("Welcome to Acme").length - 1;
+    const occurrences = getAllText(doc).split("Welcome to Flock.").length - 1;
     expect(occurrences).toBe(1);
+  });
+
+  it("gives the SECOND body section the source's second story, not sample copy", () => {
+    // The reported failure in miniature: a section the model left unspecified
+    // silently rendered the template's own marketing defaults. Every headline
+    // below is a Zod `.default()` in the catalog templates.
+    const doc = composeOne(
+      {
+        type: "createDraft",
+        count: 1,
+        shouldInheritTheme: true,
+        drafts: [
+          {
+            sections: [
+              { templateId: "header" },
+              { templateId: "hero" },
+              { templateId: "cta" },
+              { templateId: "footer" },
+            ],
+          },
+        ],
+      },
+      buildSourceEmail([
+        [logoImage("Petal Studio logo"), photoImage("A workbench at first light")],
+        [copyText({ headline: "Spring is here", body: "Everything new, in one place." })],
+        [
+          copyText({
+            headline: "What shipped in March",
+            body: "Three new integrations and a faster editor.",
+          }),
+        ],
+        [copyText({ body: "Petal Studio · Unsubscribe" })],
+      ]),
+    );
+    const text = getAllText(doc);
+    expect(text).toContain("Spring is here");
+    expect(text).toContain("What shipped in March");
+    expect(text).toContain("Three new integrations and a faster editor.");
+    // The image says what the source pictures, not "Product preview".
+    expect(text).toContain("A workbench at first light");
+    expect(text).not.toContain("Meet the new release");
+    expect(text).not.toContain("Ready when you are");
+    expect(text).not.toContain("Product preview");
   });
 
   it("never touches the source document", () => {

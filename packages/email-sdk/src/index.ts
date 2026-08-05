@@ -454,6 +454,20 @@ export type {
   DraftPlan,
   DraftSectionPlan,
   DraftContentClues,
+  SectionCopy,
   ComposedDraft,
   BuildComposedDraftsInput,
 } from "./actions/compose-draft";
+
+// --- Actions: clearContent — strip the copy, keep the design (actions/clear-content) ------------
+export {
+  buildClearContentOperations,
+  isBrandLogoBlock,
+  CLEARED_HEADING_TEXT,
+  CLEARED_PARAGRAPH_TEXT,
+  CLEARED_BUTTON_LABEL,
+  CLEARED_LINK_TEXT,
+  CLEARED_CODE,
+  CLEARED_IMAGE_SRC,
+  CLEARED_IMAGE_ALT,
+} from "./actions/clear-content";
