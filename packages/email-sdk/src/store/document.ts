@@ -35,15 +35,28 @@ export function createEmptyDocument(): EmailDocument {
 
 /**
  * The designed starter document seeded into every NEW document and NEW draft
- * (convex createDocument's default). Modeled on Resend / react-email's
- * out-of-the-box welcome templates: brand-bar logo, a left-aligned heading +
- * short intro, one clear CTA button, then a divider and muted small-print
- * footer (company line + unsubscribe merge tag).
+ * (convex createDocument's default). It is deliberately a WHOLE email rather
+ * than a stub: a new draft should open on something that already looks like a
+ * finished send, so the first move is editing a real email instead of filling
+ * a blank page. The copy does double duty — it reads as a welcome email, and
+ * it points a first-time user at the three things worth knowing on day one
+ * (the theme, the section gallery, and sending yourself a test).
  *
  *   root
  *   ├─ sec_hdr1 (header)  → img_lg01 (logo placeholder)
- *   ├─ sec_body (body)    → txt_wc01 (h1 + intro), btn_ct01 (CTA)
+ *   ├─ sec_hero (hero)    → txt_wc01 (h1 + intro), img_hr01, btn_ct01 (primary CTA)
+ *   ├─ sec_ways (2-up)    → row_fr01
+ *   │                         ├─ col_fc01 → txt_fc01 (h3 + line)
+ *   │                         └─ col_fc02 → txt_fc02 (h3 + line)
+ *   ├─ sec_step (how-to)  → div_st01, txt_st01 (h2 + three bold-led steps), lnk_sg01
  *   └─ sec_ftr1 (footer)  → div_ft01, txt_ft01 (small-print links/address/unsubscribe)
+ *
+ * DELIBERATELY SHORT. This document is also what the chat pipeline sends the
+ * model on every turn, so each sentence here is paid for on every message of
+ * every conversation started from a fresh draft. Prose earns its place or it
+ * comes out — prefer cutting words over cutting the visual variety (the
+ * two-column row, the images, the divider) that makes a new draft look like a
+ * real email.
  *
  * Design discipline (same as the section templates): structural knobs only —
  * no colors, fonts, or padding overrides — so the whole email inherits
@@ -51,6 +64,13 @@ export function createEmptyDocument(): EmailDocument {
  * construction: every image has alt text, every link/button href is a real
  * absolute URL or merge tag, and the footer carries address + unsubscribe.
  * Ids are stable across calls (each document owns its id namespace).
+ *
+ * LOAD-BEARING DETAILS, do not casually reorder:
+ * - `img_lg01`'s alt follows the "<Brand> logo" convention and is the FIRST
+ *   image in reading order, so deriveDraftContentClues reads the brand from it.
+ * - `txt_wc01` holds the first heading and the first paragraph, and `btn_ct01`
+ *   is the first button — those are the headline/body/CTA clues a composed
+ *   draft continues from.
  */
 export function createStarterDocument(): EmailDocument {
   const footerFontSize = { type: "textStyle" as const, attrs: { fontSize: "12px" } };
@@ -59,7 +79,7 @@ export function createStarterDocument(): EmailDocument {
       id: "root",
       type: "root",
       parentId: null,
-      childrenIds: ["sec_hdr1", "sec_body", "sec_ftr1"],
+      childrenIds: ["sec_hdr1", "sec_hero", "sec_ways", "sec_step", "sec_ftr1"],
       properties: { globals: {} },
     },
     sec_hdr1: {
@@ -81,17 +101,17 @@ export function createStarterDocument(): EmailDocument {
         align: "left",
       },
     },
-    sec_body: {
-      id: "sec_body",
+    sec_hero: {
+      id: "sec_hero",
       type: "section",
       parentId: "root",
-      childrenIds: ["txt_wc01", "btn_ct01"],
+      childrenIds: ["txt_wc01", "img_hr01", "btn_ct01"],
       properties: {},
     },
     txt_wc01: {
       id: "txt_wc01",
       type: "text",
-      parentId: "sec_body",
+      parentId: "sec_hero",
       childrenIds: [],
       properties: {
         text: {
@@ -100,14 +120,14 @@ export function createStarterDocument(): EmailDocument {
             {
               type: "heading",
               attrs: { level: 1 },
-              content: [{ type: "text", text: "Welcome to Acme" }],
+              content: [{ type: "text", text: "Welcome to Flock." }],
             },
             {
               type: "paragraph",
               content: [
                 {
                   type: "text",
-                  text: "Thanks for signing up — we're glad you're here. It takes about two minutes to finish setting up your account, and then you're ready to go.",
+                  text: "This is a real email, not a blank page — every block below is yours to rewrite, restyle, or delete.",
                 },
               ],
             },
@@ -115,15 +135,186 @@ export function createStarterDocument(): EmailDocument {
         },
       },
     },
+    img_hr01: {
+      id: "img_hr01",
+      type: "image",
+      parentId: "sec_hero",
+      childrenIds: [],
+      properties: {
+        src: "https://placehold.co/1200x600.png",
+        alt: "Placeholder image — swap in your own",
+        width: 560,
+        align: "center",
+      },
+    },
     btn_ct01: {
       id: "btn_ct01",
       type: "button",
-      parentId: "sec_body",
+      parentId: "sec_hero",
       childrenIds: [],
       properties: {
         label: "Get started",
         href: "https://example.com/get-started",
         align: "left",
+      },
+    },
+    sec_ways: {
+      id: "sec_ways",
+      type: "section",
+      parentId: "root",
+      childrenIds: ["row_fr01"],
+      properties: {},
+    },
+    row_fr01: {
+      id: "row_fr01",
+      type: "row",
+      parentId: "sec_ways",
+      childrenIds: ["col_fc01", "col_fc02"],
+      properties: {},
+    },
+    col_fc01: {
+      id: "col_fc01",
+      type: "column",
+      parentId: "row_fr01",
+      childrenIds: ["txt_fc01"],
+      properties: { widthPercent: 50 },
+    },
+    txt_fc01: {
+      id: "txt_fc01",
+      type: "text",
+      parentId: "col_fc01",
+      childrenIds: [],
+      properties: {
+        // Column content is centered, the same treatment the feature-columns
+        // catalog template uses: side-by-side columns carry no gutter of their
+        // own, so centering is what keeps the two blurbs visually apart.
+        textAlign: "center",
+        text: {
+          type: "doc",
+          content: [
+            {
+              type: "heading",
+              attrs: { level: 3 },
+              content: [{ type: "text", text: "Edit it on the canvas" }],
+            },
+            {
+              type: "paragraph",
+              content: [
+                {
+                  type: "text",
+                  text: "Click any block to change its words, colors or spacing, and drag it wherever you want it.",
+                },
+              ],
+            },
+          ],
+        },
+      },
+    },
+    col_fc02: {
+      id: "col_fc02",
+      type: "column",
+      parentId: "row_fr01",
+      childrenIds: ["txt_fc02"],
+      properties: { widthPercent: 50 },
+    },
+    txt_fc02: {
+      id: "txt_fc02",
+      type: "text",
+      parentId: "col_fc02",
+      childrenIds: [],
+      properties: {
+        textAlign: "center",
+        text: {
+          type: "doc",
+          content: [
+            {
+              type: "heading",
+              attrs: { level: 3 },
+              content: [{ type: "text", text: "Or just ask for it" }],
+            },
+            {
+              type: "paragraph",
+              content: [
+                {
+                  type: "text",
+                  text: "Describe the change in chat and the copilot makes it for you, one reversible step at a time.",
+                },
+              ],
+            },
+          ],
+        },
+      },
+    },
+    sec_step: {
+      id: "sec_step",
+      type: "section",
+      parentId: "root",
+      childrenIds: ["div_st01", "txt_st01", "lnk_sg01"],
+      properties: {},
+    },
+    div_st01: {
+      id: "div_st01",
+      type: "divider",
+      parentId: "sec_step",
+      childrenIds: [],
+      properties: {},
+    },
+    txt_st01: {
+      id: "txt_st01",
+      type: "text",
+      parentId: "sec_step",
+      childrenIds: [],
+      properties: {
+        text: {
+          type: "doc",
+          content: [
+            {
+              type: "heading",
+              attrs: { level: 2 },
+              content: [{ type: "text", text: "Three moves to make it yours" }],
+            },
+            {
+              type: "paragraph",
+              content: [
+                { type: "text", text: "Set the theme.", marks: [{ type: "bold" }] },
+                {
+                  type: "text",
+                  text: " Pick colors and fonts once and every draft follows, or paste your website address and let Flock read them off it.",
+                },
+              ],
+            },
+            {
+              type: "paragraph",
+              content: [
+                { type: "text", text: "Drop in a section.", marks: [{ type: "bold" }] },
+                {
+                  type: "text",
+                  text: " Headers, heroes, pricing and footers, each previewed in the theme you already picked.",
+                },
+              ],
+            },
+            {
+              type: "paragraph",
+              content: [
+                { type: "text", text: "Send yourself a test.", marks: [{ type: "bold" }] },
+                {
+                  type: "text",
+                  text: " Preview the email-safe HTML, then send it to your own inbox from the draft toolbar.",
+                },
+              ],
+            },
+          ],
+        },
+      },
+    },
+    lnk_sg01: {
+      id: "lnk_sg01",
+      type: "link",
+      parentId: "sec_step",
+      childrenIds: [],
+      properties: {
+        text: "Browse the section gallery",
+        href: "https://example.com/sections",
       },
     },
     sec_ftr1: {
