@@ -18,7 +18,8 @@ const geistMono = Geist_Mono({
 
 export const metadata: Metadata = {
   title: "Flock",
-  description: "AI-powered collaborative email editor",
+  description: "Collaborative email editor for humans and agents",
+  creator: "San'Quan Prioleau",
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
