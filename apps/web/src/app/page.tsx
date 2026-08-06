@@ -4,6 +4,7 @@ import { DASHBOARD_PATH, isAuthEnabled } from "@/lib/auth/config";
 import { isAuthenticatedSafely } from "@/lib/auth/auth-server";
 import { LoginPanel } from "./LoginPanel";
 import { InteractiveLineGrid } from "@/components/ui/interactive-line-grid";
+import { Logo } from "@/components/ui/logo";
 
 export const metadata: Metadata = {
   title: "Flock",
@@ -66,7 +67,11 @@ export default async function Home() {
        */}
       <main className="relative z-10 w-full h-full flex flex-1 flex-col items-center justify-center gap-6 p-8">
         <div className="flex flex-col items-center gap-2">
-          <h1 className="text-4xl font-semibold tracking-tight">Flock</h1>
+          <h1 className="text-4xl font-semibold tracking-tight">
+            <span className="text-primary" aria-label="Flock">
+              <Logo style={{color: "var(--foreground)"}} variant="full_horizontal" className="w-[200]" />
+            </span>
+          </h1>
           <p className="max-w-xs text-center text-sm text-muted-foreground">
             An AI-powered collaborative email editor. You describe, your flock
             builds.
