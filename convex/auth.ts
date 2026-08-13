@@ -41,17 +41,51 @@ import {
  * every session-scoped function behaves exactly as it did before this landed.
  */
 
-/** Public site origin — the base for magic-link URLs and cookie/CSRF checks. */
-const siteUrl = process.env.SITE_URL ?? "http://localhost:3000";
+/*
+  Public site origin — the base for magic-link URLs and cookie/CSRF checks.
+  Every real deployment sets SITE_URL (production: https://flockto.email), so
+  an unset value means a developer's machine and nothing else.
+*/
+const configuredSiteUrl = process.env.SITE_URL;
+const isLocalDevFallback = configuredSiteUrl === undefined || configuredSiteUrl.length === 0;
+const siteUrl = isLocalDevFallback ? "http://localhost:3000" : configuredSiteUrl;
 
-/**
- * Extra origins allowed to drive auth (Vercel previews, the apex domain).
- * Comma-separated; `siteUrl` itself is always trusted by Better Auth.
- */
-const extraTrustedOrigins = (process.env.BETTER_AUTH_TRUSTED_ORIGINS ?? "")
+/*
+  `next dev` does not guarantee port 3000. When something else already holds
+  it the dev server moves to 3001 (and 3002, and so on) with only a line of
+  startup output to say so, and the browser is then sitting on an origin this
+  file never predicted.
+
+  That matters because Better Auth compares the request's `Origin` header
+  against `baseURL`'s origin plus `trustedOrigins`, and refuses anything else
+  with a bare 403 "Invalid origin" — on EVERY sign-in path at once, including
+  the anonymous one, with nothing in the message to suggest a port is the
+  reason. Guessing a single port here is what turns a moved dev server into an
+  afternoon of debugging auth that is not broken.
+
+  So the local fallback trusts any loopback port instead of one guessed
+  number. Wildcard patterns are matched against the request's PARSED origin
+  (Better Auth's `matchesOriginPattern`), which is why this cannot be widened
+  by a crafted URL: `http://localhost:3000@evil.com` parses to an origin of
+  `http://evil.com` and does not match.
+
+  Deployments that set SITE_URL never see these. Production's trusted set stays
+  exactly `https://flockto.email` plus BETTER_AUTH_TRUSTED_ORIGINS.
+*/
+const localDevTrustedOrigins = ["http://localhost:*", "http://127.0.0.1:*"];
+
+/*
+  Extra origins allowed to drive auth (Vercel previews, the apex domain).
+  Comma-separated; `siteUrl` itself is always trusted by Better Auth.
+*/
+const configuredTrustedOrigins = (process.env.BETTER_AUTH_TRUSTED_ORIGINS ?? "")
   .split(",")
   .map((origin) => origin.trim())
   .filter((origin) => origin.length > 0);
+
+const extraTrustedOrigins = isLocalDevFallback
+  ? [...configuredTrustedOrigins, ...localDevTrustedOrigins]
+  : configuredTrustedOrigins;
 
 export const authComponent = createClient<DataModel>(components.betterAuth);
 
