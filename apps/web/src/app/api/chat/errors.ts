@@ -63,6 +63,9 @@ export function createChatErrorLogger({
       errorName: summary.name,
       statusCode: summary.statusCode,
       message: summary.message,
+      // For a provider rejection this is the only field that says WHICH part of
+      // the request was refused — see ErrorSummary.providerDetail.
+      providerDetail: summary.providerDetail,
       issueCount: issues.length,
       issueCodes: issues.length === 0 ? undefined : issues.map((issue) => issue.code),
       issuePaths: issues.length === 0 ? undefined : issues.map((issue) => issue.path),

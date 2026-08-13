@@ -27,6 +27,7 @@ import { buildInsertSavedSectionPlan } from "@/lib/saved-sections";
 import {
   CHAT_API_PATH,
   editorCommandDataPartSchema,
+  GENERATION_REQUEST_DATA_PART_TYPE,
   MOCK_MODEL_HEADER,
   validateAndClassifyOp,
   type FlockChatMessage,
@@ -46,6 +47,7 @@ import { requestUiSurfaceOpen } from "@/lib/ui-surfaces";
 import { getAppSettings } from "../demo/app-settings";
 import { scrollBlockIntoView } from "../add-blocks/scroll-block-into-view";
 import { createAgentDrafts } from "../drafts/create-agent-drafts";
+import { takeGenerationRequest } from "./pending-generation-request";
 
 /**
  * The Phase 3 chat brain: wires AI SDK v7 `useChat` to the editor store.
@@ -75,7 +77,7 @@ const CONTENT_TOOL_NAMES: ReadonlySet<string> = new Set(
  * terminates when the model responds without tool calls; this cap bounds the
  * worst case (a model that keeps emitting ops forever).
  */
-const MAX_AUTO_CONTINUATIONS_PER_TURN = 3;
+const MAX_AUTO_CONTINUATIONS_PER_TURN = 1;
 
 /** Structured tool-result payload for a failed client-side op application. */
 function serializeApplyFailure(failure: {
@@ -750,7 +752,22 @@ export function useFlockChat(): FlockChat {
     }
     controller.beginUserTurn();
     chat.clearError();
-    void chat.sendMessage({ text: trimmedText });
+    // A drafts-menu AI send (pending-generation-request.ts) carries a second,
+    // machine-readable part: `{ kind, sourceDocumentId, direction }`. The server
+    // expands it into the targeted brief; the transcript renders `text` parts
+    // only, so nothing internal is ever shown. Read-and-clear — an ordinary
+    // typed message is unchanged.
+    const generationRequest = takeGenerationRequest();
+    if (generationRequest === null) {
+      void chat.sendMessage({ text: trimmedText });
+      return;
+    }
+    void chat.sendMessage({
+      parts: [
+        { type: "text", text: trimmedText },
+        { type: GENERATION_REQUEST_DATA_PART_TYPE, data: generationRequest },
+      ],
+    });
   };
 
   const respondToApproval = ({

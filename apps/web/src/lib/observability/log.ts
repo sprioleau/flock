@@ -123,6 +123,21 @@ export interface ErrorSummary {
   message: string;
   /** HTTP status when the provider supplied one. */
   statusCode?: number;
+  /**
+   * The provider's own response body, truncated. Present only on an
+   * APICallError that carried one.
+   *
+   * WHY IT EARNS A FIELD. `message` for a rejected Gemini request is the
+   * generic "Request contains an invalid argument." — true and useless. The
+   * body under it names the offending field:
+   *
+   *   Invalid value at 'contents[1].parts[0].function_call.args'
+   *   (type.googleapis.com/google.protobuf.Struct), "{\"name\":\"addSection\"…
+   *
+   * That sentence is the entire difference between a diagnosable 400 and an
+   * afternoon of bisecting, and it was previously discarded.
+   */
+  providerDetail?: string;
 }
 
 /**
@@ -232,15 +247,34 @@ export function classifyModelError(thrown: unknown): ModelErrorCode {
   return "unknown";
 }
 
+/**
+ * The provider's raw response body, when the thrown value is an APICallError
+ * that carried one. Non-string bodies are serialized; `requestBodyValues` is
+ * deliberately NOT read — it is the whole request, tool schemas included.
+ */
+function readProviderDetail(error: unknown): string | undefined {
+  if (typeof error !== "object" || error === null) {
+    return undefined;
+  }
+  const responseBody = (error as { responseBody?: unknown }).responseBody;
+  if (responseBody === undefined || responseBody === null) {
+    return undefined;
+  }
+  const detail = truncateJson(responseBody);
+  return detail.length === 0 ? undefined : detail;
+}
+
 /** Classify + truncate a thrown value into the fields every failure record carries. */
 export function summarizeError(thrown: unknown): ErrorSummary {
   const error = unwrapThrown(thrown);
   const statusCode = readStatusCode(error);
+  const providerDetail = readProviderDetail(error);
   return {
     code: classifyModelError(error),
     name: readErrorName(error),
     message: truncate(readErrorMessage(error), MAX_MESSAGE_CHARS),
     ...(statusCode === undefined ? {} : { statusCode }),
+    ...(providerDetail === undefined ? {} : { providerDetail }),
   };
 }
 

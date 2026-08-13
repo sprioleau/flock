@@ -11,7 +11,7 @@ import { chargeCreditForRequest } from "@/lib/auth/credits";
 import { hasOwnerOverride } from "@/lib/auth/owner-override";
 import { createTraceId } from "@/lib/observability/log";
 import { createChatErrorLogger } from "./errors";
-import { createMockChatModel } from "./mock-model";
+import { createMockChatModel, readMockIntentText } from "./mock-model";
 import { runChatPipeline } from "./pipeline";
 import { resolveChatModel } from "./provider";
 
@@ -33,15 +33,6 @@ import { resolveChatModel } from "./provider";
 
 function badRequest(body: ChatRequestErrorResponse): Response {
   return Response.json(body, { status: 400 });
-}
-
-function getLastUserText(messages: FlockChatMessage[]): string {
-  const lastUserMessage = [...messages].reverse().find((message) => message.role === "user");
-  const text = lastUserMessage?.parts
-    .filter((part) => part.type === "text")
-    .map((part) => part.text)
-    .join(" ");
-  return text ?? "";
 }
 
 export async function POST(request: Request) {
@@ -101,7 +92,7 @@ export async function POST(request: Request) {
     isMockForced: request.headers.get(MOCK_MODEL_HEADER) === "1",
     createMockModel: () =>
       createMockChatModel({
-        lastUserText: getLastUserText(messages),
+        lastUserText: readMockIntentText(messages),
         selectedBlockId,
         // A trailing assistant message means this request is a continuation
         // round (tool results coming back) — the mock must close, not re-plan.
@@ -148,3 +139,4 @@ export async function POST(request: Request) {
 
   return createUIMessageStreamResponse({ stream });
 }
+

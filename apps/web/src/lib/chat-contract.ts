@@ -9,7 +9,7 @@ import type {
   ProposeEditsInput,
   ProposeSectionVariationsInput,
 } from "@flock/agent";
-import type { UIMessage } from "ai";
+import type { DataUIPart, UIMessage } from "ai";
 import { z } from "zod";
 import { chatProviderIdSchema } from "./chat-provider";
 import {
@@ -223,6 +223,45 @@ export const tableDataPartSchema = z.object({
 
 export type TableDataPart = z.infer<typeof tableDataPartSchema>;
 
+// ---------------------------------------------------------------------------
+// Generation requests (the drafts menu's AI actions)
+// ---------------------------------------------------------------------------
+
+/** Longest "Anything to change?" direction accepted on the wire. */
+const MAX_GENERATION_DIRECTION_LENGTH = 2_000;
+
+/**
+ * Payload of a `data-generation-request` part: the WHOLE machine-readable half
+ * of an "Ideate with AI" / "Add design variation" send.
+ *
+ * It rides the user's message as a data part rather than as prose, because the
+ * two halves of that send have different audiences: the `text` part is a
+ * sentence a person would write and is the only thing the transcript renders,
+ * while this is expanded server-side into the targeted brief the model reads
+ * (api/chat/generation-brief.ts). Before this existed the brief WAS the message
+ * text, so the chat bubble showed block ids, hex colours and instruction lists.
+ *
+ * Deliberately minimal: an id, not a document. The server reads the source
+ * draft from Convex itself, so the only free text here is the person's own
+ * direction.
+ */
+export const generationRequestDataPartSchema = z.object({
+  kind: z.enum(["ideate", "designVariation"]),
+  /**
+   * The draft being reimagined, by Convex document id. An UNTRUSTED string:
+   * the server resolves it through `getDocumentByKey`, which normalizes an
+   * unrecognised id to null.
+   */
+  sourceDocumentId: z.string().min(1).max(128),
+  /** What the person typed in "Anything to change?", verbatim and unparsed. */
+  direction: z.string().max(MAX_GENERATION_DIRECTION_LENGTH).optional(),
+});
+
+export type GenerationRequestDataPart = z.infer<typeof generationRequestDataPartSchema>;
+
+/** Wire type of the generation-request data part (`data-${name}`). */
+export const GENERATION_REQUEST_DATA_PART_TYPE = "data-generation-request" as const;
+
 /** DATA_PARTS generic for {@link FlockChatMessage}, keyed by part name. */
 // A type alias (not an interface) so it gets an implicit index signature and
 // satisfies the AI SDK's `UIDataTypes` (Record<string, unknown>) constraint.
@@ -231,6 +270,7 @@ export type FlockChatDataParts = {
   "section-variations": SectionVariationsDataPart;
   "edit-suggestions": EditSuggestionsDataPart;
   table: TableDataPart;
+  "generation-request": GenerationRequestDataPart;
 };
 
 // ---------------------------------------------------------------------------
@@ -359,6 +399,14 @@ export type FlockChatTools = {
 
 /** The typed UI message flowing over /api/chat in both directions. */
 export type FlockChatMessage = UIMessage<never, FlockChatDataParts, FlockChatTools>;
+
+/**
+ * Any ONE of this app's data parts, discriminated on `type`. Exactly what
+ * `convertToModelMessages`' convertDataPart hook is handed, so server code that
+ * reads a data part can type its parameter with this and still have
+ * `part.type === …` narrow `part.data`.
+ */
+export type FlockChatDataPart = DataUIPart<FlockChatDataParts>;
 
 // ---------------------------------------------------------------------------
 // Client-side validation gate (Phase 3.3, layer 3)

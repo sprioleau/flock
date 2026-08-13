@@ -29,7 +29,9 @@ import {
   type PipelineVariant,
 } from "./constants";
 import { buildBrandContextBlock } from "./brand-context";
+import { expandGenerationBriefPart, resolveGenerationBrief } from "./generation-brief";
 import { buildSavedSectionsContext } from "./saved-sections-context";
+import { sanitizeReplayedToolInputs } from "./replayed-tool-inputs";
 import { buildSystemContext } from "./system-context";
 import { buildChatTools } from "./tools";
 
@@ -308,11 +310,18 @@ async function runSinglePassPipeline(input: ChatPipelineInput): Promise<void> {
     sessionId,
     isUsingMockModel,
   });
+  // Sanitized FIRST and once: `resolveGenerationBrief` identifies the part it
+  // expands by identity, so it has to see the very array being converted.
+  const sanitizedMessages = sanitizeReplayedToolInputs(messages);
   // Brand social links + saved sections ride the FRESH context layer only
   // (both fail soft to null; fetched concurrently — same Convex deployment).
-  const [brandContextLine, savedSectionsContext] = await Promise.all([
+  // The generation brief joins them: it is one more per-request Convex read
+  // (the SOURCE draft of an "Ideate"/"Add design variation" send), and null for
+  // every ordinary typed message.
+  const [brandContextLine, savedSectionsContext, generationBrief] = await Promise.all([
     buildBrandContextBlock({ sessionId }),
     buildSavedSectionsContext({ sessionId }),
+    resolveGenerationBrief({ messages: sanitizedMessages, targetDoc: doc }),
   ]);
   const { staticInstructions, documentContext } = buildSystemContext({
     doc,
@@ -329,9 +338,23 @@ async function runSinglePassPipeline(input: ChatPipelineInput): Promise<void> {
   // client does not (yet) report apply results back, so prior assistant
   // messages contain dangling tool calls that would otherwise throw
   // AI_MissingToolResultsError (Spike C finding 2).
-  const convertedMessages = await convertToModelMessages(messages, {
+  //
+  // sanitizeReplayedToolInputs runs FIRST because it is the only thing standing
+  // between a previously REJECTED tool call and the provider: its raw argument
+  // text rides the history as a string, and Gemini rejects the whole request
+  // (400, protobuf Struct) rather than the one call. See that module's header.
+  // The generic is passed EXPLICITLY: `messages` is declared as
+  // `Array<Omit<UI_MESSAGE, "id">>`, and inference through `Omit` cannot
+  // recover the message type, so it would fall back to the base `UIMessage` and
+  // hand `convertDataPart` a widened `data: unknown` part. Naming it keeps the
+  // hook's parameter as this app's own discriminated data-part union.
+  const convertedMessages = await convertToModelMessages<FlockChatMessage>(sanitizedMessages, {
     tools,
     ignoreIncompleteToolCalls: true,
+    // The seam where a minimal human sentence and the targeted generation brief
+    // become one user turn. Every other data part keeps being dropped, exactly
+    // as it was when no hook was passed at all.
+    convertDataPart: (part) => expandGenerationBriefPart({ part, brief: generationBrief }),
   });
 
   // Approval collection (collectToolApprovals) only runs when the FINAL

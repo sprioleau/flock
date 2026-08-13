@@ -110,6 +110,9 @@ export function logModelFailure(
     errorName: summary.name,
     statusCode: summary.statusCode,
     message: summary.message,
+    // The provider's own words about WHICH field it rejected. Absent for
+    // everything that is not an APICallError with a body.
+    providerDetail: summary.providerDetail,
   });
 }
 

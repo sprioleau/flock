@@ -22,6 +22,10 @@ import type { FetchWebContentResult, PersonHighlightResult } from "@flock/agent"
 import { simulateReadableStream } from "ai";
 import { MockLanguageModelV4 } from "ai/test";
 import {
+  GENERATION_REQUEST_DATA_PART_TYPE,
+  type FlockChatMessage,
+} from "@/lib/chat-contract";
+import {
   composeArticleSection,
   composePersonSection,
 } from "@/lib/content-ingestion/compose-article-section";
@@ -514,6 +518,45 @@ const SCHEMA_INVALID_PROBE_REGEX = /\bschema-invalid tool call\b/i;
  * the whole email" must not degrade to one hero section).
  */
 const COMPOSE_EMAIL_REGEX = /\b(?:full|whole|entire|complete)\s+email\b/i;
+
+/**
+ * The phrase a drafts-menu generation request contributes to the mock's intent
+ * text (see {@link readMockIntentText}). Worded to match
+ * {@link COMPOSE_EMAIL_REGEX}, which is the whole point of it.
+ */
+const GENERATION_REQUEST_INTENT_TEXT = "Design a complete email.";
+
+/**
+ * What the mock reads as the user's intent, from the last user message.
+ *
+ * Two sources, joined. The message's own TEXT parts are what the person typed.
+ * A `data-generation-request` part contributes
+ * {@link GENERATION_REQUEST_INTENT_TEXT}, because an "Ideate with AI" / "Add
+ * design variation" send now reaches the thread as a short sentence and the
+ * brief the LIVE model reads is assembled server-side (generation-brief.ts) —
+ * the mock has no such assembly step. Without this, the compose script above
+ * would stop firing for those actions and the mock would scaffold ONE section
+ * where the real pipeline streams a whole email.
+ *
+ * It lives here rather than in the route, and never in the user-facing copy,
+ * so that UI wording is never shaped by what a test double greps for.
+ */
+export function readMockIntentText(messages: FlockChatMessage[]): string {
+  const lastUserMessage = [...messages].reverse().find((message) => message.role === "user");
+  if (lastUserMessage === undefined) {
+    return "";
+  }
+  const typedText = lastUserMessage.parts
+    .filter((part) => part.type === "text")
+    .map((part) => part.text)
+    .join(" ");
+  const hasGenerationRequest = lastUserMessage.parts.some(
+    (part) => part.type === GENERATION_REQUEST_DATA_PART_TYPE,
+  );
+  return hasGenerationRequest
+    ? `${typedText} ${GENERATION_REQUEST_INTENT_TEXT}`.trim()
+    : typedText;
+}
 
 export const MOCK_COMPOSE_EMAIL_TEMPLATE_IDS = [
   "header",

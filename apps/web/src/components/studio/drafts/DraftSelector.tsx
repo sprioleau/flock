@@ -19,6 +19,7 @@ import {
 } from "lucide-react";
 import { api } from "@convex/_generated/api";
 import type { Id } from "@convex/_generated/dataModel";
+import type { GenerationRequestDataPart } from "@/lib/chat-contract";
 import { Button } from "@/components/ui/button";
 import {
   Dialog,
@@ -50,10 +51,12 @@ import { cn } from "@/lib/utils";
 import { publishGenerationTargetDocument, useIsAgentBusy } from "../chat/agent-status";
 import { sendPromptThroughComposer } from "../chat/composer-handoff";
 import {
-  buildDesignVariationPrompt,
-  buildIdeateDraftPrompt,
-  buildIdeationOutline,
-  buildVariationBrief,
+  clearGenerationRequest,
+  stashGenerationRequest,
+} from "../chat/pending-generation-request";
+import {
+  buildIdeatePromptText,
+  buildVariationPromptText,
   readSourceThemeGlobals,
 } from "./draft-generation";
 import { computeNextDraftName, computeVariationDraftName } from "./draft-naming";
@@ -95,7 +98,10 @@ export function DraftSelector({
   const pendingGenerationSendRef = useRef<{
     sourceDocumentId: Id<"documents">;
     targetDocumentId: Id<"documents">;
+    /** The sentence the person sees in the thread. */
     prompt: string;
+    /** The machine half the server expands into the targeted brief. */
+    generationRequest: GenerationRequestDataPart;
   } | null>(null);
   const isAgentBusy = useIsAgentBusy();
 
@@ -116,7 +122,13 @@ export function DraftSelector({
       // moment the turn starts. agent-status clears it when the turn
       // settles; an unmounted composer means nothing was sent — clear now.
       publishGenerationTargetDocument(pendingSend.targetDocumentId);
+      // Arm the machine half FIRST: sendUserMessage claims it as it builds the
+      // message, so it has to be in place before the send, and it must be
+      // disarmed again if no composer was mounted to receive it — otherwise it
+      // would attach to whatever the person types next.
+      stashGenerationRequest(pendingSend.generationRequest);
       if (!sendPromptThroughComposer(pendingSend.prompt)) {
+        clearGenerationRequest();
         publishGenerationTargetDocument(null);
       }
       return;
@@ -332,14 +344,12 @@ export function DraftSelector({
       });
       let prompt: string;
       if (mode === "ideate") {
-        prompt = buildIdeateDraftPrompt({
-          sourceDraftName: activeDraft.name,
-          sourceOutline: buildIdeationOutline(sourceDoc),
-        });
+        prompt = buildIdeatePromptText({ sourceDraftName: activeDraft.name });
       } else {
         // A null here means the source is on the shared defaults, which the
         // blank draft already wears — the themes match with nothing to copy.
-        let hasSourceTheme = true;
+        // Whether the seed LANDED is not reported on the wire: the server holds
+        // both documents and compares them itself (generation-brief.ts).
         if (sourceGlobals !== null) {
           const themeResult = await convexClient.mutation(api.documents.applyOperations, {
             documentId,
@@ -351,22 +361,24 @@ export function DraftSelector({
               batchId: crypto.randomUUID(),
             },
           });
-          hasSourceTheme = themeResult.isOk;
           if (!themeResult.isOk) {
             console.error("applyOperations (variation theme) rejected", themeResult.errors);
           }
         }
-        prompt = buildDesignVariationPrompt({
-          sourceDraftName: activeDraft.name,
-          sourceBrief: buildVariationBrief(sourceDoc),
-          hasSourceTheme,
-          direction,
-        });
+        prompt = buildVariationPromptText({ sourceDraftName: activeDraft.name, direction });
       }
       pendingGenerationSendRef.current = {
         sourceDocumentId: activeDraft._id,
         targetDocumentId: documentId,
         prompt,
+        // The machine half of this send. It is stashed (not sent) until the new
+        // draft is active, because the send itself waits for that — see the
+        // activation effect.
+        generationRequest: {
+          kind: mode,
+          sourceDocumentId: activeDraft._id,
+          ...(direction.trim().length === 0 ? {} : { direction }),
+        },
       };
       onActivateDraft(documentId);
     };
