@@ -1,6 +1,7 @@
 "use client";
 
 import { UserIcon, UserRoundCheckIcon } from "lucide-react";
+import Link from "next/link";
 import { useState, type FormEvent } from "react";
 import { Button } from "@/components/ui/button";
 import {
@@ -14,6 +15,7 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { DASHBOARD_PATH } from "./config";
 import { useFlockAuth } from "./use-flock-auth";
 
 /**
@@ -24,11 +26,14 @@ import { useFlockAuth } from "./use-flock-auth";
  * feature nobody uses; sitting in the chrome next to the collaborator avatars,
  * showing an unclaimed state, it is an open loop the user wants to close.
  *
- * Three jobs, in the order they matter:
+ * Four jobs, in the order they matter:
  *   1. Say whether this work is anchored to anything (anonymous vs claimed).
  *   2. Offer the one action that changes that — email me a link.
  *   3. Show what is left of today's AI allowance, since that is the other
  *      number a person needs and has nowhere else to live.
+ *   4. Lead back to the emails this identity owns. That link used to hang off
+ *      the presence avatar next door, which is a collaborator control, not an
+ *      account one — nobody looked for the way out of the studio there.
  *
  * Renders nothing when auth is disabled, so mounting it is unconditional at
  * the call site.
@@ -158,6 +163,30 @@ export function UserButton() {
             </div>
           </>
         )}
+
+        {/* The way OUT of the studio, and the reason this menu is where it
+            belongs: the editor was a one-way door — no link back to the
+            dashboard anywhere — so work you had not bookmarked was reachable
+            only via browser back. It sits with the account, above Sign out,
+            and OUTSIDE the claimed-only branch below: an anonymous visitor has
+            drafts to get back to too.
+
+            nativeButton={false} because the render target is an <a>: Base UI
+            throws in production when a button renders a non-button element
+            without being told. */}
+        <DropdownMenuSeparator />
+        <div className="px-2 py-1.5">
+          <Button
+            variant="ghost"
+            size="sm"
+            className="w-full justify-start"
+            nativeButton={false}
+            render={<Link href={DASHBOARD_PATH} />}
+            data-testid="user-button-dashboard-link"
+          >
+            Your emails
+          </Button>
+        </div>
 
         {!isUnclaimed ? (
           <>

@@ -1,10 +1,9 @@
 "use client";
 
-import { useEffect, useState } from "react";
-import Link from "next/link";
+import { useEffect, useState, type FocusEvent, type KeyboardEvent } from "react";
 import { Popover } from "@base-ui/react/popover";
 import { useQuery } from "convex/react";
-import { SparklesIcon } from "lucide-react";
+import { CheckIcon, PencilIcon, SparklesIcon } from "lucide-react";
 import { api } from "@convex/_generated/api";
 import { PersonaCheckNowButton } from "@/components/studio/personas/PersonaCheckNowButton";
 import { PersonaRecommendationsDialog } from "@/components/studio/personas/PersonaRecommendationsDialog";
@@ -17,7 +16,6 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import { DASHBOARD_PATH } from "@/lib/auth/config";
 import { useEditorStore } from "@/lib/editor-store";
 import { useArePersonasPaused } from "@/lib/personas/enabled-personas";
 import { buildNextCheckLabel, usePersonaLastRunAtMs } from "@/lib/personas/persona-run-clock";
@@ -331,32 +329,17 @@ function PersonaHoverCard({
   );
 }
 
-/** Your own avatar: click opens the nickname editor popover. */
+/** Your own avatar: click opens the display-name editor popover. */
 function SelfAvatar({ entry }: { entry: PresenceRosterEntry }) {
-  const setNickname = useSetNickname();
   const [isOpen, setIsOpen] = useState(false);
-  const [draftName, setDraftName] = useState(entry.data.name);
-
-  const saveNickname = (): void => {
-    setNickname(draftName);
-    setIsOpen(false);
-  };
 
   return (
-    <Popover.Root
-      open={isOpen}
-      onOpenChange={(nextOpen) => {
-        if (nextOpen) {
-          setDraftName(entry.data.name);
-        }
-        setIsOpen(nextOpen);
-      }}
-    >
+    <Popover.Root open={isOpen} onOpenChange={setIsOpen}>
       <Popover.Trigger
         className={cn(HUMAN_AVATAR_CLASSES, "cursor-pointer hover:brightness-110")}
         style={{ backgroundColor: entry.data.color }}
         title="Your account"
-        aria-label={`${memberLabel(entry)} — your display name and emails`}
+        aria-label={`${memberLabel(entry)} — your display name`}
         data-testid="presence-avatar-self"
       >
         <AvatarGlyph entry={entry} />
@@ -364,53 +347,131 @@ function SelfAvatar({ entry }: { entry: PresenceRosterEntry }) {
       <Popover.Portal>
         <Popover.Positioner side="bottom" align="end" sideOffset={6} className="isolate z-50">
           <Popover.Popup className="z-50 w-56 rounded-md border bg-popover p-3 text-popover-foreground shadow-md outline-none">
-            <form
-              onSubmit={(event) => {
-                event.preventDefault();
-                saveNickname();
-              }}
-              className="flex flex-col gap-2"
-            >
-              <label htmlFor="presence-nickname" className="text-xs font-medium">
-                Display name
-              </label>
-              <Input
-                id="presence-nickname"
-                value={draftName}
-                onChange={(event) => setDraftName(event.target.value)}
-                maxLength={40}
-                autoFocus
-                className="h-8 text-sm"
-                data-testid="presence-nickname-input"
-              />
-              <div className="flex justify-end">
-                <Button type="submit" size="sm" data-testid="presence-nickname-save">
-                  Save
-                </Button>
-              </div>
-            </form>
-            {/*
-             * The way OUT of the studio. Until this existed the editor was a
-             * one-way door — no link back to the dashboard anywhere, so work
-             * you had not bookmarked was reachable only via browser back.
-             *
-             * A plain Link, deliberately: routing it through the Button's
-             * `render` prop is the composition that throws in production
-             * unless `nativeButton={false}` rides along, and this needs no
-             * button styling to earn its place.
-             */}
-            <div className="mt-3 border-t pt-2">
-              <Link
-                href={DASHBOARD_PATH}
-                className="block rounded-sm px-1 py-1 text-sm text-muted-foreground transition-colors hover:bg-accent hover:text-accent-foreground"
-                data-testid="presence-dashboard-link"
-              >
-                Your emails
-              </Link>
-            </div>
+            <DisplayNameRow name={entry.data.name} />
           </Popover.Popup>
         </Popover.Positioner>
       </Popover.Portal>
     </Popover.Root>
+  );
+}
+
+/**
+ * The display name as a CLICK-TO-EDIT row: the name reads as text beside a
+ * pencil, and only the pencil turns it into a field. What this replaced was an
+ * always-open input with a Save button, which made a popover you opened just to
+ * see who you are look like a form you had abandoned half-finished.
+ *
+ * ONE piece of state carries the mode: `draftName` is null when not editing, so
+ * a field with no draft — or a draft with no field — cannot exist. The draft is
+ * seeded when editing STARTS rather than when the popover opens, because the
+ * roster name can change underneath us (another tab of this browser renames and
+ * the cross-tab sync adopts it — see presence.tsx).
+ *
+ * Exported for its unit test, which calls it as a plain function; nothing else
+ * imports it.
+ */
+export function DisplayNameRow({ name }: { name: string }) {
+  const setNickname = useSetNickname();
+  const [draftName, setDraftName] = useState<string | null>(null);
+  const isEditing = draftName !== null;
+
+  function startEditing(): void {
+    setDraftName(name);
+  }
+
+  function submitName(): void {
+    if (draftName === null) {
+      return;
+    }
+    const trimmed = draftName.trim();
+    /*
+      Emptying the box is how you get your auto-generated name back: the
+      presence layer treats "" as "drop the nickname override" and falls back to
+      the session-derived adjective-animal name (setNickname in presence.tsx).
+      This branch is FIRST and unconditional so the equality test below can
+      never swallow it — a person whose name is already the derived one still
+      means "clear the override" when they submit an empty field, and the
+      override may well be set to that same string.
+    */
+    if (trimmed.length === 0) {
+      setNickname("");
+      setDraftName(null);
+      return;
+    }
+    /*
+      An unchanged name spends a presence write to say nothing. The write path
+      already skips byte-identical payloads (presence.tsx), but it should not
+      have to: the name is right here to compare against.
+    */
+    if (trimmed !== name) {
+      setNickname(trimmed);
+    }
+    setDraftName(null);
+  }
+
+  function handleKeyDown(event: KeyboardEvent<HTMLInputElement>): void {
+    if (event.key === "Enter") {
+      event.preventDefault();
+      submitName();
+      return;
+    }
+    if (event.key === "Escape") {
+      /*
+        Escape belongs to the FIELD first, and taking it needs both calls:
+        Base UI's dismiss hook listens for Escape on the document (bubble
+        phase) as well as on the popup, so one press would otherwise abandon
+        the edit AND close the whole popover.
+      */
+      event.preventDefault();
+      event.stopPropagation();
+      setDraftName(null);
+    }
+  }
+
+  /*
+    The field opens prefilled, so put the caret after the existing name rather
+    than wherever focus() happens to leave it — the usual edit is a tweak to
+    the end of a name, not a replacement of the whole thing.
+  */
+  function handleFocus(event: FocusEvent<HTMLInputElement>): void {
+    const end = event.currentTarget.value.length;
+    event.currentTarget.setSelectionRange(end, end);
+  }
+
+  return (
+    <div className="flex flex-col gap-1">
+      {/*
+        Prose rather than a <label>: there is no field for it to point at until
+        the pencil is chosen, so the input carries its own accessible name.
+      */}
+      <p className="text-xs font-medium">Display name</p>
+      <div className="flex items-center gap-1.5">
+        {isEditing ? (
+          <Input
+            aria-label="Display name"
+            value={draftName}
+            onChange={(event) => setDraftName(event.target.value)}
+            onKeyDown={handleKeyDown}
+            onFocus={handleFocus}
+            maxLength={40}
+            autoFocus
+            className="h-8 text-sm"
+            data-testid="presence-nickname-input"
+          />
+        ) : (
+          <p className="min-w-0 flex-1 truncate text-sm">{name}</p>
+        )}
+        {/* Icon-only, so the label is the whole accessible name of the action. */}
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon-xs"
+          aria-label={isEditing ? "Save display name" : "Edit display name"}
+          onClick={isEditing ? submitName : startEditing}
+        >
+          {isEditing ? <CheckIcon aria-hidden /> : <PencilIcon aria-hidden />}
+        </Button>
+      </div>
+    </div>
   );
 }
