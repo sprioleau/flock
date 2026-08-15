@@ -90,20 +90,28 @@ export function BlockSuggestionPill({ blockId }: BlockSuggestionPillProps) {
   return (
     <div
       className={cn(
-        "absolute top-full left-0 z-30 mt-1.5 flex max-w-md flex-wrap items-center gap-2",
-        "rounded-md border bg-background px-2 py-1 shadow-md",
+        "absolute top-full left-0 z-30 mt-1.5 flex max-w-lg flex-wrap items-center gap-2",
+        /*
+          This box's own `absolute` is what the corner × positions against —
+          no `relative` here, which would fight it. pr-7 keeps the corner
+          empty: the × is out of flow, so without reserved padding a long
+          title or a wrapped Apply would slide underneath it.
+        */
+        "rounded-md border bg-background py-1 pr-7 pl-2 shadow-md",
       )}
       data-testid={`block-suggestion-${blockId}`}
     >
-      <SparklesIcon className="size-3.5 shrink-0 text-muted-foreground" aria-hidden />
-      <p className="text-xs font-medium" data-testid="block-suggestion-title">
-        {anchor.title}
-      </p>
+      <div className="flex items-center gap-2">
+        <SparklesIcon className="size-3.5 shrink-0 text-muted-foreground" aria-hidden />
+        <p className="text-xs font-medium" data-testid="block-suggestion-title">
+          {anchor.title}
+        </p>
+      </div>
       <button
         type="button"
         onClick={stopThen(anchor.applyDefaultRung)}
         className={cn(
-          "inline-flex cursor-pointer items-center rounded-md bg-primary px-2 py-1",
+          "inline-flex cursor-pointer items-center rounded-md bg-primary px-3 py-2",
           "text-[11px] text-primary-foreground hover:bg-primary/90",
         )}
         data-testid="block-suggestion-apply"
@@ -119,10 +127,18 @@ export function BlockSuggestionPill({ blockId }: BlockSuggestionPillProps) {
         // suggestion for ever.
         aria-label="Hide this suggestion"
         onClick={stopThen(hideAnchoredSuggestion)}
-        // ml-auto is a no-op on the usual one-line pill (the box shrinks to
-        // its content) and keeps the × on the right when a narrow block —
-        // a button in a column — makes the pill wrap.
-        className="ml-auto cursor-pointer rounded-sm text-muted-foreground hover:text-foreground"
+        /*
+          Cornered, not in the content row: in flow it inherited the row's
+          height and dropped BELOW Apply the moment a narrow block — a button
+          in a column — made the pill wrap. Out of flow it stays put whatever
+          the title's length does, and Apply keeps its natural place next to
+          the title. Same treatment as the chat card's ×, so the two read as
+          the same control.
+        */
+        className={cn(
+          "absolute top-1 right-1 cursor-pointer rounded-sm",
+          "text-muted-foreground hover:text-foreground",
+        )}
         data-testid="block-suggestion-hide"
       >
         <XIcon className="size-3.5" />
