@@ -62,15 +62,16 @@ This is a working preview of a future-facing idea: software where agents are fir
 | | Real sending, human-approved | Send yourself a test from the draft's own toolbar or straight from the preview dialog — the recipient defaults to the address you signed in with, and the destination is spelled out in full above the button. Delivered via Resend. The copilot can prepare a send too, but only a human releases it, after an explicit approval step. |
 | **Accounts & Access** | Start with one click, keep it with an email | Anyone can start immediately with no account. Add your email and a one-tap sign-in link claims everything you already made — drafts, brand kits, library, your agents — onto a durable identity. Share links are unaffected: the link is the key, and it opens with nothing in front of it. |
 | | An allowance, not a wall | Every identity gets a daily allowance of AI work, with a larger one for claimed accounts than for anonymous sessions. Only work *you* asked for spends it — the advisory agents' background sweeps are free, throttled by their own pacing instead. |
+| | A home for your work | Signing in lands you on your emails, not in a blank editor. Each one is a card with its name, how many drafts are inside, when you last touched it, and the drafts listed by name — rename it, delete it, or open it right back where you left off. Prior work is findable instead of link-only. |
 
 ### Planned — not built yet
 
-Listed here because they are committed direction, not speculation. Nothing below exists in the app today.
+Listed here because they are committed direction, not speculation.
 
 | Feature | What it will do |
 |---|---|
-| **A home for your work** | Signing in drops you straight into an editor today; there is no page that shows you what you already have. The home page will list your collections of drafts — each with its name, how many drafts are in it, previews of them, and whether it has been sent (and which draft was the one sent) — so prior work is findable instead of link-only. Design brief: `docs/proposals/dashboard-and-collections.md`. |
-| **More than one brand** | Managing several brands means several brand kits. The kit is already selectable per collection; what is missing is owning many of them and a place to manage them. |
+| **Sent state** | The home page shows you what you have, but not what you have *sent* — a card can't yet say "this one went out", or which of its drafts was the one sent. Only ever one is, which is exactly what makes it worth showing. Design brief: `docs/proposals/dashboard-and-collections.md`. |
+| **More than one brand** | Managing several brands means several brand kits. The kit is already selectable per email; what is missing is owning many of them and a place to manage them. |
 | **Contacts** | A list of email addresses you own, with paste-a-comma-separated-list bulk entry. Segments and tags are deliberately out of scope for the first version. |
 
 ## The primitives (why this works)
