@@ -7,6 +7,7 @@ import { parseChatErrorText, type FlockChatMessage } from "@/lib/chat-contract";
 import { useEditorStore } from "@/lib/editor-store";
 import { cn } from "@/lib/utils";
 import { EditorCommandChip } from "./EditorCommandChip";
+import { PromptStarters } from "./PromptStarters";
 import { ToolPartChip } from "./ToolPartChip";
 import { TurnActivityIndicator } from "./TurnActivityIndicator";
 import { toTurnParts } from "./turn-activity";
@@ -367,6 +368,10 @@ export function ChatMessageList({
             Describe a change and watch it land on the canvas.
           </p>
         </div>
+        {/* The copy above says what to do; these give the user a way to do it
+            without inventing the wording first. Only here — this branch IS
+            "no conversation yet", so the chips need no dismissal state. */}
+        <PromptStarters />
       </div>
     );
   }
