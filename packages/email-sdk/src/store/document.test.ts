@@ -214,7 +214,7 @@ describe("createStarterDocument", () => {
     expect(firstOfType("image")).toBe("img_lg01");
     expect(firstOfType("button")).toBe("btn_ct01");
     const logo = document.img_lg01!;
-    expect(logo.type === "image" && logo.properties.alt).toBe("Acme logo");
+    expect(logo.type === "image" && logo.properties.alt).toBe("Flock logo");
     const firstText = document[firstOfType("text")!]!;
     expect(firstText.id).toBe("txt_wc01");
     if (firstText.type !== "text") {

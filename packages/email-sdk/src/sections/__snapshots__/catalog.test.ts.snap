@@ -174,7 +174,7 @@ exports[`template code-sample > renders default-params HTML that matches its sna
                                     data-id="__react-email-column"
                                     style="padding-top:0px;padding-bottom:24px;padding-left:0px;padding-right:0px">
                                     <pre
-                                      style='background:hsl(220, 13%, 18%);color:hsl(220, 14%, 71%);text-shadow:0 1px rgba(0, 0, 0, 0.3);font-family:"Fira Code", "Fira Mono", Menlo, Consolas, "DejaVu Sans Mono", monospace;direction:ltr;text-align:left;white-space:pre;word-spacing:normal;word-break:normal;line-height:1.5;-moz-tab-size:2;-o-tab-size:2;tab-size:2;-webkit-hyphens:none;-moz-hyphens:none;hyphens:none;padding:1em;margin:0;overflow:auto;border-radius:0.3em;width:100%'><code><span style="color:hsl(286, 60%, 67%)">import</span><span> ‍​</span><span style="color:hsl(220, 14%, 71%)">{</span><span> ‍​send ‍​</span><span style="color:hsl(220, 14%, 71%)">}</span><span> ‍​</span><span style="color:hsl(286, 60%, 67%)">from</span><span> ‍​</span><span style="color:hsl(95, 38%, 62%)">&quot;@acme/sdk&quot;</span><span style="color:hsl(220, 14%, 71%)">;</span><br/><span></span><br/><span style="color:hsl(286, 60%, 67%)">await</span><span> ‍​</span><span style="color:hsl(207, 82%, 66%)">send</span><span style="color:hsl(220, 14%, 71%)">(</span><span style="color:hsl(220, 14%, 71%)">{</span><br/><span> ‍​ ‍​to</span><span style="color:hsl(207, 82%, 66%)">:</span><span> ‍​</span><span style="color:hsl(95, 38%, 62%)">&quot;ada@example.com&quot;</span><span style="color:hsl(220, 14%, 71%)">,</span><br/><span> ‍​ ‍​subject</span><span style="color:hsl(207, 82%, 66%)">:</span><span> ‍​</span><span style="color:hsl(95, 38%, 62%)">&quot;Hello from Acme&quot;</span><span style="color:hsl(220, 14%, 71%)">,</span><br/><span style="color:hsl(220, 14%, 71%)">}</span><span style="color:hsl(220, 14%, 71%)">)</span><span style="color:hsl(220, 14%, 71%)">;</span><br/></code></pre>
+                                      style='background:hsl(220, 13%, 18%);color:hsl(220, 14%, 71%);text-shadow:0 1px rgba(0, 0, 0, 0.3);font-family:"Fira Code", "Fira Mono", Menlo, Consolas, "DejaVu Sans Mono", monospace;direction:ltr;text-align:left;white-space:pre;word-spacing:normal;word-break:normal;line-height:1.5;-moz-tab-size:2;-o-tab-size:2;tab-size:2;-webkit-hyphens:none;-moz-hyphens:none;hyphens:none;padding:1em;margin:0;overflow:auto;border-radius:0.3em;width:100%'><code><span style="color:hsl(286, 60%, 67%)">import</span><span> ‍​</span><span style="color:hsl(220, 14%, 71%)">{</span><span> ‍​send ‍​</span><span style="color:hsl(220, 14%, 71%)">}</span><span> ‍​</span><span style="color:hsl(286, 60%, 67%)">from</span><span> ‍​</span><span style="color:hsl(95, 38%, 62%)">&quot;@flock/sdk&quot;</span><span style="color:hsl(220, 14%, 71%)">;</span><br/><span></span><br/><span style="color:hsl(286, 60%, 67%)">await</span><span> ‍​</span><span style="color:hsl(207, 82%, 66%)">send</span><span style="color:hsl(220, 14%, 71%)">(</span><span style="color:hsl(220, 14%, 71%)">{</span><br/><span> ‍​ ‍​to</span><span style="color:hsl(207, 82%, 66%)">:</span><span> ‍​</span><span style="color:hsl(95, 38%, 62%)">&quot;ada@example.com&quot;</span><span style="color:hsl(220, 14%, 71%)">,</span><br/><span> ‍​ ‍​subject</span><span style="color:hsl(207, 82%, 66%)">:</span><span> ‍​</span><span style="color:hsl(95, 38%, 62%)">&quot;Hello from Flock&quot;</span><span style="color:hsl(220, 14%, 71%)">,</span><br/><span style="color:hsl(220, 14%, 71%)">}</span><span style="color:hsl(220, 14%, 71%)">)</span><span style="color:hsl(220, 14%, 71%)">;</span><br/></code></pre>
                                   </td>
                                 </tr>
                               </tbody>
@@ -782,8 +782,8 @@ exports[`template footer > renders default-params HTML that matches its snapshot
                                     <p
                                       style="font-size:14px;line-height:24px;font-family:Helvetica, Arial, sans-serif;color:#333333;text-align:center;word-wrap:break-word;word-break:break-word;margin-top:0;margin-bottom:0">
                                       <span style="font-size:12px"
-                                        >Acme Inc. · 123 Market Street, Suite
-                                        400, San Francisco, CA</span
+                                        >Flock · 123 Market Street, Suite 400,
+                                        San Francisco, CA</span
                                       >
                                     </p>
                                     <p
@@ -909,9 +909,7 @@ exports[`template footer-detailed > renders default-params HTML that matches its
                                             <p
                                               style="font-size:14px;line-height:24px;font-family:Helvetica, Arial, sans-serif;color:#333333;text-align:left;word-wrap:break-word;word-break:break-word;margin-top:0;margin-bottom:0">
                                               <span style="font-size:12px"
-                                                ><strong
-                                                  >Acme Inc.</strong
-                                                ></span
+                                                ><strong>Flock</strong></span
                                               >
                                             </p>
                                             <p
@@ -1151,8 +1149,8 @@ exports[`template footer-social > renders default-params HTML that matches its s
                                     <p
                                       style="font-size:14px;line-height:24px;font-family:Helvetica, Arial, sans-serif;color:#333333;text-align:center;word-wrap:break-word;word-break:break-word;margin-top:0;margin-bottom:0">
                                       <span style="font-size:12px"
-                                        >Acme Inc. · 123 Market Street, Suite
-                                        400, San Francisco, CA</span
+                                        >Flock · 123 Market Street, Suite 400,
+                                        San Francisco, CA</span
                                       >
                                     </p>
                                   </td>
@@ -1269,7 +1267,7 @@ exports[`template header > renders default-params HTML that matches its snapshot
                                             data-id="__react-email-column"
                                             style="padding-top:0px;padding-bottom:24px;padding-left:0px;padding-right:0px">
                                             <img
-                                              alt="Acme logo"
+                                              alt="Flock logo"
                                               src="https://placehold.co/280x80.png"
                                               style="display:block;outline:none;border:none;text-decoration:none;max-width:100%;height:auto;margin-left:0;margin-right:auto"
                                               width="140" />
@@ -1400,7 +1398,7 @@ exports[`template header-centered > renders default-params HTML that matches its
                                     data-id="__react-email-column"
                                     style="padding-top:0px;padding-bottom:24px;padding-left:0px;padding-right:0px">
                                     <img
-                                      alt="Acme logo"
+                                      alt="Flock logo"
                                       src="https://placehold.co/280x80.png"
                                       style="display:block;outline:none;border:none;text-decoration:none;max-width:100%;height:auto;margin-left:auto;margin-right:auto"
                                       width="140" />

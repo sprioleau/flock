@@ -290,7 +290,7 @@ describe("completeDraftSections — every draft is a whole email", () => {
 describe("deriveDraftContentClues", () => {
   it("reads the starter email's brand, headline, body and call to action", () => {
     const clues = deriveDraftContentClues(createStarterDocument());
-    expect(clues.brandName).toBe("Acme");
+    expect(clues.brandName).toBe("Flock");
     expect(clues.headline).toBe("Welcome to Flock.");
     expect(clues.body).toContain("not a blank page");
     expect(clues.ctaLabel).toBeDefined();
@@ -529,7 +529,7 @@ describe("buildComposedDrafts", () => {
     // The SOURCE draft's brand and CTA — not the templates' placeholder copy.
     expect(text).toContain("Petal Studio logo");
     expect(text).toContain("Shop the spring drop");
-    expect(text).not.toContain("Acme");
+    expect(text).not.toContain("Flock");
     // …and the copy the model DID specify wins over the carried-over headline.
     expect(text).toContain("Ready when you are");
     expect(text).not.toContain("Welcome to Flock.");

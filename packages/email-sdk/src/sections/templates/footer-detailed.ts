@@ -24,7 +24,7 @@ export const footerDetailedParamsSchema = z
     companyName: z
       .string()
       .min(1)
-      .default("Acme Inc.")
+      .default("Flock")
       .describe("The sender's legal company name."),
     tagline: z
       .string()

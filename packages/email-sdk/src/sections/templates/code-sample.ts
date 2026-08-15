@@ -11,11 +11,11 @@ import { defineSectionTemplate } from "../types";
  * look that reads well under light and dark themes alike).
  */
 
-const DEFAULT_CODE = `import { send } from "@acme/sdk";
+const DEFAULT_CODE = `import { send } from "@flock/sdk";
 
 await send({
   to: "ada@example.com",
-  subject: "Hello from Acme",
+  subject: "Hello from Flock",
 });`;
 
 export const codeSampleParamsSchema = z

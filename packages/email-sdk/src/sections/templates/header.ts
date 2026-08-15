@@ -27,7 +27,7 @@ export const headerParamsSchema = z
     brandName: z
       .string()
       .min(1)
-      .default("Acme")
+      .default("Flock")
       .describe("The sender's brand or company name — used for the logo placeholder's alt text."),
     navLinks: z
       .array(navLinkSchema)

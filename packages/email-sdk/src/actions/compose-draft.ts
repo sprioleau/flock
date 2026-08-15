@@ -353,7 +353,7 @@ export function deriveDraftContentClues(doc: EmailDocument): DraftContentClues {
     }
   }
   // A brandless document still has a subject: fall back to the headline's
-  // first few words rather than leaving every header saying "Acme".
+  // first few words rather than leaving every header saying "Flock".
   if (clues.brandName === undefined && clues.headline !== undefined) {
     clues.brandName = clues.headline.split(" ").slice(0, 3).join(" ");
   }

@@ -96,7 +96,7 @@ export function createStarterDocument(): EmailDocument {
       childrenIds: [],
       properties: {
         src: "https://placehold.co/280x80.png",
-        alt: "Acme logo",
+        alt: "Flock logo",
         width: 140,
         align: "left",
       },
@@ -368,7 +368,7 @@ export function createStarterDocument(): EmailDocument {
               content: [
                 {
                   type: "text",
-                  text: "Acme Inc. · 123 Market Street, Suite 400, San Francisco, CA",
+                  text: "Flock · 123 Market Street, Suite 400, San Francisco, CA",
                   marks: [footerFontSize],
                 },
               ],
