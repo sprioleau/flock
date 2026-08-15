@@ -10,6 +10,10 @@ Flock is a collaborative email studio where you don't just get an AI assistant b
 
 This is a working preview of a future-facing idea: software where agents are first-class collaborators with visible presence and editable expertise, and the human is always in control.
 
+### 🎥 Demo
+
+[View demo](https://drive.google.com/file/d/1wFisUqoCZpDKZrtSQlJ2VxGkeRBH4PZB/view?usp=drive_link).
+
 ## The feature set
 
 | Category | Feature | What it does |
