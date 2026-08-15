@@ -25,17 +25,47 @@ import type { EmailDocument, GlobalStyles } from "@flock/email-sdk";
  */
 
 // ---------------------------------------------------------------------------
+// The direction field
+// ---------------------------------------------------------------------------
+
+/**
+ * Longest direction the two generation dialogs accept.
+ *
+ * The WIRE already accepts 2,000 (MAX_GENERATION_DIRECTION_LENGTH in
+ * lib/chat-contract.ts), so this cap is purely about what a person can
+ * comfortably write and review, and raising it again later needs no schema
+ * change. It was 200, which the owner found too short — and 200 mattered more
+ * than it looked, because a variation's direction is the ONLY channel that can
+ * release the pre-applied theme ("try something lighter"), i.e. the one lever
+ * over the thing the whole feature is judged on. 500 is three or four lines of
+ * prose, which is why both fields are textareas rather than single-line inputs:
+ * a 500-character input that scrolls sideways cannot be re-read before sending.
+ */
+export const MAX_GENERATION_DIRECTION_INPUT_LENGTH = 500;
+
+// ---------------------------------------------------------------------------
 // The sentence the person sees
 // ---------------------------------------------------------------------------
 
 /**
- * "Ideate with AI", as the person would say it.
+ * "Ideate with AI", as the person would say it — including their own
+ * direction, verbatim, for the same reason a variation's is included: they
+ * typed it, and it is the part of the request they will want to see reflected
+ * back in the thread.
  *
  * The source draft is named because that is the one fact the sentence has to
  * carry for the thread to make sense later ("which draft was this from?").
  */
-export function buildIdeatePromptText({ sourceDraftName }: { sourceDraftName: string }): string {
-  return `Ideate a new draft on this canvas, inspired by "${sourceDraftName}".`;
+export function buildIdeatePromptText({
+  sourceDraftName,
+  direction,
+}: {
+  sourceDraftName: string;
+  direction: string;
+}): string {
+  const trimmedDirection = direction.trim();
+  const base = `Ideate a new draft on this canvas, inspired by "${sourceDraftName}".`;
+  return trimmedDirection.length === 0 ? base : `${base} ${trimmedDirection}`;
 }
 
 /**

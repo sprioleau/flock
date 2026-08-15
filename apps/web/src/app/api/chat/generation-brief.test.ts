@@ -6,6 +6,7 @@ import {
   buildIdeateDraftPrompt,
   buildIdeationOutline,
   buildVariationBrief,
+  countSourceSections,
   expandGenerationBriefPart,
   hasSourceThemeApplied,
   VARIATION_MAX_TEXT_CHARS,
@@ -247,10 +248,25 @@ describe("expandGenerationBriefPart", () => {
   });
 });
 
+describe("countSourceSections", () => {
+  it("counts the source's top-level sections — the number the brief states", () => {
+    // The owner's requirement is a COUNT ("roughly the same number of sections
+    // as the previous email draft did"), and the server holds the document, so
+    // it can say the number instead of hoping for it.
+    expect(countSourceSections(createPersonalSourceDocument())).toBe(2);
+  });
+
+  it("reports zero for a blank draft, which is the fallback-target signal", () => {
+    expect(countSourceSections(createEmptyDocument())).toBe(0);
+  });
+});
+
 describe("buildIdeateDraftPrompt", () => {
   const promptInput = {
     sourceDraftName: "Launch email",
     sourceOutline: '1. text "Welcome"; button "Get started"',
+    sourceSectionCount: 5,
+    direction: "",
   };
 
   it("carries the source draft's name and outline", () => {
@@ -259,12 +275,79 @@ describe("buildIdeateDraftPrompt", () => {
     expect(prompt).toContain(promptInput.sourceOutline);
   });
 
-  it("leaves the agent free to pick a different theme — a fresh concept may relook", () => {
-    expect(buildIdeateDraftPrompt(promptInput)).toMatch(/different theme/i);
+  it("asks for the source's SUBJECT in fresh words, not its sentences", () => {
+    // The tension this path lives with: the outline is clipped to 60 chars so
+    // ideate invents rather than paraphrases, while the owner asked it to
+    // "base the new text content off of the existing text content". Resolved by
+    // changing the ASK, not the clip — carry the meaning, write the copy.
+    const prompt = buildIdeateDraftPrompt(promptInput);
+    expect(prompt).toMatch(/SAME SUBJECT, FRESH WORDS/);
+    expect(prompt).toMatch(/CLIPPED on purpose/i);
+    expect(prompt).toMatch(/not inventing a different company, product or campaign/i);
+  });
+
+  it("asks for variants of the SECTION TYPES the source uses, plus a new layout and a restyle", () => {
+    // The three remaining defaults the owner said a user should not have to
+    // type ("try various layouts", "make style updates", "try different
+    // variants of the sections that exist in the source draft").
+    const prompt = buildIdeateDraftPrompt(promptInput);
+    expect(prompt).toMatch(/RIFF ON THE SECTIONS IT HAS/);
+    expect(prompt).toMatch(/TRY A DIFFERENT LAYOUT/);
+    expect(prompt).toMatch(/RESTYLE IT/);
+  });
+
+  it("states the source-parity target as a number", () => {
+    expect(buildIdeateDraftPrompt(promptInput)).toContain(
+      '"Launch email" has 5 sections, so build about 5',
+    );
+  });
+
+  it("falls back to a whole-email target when the source has no sections to match", () => {
+    const prompt = buildIdeateDraftPrompt({ ...promptInput, sourceSectionCount: 0 });
+    expect(prompt).toMatch(/about 5 sections/);
+    expect(prompt).toMatch(/One or two sections is not an email/);
+  });
+
+  it("drops the floor warning on a source too small to fall short of", () => {
+    // "Build about 2" and "one or two sections is a failure" cannot both be
+    // said about the same draft — the warning is only meaningful when there is
+    // room under the target.
+    const prompt = buildIdeateDraftPrompt({ ...promptInput, sourceSectionCount: 2 });
+    expect(prompt).toContain('"Launch email" has 2 sections, so build about 2');
+    expect(prompt).not.toMatch(/comes back as one or two sections/);
+  });
+
+  it("asks for every section in ONE response — the actual fix for one-section drafts", () => {
+    // The defect is arithmetic: one content op per response × a
+    // continuation ceiling of 1 is a two-op turn. Ops per RESPONSE is the only
+    // lever that does not cost another ~20k-token round.
+    const prompt = buildIdeateDraftPrompt(promptInput);
+    expect(prompt).toMatch(/SEND EVERY SECTION IN ONE RESPONSE/);
+    expect(prompt).toMatch(/one tool call per section, in reading order/i);
+  });
+
+  it("quotes the person's direction and lets it outrank the built-in defaults", () => {
+    const prompt = buildIdeateDraftPrompt({
+      ...promptInput,
+      direction: "  aim it at first-time attendees  ",
+    });
+    expect(prompt).toContain('"aim it at first-time attendees"');
+    expect(prompt).toMatch(/outranks the defaults/i);
+  });
+
+  it("says nothing about a direction when the person gave none", () => {
+    expect(buildIdeateDraftPrompt({ ...promptInput, direction: "   " })).not.toMatch(
+      /The person asked for this specifically/i,
+    );
   });
 
   it("omits the context block when the source is blank", () => {
-    const prompt = buildIdeateDraftPrompt({ sourceDraftName: "Draft 1", sourceOutline: "" });
+    const prompt = buildIdeateDraftPrompt({
+      ...promptInput,
+      sourceDraftName: "Draft 1",
+      sourceOutline: "",
+      sourceSectionCount: 0,
+    });
     expect(prompt).not.toContain("Draft 1");
     expect(prompt).toMatch(/from scratch in this blank draft/i);
   });
@@ -274,6 +357,7 @@ describe("buildDesignVariationPrompt", () => {
   const themedInput = {
     sourceDraftName: "Launch email",
     sourceBrief: buildVariationBrief(createPersonalSourceDocument()),
+    sourceSectionCount: 6,
     hasSourceTheme: true,
     direction: "",
   };
@@ -308,6 +392,49 @@ describe("buildDesignVariationPrompt", () => {
     expect(prompt).toMatch(/how many sections/i);
     expect(prompt).toMatch(/MOVE THE IMAGERY/);
     expect(prompt).toMatch(/full width and much larger/i);
+  });
+
+  it("names the HERO move outright — it was only implied before", () => {
+    // The owner's stated goal is visual appeal, and "make one thing
+    // prominent" was reachable only through "leading the email … or full width
+    // and much larger". Naming it is cheap and concrete.
+    const prompt = buildDesignVariationPrompt(themedInput);
+    expect(prompt).toMatch(/CONSIDER LEADING WITH A HERO/);
+    expect(prompt).toMatch(/a single image and the main headline carry the whole width/i);
+  });
+
+  it("offers the asset library as a SECOND image source, behind the source's own", () => {
+    // The genuinely new capability, in the owner's own priority order: source
+    // images are known-relevant, library images are a guess from a filename.
+    // Getting this backwards would swap unrelated pictures into variations,
+    // which is a worse failure than the one being fixed.
+    const prompt = buildDesignVariationPrompt(themedInput);
+    expect(prompt).toMatch(/IMAGE LIBRARY IS AVAILABLE, SECOND/);
+    expect(prompt).toMatch(/listAssets/);
+    // Name-based selection is the accepted limitation; kind is the coarse
+    // filter that is already there and costs nothing.
+    expect(prompt).toMatch(/Pick by the NAME/);
+    expect(prompt).toMatch(/"Logo" for a brand mark/);
+    // And the refusal: no plausible match means no library image at all.
+    expect(prompt).toMatch(/use none of it/i);
+  });
+
+  it("states the source-parity target as a number the model can aim at", () => {
+    const prompt = buildDesignVariationPrompt(themedInput);
+    expect(prompt).toContain('"Launch email" has 6 sections, so build about 6');
+    // "Roughly" has to stay roughly: this same prompt asks the model to split,
+    // fold, and add sections, so a hard equality would fight the feature.
+    expect(prompt).toMatch(/give or take one or two/);
+    expect(prompt).toMatch(/Going over is fine/);
+  });
+
+  it("asks for every section in ONE response — the actual fix for one-section drafts", () => {
+    const prompt = buildDesignVariationPrompt(themedInput);
+    expect(prompt).toMatch(/SEND EVERY SECTION IN ONE RESPONSE/);
+    // The clause that keeps this compatible with the static prompt's
+    // per-section streaming rule: one call per section either way.
+    expect(prompt).toMatch(/one tool call per section, in reading order/i);
+    expect(prompt).toMatch(/each section appears on the canvas the moment its own call completes/i);
   });
 
   it("frames the brief as what the email SAYS, not how it is arranged", () => {

@@ -57,10 +57,43 @@ import {
 import {
   buildIdeatePromptText,
   buildVariationPromptText,
+  MAX_GENERATION_DIRECTION_INPUT_LENGTH,
   readSourceThemeGlobals,
 } from "./draft-generation";
 import { computeNextDraftName, computeVariationDraftName } from "./draft-naming";
 import { useCanvasDrafts, type DraftListEntry } from "./use-canvas-drafts";
+
+/** The two agent-composed draft actions in the menu. */
+type GenerationMode = "ideate" | "designVariation";
+
+/**
+ * Per-mode wording for the shared direction dialog. Only the words differ —
+ * the field, the cap, and the send path are identical — so this is a lookup
+ * rather than two dialogs.
+ *
+ * The placeholders are examples of the ONE thing the field is for in each
+ * mode: for a variation, the look (it is the only channel that can release the
+ * pre-applied theme); for an ideation, the angle.
+ */
+const GENERATION_DIALOG_COPY: Readonly<
+  Record<
+    GenerationMode,
+    { title: string; label: string; placeholder: string; confirmLabel: string }
+  >
+> = {
+  ideate: {
+    title: "Ideate with AI",
+    label: "What should it try? (optional)",
+    placeholder: "A shorter, warmer version — lead with the photo…",
+    confirmLabel: "Ideate",
+  },
+  designVariation: {
+    title: "Add a design variation",
+    label: "Anything you want changed? (optional)",
+    placeholder: "Lighter colours, bigger photo…",
+    confirmLabel: "Create variation",
+  },
+};
 
 /**
  * §10.2 frames UX — the compact toolbar control that replaced the v1 chip
@@ -85,11 +118,21 @@ export function DraftSelector({
   const [isDeletePending, setIsDeletePending] = useState(false);
   const [isPromotePending, setIsPromotePending] = useState(false);
   const [isGenerationPending, setIsGenerationPending] = useState(false);
-  const [isVariationDialogOpen, setIsVariationDialogOpen] = useState(false);
-  // The one channel a person has to say "…but in lighter colours" at the
-  // moment they ask for a variation. Kept verbatim: it is quoted into the
-  // prompt and read by the model, never pattern-matched here.
-  const [variationDirection, setVariationDirection] = useState("");
+  /*
+    Which AI generation the direction dialog is currently collecting for, or
+    null when it is closed. BOTH actions ask now: "Ideate with AI" used to fire
+    straight from the menu item with no input at all, which made every ideation
+    a blind reroll — the only recourse to a result you disliked was to run it
+    again and hope. One dialog serves both because the question is the same
+    shape ("anything you want to say about this?"); only the copy differs.
+  */
+  const [generationDialogMode, setGenerationDialogMode] = useState<GenerationMode | null>(null);
+  /*
+    The one channel a person has to say "…but in lighter colours" at the moment
+    they ask for a generation. Kept verbatim: it is quoted into the prompt and
+    read by the model, never pattern-matched here.
+  */
+  const [generationDirection, setGenerationDirection] = useState("");
   // An AI generation waiting for its freshly created draft to become ACTIVE
   // (store-connected). The prompt must not send earlier: the chat pins each
   // turn to the document that is active at send time, so sending before the
@@ -316,7 +359,7 @@ export function DraftSelector({
     mode,
     direction = "",
   }: {
-    mode: "ideate" | "designVariation";
+    mode: GenerationMode;
     direction?: string;
   }): void => {
     if (activeDraft === null || isGenerationPending || isAgentBusy) {
@@ -344,7 +387,7 @@ export function DraftSelector({
       });
       let prompt: string;
       if (mode === "ideate") {
-        prompt = buildIdeatePromptText({ sourceDraftName: activeDraft.name });
+        prompt = buildIdeatePromptText({ sourceDraftName: activeDraft.name, direction });
       } else {
         // A null here means the source is on the shared defaults, which the
         // blank draft already wears — the themes match with nothing to copy.
@@ -393,11 +436,30 @@ export function DraftSelector({
       });
   };
 
-  const confirmDesignVariation = (): void => {
-    setIsVariationDialogOpen(false);
-    startAiGeneration({ mode: "designVariation", direction: variationDirection });
-    setVariationDirection("");
+  /** Send whichever generation the dialog was opened for, with what was typed. */
+  const confirmGeneration = (): void => {
+    if (generationDialogMode === null) {
+      return;
+    }
+    const mode = generationDialogMode;
+    setGenerationDialogMode(null);
+    startAiGeneration({ mode, direction: generationDirection });
+    setGenerationDirection("");
   };
+
+  /** Open the direction dialog, deferred past the menu's close/focus-return. */
+  const openGenerationDialog = (mode: GenerationMode): void => {
+    setGenerationDirection("");
+    setTimeout(() => setGenerationDialogMode(mode), 0);
+  };
+
+  /*
+    Wording for whichever generation the dialog is collecting for. The
+    variation copy stands in while the dialog is CLOSED (mode null): nothing is
+    on screen then, and the fallback is only here so the dialog's markup does
+    not have to be conditional in four separate places.
+  */
+  const generationDialogCopy = GENERATION_DIALOG_COPY[generationDialogMode ?? "designVariation"];
 
   const createDraft = (): void => {
     const canvasId = activeDraft?.canvasId ?? drafts[0]!.canvasId;
@@ -563,7 +625,7 @@ export function DraftSelector({
               >
                 <DropdownMenuItem
                   disabled={isAgentBusy || isGenerationPending}
-                  onClick={() => startAiGeneration({ mode: "ideate" })}
+                  onClick={() => openGenerationDialog("ideate")}
                   data-testid="draft-menu-generate"
                 >
                   <SparklesIcon /> Ideate with AI
@@ -575,10 +637,7 @@ export function DraftSelector({
               >
                 <DropdownMenuItem
                   disabled={isAgentBusy || isGenerationPending}
-                  onClick={() => {
-                    // Defer past the menu's close/focus-return, same as rename.
-                    setTimeout(() => setIsVariationDialogOpen(true), 0);
-                  }}
+                  onClick={() => openGenerationDialog("designVariation")}
                   data-testid="draft-menu-design-variation"
                 >
                   <WandSparklesIcon /> Add design variation
@@ -611,42 +670,78 @@ export function DraftSelector({
       </TooltipProvider>
 
       {/*
-        A variation keeps the current draft's words and colours by default, so
-        the only thing left to ask is what should be DIFFERENT. Optional — the
-        primary button is the whole one-click flow — but it is also the single
-        place a person can say "in lighter colours" and have that reach the
-        colour decision at all.
+        The direction dialog, shared by both AI actions. Optional in both — the
+        primary button is still a one-click flow — but it is the single place a
+        person can steer the result at all. For a variation that matters more
+        than it looks: the source theme is pre-applied, so these words are the
+        ONLY thing that can say "try something lighter" and have it reach the
+        colour decision.
+
+        A TEXTAREA, not an input: the cap is 500 characters, which is three or
+        four lines of prose, and a single-line field that scrolls sideways makes
+        what you typed impossible to re-read — which would defeat the longer cap
+        it exists to serve. Enter therefore inserts a newline, and submitting
+        moves to ⌘/Ctrl+Enter (or the button, which is always there).
       */}
-      <Dialog open={isVariationDialogOpen} onOpenChange={setIsVariationDialogOpen}>
-        <DialogContent className="max-w-sm" data-testid="draft-variation-dialog">
+      <Dialog
+        open={generationDialogMode !== null}
+        onOpenChange={(isOpen) => {
+          if (!isOpen) {
+            setGenerationDialogMode(null);
+            setGenerationDirection("");
+          }
+        }}
+      >
+        <DialogContent className="max-w-sm" data-testid="draft-generation-dialog">
           <DialogHeader>
-            <DialogTitle>Add a design variation</DialogTitle>
+            <DialogTitle>
+              {generationDialogCopy.title}
+            </DialogTitle>
             <DialogDescription>
-              Flock will lay “{activeDraft?.name ?? "this draft"}” out a new way, keeping the same
-              words and the same colours.
+              {generationDialogMode === "ideate" ? (
+                <>
+                  Flock will design a new email on this canvas — the same subject as “
+                  {activeDraft?.name ?? "this draft"}”, in its own words, layout and look.
+                </>
+              ) : (
+                <>
+                  Flock will lay “{activeDraft?.name ?? "this draft"}” out a new way, keeping the
+                  same words and the same colours.
+                </>
+              )}
             </DialogDescription>
           </DialogHeader>
           <div className="flex flex-col gap-1.5">
             <label
-              htmlFor="draft-variation-direction"
+              htmlFor="draft-generation-direction"
               className="text-xs font-medium text-muted-foreground"
             >
-              Anything you want changed? (optional)
+              {generationDialogCopy.label}
             </label>
-            <input
-              id="draft-variation-direction"
-              value={variationDirection}
-              onChange={(event) => setVariationDirection(event.target.value)}
+            <textarea
+              id="draft-generation-direction"
+              value={generationDirection}
+              onChange={(event) => setGenerationDirection(event.target.value)}
               onKeyDown={(event) => {
-                if (event.key === "Enter") {
-                  confirmDesignVariation();
+                /*
+                  Enter belongs to the textarea (it inserts a newline), so
+                  submitting moves to ⌘/Ctrl+Enter — the same chord the chat
+                  composer uses. This is a deliberate behaviour change: the old
+                  single-line field submitted on bare Enter.
+                */
+                if (event.key === "Enter" && (event.metaKey || event.ctrlKey)) {
+                  event.preventDefault();
+                  confirmGeneration();
                 }
               }}
               autoFocus
-              maxLength={200}
-              placeholder="Lighter colours, bigger photo…"
-              className="h-8 rounded-md bg-background px-2 text-xs outline-none ring-1 ring-border focus:ring-ring"
-              data-testid="draft-variation-direction"
+              rows={3}
+              maxLength={MAX_GENERATION_DIRECTION_INPUT_LENGTH}
+              placeholder={
+                generationDialogCopy.placeholder
+              }
+              className="resize-none rounded-md bg-background px-2 py-1.5 text-xs outline-none ring-1 ring-border focus:ring-ring"
+              data-testid="draft-generation-direction"
             />
           </div>
           <DialogFooter>
@@ -654,10 +749,10 @@ export function DraftSelector({
             <Button
               size="sm"
               disabled={isGenerationPending}
-              onClick={confirmDesignVariation}
-              data-testid="draft-variation-confirm"
+              onClick={confirmGeneration}
+              data-testid="draft-generation-confirm"
             >
-              Create variation
+              {generationDialogCopy.confirmLabel}
             </Button>
           </DialogFooter>
         </DialogContent>

@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   buildIdeatePromptText,
   buildVariationPromptText,
+  MAX_GENERATION_DIRECTION_INPUT_LENGTH,
   readSourceThemeGlobals,
 } from "./draft-generation";
 
@@ -30,9 +31,41 @@ function expectNoInternalLanguage(text: string): void {
 
 describe("buildIdeatePromptText", () => {
   it("reads as one plain sentence naming the source draft", () => {
-    const text = buildIdeatePromptText({ sourceDraftName: "RenderATL 2026" });
+    const text = buildIdeatePromptText({ sourceDraftName: "RenderATL 2026", direction: "" });
     expect(text).toBe('Ideate a new draft on this canvas, inspired by "RenderATL 2026".');
     expectNoInternalLanguage(text);
+  });
+
+  it("keeps the person's own direction, now that ideate has a field to type it in", () => {
+    // Ideate used to fire straight from the menu item with no input at all,
+    // which made every run a blind reroll. The words they typed are theirs to
+    // see reflected back in the thread, exactly like a variation's.
+    const text = buildIdeatePromptText({
+      sourceDraftName: "RenderATL 2026",
+      direction: "  aim it at first-time attendees  ",
+    });
+    expect(text).toBe(
+      'Ideate a new draft on this canvas, inspired by "RenderATL 2026". aim it at first-time attendees',
+    );
+    expectNoInternalLanguage(text);
+  });
+
+  it("stays a single sentence when the direction field was left blank", () => {
+    expect(buildIdeatePromptText({ sourceDraftName: "Draft 1", direction: "   " })).toBe(
+      'Ideate a new draft on this canvas, inspired by "Draft 1".',
+    );
+  });
+});
+
+describe("MAX_GENERATION_DIRECTION_INPUT_LENGTH", () => {
+  it("fits inside the wire's own cap, so the UI can never build an unsendable request", () => {
+    // The wire accepts 2,000 (MAX_GENERATION_DIRECTION_LENGTH, chat-contract),
+    // which is why raising the field from 200 needed no schema change — but a
+    // UI cap ABOVE the wire's would produce a message the server rejects, and
+    // the person would only find out after the draft was created.
+    expect(MAX_GENERATION_DIRECTION_INPUT_LENGTH).toBeLessThanOrEqual(2_000);
+    // The owner asked for "about 500" over the old 200.
+    expect(MAX_GENERATION_DIRECTION_INPUT_LENGTH).toBeGreaterThan(200);
   });
 });
 
