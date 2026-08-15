@@ -75,6 +75,23 @@ describe("SYSTEM_STATIC (layer a — cacheable)", () => {
       /emit ONE tool call per section, in reading order[\s\S]*never pack multiple sections into a single call/,
     );
   });
+
+  it("requires every section call to share ONE response", () => {
+    /*
+      This is the binding constraint on whole-email generation, not a style
+      note. The default model emits one content op per response, and the
+      client caps auto-continuations at 1 — so a model that sends one section
+      and waits produces a two-section "email". Parallel calls are the only
+      fix that costs no extra round, which is why the wording is pinned.
+    */
+    expect(SYSTEM_STATIC).toMatch(/put ALL of those calls in the SAME response/);
+    /*
+      The clause this replaced ("never hold sections back to emit them
+      together") was written against silent-compose-then-dump, but read as a
+      ban on exactly the behaviour above. It must not come back.
+    */
+    expect(SYSTEM_STATIC).not.toContain("never hold sections back");
+  });
 });
 
 describe("buildToolGuidance (layer b — cacheable per registry)", () => {
