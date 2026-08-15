@@ -3,12 +3,16 @@ import { components, internal } from "./_generated/api";
 import type { Doc } from "./_generated/dataModel";
 import { internalMutation } from "./_generated/server";
 import {
+  classifyDocumentOwner,
   createEmptyCleanupStats,
   DEFAULT_RETENTION_DAYS,
   deleteDocumentCascade,
+  loadAuthUserIndex,
   MAX_ROW_DELETIONS_PER_RUN,
   MAX_STALE_DOCUMENTS_PER_RUN,
   MS_PER_DAY,
+  sweepDeadSessionRows,
+  type AuthUserIndex,
 } from "./model/cleanup";
 import { findLiveBlockRow } from "./model/textBlockSync";
 
@@ -35,21 +39,36 @@ const cleanupStatsValidator = v.object({
   deletedSnapshots: v.number(),
   deletedSyncDocs: v.number(),
   deletedStorageFiles: v.number(),
+  deletedBrandKits: v.number(),
+  deletedAssets: v.number(),
+  deletedSavedSections: v.number(),
+  deletedPersonaCopies: v.number(),
   /** True when a continuation run was scheduled (more stale data remains). */
   hasScheduledContinuation: v.boolean(),
+  /** Stale documents left alone because their owner has a claimed account. */
+  exemptedClaimedDocuments: v.number(),
 });
 
 /**
  * Delete every document (and its full constellation) with no activity for
- * `retentionDays` (owner decision: 30-day retention). Bounded: at most
- * `maxDocuments` documents and MAX_ROW_DELETIONS_PER_RUN row deletions per
- * run; when either bound is hit, a continuation is scheduled — so one daily
- * cron tick eventually drains any backlog without ever exceeding Convex
- * mutation limits. Idempotent and resumable (see deleteDocumentCascade).
+ * `retentionDays` (owner decision: 30-day retention), UNLESS its owner has a
+ * claimed account — claimed accounts are exempt from the sweep entirely
+ * (model/cleanup.ts classifyDocumentOwner carries the reasoning and the two
+ * gaps). Once a swept session owns nothing at all, its session-keyed library
+ * goes too (sweepDeadSessionRows).
+ *
+ * Bounded: at most `maxDocuments` documents and MAX_ROW_DELETIONS_PER_RUN row
+ * deletions per run; when either bound is hit, a continuation is scheduled —
+ * so one daily cron tick eventually drains any backlog without ever exceeding
+ * Convex mutation limits. Idempotent and resumable (see deleteDocumentCascade).
  *
  * `onlyDocumentId` narrows the run to a single document (still gated on the
  * cutoff) — for surgical testing with `retentionDays: 0` without sweeping
- * the whole deployment.
+ * the whole deployment, AND as the continuation of a user-invoked draft delete
+ * (documents.deleteDocument). That second caller is why a targeted run skips
+ * both the ownership exemption and the session sweep: the human asked for that
+ * specific delete, so refusing to finish the cascade because they signed up
+ * would strand a half-deleted document forever.
  */
 export const cleanupStaleDocuments = internalMutation({
   args: {
@@ -68,6 +87,7 @@ export const cleanupStaleDocuments = internalMutation({
       MAX_DOCUMENTS_ARG,
     );
     const cutoffMs = Date.now() - retentionDays * MS_PER_DAY;
+    const isTargetedRun = args.onlyDocumentId !== undefined;
 
     let staleDocuments: Doc<"documents">[];
     if (args.onlyDocumentId !== undefined) {
@@ -82,20 +102,69 @@ export const cleanupStaleDocuments = internalMutation({
 
     const budget = { remaining: MAX_ROW_DELETIONS_PER_RUN };
     const stats = createEmptyCleanupStats();
+
+    /*
+      The claimed-account exemption. Read once per run rather than per
+      document, and BEFORE anything is deleted: when it cannot be built
+      completely the run deletes nothing at all, because a partial exemption
+      set does not lose a few stale rows, it loses the work of whichever users
+      fell off the end of it.
+    */
+    let authUsers: AuthUserIndex | null = null;
+    if (!isTargetedRun && staleDocuments.length > 0) {
+      authUsers = await loadAuthUserIndex(ctx);
+      if (authUsers === null) {
+        return { ...stats, hasScheduledContinuation: false, exemptedClaimedDocuments: 0 };
+      }
+    }
+
+    const unclaimedOwnerKeys = new Set<string>();
     let hasIncompleteCascade = false;
+    let sweptDocumentCount = 0;
+    let exemptedClaimedDocuments = 0;
     for (const document of staleDocuments) {
+      if (authUsers !== null) {
+        const verdict = await classifyDocumentOwner({ ctx, document, authUsers });
+        if (verdict.isClaimed) {
+          exemptedClaimedDocuments += 1;
+          continue;
+        }
+        for (const ownerKey of verdict.unclaimedOwnerKeys) {
+          unclaimedOwnerKeys.add(ownerKey);
+        }
+      }
       const { isComplete } = await deleteDocumentCascade({ ctx, document, budget, stats });
       if (!isComplete) {
         hasIncompleteCascade = true;
         break;
       }
+      sweptDocumentCount += 1;
+    }
+
+    /*
+      The session-keyed library of every session this run emptied. Ordered
+      after the cascades because the liveness gate inside is "owns no canvas
+      and no document", which only becomes true once they are gone — and which
+      is also what makes this safe after a cascade was cut short: that
+      session's document still exists, so its library is left alone.
+    */
+    if (!isTargetedRun) {
+      for (const ownerKey of unclaimedOwnerKeys) {
+        await sweepDeadSessionRows({ ctx, ownerKey, cutoffMs, budget, stats });
+      }
     }
 
     // Continue when the budget cut a cascade short, or when a full page of
     // stale documents suggests more are waiting behind it.
+    //
+    // `sweptDocumentCount > 0` is what keeps the exemption from becoming an
+    // infinite reschedule: the stale scan is ordered by updatedAtMs, so a full
+    // page of documents that were ALL exempt would be re-read verbatim by the
+    // continuation, every ten seconds, forever. Making no progress means there
+    // is nothing to continue — the next daily tick will look again.
     const hasScheduledContinuation =
       hasIncompleteCascade ||
-      (args.onlyDocumentId === undefined && staleDocuments.length === maxDocuments);
+      (!isTargetedRun && staleDocuments.length === maxDocuments && sweptDocumentCount > 0);
     if (hasScheduledContinuation) {
       await ctx.scheduler.runAfter(
         CONTINUATION_DELAY_MS,
@@ -109,10 +178,14 @@ export const cleanupStaleDocuments = internalMutation({
         `${stats.deletedDocuments} documents, ${stats.deletedCanvases} canvases, ` +
         `${stats.deletedBlocks} blocks, ${stats.deletedOperations} operations, ` +
         `${stats.deletedSnapshots} snapshots, ${stats.deletedSyncDocs} sync docs, ` +
-        `${stats.deletedStorageFiles} storage files` +
+        `${stats.deletedStorageFiles} storage files, ` +
+        `${stats.deletedBrandKits} brand kits, ${stats.deletedAssets} assets, ` +
+        `${stats.deletedSavedSections} saved sections, ` +
+        `${stats.deletedPersonaCopies} persona copies; ` +
+        `${exemptedClaimedDocuments} exempt (claimed)` +
         (hasScheduledContinuation ? " (continuation scheduled)" : ""),
     );
-    return { ...stats, hasScheduledContinuation };
+    return { ...stats, hasScheduledContinuation, exemptedClaimedDocuments };
   },
 });
 

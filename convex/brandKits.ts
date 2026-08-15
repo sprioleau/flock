@@ -80,9 +80,11 @@ import { commitVersions, loadDocumentState, type CommitEntry } from "./model/ema
  * `applyBrandToDocuments`, whose `sessionId` is the undo-stack author id for
  * the ops it commits, not an ownership key — see the note on that mutation.
  *
- * NOTE: the Phase 6.1 cleanup cron (convex/cleanup.ts) reaps stale DOCUMENTS
- * only; brandKits rows are session-keyed and NOT reaped yet (they're tiny).
- * See the table comment in schema.ts.
+ * NOTE: the Phase 6.1 cleanup cron (convex/cleanup.ts) reaps stale DOCUMENTS,
+ * and then — only for a session it has emptied of every canvas and document,
+ * whose whole library is past the retention cutoff, and whose owner has not
+ * claimed an account — the kit row and its confirmed storage files
+ * (model/cleanup.ts sweepDeadSessionRows). See the table comment in schema.ts.
  */
 
 /**

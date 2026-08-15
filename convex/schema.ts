@@ -312,10 +312,13 @@ export default defineSchema({
    * `globalStylesSchema` (Zod, strict) plus the shared WCAG contrast check in
    * convex/brandKits.ts, both run BEFORE anything is written.
    *
-   * NOTE (Phase 6.1 cleanup cron): the cron reaps stale DOCUMENTS only —
-   * brandKits rows are keyed to sessions, not documents, and are NOT reaped
-   * yet. They're tiny (one small JSON row per browser session); revisit if a
-   * session-level cleanup pass ever lands.
+   * NOTE (Phase 6.1 cleanup cron): kit rows are keyed to a session rather than
+   * to a document, so the per-document cascade cannot reach them. They are
+   * swept by the session pass that runs once the cron has emptied a session of
+   * every canvas and document it owned, and only when every row of that
+   * session's library is itself past the retention cutoff
+   * (convex/model/cleanup.ts sweepDeadSessionRows). A CLAIMED account's
+   * documents are never swept, so its kit is never reached.
    */
   brandKits: defineTable({
     /** Anonymous owner session (localStorage id) — the "user" this kit belongs to. */
@@ -436,9 +439,13 @@ export default defineSchema({
    * yesterday"). Unregistered legacy files keep the old cascade behavior
    * until the Stage M backfill registers them.
    *
-   * NOTE (cleanup): like brandKits, asset rows are session-keyed and NOT
-   * reaped by the document cron. Stage L adds the dead-session sweep
-   * (assets whose session owns no documents and are >30 days old).
+   * NOTE (cleanup): like brandKits, asset rows are session-keyed, so the
+   * per-document cascade cannot reach them. The dead-session sweep is what
+   * collects them — assets whose session owns no canvas and no document, whose
+   * whole library is past the retention cutoff, and whose owner has not
+   * claimed an account (convex/model/cleanup.ts sweepDeadSessionRows). Because
+   * this table OWNS its storage files, that sweep is also the only place a
+   * registered file is ever deleted.
    */
   assets: defineTable({
     /** Anonymous owner session (localStorage id) — the "user" (same key as brandKits). */
