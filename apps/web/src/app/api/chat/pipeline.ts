@@ -334,10 +334,15 @@ async function runSinglePassPipeline(input: ChatPipelineInput): Promise<void> {
   // FIRST (stable prefix), conversation next, per-request document context as
   // the LAST user message (fresh tokens that never invalidate the prefix).
   //
-  // ignoreIncompleteToolCalls: content-op tools have no execute() and the
-  // client does not (yet) report apply results back, so prior assistant
-  // messages contain dangling tool calls that would otherwise throw
-  // AI_MissingToolResultsError (Spike C finding 2).
+  // ignoreIncompleteToolCalls guards against dangling tool calls, which would
+  // otherwise throw AI_MissingToolResultsError (Spike C finding 2). The reason
+  // is NOT the one this comment used to give ("the client does not report apply
+  // results back") — it does: use-flock-chat's onToolCall applies each content
+  // op and reports the outcome with addToolOutput, which is also what closes
+  // the auto-continuation loop. What still arrives incomplete is narrower: a
+  // call the client never got to apply (a turn abandoned mid-stream) and
+  // askForClarification, which deliberately ends the turn with no result
+  // because it is waiting on the person.
   //
   // sanitizeReplayedToolInputs runs FIRST because it is the only thing standing
   // between a previously REJECTED tool call and the provider: its raw argument
