@@ -285,6 +285,15 @@ export interface EditorState {
    * one editor is open at a time; while open, canvas selection stays on it.
    */
   editingBlockId: BlockId | null;
+  /*
+    The block a hovered breadcrumb chip is previewing, or null. Its shell
+    draws a DASHED outline in that block's level colour — a preview of what
+    clicking the chip would select, which is why selecting anything clears
+    it: the dashed line becomes the selected block's solid one. Lives here
+    (not in a module-level store) because the instance is already scoped to
+    one document, and forked sibling drafts share block ids.
+  */
+  hoverPreviewBlockId: BlockId | null;
   /** Canvas viewport width preset. */
   viewport: Viewport;
 
@@ -337,6 +346,8 @@ export interface EditorState {
   startTextEditing: (blockId: BlockId) => void;
   /** Close the inline rich-text editor (selection is left untouched). */
   stopTextEditing: () => void;
+  /** Arm (or clear) the dashed ancestor-hover preview outline. */
+  setHoverPreviewBlock: (blockId: BlockId | null) => void;
   setViewport: (viewport: Viewport) => void;
 }
 
@@ -481,6 +492,7 @@ export function createEditorStore(): EditorStoreApi {
     notice: null,
     selectedBlockId: null,
     editingBlockId: null,
+    hoverPreviewBlockId: null,
     viewport: "desktop",
 
     connectDocument: ({ convexClient: client, documentId, canvasId, authorId }) => {
@@ -506,6 +518,7 @@ export function createEditorStore(): EditorStoreApi {
         notice: null,
         selectedBlockId: null,
         editingBlockId: null,
+        hoverPreviewBlockId: null,
       });
     },
 
@@ -715,10 +728,18 @@ export function createEditorStore(): EditorStoreApi {
         // Moving selection off the block being edited closes its editor
         // (the unmounting editor commits its session).
         editingBlockId: state.editingBlockId === blockId ? state.editingBlockId : null,
+        /*
+          Selecting always ends the preview: the chip that armed it belongs
+          to the OLD selection's stack and unmounts on this very update, so
+          its mouseleave would never fire. Clearing here is what turns the
+          dashed preview into the new selection's solid outline.
+        */
+        hoverPreviewBlockId: null,
       })),
     startTextEditing: (blockId) =>
       set({ selectedBlockId: blockId, editingBlockId: blockId }),
     stopTextEditing: () => set({ editingBlockId: null }),
+    setHoverPreviewBlock: (blockId) => set({ hoverPreviewBlockId: blockId }),
     setViewport: (viewport) => set({ viewport }),
   };
   });

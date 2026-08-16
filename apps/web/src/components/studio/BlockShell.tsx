@@ -3,6 +3,7 @@
 import type { MouseEvent, ReactNode } from "react";
 import { useDraggable } from "@dnd-kit/core";
 import { LEAF_BLOCK_TYPES, type Block, type BlockType } from "@flock/email-sdk";
+import { getBlockLevelAccent } from "@/lib/block-level-accent";
 import { useEditorStore } from "@/lib/editor-store";
 import { cn } from "@/lib/utils";
 import { BlockActionRow } from "./BlockActionRow";
@@ -42,6 +43,14 @@ const DRAGGABLE_BLOCK_TYPES: readonly BlockType[] = [...LEAF_BLOCK_TYPES, "secti
 export function BlockShell({ block, children, className }: BlockShellProps) {
   const isSelected = useEditorStore((state) => state.selectedBlockId === block.id);
   const isEditingText = useEditorStore((state) => state.editingBlockId === block.id);
+  /*
+    A breadcrumb chip on the SELECTED block is pointing at this one — draw
+    the dashed preview of what clicking it would select. Never both: the
+    selected block is never its own ancestor.
+  */
+  const isHoverPreviewed = useEditorStore(
+    (state) => state.hoverPreviewBlockId === block.id && state.selectedBlockId !== block.id,
+  );
   const selectBlock = useEditorStore((state) => state.selectBlock);
   const startTextEditing = useEditorStore((state) => state.startTextEditing);
   const documentId = useEditorStore((state) => state.documentId);
@@ -72,6 +81,12 @@ export function BlockShell({ block, children, className }: BlockShellProps) {
   // Blocks with an in-place content editor: text (rich-text Tiptap session)
   // and button (single-line label editor). Same gesture for both.
   const isInlineEditableBlock = block.type === "text" || block.type === "button";
+
+  /*
+    One hue per nesting level (content / column / row / section), shared with
+    the breadcrumb chips so a chip and the outline it points at always match.
+  */
+  const accent = getBlockLevelAccent({ block });
 
   const handleClick = (event: MouseEvent) => {
     // Never let clicks bubble to the canvas (which clears the selection) —
@@ -136,9 +151,15 @@ export function BlockShell({ block, children, className }: BlockShellProps) {
         // selected block wins over ALL outline chrome; dialogs/popovers
         // (z-50, portaled to body) still cover everything here.
         "after:pointer-events-none after:absolute after:inset-0 after:z-[6] after:transition-colors",
+        // Outline states, all in THIS block's level colour (block-level-accent):
+        // selected = solid, chip-hover preview = dashed (clicking selects it,
+        // so the same line just goes solid), otherwise the faint pointer
+        // hairline.
         isSelected
-          ? "z-10 after:border-2 after:border-sky-500"
-          : "after:border-sky-300 hover:after:border",
+          ? cn("z-10", accent.selectedOutlineClassName)
+          : isHoverPreviewed
+            ? accent.hoverPreviewOutlineClassName
+            : cn(accent.pointerOutlineClassName, "hover:after:border"),
         // The source block ghosts while its lifted copy rides the overlay.
         isDragging && "opacity-40",
         // Subtle highlight on the container a valid drop would land in.

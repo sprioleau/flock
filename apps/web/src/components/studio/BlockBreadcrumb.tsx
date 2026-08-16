@@ -3,13 +3,22 @@
 import type { MouseEvent } from "react";
 import type { BlockId } from "@flock/email-sdk";
 import { getBlockDisplayLabel } from "@/lib/block-display-label";
+import { getBlockLevelAccent } from "@/lib/block-level-accent";
 import { useEditorStore } from "@/lib/editor-store";
 import { getAncestorIds } from "@/lib/get-ancestor-ids";
+import { cn } from "@/lib/utils";
 
 export interface BlockBreadcrumbProps {
   /** The selected block — the stack's FIRST (top) chip. */
   blockId: BlockId;
 }
+
+/*
+  Shape and typography every chip shares; the level accent supplies the
+  border, fill and text colour on top (block-level-accent).
+*/
+const CHIP_CLASS_NAME =
+  "select-none rounded border px-1.5 py-0.5 font-mono text-[10px] uppercase leading-none tracking-wide shadow-sm transition-colors";
 
 /**
  * Ancestor-selection stack on the selected block: a vertical column of
@@ -31,10 +40,18 @@ export interface BlockBreadcrumbProps {
  * the canvas gutter; the one clipped case is a full-bleed section at the
  * desktop viewport (its left edge IS the canvas edge), whose stack is a
  * single non-interactive chip duplicating the action row's type label.
+ *
+ * Every chip is painted in ITS OWN nesting level's colour (block-level-accent
+ * — content blue, column violet, row orange, section magenta), the same hue
+ * the shell draws that block's outline in, so the stack reads as a legend for
+ * what is on the canvas. Pointing at an ancestor chip arms the shared
+ * hover-preview: that ancestor's shell outlines itself DASHED in the chip's
+ * colour, and clicking turns the same line solid by making it the selection.
  */
 export function BlockBreadcrumb({ blockId }: BlockBreadcrumbProps) {
   const doc = useEditorStore((state) => state.doc);
   const selectBlock = useEditorStore((state) => state.selectBlock);
+  const setHoverPreviewBlock = useEditorStore((state) => state.setHoverPreviewBlock);
 
   // Selected block first, then ancestors ascending (column, row, section).
   const trailIds = [blockId, ...getAncestorIds({ doc, blockId }).reverse()];
@@ -44,6 +61,13 @@ export function BlockBreadcrumb({ blockId }: BlockBreadcrumbProps) {
     event.stopPropagation();
     selectBlock(ancestorId);
   };
+
+  /*
+    Pointer AND keyboard arm the preview: these are real buttons, so a
+    Tab-through must show the same dashed outline a mouse-over does.
+  */
+  const previewAncestor = (ancestorId: BlockId) => () => setHoverPreviewBlock(ancestorId);
+  const clearPreview = () => setHoverPreviewBlock(null);
 
   return (
     <nav
@@ -60,11 +84,14 @@ export function BlockBreadcrumb({ blockId }: BlockBreadcrumbProps) {
           return null;
         }
         const isCurrent = trailId === blockId;
+        const accent = getBlockLevelAccent({ block: trailBlock });
         return isCurrent ? (
           <span
             key={trailId}
             aria-current="true"
-            className="select-none rounded border border-sky-500 bg-sky-500 px-1.5 py-0.5 font-mono text-[10px] font-semibold uppercase leading-none tracking-wide text-white shadow-sm"
+            data-testid={`block-breadcrumb-chip-${trailId}`}
+            data-block-level={accent.level}
+            className={cn(CHIP_CLASS_NAME, "font-semibold", accent.selectedChipClassName)}
           >
             {getBlockDisplayLabel({ block: trailBlock })}
           </span>
@@ -72,8 +99,18 @@ export function BlockBreadcrumb({ blockId }: BlockBreadcrumbProps) {
           <button
             key={trailId}
             type="button"
+            data-testid={`block-breadcrumb-chip-${trailId}`}
+            data-block-level={accent.level}
             onClick={selectAncestor(trailId)}
-            className="cursor-pointer rounded border bg-background/95 px-1.5 py-0.5 font-mono text-[10px] font-medium uppercase leading-none tracking-wide text-muted-foreground shadow-sm hover:bg-accent hover:text-foreground"
+            onMouseEnter={previewAncestor(trailId)}
+            onMouseLeave={clearPreview}
+            onFocus={previewAncestor(trailId)}
+            onBlur={clearPreview}
+            className={cn(
+              CHIP_CLASS_NAME,
+              "cursor-pointer font-medium",
+              accent.ancestorChipClassName,
+            )}
           >
             {getBlockDisplayLabel({ block: trailBlock })}
           </button>
