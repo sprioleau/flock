@@ -31,8 +31,11 @@ import {
   type BrandKitAssetKind,
   type BrandKitFonts,
   type BrandKitGenerateResult,
+  type ThemeVariation,
 } from "@/lib/brand-kit";
+import { getButtonShapeFromRadius } from "@/lib/brand-theme-builder";
 import { describeBrandKitReconciliation } from "@/lib/brand-kit-reconcile";
+import type { SocialLinkDraft } from "@/lib/brand-social-links";
 import { SOCIAL_PLATFORM_LABELS, type SocialPlatform } from "@/lib/social-links";
 import { useEditorStore } from "@/lib/editor-store";
 import { useUiSurfaceOpenRequest } from "@/lib/ui-surfaces";
@@ -45,6 +48,8 @@ import { ThemeSwatch } from "../theme/ThemeSwatch";
 import { BrandApplyDialog } from "./BrandApplyDialog";
 import { BrandColorsEditor } from "./BrandColorsEditor";
 import { BrandFontsEditor } from "./BrandFontsEditor";
+import { BrandSocialLinksEditor } from "./BrandSocialLinksEditor";
+import { BrandThemeBuilder } from "./BrandThemeBuilder";
 import { BrandVoiceEditor, type BrandVoiceDraft } from "./BrandVoiceEditor";
 import { useSessionBrandKit } from "./useActiveBrandKit";
 
@@ -88,6 +93,9 @@ export function BrandKitPanel() {
   const updateBrandColors = useMutation(api.brandKits.updateBrandColors);
   const updateBrandFonts = useMutation(api.brandKits.updateBrandFonts);
   const updateBrandToneOfVoice = useMutation(api.brandKits.updateBrandToneOfVoice);
+  const addBrandThemeVariation = useMutation(api.brandKits.addBrandThemeVariation);
+  const setBrandAssetSuggestion = useMutation(api.brandKits.setBrandAssetSuggestion);
+  const updateSocialLinks = useMutation(api.brandKits.updateSocialLinks);
   const removeBrandKitAsset = useMutation(api.brandKits.removeBrandKitAsset);
   const bindSessionKitToCanvas = useMutation(api.brandKits.bindSessionKitToCanvas);
   const unbindCanvasBrandKit = useMutation(api.brandKits.unbindCanvasBrandKit);
@@ -109,6 +117,8 @@ export function BrandKitPanel() {
   // is the failure mode provenance exists to prevent.
   const [reconciliationMessage, setReconciliationMessage] = useState<string | null>(null);
   const [contentErrorMessage, setContentErrorMessage] = useState<string | null>(null);
+  const [isAddingTheme, setIsAddingTheme] = useState(false);
+  const [logoUrlDraft, setLogoUrlDraft] = useState("");
 
   const canvasBinding = brandStatus?.binding ?? null;
   const isCanvasBoundToMyKit =
@@ -127,6 +137,7 @@ export function BrandKitPanel() {
       setAssetErrorMessage(null);
       setReconciliationMessage(null);
       setContentErrorMessage(null);
+      setLogoUrlDraft("");
     }
   };
 
@@ -295,6 +306,33 @@ export function BrandKitPanel() {
     }
   };
 
+  /*
+    Append a user-authored theme (v2 §2.1). The client only ever offers
+    contrast-passing combinations, so this write is expected to succeed — the
+    server gate behind it is the backstop, not the user's experience.
+
+    No revision bump happens server-side and none should: an appended theme
+    changes nothing any existing draft renders, so no pill re-arms and nothing
+    detaches. That is precisely why ADDING a theme is buildable while EDITING
+    one is still blocked.
+  */
+  const commitNewTheme = async (variation: ThemeVariation): Promise<void> => {
+    if (sessionId === null || !hasSavedKit || isAddingTheme) {
+      return;
+    }
+    setIsAddingTheme(true);
+    setContentErrorMessage(null);
+    try {
+      await addBrandThemeVariation({ sessionId, variation });
+    } catch (error: unknown) {
+      setContentErrorMessage(
+        error instanceof ConvexError ? String(error.data) : "Couldn't add that theme. Try again.",
+      );
+    } finally {
+      setIsAddingTheme(false);
+    }
+  };
+
   /** Commit the tone of voice (§5). `null` clears it back to the scrape's. */
   const commitToneOfVoice = async (draft: BrandVoiceDraft | null): Promise<void> => {
     if (sessionId === null || !hasSavedKit) {
@@ -308,6 +346,47 @@ export function BrandKitPanel() {
         error instanceof ConvexError
           ? String(error.data)
           : "Couldn't save the tone of voice. Try again.",
+      );
+    }
+  };
+
+  /*
+    Park a hand-typed image address on the kit as an unconfirmed SUGGESTION
+    (§6.2). This is an IMPORT gesture, not a "reference this external URL"
+    gesture — the confirm step below is what pulls the bytes into our storage,
+    and the copy under the field says so. Nothing is fetched by this write.
+  */
+  const commitLogoUrl = async (): Promise<void> => {
+    const url = logoUrlDraft.trim();
+    if (sessionId === null || !hasSavedKit || url.length === 0) {
+      return;
+    }
+    setAssetErrorMessage(null);
+    try {
+      await setBrandAssetSuggestion({ sessionId, kind: "logo", url });
+      setLogoUrlDraft("");
+    } catch (error: unknown) {
+      setAssetErrorMessage(
+        error instanceof ConvexError
+          ? String(error.data)
+          : "Couldn't use that image address. Try again.",
+      );
+    }
+  };
+
+  /* Commit the whole social-link list (§7.2) — one write, no revision bump. */
+  const commitSocialLinks = async (drafts: SocialLinkDraft[]): Promise<void> => {
+    if (sessionId === null || !hasSavedKit) {
+      return;
+    }
+    setContentErrorMessage(null);
+    try {
+      await updateSocialLinks({ sessionId, socialLinks: drafts });
+    } catch (error: unknown) {
+      setContentErrorMessage(
+        error instanceof ConvexError
+          ? String(error.data)
+          : "Couldn't save those links. Try again.",
       );
     }
   };
@@ -556,6 +635,54 @@ export function BrandKitPanel() {
                 {reconciliationMessage}
               </p>
             )}
+            {/* §6.2: a typed address is an IMPORT into the kit, never a
+                reference to somebody else's server. It lands as a suggestion
+                and goes through the same confirm-and-rehost step a scraped
+                one does, which is what the copy has to convey. */}
+            {hasSavedKit && (
+              <form
+                className="flex flex-col gap-1.5"
+                onSubmit={(event) => {
+                  event.preventDefault();
+                  void commitLogoUrl();
+                }}
+              >
+                <label
+                  htmlFor="brand-kit-logo-url"
+                  className="text-xs font-medium tracking-wide text-muted-foreground"
+                >
+                  Logo from an image address
+                </label>
+                <div className="flex items-center gap-2">
+                  <Input
+                    id="brand-kit-logo-url"
+                    type="text"
+                    inputMode="url"
+                    autoComplete="off"
+                    spellCheck={false}
+                    placeholder="https://your-brand.com/logo.png"
+                    value={logoUrlDraft}
+                    onChange={(event) => setLogoUrlDraft(event.target.value)}
+                    disabled={sessionId === null}
+                    data-testid="brand-kit-logo-url-input"
+                  />
+                  <Button
+                    type="submit"
+                    variant="outline"
+                    size="sm"
+                    className="shrink-0"
+                    disabled={sessionId === null || logoUrlDraft.trim().length === 0}
+                    data-testid="brand-kit-logo-url-submit"
+                  >
+                    Use this image
+                  </Button>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  We&apos;ll add it as a suggestion. Confirm it above and we import a copy into your
+                  kit, so it keeps working even if that address stops.
+                </p>
+              </form>
+            )}
             {assetErrorMessage !== null && (
               <p className="text-sm text-destructive" data-testid="brand-kit-asset-error">
                 {assetErrorMessage}
@@ -587,6 +714,51 @@ export function BrandKitPanel() {
                 colors={activeBrandKit.colors ?? []}
                 isBusy={sessionId === null}
                 onCommit={(colors) => void commitBrandColors(colors)}
+              />
+            </section>
+          )}
+
+          {/* Custom themes (v2 §2.1). Placed under Colors on purpose: a theme
+              here IS a set of the kit's colors, so the palette has to be the
+              thing the user just looked at. Add-only — see BrandThemeBuilder. */}
+          {hasSavedKit && (activeBrandKit.colors ?? []).length > 0 && (
+            <section
+              className="flex flex-col gap-3 border-t pt-5"
+              data-testid="brand-kit-themes-section"
+            >
+              <h3 className="text-sm leading-none font-semibold">Add a theme</h3>
+              <p className="text-xs text-muted-foreground">
+                Build one from your palette, or shuffle until something looks right. New themes join
+                the theme menu; the ones you already have don&apos;t change.
+              </p>
+              <BrandThemeBuilder
+                colors={activeBrandKit.colors ?? []}
+                fonts={activeBrandKit.fonts}
+                buttonShape={getButtonShapeFromRadius(
+                  activeBrandKit.variations[0]?.globals.buttonBorderRadius,
+                )}
+                existingVariationIds={activeBrandKit.variations.map((variation) => variation.id)}
+                isBusy={sessionId === null || isAddingTheme}
+                onAdd={(variation) => void commitNewTheme(variation)}
+              />
+            </section>
+          )}
+
+          {/* §7.2: the array was extracted, displayed, handed to the agent —
+              and unchangeable. This is its edit path. */}
+          {hasSavedKit && (
+            <section
+              className="flex flex-col gap-3 border-t pt-5"
+              data-testid="brand-kit-social-section"
+            >
+              <h3 className="text-sm leading-none font-semibold">Social links</h3>
+              <p className="text-xs text-muted-foreground">
+                What we found on your site. Fix anything wrong — these fill your email footers.
+              </p>
+              <BrandSocialLinksEditor
+                socialLinks={activeBrandKit.socialLinks ?? []}
+                isBusy={sessionId === null}
+                onCommit={(drafts) => void commitSocialLinks(drafts)}
               />
             </section>
           )}

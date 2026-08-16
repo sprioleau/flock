@@ -12,13 +12,16 @@ import {
   getBrandKitValidationErrors,
   getConfirmedBrandAssetUrl,
   getToneOfVoiceValidationErrors,
+  MAX_BRAND_KIT_VARIATIONS,
   type BrandKit,
   type BrandToneOfVoice,
 } from "../apps/web/src/lib/brand-kit";
+import { validateBrandAssetUrl } from "../apps/web/src/lib/brand-asset-url";
 import {
   applyBrandFontsToVariations,
   getBrandFontsValidationErrors,
 } from "../apps/web/src/lib/brand-kit-fonts";
+import { planSocialLinksUpdate } from "../apps/web/src/lib/brand-social-links";
 import {
   planBrandColorsUpdate,
   reconcileBrandColors,
@@ -490,6 +493,69 @@ export const updateBrandFonts = mutation({
   },
 });
 
+/*
+  Append a USER-AUTHORED theme to the kit (brand-kit-v2 §2.1 — "I want the
+  user to be able to add custom themes").
+
+  APPEND ONLY, and that restriction is the whole reason this mutation is safe
+  to ship while §2 as a whole is still blocked. Editing an existing
+  variation's globals DETACHES every draft rendering it: payload equality is
+  identity, so `getCanvasBrandStatus` reads the changed payload as "the user
+  hand-edited away from this theme" and the person gets the opposite of what
+  they meant. Appending touches no existing payload — every draft still
+  matches the variation it was already rendering, so its state stays
+  "current". There is no edit path here and there must not be one until the
+  identity-vs-equality question in brand-kit-user-control §14.5 has an answer.
+
+  DOES NOT BUMP `revision`, which is a deliberate exception to the §8.3 rule
+  of thumb ("variations changed ⇒ bump"). The rule exists because a bump
+  re-arms the "Updated brand available" pill on every draft of every bound
+  canvas, and it is only honest when the drafts have something new to adopt.
+  A newly appended theme gives them nothing: `pickTargetVariation` resolves
+  to the draft's matched variation, then its advisory pointer, then the kit's
+  FIRST variation — an appended one is never any of those — so propagation
+  after an add would apply exactly nothing to every draft it prompted about.
+  The existing themes are untouched and still render identically; nothing a
+  draft renders got newer, so nothing should claim it did.
+
+  The server-side contract gate still runs (`assertBrandKitIsValid`): the
+  client filters combinations BEFORE offering them (lib/brand-theme-builder.ts)
+  so a person never meets a refusal, but the guarantee that no failing kit is
+  ever stored belongs here, where it holds regardless of caller.
+*/
+export const addBrandThemeVariation = mutation({
+  args: {
+    sessionId: v.string(),
+    variation: v.object({
+      id: v.string(),
+      name: v.string(),
+      /* Must be a COMPLETE Required<GlobalStyles> payload — guarded below. */
+      globals: v.record(v.string(), v.any()),
+    }),
+  },
+  returns: v.object({ variationId: v.string() }),
+  handler: async (ctx, args) => {
+    const ownerId = await resolveOwnerId(ctx, { claimedSessionId: args.sessionId });
+    const row = await requireOwnerBrandKitRow(ctx, ownerId);
+    const name = args.variation.name.trim();
+    if (name.length === 0) {
+      throw new ConvexError("Give the theme a name.");
+    }
+    if (row.variations.some((variation) => variation.id === args.variation.id)) {
+      throw new ConvexError("A theme with that name already exists in this kit.");
+    }
+    if (row.variations.length >= MAX_BRAND_KIT_VARIATIONS) {
+      throw new ConvexError(
+        `This kit already holds ${MAX_BRAND_KIT_VARIATIONS} themes — the most it can carry.`,
+      );
+    }
+    const variations = [...row.variations, { ...args.variation, name }];
+    assertBrandKitIsValid({ ...toBrandKitContract(row), variations });
+    await ctx.db.patch(row._id, { variations, updatedAtMs: Date.now() });
+    return { variationId: args.variation.id };
+  },
+});
+
 /**
  * Set (or clear, with `toneOfVoice: null`) the kit's tone of voice. Always
  * lands as `origin: "user"` — this mutation only ever runs from a human
@@ -559,6 +625,127 @@ export const renameBrandKit = mutation({
     }
     const row = await requireOwnerBrandKitRow(ctx, ownerId);
     await ctx.db.patch(row._id, { name: trimmedName, updatedAtMs: Date.now() });
+    return null;
+  },
+});
+
+/*
+  Set the kit's logo or social card from a URL the USER typed
+  (brand-kit-user-control §6.2).
+
+  THE SAFETY PROPERTY THIS PRESERVES. The confirm-asset route's core guarantee
+  is that it never trusts a client-supplied URL: it re-reads the URL from the
+  row, which is trusted because the extraction guards vetted it. Handing that
+  route a typed URL directly would break the guarantee. So the typed URL lands
+  HERE instead, as an ordinary UNCONFIRMED suggestion on the row — exactly the
+  state a scraped suggestion is in — and the shipped confirm flow then runs
+  unchanged and unweakened: same SSRF rails, same size and content-type caps,
+  same upload, same library registration, same Suggested → Saved chip the user
+  already knows. The owner's requirement that a typed URL still go through the
+  confirm step is satisfied literally rather than by a parallel path.
+
+  Nothing is fetched here. Validation is deliberately the SYNTAX half only
+  (lib/brand-asset-url.ts — node-free so it runs in this runtime); the
+  DNS-resolving guard stays in the fetch, where it has to be anyway because DNS
+  can change between the two moments.
+
+  Bumps `revision` because the asset URL changed, matching planBrandKitSavePatch
+  — and replacing a CONFIRMED asset with a fresh suggestion genuinely changes
+  what propagation would apply, since getConfirmedBrandAssetUrl now answers null.
+*/
+export const setBrandAssetSuggestion = mutation({
+  args: {
+    sessionId: v.string(),
+    kind: assetKindValidator,
+    url: v.string(),
+  },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    const ownerId = await resolveOwnerId(ctx, { claimedSessionId: args.sessionId });
+    const row = await requireOwnerBrandKitRow(ctx, ownerId);
+    const validated = validateBrandAssetUrl(args.url);
+    if (!validated.isValid) {
+      throw new ConvexError(validated.message);
+    }
+    const currentUrl = args.kind === "logo" ? row.logoUrl : row.socialImageUrl;
+    if (currentUrl === validated.url) {
+      /*
+        Re-typing the address already on the row must not un-confirm a saved
+        asset and delete its file — that would turn a no-op into data loss.
+      */
+      return null;
+    }
+    /*
+      A removal plan is exactly the right shape here: it clears the storage id,
+      the provenance and the confirmation timestamp, bumps the revision and
+      surrenders the replaced file. The only difference is that a new URL lands
+      where the removal would have left the field empty.
+    */
+    const { patch, storageIdsToDelete } = planAssetRemovalPatch({ existing: row, kind: args.kind });
+    const urlField = args.kind === "logo" ? "logoUrl" : "socialImageUrl";
+    await ctx.db.patch(row._id, {
+      ...patch,
+      [urlField]: validated.url,
+      updatedAtMs: Date.now(),
+    });
+    await deleteStorageFilesUnlessRegistered(ctx, storageIdsToDelete);
+    return null;
+  },
+});
+
+/*
+  Replace the kit's social profile links with the ones a human curated
+  (brand-kit-user-control §7.2) — until now the only human-facing kit field
+  with no edit path at all.
+
+  Validation runs through planSocialLinksUpdate, which reuses `classifySocialUrl`
+  — the same classifier the extraction ladder uses — so a typed link and a
+  scraped one are the same kind of value: canonicalized, one per platform, and
+  with share/intent chrome refused rather than stored as the brand's profile.
+
+  Does NOT bump `revision` (§8.3): social links are kit metadata that no draft
+  renders. The footer "Fill from brand kit" affordance reads them on demand and
+  is always an explicit user gesture, so nothing needs a staleness pill.
+
+  KNOWN GAP, flagged rather than silently accepted: a re-scrape still replaces
+  this array wholesale, so links edited here do not yet survive one. The fix is
+  the provenance treatment `colors` already has (origin + userEditedAtMs per
+  entry, honored by a reconcileSocialLinks pass in saveBrandKit), which needs
+  two additive optional fields on the socialLinks element in convex/schema.ts —
+  a file this change was scoped out of. Everything else about the edit is
+  durable; only re-scrape survival is outstanding.
+*/
+export const updateSocialLinks = mutation({
+  args: {
+    sessionId: v.string(),
+    socialLinks: v.array(
+      v.object({
+        platform: v.union(
+          v.literal("x"),
+          v.literal("facebook"),
+          v.literal("instagram"),
+          v.literal("linkedin"),
+          v.literal("youtube"),
+          v.literal("github"),
+          v.literal("tiktok"),
+        ),
+        url: v.string(),
+      }),
+    ),
+  },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    const ownerId = await resolveOwnerId(ctx, { claimedSessionId: args.sessionId });
+    const row = await requireOwnerBrandKitRow(ctx, ownerId);
+    const plan = planSocialLinksUpdate(args.socialLinks);
+    if (!plan.isValid) {
+      throw new ConvexError(plan.message);
+    }
+    await ctx.db.patch(row._id, {
+      /* Empty removes the field, matching how `colors` stores "none". */
+      socialLinks: plan.links.length > 0 ? plan.links : undefined,
+      updatedAtMs: Date.now(),
+    });
     return null;
   },
 });

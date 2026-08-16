@@ -28,6 +28,7 @@ import {
   TextField,
 } from "./fields";
 import { EMAIL_SAFE_FONT_OPTIONS } from "../text-editor/email-safe-fonts";
+import { BrandLogoPromptRow } from "./BrandLogoPromptRow";
 import { BrandSocialFillRow } from "./BrandSocialFillRow";
 import { GenerateImageField } from "./GenerateImageField";
 import { ImageSourceField } from "./ImageSourceField";
@@ -183,6 +184,14 @@ export function ImagePanel({ block }: { block: ImageBlock }) {
 
   return (
     <div className="space-y-4 p-4">
+      {/*
+        brand-kit-v2 §5: a block MARKED as the logo leads with the brand kit,
+        because that is where its image is supposed to come from. Missing or
+        unconfirmed kit logos are asked for here rather than left silent, and a
+        confirmed one can be pushed to every logo block at once. Ordinary
+        images render nothing extra.
+      */}
+      {properties.role === "logo" && <BrandLogoPromptRow blockId={block.id} />}
       <ImageSourceField helpText={helpFor("src")} onCommitSrc={(src) => commit({ src })} />
       <GenerateImageField blockId={block.id} />
       <TextField
