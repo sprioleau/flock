@@ -33,6 +33,15 @@ import { isFetchAllowedByRobots } from "./robots";
 const ARTICLE_FAILURE_MESSAGES: Partial<Record<FetchFailureReason, string>> = {
   blocked_by_site:
     "That site wouldn't let the page be read (it blocks automated access). No content was invented in its place — try a different link to the same story.",
+  /*
+    The origin-wide case needs the OPPOSITE ending from blocked_by_site above:
+    every path on that host answers with the same bot check, so "try a
+    different link to the same story" is a loop. Article mode has to say it in
+    article terms — the stock brand-kit copy points at the brand-kit panel,
+    which means nothing to someone ingesting a news page.
+  */
+  blocked_by_bot_challenge:
+    "That site blocks automated readers, so no page on it can be read — another link to the same story won't get through either. No content was invented in its place; paste the text you'd like to use.",
   not_html:
     "That address isn't a readable web page (it may be a file or a feed). Try a direct link to the article itself.",
 };

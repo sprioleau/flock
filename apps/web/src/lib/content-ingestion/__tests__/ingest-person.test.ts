@@ -69,6 +69,24 @@ describe("ingestPerson — the fetch is prevented", () => {
     // Never searches around a block to reconstruct the person anyway.
     expect(mockSearchPublicWeb).not.toHaveBeenCalled();
   });
+
+  it("relays an origin-wide bot challenge without pointing at another page there", async () => {
+    mockIsFetchAllowedByRobots.mockResolvedValue(true);
+    mockFetchPage.mockResolvedValue({
+      isOk: false,
+      reason: "blocked_by_bot_challenge",
+      message: "…brand-kit-flavored copy…",
+    });
+
+    const result = await ingestPerson({ url: PROFILE_URL });
+
+    expect(result).toMatchObject({ isOk: false, reason: "blocked_by_bot_challenge" });
+    if (result.isOk) return;
+    // "try a public bio page" is the blocked_by_site advice; it loops here.
+    expect(result.message).not.toContain("bio page");
+    expect(result.message).toContain("spotlight");
+    expect(mockSearchPublicWeb).not.toHaveBeenCalled();
+  });
 });
 
 describe("ingestPerson — no search available", () => {

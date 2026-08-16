@@ -71,6 +71,24 @@ describe("ingestArticle — the fetch is prevented", () => {
     expect(result.message).not.toContain("branding");
   });
 
+  it("relays an origin-wide bot challenge without sending the reader back to that site", async () => {
+    allowRobots();
+    mockFetchPage.mockResolvedValue({
+      isOk: false,
+      reason: "blocked_by_bot_challenge",
+      message: "…brand-kit-flavored copy…",
+    });
+
+    const result = await ingestArticle({ url: ARTICLE_URL });
+
+    expect(result).toMatchObject({ isOk: false, reason: "blocked_by_bot_challenge" });
+    if (result.isOk) return;
+    // Every path on that host answers the same way, so another link is a loop.
+    expect(result.message).not.toContain("try a different link");
+    expect(result.message).toContain("paste the text");
+    expect(result.message).not.toContain("branding");
+  });
+
   it("passes other fetch failures through with their own machine reason", async () => {
     allowRobots();
     mockFetchPage.mockResolvedValue({

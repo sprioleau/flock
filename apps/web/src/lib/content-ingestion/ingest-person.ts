@@ -36,6 +36,13 @@ import { searchPublicWeb } from "./search-web";
 const PROFILE_FAILURE_MESSAGES: Partial<Record<FetchFailureReason, string>> = {
   blocked_by_site:
     "That site wouldn't let the profile be read (it blocks automated access — many professional networks do). Nothing was invented in its place; try a public bio page, or tell us what to say about them.",
+  /*
+    Same split as article mode: blocked_by_site can still be escaped by
+    another page on that host, an origin-wide bot check cannot — so this one
+    must not send the user back to the same site for a different bio page.
+  */
+  blocked_by_bot_challenge:
+    "That site blocks automated readers, so no page on it can be read — another page there won't get through either. Nothing was invented in its place; tell us what you'd like the spotlight to say.",
   not_html:
     "That address isn't a readable web page. Try a direct link to the person's profile or bio page.",
 };

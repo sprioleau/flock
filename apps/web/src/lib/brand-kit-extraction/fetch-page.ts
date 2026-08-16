@@ -26,6 +26,18 @@ const DEFAULT_TIMEOUT_MS = 10_000;
 const MAX_HTML_BYTES = 2 * 1024 * 1024; // 2MB
 const MAX_CSS_BYTES = 400 * 1024; // per-stylesheet cap
 
+/*
+  Two distinct flavors of "the site said no", because they need OPPOSITE
+  advice:
+
+  - blocked_by_site — an ordinary per-page refusal (a members-only page, a
+    restricted section). Another page on the same site really may be readable,
+    so "try another page" is good advice here.
+  - blocked_by_bot_challenge — the whole origin sits behind a bot check, so
+    EVERY path answers the same way. Telling that user to try another page
+    sends them in a circle with no way out; the honest move is to stop
+    scraping and point them at manual entry.
+*/
 export type FetchFailureReason =
   | "invalid_url"
   | "blocked_host"
@@ -33,6 +45,7 @@ export type FetchFailureReason =
   | "timeout"
   | "http_error"
   | "blocked_by_site"
+  | "blocked_by_bot_challenge"
   | "not_html"
   | "too_many_redirects"
   | "network";
@@ -177,6 +190,37 @@ async function guardedFetch({
   });
 }
 
+/*
+  Is this response the bot-check itself, rather than the origin's own answer?
+
+  The signal is `cf-mitigated`: Cloudflare sets it only on a response its
+  security layer produced (the managed challenge / block interstitial).
+  Measured against a challenged origin: `cf-mitigated: challenge` with
+  `server: cloudflare`, on EVERY path — the homepage, /robots.txt,
+  /favicon.ico, /manifest.json — with the app's user-agent, with a plain
+  browser one, and with none at all. Origin-wide and UA-independent, which is
+  exactly what separates it from a single restricted page.
+
+  Deliberately narrow, and NOT generalized to other vendors:
+
+  - `server: cloudflare` alone is not enough. A large share of the web is
+    fronted by Cloudflare, so an ordinary app-level 403 (a private page, a
+    paywalled article) from any of those sites would be mislabeled as an
+    origin-wide block and handed advice that doesn't apply.
+  - Other vendors do send comparable headers, but we have no measurements for
+    them. Guessing at their names would produce a confidently wrong message
+    for whatever happened to match — which is precisely the bug this
+    distinction exists to fix. Anything unrecognized keeps `blocked_by_site`,
+    whose advice is still safe.
+
+  Header-only by design: the signal rides on the response we already hold, so
+  the classification costs no second request against the ~10s deadline. We
+  never probe another path to "confirm" it, and we never retry.
+*/
+function hasBotChallengeHeaders(response: Response): boolean {
+  return (response.headers.get("cf-mitigated") ?? "").trim().length > 0;
+}
+
 /**
  * Fetch an HTML page — the reusable primitive. Returns the (capped) HTML and
  * the final URL after redirects, or an honest failure.
@@ -191,6 +235,20 @@ export async function fetchPage(
     return fetchResult;
   }
   const { response, finalUrl } = fetchResult;
+  /*
+    Checked BEFORE the generic block statuses: a challenge arrives dressed as
+    a 403, so this is the more specific reading of the very same response. It
+    isn't limited to 401/403/451 either — once the edge says it mitigated the
+    request, that IS the reason, whatever status it chose to wear.
+  */
+  if (!response.ok && hasBotChallengeHeaders(response)) {
+    await response.body?.cancel().catch(() => undefined);
+    return failure({
+      reason: "blocked_by_bot_challenge",
+      message:
+        "This site blocks automated readers, so no page on it can be read — trying another page won't help. We won't guess at its branding: set your logo, colors, and links here by hand instead.",
+    });
+  }
   if (response.status === 401 || response.status === 403 || response.status === 451) {
     await response.body?.cancel().catch(() => undefined);
     return failure({
