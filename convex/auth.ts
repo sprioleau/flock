@@ -25,10 +25,19 @@ import {
  * - First touch costs nothing: `signIn.anonymous()` mints a real user + server
  *   session behind an httpOnly cookie. No email, no form, no interruption.
  * - "Keep my work" costs one email tap: `signIn.magicLink()` links that
- *   anonymous user to a durable identity, and `onLinkAccount` carries the
- *   user's canvases, drafts, brand kit, assets, saved sections, personas and
- *   comment authorship across (convex/authMigration.ts). From then on the same
- *   human is the same user on every device.
+ *   anonymous user to a durable identity, and `onLinkAccount` re-keys
+ *   everything that was keyed to the ANONYMOUS USER ID onto the durable one:
+ *   the dashboard ownership rows (`canvasOwners`, which is what makes the
+ *   user's canvases still appear in their list afterwards), the brand kit,
+ *   assets, saved sections, persona copies and comment authorship
+ *   (convex/authMigration.ts). From then on the same human is the same user on
+ *   every device.
+ *
+ *   The canvas and document ROWS themselves are not touched, and do not need
+ *   to be: `canvases.sessionId` / `documents.sessionId` hold the browser's
+ *   localStorage UUID rather than an identity, deliberately, because the doc
+ *   URL is the capability (convex/authIdentity.ts, closing note). Ownership
+ *   moves; the drafts never had an identity on them to move.
  *
  * WHAT THIS IS NOT: document access control. Share-by-link is the product
  * (eval §2.3/§4.4) — `documents.ts` never consults identity, and nothing here

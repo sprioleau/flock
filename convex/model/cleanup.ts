@@ -286,11 +286,13 @@ function isClaimedOwnerKey(authUsers: AuthUserIndex, ownerKey: string): boolean 
       `canvases.adoptCanvasesBySessionId` and
       `authMigration.adoptLegacySessionData` exist for exactly this and re-key
       those rows onto the durable id.
-    - `authMigration.migrateOwnedRows` does not re-key `canvasOwners`, so
-      check 3 is what carries claimed users created since auth shipped. If
-      that migration ever starts moving ownership rows, check 3 becomes belt
-      and braces rather than the load-bearing branch — keep it either way, it
-      is the only thing covering a link that half-completed.
+    - `authMigration.migrateOwnedRows` NOW re-keys `canvasOwners` onto the
+      durable user id, so check 2 normally carries claimed users and check 3
+      has become belt and braces — exactly as the previous version of this note
+      predicted it would. KEEP CHECK 3 REGARDLESS: it is still the only thing
+      covering a link that half-completed, which is a real state because the
+      migration is bounded at 512 rows per table and the overflow stays keyed
+      to the anonymous id Better Auth deletes on the way out.
 */
 export async function classifyDocumentOwner({
   ctx,

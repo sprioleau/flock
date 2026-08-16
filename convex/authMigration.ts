@@ -28,8 +28,10 @@ import type { Doc } from "./_generated/dataModel";
  *    cron eat orphaned demo data.
  *
  * SCOPE, stated honestly:
- * - Moved: canvases, documents, brandKits, assets, savedSections, agents
- *   (persona copies, slug included), and comments on the owner's own drafts.
+ * - Moved: canvasOwners (the dashboard key), brandKits, assets, savedSections,
+ *   agents (persona copies, slug included), comments on the owner's own drafts,
+ *   and — for the adoption caller ONLY — canvases and documents. See
+ *   `migrateOwnedRows` for why those last two cannot fire on a link.
  * - NOT moved: `operations.authorId`. Per-user undo history resets at the
  *   link moment. Op rows are a provenance record of what actually happened;
  *   rewriting history to flatter a UX detail muddies the one history spine
@@ -39,17 +41,29 @@ import type { Doc } from "./_generated/dataModel";
  *   by author. Their attribution reverts to the derived display identity.
  */
 
-/**
- * Per-table ceiling for one migration pass. A link is interactive (the user is
- * staring at a redirect), and Convex mutations are transactional — an
- * unbounded scan would be both slow and a conflict magnet. Demo-scale
- * libraries are one to two orders of magnitude below this.
- */
+/*
+  Per-table ceiling for one migration pass. A link is interactive (the user is
+  staring at a redirect), and Convex mutations are transactional — an
+  unbounded scan would be both slow and a conflict magnet. Demo-scale
+  libraries are one to two orders of magnitude below this.
+
+  WHAT HAPPENS AT THE CEILING, since `canvasOwners` now rides on it too: the
+  overflow rows stay keyed to the anonymous id that Better Auth deletes moments
+  later, so those canvases are missing from the dashboard until an operator
+  re-runs the migration. They are NOT lost. Their links keep working (canvases
+  are exempt from identity checks), and the cleanup cron reads a dangling
+  identity-backed owner key as a CLAIMED account and retains it — check 3 of
+  `classifyDocumentOwner`, convex/model/cleanup.ts. Failing in the retaining
+  direction is deliberate; raising this number is not the fix, re-running
+  `adoptLegacySessionData` for that user is.
+*/
 const MAX_ROWS_PER_TABLE = 512;
 
 /** What one pass actually moved — logged, and returned for dashboard runs. */
 const migrationResultValidator = v.object({
   canvases: v.number(),
+  /** Dashboard ownership rows re-keyed (the count that matters on a link). */
+  canvasOwners: v.number(),
   documents: v.number(),
   brandKits: v.number(),
   assets: v.number(),
@@ -60,6 +74,7 @@ const migrationResultValidator = v.object({
 
 type MigrationResult = {
   canvases: number;
+  canvasOwners: number;
   documents: number;
   brandKits: number;
   assets: number;
@@ -68,19 +83,55 @@ type MigrationResult = {
   comments: number;
 };
 
-/**
- * Move every ownership row from one owner key to another.
- *
- * Idempotent: re-running with the same pair is a no-op once the source owns
- * nothing. Safe to call when `fromOwnerId === toOwnerId` (returns zeros), which
- * happens if a linked user somehow re-enters the flow.
- */
+/*
+  Move every ownership row from one owner key to another.
+
+  Idempotent: re-running with the same pair is a no-op once the source owns
+  nothing. Safe to call when `fromOwnerId === toOwnerId` (returns zeros), which
+  happens if a linked user somehow re-enters the flow.
+
+  ──────────────────────────────────────────────────────────────────────────────
+  READ THIS BEFORE ADDING OR REMOVING A TABLE HERE. Flock keys the same human
+  TWO ways, and the two callers of this function hand in keys of DIFFERENT
+  kinds. Which branches can fire depends entirely on which caller you are:
+
+    `canvases.sessionId` / `documents.sessionId`  the CLIENT's localStorage
+        UUID, written verbatim from `args.sessionId` (documents.createDocument).
+        Documents and canvases are deliberately exempt from identity resolution
+        because the doc URL is the capability and share-by-link is the product
+        (convex/authIdentity.ts, closing note), so SIGNING IN NEVER CHANGES
+        THIS COLUMN. It is not an identity and proves nothing about an account.
+
+    `canvasOwners.ownerId` and the library columns (`brandKits.sessionId`,
+        `assets.sessionId`, `savedSections.sessionId`,
+        `agents.createdBySessionId`, `comments.sessionId`)  the SERVER-RESOLVED
+        owner — `identity.subject`, a Better Auth user id carried by a verified
+        JWT, whenever the caller had an identity; the localStorage UUID only as
+        the pre-auth fallback (`resolveOwnerIdOrNull`).
+
+  So, per caller:
+
+    reKeyOwnedRows (onLinkAccount) — `fromOwnerId` is the ANONYMOUS BETTER AUTH
+        USER ID. It matches the server-resolved columns and CANNOT MATCH
+        `canvases.sessionId` / `documents.sessionId`, which hold a browser UUID.
+        Those two branches below are therefore INERT on this path by
+        construction, not by accident.
+
+    adoptLegacySessionData (operator) — `fromOwnerId` is the browser's
+        localStorage UUID. That is exactly what those two branches exist for,
+        and re-keying `documents.sessionId` onto the durable id is what makes
+        check 1 of `classifyDocumentOwner` (convex/model/cleanup.ts) start
+        exempting the adopted rows from the stale sweep. They are load-bearing
+        here, which is why they are kept rather than deleted: the branches are
+        caller-specific, not dead.
+*/
 async function migrateOwnedRows(
   ctx: MutationCtx,
   args: { fromOwnerId: string; toOwnerId: string },
 ): Promise<MigrationResult> {
   const result: MigrationResult = {
     canvases: 0,
+    canvasOwners: 0,
     documents: 0,
     brandKits: 0,
     assets: 0,
@@ -92,7 +143,19 @@ async function migrateOwnedRows(
     return result;
   }
 
-  // --- canvases -----------------------------------------------------------
+  /*
+    --- canvasOwners: THE DASHBOARD KEY ------------------------------------
+
+    FIRST, because on the link path it is the only branch that fires at all.
+    `canvasOwners.ownerId` is the sole column tying a canvas to an account
+    (convex/canvases.ts), so leaving it behind is what made claiming an account
+    empty the user's dashboard — the exact opposite of the promise the claim
+    affordance makes.
+  */
+  const ownership = await migrateCanvasOwnerships(ctx, args);
+  result.canvasOwners = ownership.movedCount;
+
+  /* --- canvases (adoption caller only; see the note above) --------------- */
   const canvases = await ctx.db
     .query("canvases")
     .withIndex("by_sessionId", (q) => q.eq("sessionId", args.fromOwnerId))
@@ -102,7 +165,10 @@ async function migrateOwnedRows(
     result.canvases += 1;
   }
 
-  // --- documents (sessionId is denormalized from the canvas) --------------
+  /*
+    --- documents (adoption caller only; sessionId is denormalized from the
+    canvas, so it holds the same browser UUID and is unreachable from a link)
+  */
   const documents = await ctx.db
     .query("documents")
     .withIndex("by_sessionId", (q) => q.eq("sessionId", args.fromOwnerId))
@@ -155,13 +221,101 @@ async function migrateOwnedRows(
   // --- agents (persona copies; the owner id is baked into the slug) -------
   result.personas = await migratePersonaCopies(ctx, args);
 
-  // --- comments on the owner's own drafts ---------------------------------
+  /*
+    --- comments on the owner's own drafts ---------------------------------
+
+    Sourced from BOTH key kinds, for the same reason the branches above split:
+    `documents` above is empty on the link path, so driving comment
+    re-attribution off it alone meant the header's "comments are moved" claim
+    was only ever true for the operator caller. The canvases named by the
+    ownership rows just re-keyed are the link path's equivalent reach — and
+    `comments.sessionId` IS server-resolved (convex/comments.ts), so on that
+    path the rows genuinely do carry the anonymous user id and are worth moving.
+  */
   result.comments = await migrateCommentAuthorship(ctx, {
     ...args,
-    documentIds: documents.map((document) => document._id),
+    documentIds: await collectOwnedDocumentIds(ctx, {
+      documents,
+      canvasIds: ownership.canvasIds,
+    }),
   });
 
   return result;
+}
+
+/*
+  Re-key the dashboard ownership rows.
+
+  The one-row-per-(owner, canvas) invariant `recordCanvasOwner` maintains has to
+  survive this: `listMyCanvases` iterates the rows directly, so a duplicate pair
+  is a duplicate card on the dashboard rather than a harmless extra row. When
+  the destination already owns the canvas — a link that half-completed and is
+  being retried, or a draft promotion that inherited both keys
+  (`inheritCanvasOwners`) — the SOURCE row is dropped instead of patched. The
+  canvas still ends up in exactly one place: the destination's list.
+
+  Returns the canvas ids either way, since a canvas the destination already
+  owned is still one whose comments belong to the same human.
+*/
+async function migrateCanvasOwnerships(
+  ctx: MutationCtx,
+  args: { fromOwnerId: string; toOwnerId: string },
+): Promise<{ movedCount: number; canvasIds: Doc<"canvases">["_id"][] }> {
+  const ownerRows = await ctx.db
+    .query("canvasOwners")
+    .withIndex("by_ownerId", (q) => q.eq("ownerId", args.fromOwnerId))
+    .take(MAX_ROWS_PER_TABLE);
+
+  let movedCount = 0;
+  const canvasIds: Doc<"canvases">["_id"][] = [];
+  for (const ownerRow of ownerRows) {
+    canvasIds.push(ownerRow.canvasId);
+    const existing = await ctx.db
+      .query("canvasOwners")
+      .withIndex("by_ownerId_and_canvasId", (q) =>
+        q.eq("ownerId", args.toOwnerId).eq("canvasId", ownerRow.canvasId),
+      )
+      .first();
+    if (existing === null) {
+      await ctx.db.patch(ownerRow._id, { ownerId: args.toOwnerId });
+    } else {
+      await ctx.db.delete(ownerRow._id);
+    }
+    movedCount += 1;
+  }
+  return { movedCount, canvasIds };
+}
+
+/*
+  Every document whose comments this migration may re-attribute: the ones found
+  by the owner key directly (adoption caller) plus every draft on a canvas the
+  owner's dashboard rows point at (link caller). Deduplicated, and bounded by
+  the same per-table ceiling — a link is interactive, and each id here costs one
+  more indexed `comments` read downstream.
+*/
+async function collectOwnedDocumentIds(
+  ctx: MutationCtx,
+  args: {
+    documents: Doc<"documents">[];
+    canvasIds: Doc<"canvases">["_id"][];
+  },
+): Promise<Doc<"documents">["_id"][]> {
+  const documentIds = new Set<Doc<"documents">["_id"]>(
+    args.documents.map((document) => document._id),
+  );
+  for (const canvasId of args.canvasIds) {
+    if (documentIds.size >= MAX_ROWS_PER_TABLE) {
+      break;
+    }
+    const drafts = await ctx.db
+      .query("documents")
+      .withIndex("by_canvasId", (q) => q.eq("canvasId", canvasId))
+      .take(MAX_ROWS_PER_TABLE - documentIds.size);
+    for (const draft of drafts) {
+      documentIds.add(draft._id);
+    }
+  }
+  return [...documentIds];
 }
 
 /**

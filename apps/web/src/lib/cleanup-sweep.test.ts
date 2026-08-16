@@ -274,11 +274,13 @@ describe("claimed accounts are exempt from the stale sweep", () => {
   });
 
   /**
-   * THE HARD CASE, and the one a "simplification" would drop. Claiming an
-   * account leaves the ownership row pointing at the anonymous user that Better
-   * Auth deletes on link (`onLinkAccount` → `deleteUser`), because
-   * `authMigration.migrateOwnedRows` does not re-key `canvasOwners`. So the
-   * account is claimed while its owner key resolves to nothing at all — and the
+   * THE HARD CASE, and the one a "simplification" would drop. An ownership row
+   * left pointing at the anonymous user that Better Auth deletes on link
+   * (`onLinkAccount` → `deleteUser`). `authMigration.migrateOwnedRows` re-keys
+   * `canvasOwners` now, so this is no longer the ordinary post-link shape — it
+   * is what a link that ran out of migration budget leaves behind (512 rows per
+   * table), plus every row written before that re-key existed. The account is
+   * claimed while its owner key resolves to nothing at all — and the
    * only thing separating it from an abandoned pre-auth browser is that the key
    * differs from the canvas's own `sessionId`, i.e. it came from a verified
    * identity rather than the client's fallback.
