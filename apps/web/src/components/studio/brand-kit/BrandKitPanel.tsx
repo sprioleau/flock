@@ -50,6 +50,7 @@ import { BrandColorsEditor } from "./BrandColorsEditor";
 import { BrandFontsEditor } from "./BrandFontsEditor";
 import { BrandSocialLinksEditor } from "./BrandSocialLinksEditor";
 import { BrandThemeBuilder } from "./BrandThemeBuilder";
+import { BrandThemeOverridesNote } from "./BrandThemeOverridesNote";
 import { BrandVoiceEditor, type BrandVoiceDraft } from "./BrandVoiceEditor";
 import { useSessionBrandKit } from "./useActiveBrandKit";
 
@@ -741,6 +742,13 @@ export function BrandKitPanel() {
                 isBusy={sessionId === null || isAddingTheme}
                 onAdd={(variation) => void commitNewTheme(variation)}
               />
+              {/* §14.5a: the canvas-wide half of the override indicator. Sits
+                  in the theme section because that is where the owner asked
+                  for it, and renders null unless a draft actually overrides
+                  something — this section is usually just the builder. */}
+              {isCanvasBoundToMyKit && (
+                <BrandThemeOverridesNote drafts={brandStatus?.drafts ?? []} />
+              )}
             </section>
           )}
 

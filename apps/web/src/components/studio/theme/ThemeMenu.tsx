@@ -26,6 +26,7 @@ import { useEditorStore } from "@/lib/editor-store";
 import { useUiSurfaceOpenRequest } from "@/lib/ui-surfaces";
 import { DraftBrandPill } from "../brand-kit/DraftBrandPill";
 import { useActiveBrandKit } from "../brand-kit/useActiveBrandKit";
+import { ThemeOverrideDot } from "./ThemeOverrideDot";
 import { ThemeSwatch } from "./ThemeSwatch";
 
 /**
@@ -153,6 +154,11 @@ export function ThemeMenu() {
           </DropdownMenuGroup>
         </DropdownMenuContent>
       </DropdownMenu>
+      {/* §14.5a: the Webflow-style override dot — this draft still has a parent
+          theme, but some of its properties are its own. Sits immediately after
+          the dropdown, which is what the owner asked for ("a small circle next
+          to the theme dropdown"). Renders null when there is nothing to say. */}
+      {documentId !== null && <ThemeOverrideDot documentId={documentId} />}
       {/* Stage M: the ACTIVE draft's non-blocking "Updated brand available"
           pill lives beside the theme control (the sibling-frame pills mount
           in the frame headers). Renders null while the draft is current. */}

@@ -2,11 +2,14 @@ import {
   applyOperations as applyOperationsToDocument,
   globalStylesSchema,
   ROOT_BLOCK_ID,
+  type ApplyThemeOperation,
+  type EmailDocument,
   type GlobalStyles,
   type Operation,
 } from "@flock/email-sdk";
 import { ConvexError, v, type Infer } from "convex/values";
 import {
+  areGlobalsEqual,
   findMatchingVariation,
   getBrandColorsValidationErrors,
   getBrandKitValidationErrors,
@@ -17,6 +20,10 @@ import {
   type BrandToneOfVoice,
 } from "../apps/web/src/lib/brand-kit";
 import { validateBrandAssetUrl } from "../apps/web/src/lib/brand-asset-url";
+import {
+  composeThemeGlobals,
+  resolveDraftThemeLink,
+} from "../apps/web/src/lib/brand-theme-link";
 import {
   applyBrandFontsToVariations,
   getBrandFontsValidationErrors,
@@ -497,17 +504,17 @@ export const updateBrandFonts = mutation({
   Append a USER-AUTHORED theme to the kit (brand-kit-v2 §2.1 — "I want the
   user to be able to add custom themes").
 
-  APPEND ONLY, and that restriction is the whole reason this mutation is safe
-  to ship while §2 as a whole is still blocked. Editing an existing
-  variation's globals DETACHES every draft rendering it: payload equality is
-  identity, so `getCanvasBrandStatus` reads the changed payload as "the user
-  hand-edited away from this theme" and the person gets the opposite of what
-  they meant. Appending touches no existing payload — every draft still
-  matches the variation it was already rendering, so its state stays
-  "current". There is no edit path here and there must not be one until the
-  identity-vs-equality question in brand-kit-user-control §14.5 has an answer.
+  ~~APPEND ONLY... there must not be an edit path until the
+  identity-vs-equality question in brand-kit-user-control §14.5 has an
+  answer.~~ ANSWERED (§14.5a): identity resolves `matched payload → surviving
+  pointer → none`, a per-property override diff is measured against the
+  baseline snapshot on `documents.brand`, and the edit path is
+  `updateBrandThemeVariation` below. This mutation stays append-only because
+  appending is what it means — not because editing is unsafe.
 
-  DOES NOT BUMP `revision`, which is a deliberate exception to the §8.3 rule
+  What DOES still separate the two is the revision policy.
+
+  Appending DOES NOT BUMP `revision`, which is a deliberate exception to the §8.3 rule
   of thumb ("variations changed ⇒ bump"). The rule exists because a bump
   re-arms the "Updated brand available" pill on every draft of every bound
   canvas, and it is only honest when the drafts have something new to adopt.
@@ -553,6 +560,83 @@ export const addBrandThemeVariation = mutation({
     assertBrandKitIsValid({ ...toBrandKitContract(row), variations });
     await ctx.db.patch(row._id, { variations, updatedAtMs: Date.now() });
     return { variationId: args.variation.id };
+  },
+});
+
+/*
+  EDIT an existing theme — the payoff of §14.5a and the thing v2 §2 was blocked
+  on. Renames, recolors, refonts one variation in place.
+
+  This mutation RESTYLES NOTHING. It writes the kit row and stops;
+  `applyBrandToDocuments` is still the only path that touches a draft, still
+  behind a human confirm. What changes for referencing drafts is what they are
+  TOLD: their pointer's revision falls behind, so they read "outdated" and grow
+  the non-blocking "Updated brand available" pill. Confirming it applies the new
+  payload with each draft's own overridden properties re-applied on top — the
+  Webflow behaviour the owner asked for, and the reason the edit is finally
+  safe. A draft that overrode the button color keeps its button color; every
+  property it did not touch adopts the edit.
+
+  IT BUMPS `revision`, and that is the opposite call from the append above.
+  Every clause of the append exception inverts here. `pickTargetVariation`
+  resolves to a draft's matched-or-pointed variation, and an EDITED variation is
+  exactly that for every draft referencing it — so propagation after an edit
+  really does have something to apply, which is the condition §8.3's rule is
+  about. The bump is also what re-arms the per-(kit, revision) dismissal token
+  in brand-pill-dismissals: without it, anyone who dismissed a previous pill
+  would never be told their theme changed. `updateBrandFonts` is the standing
+  precedent — it rewrites every variation's font globals and bumps for the same
+  reason.
+
+  The kit's own baselines are NOT rewritten. A draft's baseline is a snapshot of
+  what it last adopted; moving it here would erase the evidence of which
+  properties are the person's and which are the theme's, which is precisely what
+  the snapshot exists to preserve.
+*/
+export const updateBrandThemeVariation = mutation({
+  args: {
+    sessionId: v.string(),
+    variationId: v.string(),
+    name: v.string(),
+    /* Must be a COMPLETE Required<GlobalStyles> payload — guarded below. */
+    globals: v.record(v.string(), v.any()),
+  },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    const ownerId = await resolveOwnerId(ctx, { claimedSessionId: args.sessionId });
+    const row = await requireOwnerBrandKitRow(ctx, ownerId);
+    const name = args.name.trim();
+    if (name.length === 0) {
+      throw new ConvexError("Give the theme a name.");
+    }
+    const existing = row.variations.find((variation) => variation.id === args.variationId);
+    if (existing === undefined) {
+      throw new ConvexError("That theme is no longer in this kit.");
+    }
+    const variations = row.variations.map((variation) =>
+      variation.id === args.variationId
+        ? { id: variation.id, name, globals: args.globals }
+        : variation,
+    );
+    /* Same gate every stored kit passes — strict Zod, completeness, WCAG-AA. */
+    assertBrandKitIsValid({ ...toBrandKitContract(row), variations });
+    const hasSameName = existing.name === name;
+    const hasSameGlobals = areGlobalsEqual({ a: existing.globals, b: args.globals });
+    if (hasSameName && hasSameGlobals) {
+      /* A no-op edit must not re-arm every draft's pill (same rule as updateBrandFonts). */
+      return null;
+    }
+    await ctx.db.patch(row._id, {
+      variations,
+      /*
+        A pure RENAME changes nothing any draft renders, so it must not claim
+        otherwise — same reasoning as renameBrandKit (risk 6). Only a payload
+        edit gives referencing drafts something to adopt.
+      */
+      ...(hasSameGlobals ? {} : { revision: getEffectiveRevision(row) + 1 }),
+      updatedAtMs: Date.now(),
+    });
+    return null;
   },
 });
 
@@ -929,15 +1013,23 @@ export const unbindCanvasBrandKit = mutation({
   },
 });
 
-/**
- * Record the advisory brand pointer (§4.3) when a user applies one of the
- * BOUND kit's variations through the theme menu. Without this, a draft
- * switched to "Midnight" via the menu would lose its variation identity the
- * moment the kit updates (the pointer is what preserve-variation propagation
- * maps into the new revision). No-ops unless the canvas is bound and the
- * variation belongs to the bound kit's current payload set. UX metadata only
- * — never rendering truth.
- */
+/*
+  Record the draft's theme link (§4.3, §14.5a) when a user applies one of the
+  BOUND kit's variations through the theme menu. Without this, a draft switched
+  to "Midnight" via the menu would lose its variation identity the moment the
+  kit updates (the pointer is what preserve-variation propagation maps into the
+  new revision). No-ops unless the canvas is bound and the variation belongs to
+  the bound kit's current payload set. Never rendering truth — the theme menu's
+  own `applyTheme` op is what restyled the draft; this only records what it now
+  is an instance OF.
+
+  This is also the RESET path for overrides. The menu dispatches a wholesale
+  `applyTheme`, so the draft's globals become the variation's payload verbatim;
+  writing the same payload as the baseline means the override diff is empty by
+  construction, and the indicator goes dark. "Pick the theme again to reset" is
+  the affordance the indicator's tooltip promises, and this is the half of it
+  that clears the override set.
+*/
 export const recordDocumentBrandPointer = mutation({
   args: { documentId: v.id("documents"), variationId: v.string() },
   returns: v.null(),
@@ -954,8 +1046,8 @@ export const recordDocumentBrandPointer = mutation({
     if (kitRow === null) {
       return null;
     }
-    const hasVariation = kitRow.variations.some((variation) => variation.id === args.variationId);
-    if (!hasVariation) {
+    const variation = kitRow.variations.find((entry) => entry.id === args.variationId);
+    if (variation === undefined) {
       return null;
     }
     await ctx.db.patch(document._id, {
@@ -963,22 +1055,31 @@ export const recordDocumentBrandPointer = mutation({
         kitId: kitRow._id,
         revision: getEffectiveRevision(kitRow),
         variationId: args.variationId,
+        baselineGlobals: variation.globals,
       },
     });
     return null;
   },
 });
 
-/** Per-draft brand freshness (§4.3 pill logic — payload match composed with the pointer). */
+/*
+  Per-draft theme link state (§4.3 pill logic, §14.5a vocabulary). Resolved by
+  the shared pure `resolveDraftThemeLink` so this query and the toolbar can
+  never label the same draft two different ways.
+*/
 const draftBrandStateValidator = v.union(
-  /** Globals exactly match a variation of the bound kit's current revision. */
+  /** Connected to a theme of the bound kit, rendering it verbatim. */
   v.literal("current"),
-  /** Last brand apply was an older revision (or another kit) — show the pill. */
+  /**
+   * Connected to a theme of the bound kit with local per-property changes.
+   * RENAMES the old "detached" (§14.5a): the link was never severed, so the
+   * word was wrong. No pill — an override is a decision, not staleness.
+   */
+  v.literal("overridden"),
+  /** Something to adopt: an older revision, another kit, or the parent theme moved — show the pill. */
   v.literal("outdated"),
-  /** Bound brand never applied to this draft — show the pill (§5.2 skipped drafts). */
+  /** No parent theme at all — show the pill (§5.2 skipped drafts). */
   v.literal("never-applied"),
-  /** User hand-edited away AFTER applying the current revision — deliberately detached, no pill. */
-  v.literal("detached"),
 );
 
 const canvasBrandStatusValidator = v.object({
@@ -999,6 +1100,24 @@ const canvasBrandStatusValidator = v.object({
       state: draftBrandStateValidator,
       /** What propagation would apply — the preserve-variation preview (owner decision 2). */
       targetVariation: v.object({ id: v.string(), name: v.string() }),
+      /**
+       * The theme this draft is an INSTANCE OF (§14.5a), or null when it has
+       * none. Distinct from `targetVariation`, which is what propagation would
+       * apply next — for a never-applied draft there is no parent but there is
+       * always a target.
+       */
+      parentVariation: v.union(v.null(), v.object({ id: v.string(), name: v.string() })),
+      /**
+       * The global style properties whose resolved value differs from the
+       * parent theme's — the Webflow "this instance is overridden" set, sorted.
+       * Empty whenever `parentVariation` is null.
+       *
+       * GLOBALS LAYER ONLY. Per-section background overrides are block
+       * properties, and folding them in would make this reactive query depend
+       * on every block row of every draft on the canvas (see
+       * getThemeOverrideIndicator).
+       */
+      overriddenGlobalKeys: v.array(v.string()),
     }),
   ),
 });
@@ -1018,6 +1137,35 @@ async function readDocumentGlobals(
     return undefined;
   }
   return rootRow.properties.globals as GlobalStyles | undefined;
+}
+
+/*
+  Every section's theme-scoped background overrides, in `applyTheme`'s
+  `sectionOverrides` shape — the BLOCK-layer half of the override model
+  (§14.5a). `applyTheme` strips these before writing the new globals, so
+  handing them back on the same op is what makes "this one section is dark"
+  survive a brand update. Returns an empty array when no section carries one,
+  in which case the op omits the field entirely and behaves exactly as before.
+*/
+function collectSectionThemeOverrides(
+  doc: EmailDocument,
+): NonNullable<ApplyThemeOperation["sectionOverrides"]> {
+  const overrides: NonNullable<ApplyThemeOperation["sectionOverrides"]> = [];
+  for (const block of Object.values(doc)) {
+    if (block.type !== "section") {
+      continue;
+    }
+    const { innerBackgroundColor, outerBackgroundColor } = block.properties;
+    if (innerBackgroundColor === undefined && outerBackgroundColor === undefined) {
+      continue;
+    }
+    overrides.push({
+      blockId: block.id,
+      ...(innerBackgroundColor !== undefined ? { innerBackgroundColor } : {}),
+      ...(outerBackgroundColor !== undefined ? { outerBackgroundColor } : {}),
+    });
+  }
+  return overrides;
 }
 
 /**
@@ -1043,15 +1191,20 @@ function pickTargetVariation({
   );
 }
 
-/**
- * The single reactive read behind the Figma-style UX (§5.2/§6): the canvas's
- * binding plus every draft's brand freshness. Payload-equality
- * (findMatchingVariation over the draft's live root globals) composed with
- * the advisory pointer — so undo, manual edits, and collaborator restyles
- * all converge to the right pill state without any client bookkeeping.
- * Collaborators subscribe to the same query, which is why pills appear for
- * everyone reactively and nobody ever gets a blocking modal.
- */
+/*
+  The single reactive read behind the Figma-style UX (§5.2/§6): the canvas's
+  binding, plus every draft's theme link — which theme it is an instance of,
+  which of its properties are locally overridden, and whether it has anything
+  to adopt.
+
+  Every per-draft answer comes from ONE pure function (`resolveDraftThemeLink`,
+  §14.5a) that the toolbar's override indicator also calls, so the query and
+  the UI cannot disagree. It is derived from live data on every read — the
+  draft's root globals plus its pointer — which is why undo, manual edits,
+  batch reverts and collaborator restyles all converge without any client
+  bookkeeping. Collaborators subscribe to the same query, which is why pills
+  appear for everyone reactively and nobody ever gets a blocking modal.
+*/
 export const getCanvasBrandStatus = query({
   args: { canvasId: v.id("canvases") },
   returns: canvasBrandStatusValidator,
@@ -1076,29 +1229,39 @@ export const getCanvasBrandStatus = query({
     const drafts = [];
     for (const document of documents) {
       const globals = await readDocumentGlobals(ctx, document._id);
-      const matched = findMatchingVariation({ brandKit, globals });
       const pointer = document.brand;
-      const isPointerForCurrentKit = pointer !== undefined && pointer.kitId === kitId;
-      let state: "current" | "outdated" | "never-applied" | "detached";
-      if (matched !== null) {
-        state = "current";
-      } else if (pointer !== undefined && (!isPointerForCurrentKit || pointer.revision < revision)) {
-        state = "outdated";
-      } else if (isPointerForCurrentKit) {
-        state = "detached";
-      } else {
-        state = "never-applied";
-      }
+      const link = resolveDraftThemeLink({
+        variations: brandKit.variations,
+        kitId,
+        revision,
+        globals,
+        pointer,
+      });
+      /*
+        The TARGET is computed by the pre-§14.5a rule, unchanged and
+        deliberately independent of the link above: matched payload → the
+        pointer's variation if it survives → the kit's first. Keeping these two
+        separate is half the "no wrong restyle" argument — the richer resolver
+        only ever changes what a draft is CALLED, never what propagation would
+        write to it.
+      */
+      const matched = findMatchingVariation({ brandKit, globals });
       const target = pickTargetVariation({
         variations: kitRow.variations,
         matchedVariationId: matched?.id,
         pointerVariationId: pointer?.variationId,
       });
+      const parent =
+        link.parentVariationId === null
+          ? null
+          : (kitRow.variations.find((variation) => variation.id === link.parentVariationId) ?? null);
       drafts.push({
         documentId: document._id,
         name: document.name,
-        state,
+        state: link.state,
         targetVariation: { id: target.id, name: target.name },
+        parentVariation: parent === null ? null : { id: parent.id, name: parent.name },
+        overriddenGlobalKeys: link.overriddenGlobalKeys,
       });
     }
     return {
@@ -1209,10 +1372,61 @@ export const applyBrandToDocuments = mutation({
         matchedVariationId: matched?.id,
         pointerVariationId: state.document.brand?.variationId,
       });
-      const brandPointer = { kitId, revision, variationId: target.id };
+      /*
+        THE WEBFLOW MERGE (§14.5a). The target theme supplies every global;
+        the draft's OVERRIDDEN properties are re-applied on top, so a person
+        who set their own button color keeps it across a brand update instead
+        of having it silently reverted.
+
+        With zero overrides — every draft that exists before a theme is ever
+        edited — `composed` is the target's payload verbatim, byte-identical
+        to the wholesale replace this used to write. That is the migration's
+        "renders identically" guarantee, in the one place that writes.
+      */
+      const link = resolveDraftThemeLink({
+        variations: brandKit.variations,
+        kitId,
+        revision,
+        globals,
+        pointer: state.document.brand,
+      });
+      const composedGlobals = composeThemeGlobals({
+        themeGlobals: target.globals,
+        draftGlobals: globals,
+        overriddenGlobalKeys: link.overriddenGlobalKeys,
+      });
+      const brandPointer = {
+        kitId,
+        revision,
+        variationId: target.id,
+        /*
+          The baseline moves to the theme we just applied: from here on, the
+          draft's overrides are measured against THIS payload. Without the
+          move, the next edit of the same theme would re-diff against a payload
+          two revisions old and read the previous adoption as an override.
+        */
+        baselineGlobals: target.globals,
+      };
       const ops: Operation[] = [];
-      if (matched?.id !== target.id) {
-        ops.push({ name: "applyTheme", globals: target.globals } as Operation);
+      if (!areGlobalsEqual({ a: composedGlobals, b: globals })) {
+        /*
+          Per-SECTION background overrides (innerBackgroundColor /
+          outerBackgroundColor) are the BLOCK-layer half of the same idea, and
+          `applyTheme` deliberately strips them. Carrying them on the op's
+          `sectionOverrides` — the field the inverse already uses — re-sets them
+          in the same operation, so one section painted a custom color survives
+          a brand update exactly like an overridden global does.
+
+          The theme MENU still strips them, on purpose: picking a theme is the
+          explicit "make this draft this theme" gesture and is the reset path.
+          Propagation is "keep this draft's decisions, take the brand's update".
+        */
+        const sectionOverrides = collectSectionThemeOverrides(state.doc);
+        ops.push({
+          name: "applyTheme",
+          globals: composedGlobals,
+          ...(sectionOverrides.length > 0 ? { sectionOverrides } : {}),
+        } as Operation);
       }
       if (confirmedLogoUrl !== null) {
         const desiredAlt = `${kitRow.name} logo`;

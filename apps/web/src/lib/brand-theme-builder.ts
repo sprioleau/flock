@@ -13,15 +13,20 @@
   becomes the backstop that guarantees no failing kit is ever stored regardless
   of client, rather than the user's experience of the feature.
 
-  WHAT THIS MODULE DELIBERATELY DOES NOT DO: it never edits an existing
-  variation. §2 of the proposal is blocked on an unresolved question — editing
-  a variation's globals DETACHES every draft rendering it, because payload
-  equality is identity and `getCanvasBrandStatus` reads a changed payload as
-  "the user hand-edited away from this theme". Appending a NEW variation is
-  free of that: every draft still payload-matches the variation it was already
-  rendering, so its status stays "current". Adding is therefore in scope and
-  editing is not — see the note on `addBrandThemeVariation` in
-  convex/brandKits.ts.
+  WHAT THIS MODULE BUILDS, AND WHAT NOW SITS BESIDE IT: it composes theme
+  PAYLOADS and does not care whether they are appended or written over an
+  existing variation.
+
+  ~~It never edits an existing variation, because editing a variation's globals
+  DETACHES every draft rendering it.~~ That blocker is resolved
+  (brand-kit-user-control.md §14.5a): identity resolves `matched payload →
+  surviving pointer → none`, per-property overrides are diffed against the
+  baseline snapshot on `documents.brand`, and `updateBrandThemeVariation` in
+  convex/brandKits.ts is the edit path. An edit bumps the kit revision, so
+  referencing drafts read "outdated" and grow the normal non-blocking pill;
+  confirming it adopts the new payload while keeping each draft's own
+  overridden properties. Appending still does not bump — see both mutations'
+  comments for the two halves of that policy.
 
   Pure by design (no React, no DOM, no ctx): apps/web/vitest.config.ts pins
   `environment: "node"` for all of src/**, so the decision logic — eligibility,

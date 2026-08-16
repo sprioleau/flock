@@ -152,20 +152,51 @@ export default defineSchema({
     forkedFromDocumentId: v.optional(v.id("documents")),
     forkedFromVersion: v.optional(v.number()),
     /**
-     * ADVISORY brand pointer (Stage M, brand-kit architecture §4.3): what
-     * this draft last had applied by brand propagation — written by
-     * applyBrandToDocuments in the same transaction as the op batch. UX
-     * metadata ONLY (staleness pills): rendering truth stays
-     * root.properties.globals, and undo reverts globals without touching this
-     * pointer, so consumers must compose it with payload-equality
-     * (getCanvasBrandStatus does). Worst case of drift is a missing pill,
-     * never a wrong restyle.
+     * The draft's THEME LINK (Stage M §4.3, promoted to identity by
+     * brand-kit-user-control §14.5a): which kit theme this draft is an
+     * instance of, and the theme payload it was an instance of at the time.
+     *
+     * `variationId` is no longer a pure hint. Identity now resolves
+     * `matched payload → surviving pointer → none`
+     * (lib/brand-theme-link.ts `resolveDraftThemeLink`): payload equality
+     * keeps first say — an exact match is unambiguous and it is what makes
+     * undo read correctly, since undo reverts globals WITHOUT touching this
+     * pointer — and the pointer supplies identity exactly where equality has
+     * none. That is the Webflow case: a draft still connected to its theme
+     * with some properties locally overridden.
+     *
+     * Rendering truth is still root.properties.globals, and this row is still
+     * written only by paths a human confirmed (applyBrandToDocuments,
+     * recordDocumentBrandPointer). Nothing here restyles anything: the
+     * propagation target is picked by the same rule as before, and
+     * propagation now writes the theme's globals with the draft's OVERRIDDEN
+     * properties re-applied — a strict subset of the wholesale replace it
+     * used to write. Worst case of drift is still a missing pill, never a
+     * wrong restyle.
      */
     brand: v.optional(
       v.object({
         kitId: v.id("brandKits"),
         revision: v.number(),
         variationId: v.string(),
+        /**
+         * The variation's globals AS OF the moment this pointer was written —
+         * the baseline the per-property override diff is measured against.
+         *
+         * OPTIONAL and additive on purpose: every row written before §14.5a
+         * has none, and resolution falls back to the variation's CURRENT
+         * globals for those, which for an unedited kit is the same payload.
+         * That is the entire migration — no backfill, nothing restyled.
+         *
+         * Why store it at all: once a theme can be EDITED, the kit's copy of
+         * "Midnight" moves, and diffing a draft against the moved copy cannot
+         * tell a local override from a not-yet-adopted parent change.
+         * Propagation would then preserve the stale values instead of
+         * adopting the new ones. The baseline separates the two.
+         *
+         * Runtime guard: globalStylesSchema, same policy as blocks/ops.
+         */
+        baselineGlobals: v.optional(v.record(v.string(), v.any())),
       }),
     ),
     createdAtMs: v.number(),

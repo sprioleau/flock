@@ -188,9 +188,15 @@ describe("applyBrandToDocuments — the explicit propagation", () => {
       expect(brandOps[0]?.authorId).toBe(SESSION_ID);
       // Never-applied drafts get the kit's FIRST variation.
       expect(await getRootGlobals(t, documentId)).toEqual(buildKitInput().variations[0]!.globals);
-      // Advisory pointer written in the same transaction.
+      // Theme link written in the same transaction, carrying the §14.5a
+      // baseline snapshot the per-property override diff is measured against.
       const row = await getDocumentRow(t, documentId);
-      expect(row.brand).toEqual({ kitId, revision: 1, variationId: "classic-light" });
+      expect(row.brand).toEqual({
+        kitId,
+        revision: 1,
+        variationId: "classic-light",
+        baselineGlobals: buildKitInput().variations[0]!.globals,
+      });
     }
   });
 
@@ -250,6 +256,9 @@ describe("applyBrandToDocuments — the explicit propagation", () => {
       kitId,
       revision: 3,
       variationId: "classic-light",
+      // The baseline moves to the theme just applied: from here the draft's
+      // overrides are measured against THIS payload, not the vanished one.
+      baselineGlobals: shrunkKit.variations[0]!.globals,
     });
   });
 
@@ -347,7 +356,7 @@ describe("applyBrandToDocuments — the explicit propagation", () => {
 });
 
 describe("getCanvasBrandStatus — pill states", () => {
-  it("current → outdated on revision bump → current after update; hand-edits detach", async () => {
+  it("current → outdated on revision bump → current after update; hand-edits read as overridden", async () => {
     const t = createBackend();
     await saveKit(t, buildKitInput());
     const { documentId, canvasId } = await createDraft(t);
@@ -373,7 +382,9 @@ describe("getCanvasBrandStatus — pill states", () => {
     const updatedStatus = await t.query(api.brandKits.getCanvasBrandStatus, { canvasId });
     expect(updatedStatus.drafts[0]?.state).toBe("current");
 
-    // A deliberate hand-edit away from the brand: detached, never "outdated".
+    // A deliberate hand-edit away from the brand: OVERRIDDEN (§14.5a — the
+    // link is intact, one property is the user's), never "outdated". The
+    // parent theme and the exact overridden property come back with it.
     const customGlobals = {
       ...buildKitInput({ spacingBump: 4 }).variations[0]!.globals,
       baseSpacing: 99,
@@ -383,8 +394,10 @@ describe("getCanvasBrandStatus — pill states", () => {
       ops: [{ name: "applyTheme", globals: customGlobals }],
       context: { authorId: SESSION_ID, author: "user", caller: "frontend" },
     });
-    const detachedStatus = await t.query(api.brandKits.getCanvasBrandStatus, { canvasId });
-    expect(detachedStatus.drafts[0]?.state).toBe("detached");
+    const overriddenStatus = await t.query(api.brandKits.getCanvasBrandStatus, { canvasId });
+    expect(overriddenStatus.drafts[0]?.state).toBe("overridden");
+    expect(overriddenStatus.drafts[0]?.parentVariation?.id).toBe("classic-light");
+    expect(overriddenStatus.drafts[0]?.overriddenGlobalKeys).toEqual(["baseSpacing"]);
   });
 
   it("returns an empty status for unbound canvases (no pills without a binding)", async () => {

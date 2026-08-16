@@ -27,8 +27,14 @@ import { BrandApplyDialog } from "./BrandApplyDialog";
  * Self-contained (drafts-v2 pattern): reads the canvas id from the active
  * editor store and subscribes to getCanvasBrandStatus itself — mount it with
  * one line anywhere a draft is represented (frame header, toolbar). Renders
- * null while the draft is current/detached, so it's free to mount
+ * null while the draft is "current" or "overridden", so it's free to mount
  * unconditionally.
+ *
+ * "overridden" (§14.5a, formerly "detached") deliberately gets NO pill: local
+ * property overrides are a decision, not staleness, and there is nothing to
+ * adopt. Its indicator is the quiet dot next to the theme dropdown
+ * (ThemeOverrideDot) — and an overridden draft whose parent theme later moves
+ * becomes "outdated" and grows this pill like any other.
  */
 export function DraftBrandPill({
   documentId,
