@@ -1,68 +1,279 @@
 # Flock
 
-| Dark | Light |
-|--------|-------|
-| ![Flock studio in dark mode](apps/web/public/screenshots/flock-app-dark-mode.png) | ![Flock studio in light mode](apps/web/public/screenshots/flock-app-light-mode.png) |
-
 **What email creation looks like when humans and agents are the same kind of collaborator.**
+
+![The Flock studio with a draft open](assets/screenshots/studio-hero.png)
+
+*The UI is changing quickly. Every screenshot in this README is a snapshot of a moving target — treat them as a sense of the shape, not a specification. Nothing else in this document is approximate: every capability claimed below is in the repo, and everything that is not built yet is in [its own section](#planned--not-built-yet).*
 
 Flock is a collaborative email studio where you don't just get an AI assistant bolted onto an editor — you get a room. You edit on a live canvas; a copilot builds alongside you from plain language; a crew of advisory agents reads your drafts on a cadence and leaves reviewable recommendations; and other humans (and their agents) can be in the document at the same time, cursors and all. Every change — human click, copilot edit, agent suggestion — flows through the same validated, invertible operations, so you can see who did what, apply anything with one click, and revert anything just as fast.
 
-This is a working preview of a future-facing idea: software where agents are first-class collaborators with visible presence and editable expertise, and the human is always in control.
+The argument this project is making: **an agent should get the same capabilities as a human, and no more authority.** Not a reduced set of capabilities, not a parallel and weaker one — the same one, generated from the same source. And separately, deliberately, less authority: the things that are irreversible or that leave the building stay behind a human's decision.
 
 ### 🎥 Demo
 
 [View demo](https://drive.google.com/file/d/1wFisUqoCZpDKZrtSQlJ2VxGkeRBH4PZB/view?usp=drive_link).
 
+| Dark | Light |
+|--------|-------|
+| ![Flock studio in dark mode](apps/web/public/screenshots/flock-app-dark-mode.png) | ![Flock studio in light mode](apps/web/public/screenshots/flock-app-light-mode.png) |
+
+## The actions layer
+
+Most products that add an AI assistant end up maintaining two descriptions of what the product can do: the real one, in the UI code, and a second one written for the model — a set of tool definitions, hand-written, drifting. The second one is always a subset, always slightly wrong, and always the thing you forget to update.
+
+Flock has one. `packages/email-sdk/src/actions/` holds a registry of **actions**. An action is a single, self-describing unit of "a thing that can be done to an email", defined once:
+
+```ts
+export const sendTestEmailAction = defineEmailAction({
+  name: "sendTestEmail",
+  description:
+    "Send a test version of the current email to one recipient for review. Requires human approval before executing.",
+  kind: "editor",
+  schema: sendTestEmailInputSchema,
+  readOnly: false,
+  parallelSafe: false,
+  needsApproval: true,
+  run: (input): SendTestEmailCommand => ({ type: "sendTestEmail", to: input.to }),
+});
+```
+
+That one definition carries everything any consumer needs: the name, the human- and model-facing description, the full Zod schema that validates every invocation, a compact model-facing variant of that schema, whether it is safe to run concurrently, and whether a human has to approve it. There is no second place to update.
+
+```mermaid
+flowchart TB
+    subgraph SDK["packages/email-sdk — pure: no React, no Convex, no ai"]
+        DEF["defineEmailAction()<br/>name · description · schema<br/>agentInputSchema · parallelSafe<br/>needsApproval · run"]
+        REG["emailActionRegistry<br/>15 content actions · 9 editor actions"]
+        DEF --> REG
+    end
+
+    REG --> TOOLS["toAISDKToolDefinitions()<br/>model-facing tool declarations"]
+    REG --> GUIDE["buildToolGuidance()<br/>packages/agent — the tool section<br/>of the system prompt"]
+    REG --> DISPATCH["dispatchContentAction()<br/>dispatchEditorAction()<br/>validate → run → inverse + log entry"]
+
+    TOOLS --> CHAT["/api/chat"]
+    GUIDE --> CHAT
+    UI["Studio UI<br/>toolbars · panels · drag and drop"] --> DISPATCH
+    CHAT --> DISPATCH
+    DISPATCH --> OPLOG[("append-only op log<br/>author · caller · batchId")]
+```
+
+Read the arrows out of `emailActionRegistry`. Three different things are **generated** from it, none of them written by hand:
+
+- **`toAISDKToolDefinitions(registry)`** produces the tool declarations the model is given. Adding an action to the registry is the entire act of giving the copilot a new capability.
+- **`buildToolGuidance(registry)`** — in `packages/agent/src/prompts/` — writes the "Available tools" section of the system prompt by walking the same registry, printing each action's own `description` alongside its `kind`, `readOnly`, `parallelSafe`, and `needsApproval` flags. The prompt cannot describe a tool the registry does not have, or omit one it does.
+- **`dispatchContentAction` / `dispatchEditorAction`** are the execution path, and they are the *same* execution path for both callers. The studio's own editor store dispatches human edits through `dispatchContentAction` against `emailActionRegistry`; the chat pipeline dispatches the model's tool calls through the same function, against a registry that is the same one plus a few read-only analysis tools.
+
+There is no "AI path" through this codebase. There is one path, taken by two kinds of caller.
+
+### The consequences
+
+**Validation is not something the model can skip.** The compact `agentInputSchema` is what the model *sees*; dispatch always re-validates the raw input against the full `schema`. A malformed tool call is rejected before the document is touched, and the rejection is written as a repair hint — the errors carry a stop-vs-retry taxonomy so a fixable mistake costs one round-trip and an unfixable one ends the turn honestly instead of thrashing.
+
+**Intent is translated deterministically, and only the result is recorded.** Some actions take model-friendly intent rather than document surgery: `styleTextSpan` takes "the phrase to find and how to style it", `scaffoldSection` takes a catalog template id and its copy. A pure `resolveOperation` hook turns that intent into one canonical operation against the current document *before* anything runs — so the history spine only ever holds replayable operations, never intent shapes, and undo works on them like everything else.
+
+**Provenance is structural.** Every dispatch carries an `ActionContext`: who the author is, whether they are a `user` or an `agent`, which surface the call arrived through, and which batch it belongs to. That context is stamped onto the op-log entry. "Who changed this, and was it a human or an agent?" is answerable because it is recorded at the only place a change can happen.
+
+**Concurrency is declared, not guessed.** `parallelSafe` is a per-action fact with a written rationale. Single-block property and text edits are parallel-safe; anything that contends on the document root's globals, or shifts sibling indices, is not. The model is told which is which, in the tool guidance, generated from the flags themselves.
+
+## Same capabilities, different authority
+
+The symmetry is the point, and so is the asymmetry.
+
+![Agent collaborators working on the canvas alongside the user](assets/screenshots/multi-agent-canvas.png)
+
+**Same capabilities.** The registry's editor actions exist because of a simple rule: anything the human can do in the UI and refer to in conversation, the agent should be able to do. So `openPanel` opens the theme picker, the brand kit, the asset library, the persona picker, version history, the blocks and properties tabs, or the send-test dialog. `undo` and `redo` take exactly the toolbar's history steps. `createDraft` adds drafts to the drafts bar. `createPersona` creates a reviewer agent. `showPreview` flips the canvas between desktop and mobile.
+
+Crucially, these are not synthesized clicks. `openPanel` resolves to a typed command that the client hands to `requestUiSurfaceOpen` (`apps/web/src/lib/ui-surfaces.ts`), a small module store each panel subscribes to. The panel runs *its own* open mechanism — the same one the human's button runs. The agent is not driving a puppet of the UI; it is pulling the UI's real levers, and the human's own open state is never clobbered.
+
+**Different authority.** Two of the twenty-four registry actions carry `needsApproval: true`, and both are chosen deliberately: `sendTestEmail`, because an email leaves the building, and `goToVersion`, because a restore rewrites the working document wholesale. When the model calls either, the turn *halts*. An approval chip appears in chat. A human releases it or does not.
+
+```mermaid
+flowchart LR
+    H["Human<br/>clicks a control"] --> C1["ActionContext<br/>caller: frontend<br/>author: user"]
+    A["Copilot<br/>calls a tool"] --> C2["ActionContext<br/>caller: tool<br/>author: agent"]
+    C1 --> GATE{"resolveNeedsApproval<br/>(input, context)"}
+    C2 --> GATE
+    GATE -->|false| RUN["run()"]
+    GATE -->|true| HALT["turn halts —<br/>approval chip in chat"]
+    HALT -->|"a human approves"| RUN
+    RUN --> LOG[("op-log entry, stamped<br/>with author + caller")]
+```
+
+`needsApproval` can also be a predicate over the validated input *and* the caller context, which is why "different authority" is expressible at all: the gate can depend on who is asking, not just what is being asked.
+
+The same principle runs through the rest of the product, and it is worth naming the mechanisms rather than the intentions:
+
+- **Advisory personas cannot edit.** The persona registry pins `capabilityMode: v.literal("advisory")` in `convex/schema.ts` — the schema itself, not a check that could be forgotten. The agent crew proposes findings; it never writes to the document.
+- **The system prompt forbids destroying work you did not ask to destroy.** In `packages/agent/src/prompts/system-static.ts`: asked for a new draft, the copilot creates one, because *"removing or rewriting the user's existing content to make room for a new idea destroys work they did not ask you to destroy."*
+- **Failure is reported, not papered over.** When the web-content fetch cannot read a page — blocked by robots rules, paywalled, not an article — the tool returns a failure and the prompt's rule is absolute: relay it, make no edits, stop. *"Inventing plausible content for an unread page is the one unforgivable failure here."* A person-spotlight with no photo composes without one rather than describing someone it has not seen.
+- **Suggestions are proposals.** A pattern the copilot notices in what you just did becomes a pre-validated batch with three buttons: apply, revert, dismiss. Nothing is applied silently.
+- **Anonymous work is not hostage.** You can start with no account and claim everything later with a one-tap sign-in link. The path of least resistance does not cost you your work.
+
+## Surfaces: what one registry makes possible
+
+Because the registry is pure data plus one pure `run` hook — it imports no React, no Convex, and not even the `ai` package — a surface is a thin adapter over it rather than a reimplementation of the product.
+
+```mermaid
+flowchart LR
+    REG["emailActionRegistry<br/>(+ agent analysis actions)"]
+    REG --> UI["Studio UI<br/>caller: frontend"]
+    REG --> TOOL["Copilot tool calls<br/>caller: tool"]
+    REG -.-> HTTP["HTTP mount<br/>caller: http"]
+    REG -.-> MCP["MCP server<br/>caller: mcp"]
+    REG -.-> CLI["CLI<br/>caller: cli"]
+```
+
+**Solid arrows are built. Dashed arrows are not.** Two surfaces exist today: the studio UI and the copilot's tool calls. That is the honest state of it.
+
+What is real about the rest is the *shape of the seam*, not an implementation. `ACTION_CALLERS` in `packages/email-sdk/src/actions/context.ts` already enumerates `tool`, `http`, `frontend`, `cli`, and `mcp`, and both `convex/schema.ts` and the op-log validator accept all five — the provenance vocabulary was designed for surfaces that do not exist yet, so an action invoked from a CLI would already be attributable in history the day one is written. What is missing is the adapter: an HTTP route, an MCP server, a command-line entry point. None of them is in this repo.
+
+The claim being made here is narrow and I want to keep it narrow: **the expensive part of adding those surfaces is not the surface.** It is agreeing on what the product can do, validating it, gating it, and recording it — and that part is done once, in the registry, and is already carrying two consumers in production.
+
 ## The feature set
 
-| Category | Feature | What it does |
-|---|---|---|
-| **The Canvas** | Multi-draft canvas | Work on several drafts side by side as frames on one canvas — the active draft is a full live editor, siblings render as live previews. Duplicate a draft to explore a variation, promote one to its own canvas, delete the dead ends, and copy a link that drops a collaborator straight onto any draft or canvas. |
-| | Direct manipulation | Drag-and-drop blocks — within the canvas or straight from the palette, where every tile drags — plus floating block toolbars (move, duplicate, delete) and property panels with instant feedback: sliders, color pickers, font dropdowns. |
-| | Rich text, block by block | Full rich text inside every text block: per-paragraph alignment, span-level styling — font family, size, color, highlight, links — and a one-click heading preset. Button labels edit right on the canvas. |
-| | A full block set | Text, heading, button, image, logo, divider, link, code, and spacer — plus two-, three-, and four-column layouts. New drafts open on a polished starter email. |
-| | Section gallery | Eighteen categorized section templates — headers, heroes, feature layouts, product, pricing, testimonials, stats, footers, and more — rendered as live previews in your current theme. Drag one in or click to add; the copilot composes from the same catalog. |
-| | Saved sections | Save any section you like and reuse it anywhere. A manager lists your library with usage counts, each saved section carries an AI-written note on when it fits, and the copilot reaches for your sections when composing. |
-| | Keyboard-first | ⌘B and ⌘\ toggle the panels, ⌘K jumps to chat, `/` summons a quick prompt from anywhere, `C` flips into comment mode, ⌘⇧L cycles light/dark, and holding `A` turns your cursor into a block stamp. |
-| | Comments | Drop a pinned comment on any block (or on the draft as a whole), thread the discussion, and hand one comment — or every open one at once — to the copilot as a fix request. Threads are shared with everyone in the document, and a comment whose block is deleted is flagged rather than silently lost. |
-| | Dark mode | Light, Dark, or System — the whole studio follows. |
-| | Viewport toggle | Flip any frame between desktop and mobile widths. |
-| **The AI Copilot** | Chat that edits the document | Describe what you want; the copilot streams validated edit operations onto the canvas in real time. Invalid tool calls are repaired automatically before they ever touch the document. |
-| | Whole emails, streamed in sections | Ask for a full email and it assembles section by section, streaming onto the canvas as each part lands — you watch the email build instead of waiting for it. |
-| | Whole new drafts, composed | Ask for a draft *about* something and the copilot adds new drafts beside the one you're on — each a complete header/body/footer email that inherits your theme, with several in one request deliberately varying their shape so exploring is actually exploring. Your current draft is never rebuilt underneath you. |
-| | It tells you what it's doing | A turn narrates itself: a thinking state before the first edit lands, then plain-language progress for each step. The wording is always human — a tool the panel hasn't been taught falls back to neutral phrasing rather than leaking an internal name. |
-| | AI image generation | Generate images for image blocks from a prompt, with an instant in-canvas preview. Every generation lands in your asset library, ready to browse and reuse. *(Runs against a deterministic stand-in generator on the live deployment — the Gemini image models need a billing-enabled key, and the deployment's is free-tier.)* |
-| | Reads the web for you | Point the copilot at a public article and it pulls the content in cleanly — title, byline, date, source, lead image — or at a person's profile page for a spotlight section. Attribution and a link back to the original are built into the workflow, and a page it genuinely cannot read produces a refusal in chat, never invented content. |
-| | Canvas-to-chat handoff | Send a selected block or text span straight into the chat composer, queue multiple requests, and recall your prompt history. |
-| | It can drive the chrome too | The copilot isn't limited to the document: it can open a named panel or dialog, undo, redo, jump the draft to an earlier version, add drafts, and create an advisory agent — the same things you can do, through the same validated, logged actions. |
-| | Suggestions from what you just did | Recolor one button and the copilot notices, then offers to finish the pattern — the section's other buttons, every button in the email, or a re-theme around the new color. Each suggestion is a pre-validated batch: one click applies it, one click reverts it, one click dismisses it for good. |
-| **The Agent Crew** | Proactive advisory personas | Four built-in reviewers — **Tone Police**, **Styling Recommender**, **QA Reviewer**, and **Date Checker** — read your drafts on a cadence and surface findings as recommendations, not silent edits. |
-| | Visible agent presence | Agents aren't invisible processes. They appear in the header alongside humans, wear pentagon avatars (humans stay circles), and move live cursors across the canvas showing what they're reading, thinking about, and presenting. |
-| | Editable expertise | Every persona's behavior is data, not code — open the structured editor and change what an agent cares about. Editing a built-in forks your own copy; the original stays intact. |
-| | Agents you write yourself | Create an agent from scratch in the same editor — name it, describe its job, write its behavior. It joins the roster as an equal, and you can delete it again. The copilot can create one for you on request. |
-| | You set the pace | Each agent carries its own eagerness slider — from patient to eager — a single pause switch stops the whole crew, and **Check now** triggers a review on demand without waiting for a cooldown. |
-| | Reviewable recommendations | Findings arrive in a tray with a badge — apply any suggestion with one click, revert it just as easily, dismiss all at once, and browse each agent's full history in a per-agent modal. Findings persist and converge across tabs. |
-| | Ask in chat | When a finding calls for judgment rather than a one-click fix, hand it to the copilot as a ready-made prompt and work it out in conversation. |
-| | Affordable to leave on | Each persona watches only the parts of the document it cares about, and lightweight heartbeat checks decide when a change actually warrants a full review — so the crew stays cheap while it stays vigilant. |
-| **Multiplayer** | Humans together | Live named cursors, a presence facepile, and per-block collaborative rich text — two people can type in the same paragraph. |
-| | Agents in the same room | AI edits merge through the same server-side transform as human keystrokes, so the copilot can restyle a paragraph *while you're typing in it* without clobbering your cursor. |
-| | Ghost collaborator | A simulated teammate for solo demos — real presence, real cursor, real typing through the same sync pipeline, so you can see multiplayer without a second person. Turn it on in settings alongside the other demo controls. |
-| **History & Trust** | One append-only history | Every mutation from every collaborator lands in a single operation log with authorship — you can always answer "who changed this, and was it a human or an agent?" |
-| | Undo, redo, revert | Undo/redo that never rewrites history, plus per-batch revert: unwind any past change — yours, the copilot's, or an agent's — without touching everything after it. |
-| | Time travel | Restore the document to any point in time, or scrub through its entire history and watch it replay like a movie. Before/after chips show each change at a glance, in human language. |
-| | Op inspector | For the curious: a live console showing every raw operation and its inverse as they happen. Together with replay, it lives behind the settings toggle rather than cluttering the toolbar. |
-| **Brand & Theme** | Brand kit from a URL | Type your website address — with or without the `https://` — and Flock extracts your palette (including signature accents), logo, brand name, social card, and social links, and builds a theme from it. |
-| | Assets you approve | Extracted logos and images arrive as proposals — nothing joins your kit until you confirm it. Your social links can fill the email footer in one click. |
-| | The scrape proposes, you dispose | Rename any color, recategorize it as primary/secondary/accent, add or remove one; pick your heading and body fonts from the email-safe list; edit how the brand sounds — how formal it is, what it talks about itself as, and the words that describe its voice. Re-scraping the site keeps everything you edited by hand instead of overwriting it. |
-| | Brand colors everywhere | Your brand palette shows up as swatches inside every color picker in the studio, so on-brand is always one click away. |
-| | The copilot writes in your voice | Your saved tone of voice reaches the copilot when it writes email copy — scoped to the copy itself, so the copilot's own replies stay in its normal voice. |
-| | Live theming | Pick a theme and every draft follows it live; override any global and snap back cleanly. |
-| **Output & Sending** | Email-safe HTML | One click exports email-client-safe HTML — table-based layout, inline styles, unsafe marks trimmed at the renderer — previewable in a sandboxed pane and covered by golden-fixture snapshots. *(Not yet done: an output validator and real Outlook/Gmail/Apple Mail spot checks. The rendered email also has no dark-mode handling yet — the studio's dark mode is the app's chrome, not the email's.)* |
-| | Real sending, human-approved | Send yourself a test from the draft's own toolbar or straight from the preview dialog — the recipient defaults to the address you signed in with, and the destination is spelled out in full above the button. Delivered via Resend. The copilot can prepare a send too, but only a human releases it, after an explicit approval step. |
-| **Accounts & Access** | Start with one click, keep it with an email | Anyone can start immediately with no account. Add your email and a one-tap sign-in link claims everything you already made — drafts, brand kits, library, your agents — onto a durable identity. Share links are unaffected: the link is the key, and it opens with nothing in front of it. |
-| | An allowance, not a wall | Every identity gets a daily allowance of AI work, with a larger one for claimed accounts than for anonymous sessions. Only work *you* asked for spends it — the advisory agents' background sweeps are free, throttled by their own pacing instead. |
-| | A home for your work | Signing in lands you on your emails, not in a blank editor. Each one is a card with its name, how many drafts are inside, when you last touched it, and the drafts listed by name — rename it, delete it, or open it right back where you left off. Prior work is findable instead of link-only. |
+Grouped, with the detail folded away. Open a group to read about it.
+
+<details>
+<summary><b>The canvas</b> — a multi-draft editor with direct manipulation and a full block set</summary>
+
+<br />
+
+Work on several drafts side by side as frames on one canvas: the active draft is a full live editor and its siblings render as live previews. Duplicate a draft to explore a variation, promote one to its own canvas, delete the dead ends, and copy a link that drops a collaborator straight onto any draft or canvas. Flip any frame between desktop and mobile widths.
+
+Everything is directly manipulable. Drag blocks within the canvas or straight from the palette — every tile in the palette drags. Floating toolbars move, duplicate, and delete; property panels give instant feedback through sliders, color pickers, and font dropdowns. Text blocks carry full rich text: per-paragraph alignment, span-level styling (font family, size, color, highlight, links), and a one-click heading preset. Button labels edit right on the canvas.
+
+The block set is text, heading, button, image, logo, divider, link, code, and spacer, plus two-, three-, and four-column layouts. New drafts open on a polished starter email rather than a blank page.
+
+![The section gallery, with live previews in the current theme](assets/screenshots/sections-gallery.png)
+
+Eighteen categorized section templates — headers, heroes, feature layouts, article, gallery, product, pricing, testimonials, stats, CTA, code sample, and three footers — render as live previews in your current theme. Drag one in or click to add. The copilot composes from the same catalog, because the catalog is single-sourced: the section listing in the model's prompt is generated from `SECTION_TEMPLATES`, so it cannot drift from the gallery you are looking at.
+
+You can also save any section you like and reuse it anywhere. A manager lists your library with usage counts, each saved section carries an AI-written note on when it fits, and the copilot reaches for your sections when composing.
+
+The studio is keyboard-first: ⌘B and ⌘\ toggle the panels, ⌘K jumps to chat, `/` summons a quick prompt from anywhere, `C` flips into comment mode, ⌘⇧L cycles light/dark, and holding `A` turns your cursor into a block stamp.
+
+</details>
+
+<details>
+<summary><b>The copilot</b> — chat that edits the document, and the chrome around it</summary>
+
+<br />
+
+Describe what you want and the copilot streams validated edit operations onto the canvas in real time. Ask for a full email and it assembles section by section, each part landing as its call completes — you watch the email build instead of waiting for it. Ask for a draft *about* something and it adds new drafts beside the one you're on, each a complete header/body/footer email that inherits your theme, with several in one request deliberately varying their shape so exploring is actually exploring. Your current draft is never rebuilt underneath you.
+
+A turn narrates itself: a thinking state before the first edit lands, then plain-language progress for each step. The wording is always human — a tool the panel hasn't been taught falls back to neutral phrasing rather than leaking an internal name.
+
+Beyond the document, the copilot drives the chrome: it can open a named panel or dialog, undo, redo, jump the draft to an earlier version, add drafts, and create an advisory agent — the same things you can do, through the same validated, logged actions described in [the actions layer](#the-actions-layer) above.
+
+![Chat suggestions offered as apply-or-dismiss cards](assets/screenshots/chat-suggestions.png)
+
+Recolor one button and the copilot notices, then offers to finish the pattern: the section's other buttons, every button in the email, or a re-theme around the new color. Each suggestion is a pre-validated batch — one click applies it, one click reverts it, one click dismisses it for good.
+
+It reads the web for you, too. Point it at a public article and it pulls the content in cleanly — title, byline, date, source, lead image — or at a person's profile page for a spotlight section. Attribution and a link back to the original are built into the workflow, and a page it genuinely cannot read produces a refusal in chat, never invented content.
+
+It can generate images for image blocks from a prompt, with an instant in-canvas preview; every generation lands in your asset library, ready to browse and reuse. *(This runs against a deterministic stand-in generator on the live deployment — the Gemini image models need a billing-enabled key, and the deployment's is free-tier.)*
+
+Handoff runs both ways: send a selected block or text span straight into the chat composer, queue multiple requests, and recall your prompt history.
+
+</details>
+
+<details>
+<summary><b>The agent crew</b> — advisory reviewers with presence, editable expertise, and a pace you set</summary>
+
+<br />
+
+Four built-in reviewers — **Tone Police**, **Styling Recommender**, **QA Reviewer**, and **Date Checker** — read your drafts on a cadence and surface findings as recommendations, never silent edits.
+
+They are not invisible processes. They appear in the header alongside humans, wear pentagon avatars (humans stay circles), and move live cursors across the canvas showing what they're reading, thinking about, and presenting.
+
+![An advisory agent's finding in a comment thread](assets/screenshots/comments-agent.png)
+
+Every persona's behavior is data, not code. Open the structured editor and change what an agent cares about; editing a built-in forks your own copy and leaves the original intact. Create one from scratch in the same editor — name it, describe its job, write its behavior — and it joins the roster as an equal. The copilot can create one for you on request.
+
+You set the pace. Each agent carries its own eagerness slider, from patient to eager; a single pause switch stops the whole crew; and **Check now** triggers a review on demand without waiting for a cooldown.
+
+Findings arrive in a tray with a badge. Apply any suggestion with one click, revert it just as easily, dismiss all at once, and browse each agent's full history in a per-agent modal. Findings persist and converge across tabs. When a finding calls for judgment rather than a one-click fix, hand it to the copilot as a ready-made prompt and work it out in conversation.
+
+Leaving the crew on is affordable by design: each persona watches only the parts of the document it cares about, and lightweight heartbeat checks decide when a change actually warrants a full review.
+
+</details>
+
+<details>
+<summary><b>Multiplayer</b> — humans and agents in the same document at the same time</summary>
+
+<br />
+
+Live named cursors, a presence facepile, and per-block collaborative rich text: two people can type in the same paragraph.
+
+AI edits merge through the same server-side transform as human keystrokes, so the copilot can restyle a paragraph *while you're typing in it* without clobbering your cursor. This is the infrastructure-level version of the thesis — presence and sync do not distinguish "user" from "bot", which is exactly why agent activity is visible rather than ambient and spooky.
+
+For solo demos there is a ghost collaborator: a simulated teammate with real presence, a real cursor, and real typing through the same sync pipeline, so you can see multiplayer without a second person. Turn it on in settings alongside the other demo controls.
+
+Comments are shared too. Drop a pinned comment on any block (or on the draft as a whole), thread the discussion, and hand one comment — or every open one at once — to the copilot as a fix request. A comment whose block is deleted is flagged rather than silently lost.
+
+</details>
+
+<details>
+<summary><b>History and trust</b> — one log, exact inverses, and time travel</summary>
+
+<br />
+
+Every mutation from every collaborator lands in a single append-only operation log with authorship. There is no second history for AI edits, which is why you can always answer "who changed this, and was it a human or an agent?"
+
+Undo and redo never rewrite history. Per-batch revert unwinds any past change — yours, the copilot's, or an agent's — without touching everything after it, because applying an operation always returns its exact inverse.
+
+Time travel restores the document to any point, or scrubs through its entire history and replays it like a movie, with before/after chips describing each change in human language.
+
+For the curious there is an op inspector: a live console showing every raw operation and its inverse as they happen. Together with replay it lives behind a settings toggle rather than cluttering the toolbar.
+
+</details>
+
+<details>
+<summary><b>Brand and theme</b> — a kit extracted from your website, which you then own</summary>
+
+<br />
+
+Type your website address — with or without the `https://` — and Flock extracts your palette (including signature accents), logo, brand name, social card, and social links, then builds a theme from it.
+
+![The brand kit, built from a website](assets/screenshots/brand-kit.png)
+
+Extracted logos and images arrive as *proposals*: nothing joins your kit until you confirm it. Your social links can fill the email footer in one click.
+
+The scrape proposes and you dispose. Rename any color, recategorize it as primary/secondary/accent, add or remove one; pick your heading and body fonts from the email-safe list; edit how the brand sounds — how formal it is, what it talks about itself as, and the words that describe its voice. Re-scraping the site keeps everything you edited by hand instead of overwriting it.
+
+Your brand palette then shows up as swatches inside every color picker in the studio, so on-brand is always one click away, and your saved tone of voice reaches the copilot when it writes email copy — scoped to the copy itself, so the copilot's own replies stay in its normal voice.
+
+Pick a theme and every draft follows it live; override any global and snap back cleanly.
+
+</details>
+
+<details>
+<summary><b>Output and sending</b> — email-safe HTML, and a send a human releases</summary>
+
+<br />
+
+One click exports email-client-safe HTML: table-based layout, inline styles, unsafe marks trimmed at the renderer, previewable in a sandboxed pane and covered by golden-fixture snapshots. *(Not yet done: an output validator and real Outlook/Gmail/Apple Mail spot checks. The rendered email also has no dark-mode handling yet — the studio's dark mode is the app's chrome, not the email's.)*
+
+Send yourself a test from the draft's own toolbar or straight from the preview dialog. The recipient defaults to the address you signed in with, and the destination is spelled out in full above the button. Delivery is via Resend.
+
+The copilot can prepare a send too — `sendTestEmail` is in the same registry as everything else — but it is one of the two actions gated on `needsApproval`, so the turn stops and waits for a person.
+
+</details>
+
+<details>
+<summary><b>Accounts and access</b> — start instantly, claim later, spend an allowance</summary>
+
+<br />
+
+Anyone can start immediately with no account. Add your email and a one-tap sign-in link claims everything you already made — drafts, brand kits, library, your agents — onto a durable identity. Share links are unaffected: the link is the key, and it opens with nothing in front of it.
+
+Every identity gets a daily allowance of AI work, larger for claimed accounts than for anonymous sessions. Only work *you* asked for spends it; the advisory agents' background sweeps are free, throttled by their own pacing instead.
+
+Signing in lands you on your emails, not in a blank editor. Each one is a card with its name, how many drafts are inside, when you last touched it, and the drafts listed by name — rename it, delete it, or open it right back where you left off. Prior work is findable instead of link-only.
+
+</details>
 
 ### Planned — not built yet
 
@@ -70,7 +281,8 @@ Listed here because they are committed direction, not speculation.
 
 | Feature | What it will do |
 |---|---|
-| **Sent state** | The home page shows you what you have, but not what you have *sent* — a card can't yet say "this one went out", or which of its drafts was the one sent. Only ever one is, which is exactly what makes it worth showing. Design brief: `docs/proposals/dashboard-and-collections.md`. |
+| **Non-UI surfaces** | An HTTP mount, an MCP server, and a CLI over `emailActionRegistry` — the case for them is [above](#surfaces-what-one-registry-makes-possible). The provenance vocabulary (`http`, `mcp`, `cli`) is already in the schema; the adapters are not written. |
+| **Sent state** | The home page shows you what you have, but not what you have *sent* — a card can't yet say "this one went out", or which of its drafts was the one sent. Only ever one is, which is exactly what makes it worth showing. |
 | **More than one brand** | Managing several brands means several brand kits. The kit is already selectable per email; what is missing is owning many of them and a place to manage them. |
 | **Contacts** | A list of email addresses you own, with paste-a-comma-separated-list bulk entry. Segments and tags are deliberately out of scope for the first version. |
 
@@ -80,11 +292,13 @@ Most editors bolt AI on and hope. Flock's core was designed so that humans and a
 
 - **One append-only operation log with provenance.** Every change from every actor is an operation with an author. There is no second history for AI edits; undo, revert, audit, and time travel all read from the same spine.
 - **Pure operations with exact inverses.** Applying an operation never mutates state and always returns its inverse — even cascading deletes invert cleanly. Undo, per-batch revert, and point-in-time restore aren't features that were built; they're consequences.
-- **Intent-level actions, validated before anything lands.** Agents don't write raw document JSON. They express intent through a small set of typed actions that are schema-validated, integrity-checked, and translated deterministically — a malformed agent call is repaired or rejected before the document ever sees it.
+- **Intent-level actions, validated before anything lands.** Agents don't write raw document JSON. They express intent through the typed actions above, schema-validated, integrity-checked, and translated deterministically — a malformed agent call is repaired or rejected before the document ever sees it.
 - **Presence that treats agents as first-class.** Cursors, rooms, and facepiles don't distinguish "user" from "bot" at the infrastructure level — an agent joins a document the way a person does. That's why agent activity is *visible* instead of ambient and spooky.
 - **Personas as pure data.** An agent's expertise is a markdown document with a structured shape — readable, editable, forkable, and shareable. Built-ins are just the ones that ship in the box.
 
 The through-line: the human is always in control. Every agent action is a proposal or a logged, attributed, one-click-revertible operation. Nothing is irreversible, and nothing is anonymous.
+
+**Deep dive:** [`packages/email-sdk/README.md`](packages/email-sdk/README.md) covers the actions layer in full — what an action is, how one is defined, how the registry is consumed differently by the UI and the model, what `parallelSafe` and the `ActionContext` are for, and what happens when you add a new action.
 
 ## Stack
 
@@ -103,8 +317,8 @@ The through-line: the human is always in control. Every agent action is a propos
 | Path | What it is |
 |---|---|
 | `apps/web` | Next.js app — studio canvas, chat panel, personas, presence, API routes |
-| `packages/email-sdk` | The core: schemas, flat block store + integrity checks, pure operations with inverses, action envelope/registry, section catalog, renderers |
-| `packages/agent` | Agent-side machinery: compressed document views, prompts, intent-level tools (web content fetch, span styling, section scaffolding) |
+| `packages/email-sdk` | The core: schemas, flat block store + integrity checks, pure operations with inverses, **the action registry**, section catalog, renderers. [Deep dive →](packages/email-sdk/README.md) |
+| `packages/agent` | Agent-side machinery: compressed document views, the prompt layers, and the agent-only actions layered onto the registry (block lookup, web content fetch, in-chat widgets) |
 | `convex/` | Convex functions — documents, op-log history, personas and findings, presence, prosemirror-sync, brand kits, cleanup crons |
 
 ## Getting started
@@ -153,6 +367,6 @@ Two consequences worth stating out loud:
 1. **`.env.local` and Vercel env vars are invisible to Convex functions.** A Convex function cannot read them, at all, ever. `npx convex dev` writes *into* `.env.local`; it does not read configuration back out of it.
 2. **A variable read on both sides must be set on both sides.** There are three: `RESEND_API_KEY` and `RESEND_FROM_EMAIL` (Next sends test emails, Convex sends magic links) and `BETTER_AUTH_SECRET` (Convex signs with it; Next reuses it as the salt for the coarsened network key, rather than adding a fourth secret to configure). Same value, two places — forgetting the second one breaks exactly half the feature, which is harder to notice than breaking all of it.
 
-To find out which side a variable belongs to, grep for it: if the hit is in `convex/`, it is a Convex variable. `docs/environment-variables.md` carries the full current inventory with each variable's side and what breaks when it is missing (that file is local-only; `apps/web/.env.example` is the committed short form).
+To find out which side a variable belongs to, grep for it: if the hit is in `convex/`, it is a Convex variable. `apps/web/.env.example` is the committed short form, with each variable's side marked inline.
 
 Also note that Convex functions **cannot read cookies**. Anything proven by a cookie — the owner's credit override, for one — is necessarily enforced at the Next.js layer, not inside a Convex function. That is a design constraint, not an oversight.
