@@ -184,15 +184,16 @@ export function ImagePanel({ block }: { block: ImageBlock }) {
 
   return (
     <div className="space-y-4 p-4">
+      <ImageSourceField helpText={helpFor("src")} onCommitSrc={(src) => commit({ src })} />
       {/*
-        brand-kit-v2 §5: a block MARKED as the logo leads with the brand kit,
-        because that is where its image is supposed to come from. Missing or
-        unconfirmed kit logos are asked for here rather than left silent, and a
-        confirmed one can be pushed to every logo block at once. Ordinary
-        images render nothing extra.
+        brand-kit-v2 §5: a block MARKED as the logo says where its image is
+        SUPPOSED to come from, directly under the source input the answer would
+        otherwise have to be pasted into (owner ask). Missing or unconfirmed
+        kit logos are asked for here rather than left silent, and a confirmed
+        one can be pushed to every logo block at once. Ordinary images render
+        nothing extra.
       */}
       {properties.role === "logo" && <BrandLogoPromptRow blockId={block.id} />}
-      <ImageSourceField helpText={helpFor("src")} onCommitSrc={(src) => commit({ src })} />
       <GenerateImageField blockId={block.id} />
       <TextField
         label="Alt text"

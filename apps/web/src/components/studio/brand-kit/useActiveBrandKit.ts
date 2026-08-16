@@ -24,6 +24,14 @@ export function useActiveBrandKit(): {
   hasSavedKit: boolean;
   /** True when the kit came from the canvas BINDING (not the legacy session fallback). */
   isBoundToCanvas: boolean;
+  /*
+    The resolved kit's row id (null for the mock fallback). Compare it against
+    `useSessionBrandKit().kitId` to answer "is the kit on screen MINE?" — the
+    question every session-scoped write (renaming, confirming an asset) has to
+    settle before it offers a control, since it would otherwise act on the
+    viewer's own kit rather than the one the canvas is showing.
+  */
+  kitId: Id<"brandKits"> | null;
 } {
   const canvasId = useEditorStore((state) => state.canvasId);
   const resolved = useQuery(
@@ -37,6 +45,7 @@ export function useActiveBrandKit(): {
     brandKit: hasSavedKit ? (resolved.kit as unknown as BrandKit) : MOCK_BRAND_KIT,
     hasSavedKit,
     isBoundToCanvas: hasSavedKit && resolved.source === "binding",
+    kitId: hasSavedKit ? resolved.kitId : null,
   };
 }
 

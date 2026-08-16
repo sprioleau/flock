@@ -69,6 +69,7 @@ describe("getLogoBlockPromptState — the three states §5 names, plus the one i
       getLogoBlockPromptState({
         hasSavedKit: false,
         logoUrl: undefined,
+        isViewerOwnKit: true,
         confirmedLogo: null,
         doc,
         blockId: "img_head",
@@ -81,6 +82,7 @@ describe("getLogoBlockPromptState — the three states §5 names, plus the one i
       getLogoBlockPromptState({
         hasSavedKit: true,
         logoUrl: undefined,
+        isViewerOwnKit: true,
         confirmedLogo: null,
         doc,
         blockId: "img_head",
@@ -95,11 +97,54 @@ describe("getLogoBlockPromptState — the three states §5 names, plus the one i
       getLogoBlockPromptState({
         hasSavedKit: true,
         logoUrl: "https://acme.com/logo.svg",
+        isViewerOwnKit: true,
         confirmedLogo: null,
         doc,
         blockId: "img_head",
       }),
-    ).toEqual({ kind: "unconfirmed" });
+    ).toEqual({
+      kind: "unconfirmed",
+      /* Carried for PREVIEW only — the user has to see what they're confirming. */
+      suggestedLogoUrl: "https://acme.com/logo.svg",
+      isConfirmableHere: true,
+    });
+  });
+
+  it("keeps the suggestion out of every document update it could reach", () => {
+    /* The state exposes the hotlink; the update builder must still refuse it. */
+    const state = getLogoBlockPromptState({
+      hasSavedKit: true,
+      logoUrl: "https://acme.com/logo.svg",
+      isViewerOwnKit: true,
+      confirmedLogo: null,
+      doc,
+      blockId: "img_head",
+    });
+    expect(state.kind).toBe("unconfirmed");
+    /* buildLogoBlockUpdates takes `confirmedLogo`, which is null here — there */
+    /* is no overload, field or fallback that turns a suggestion into a write. */
+    expect(JSON.stringify(buildLogoBlockUpdates({ doc, logo: CONFIRMED_LOGO }))).not.toContain(
+      "acme.com/logo.svg",
+    );
+  });
+
+  it("points at the brand kit instead of confirming when the kit is someone else's", () => {
+    /* Confirm is session-scoped: from here it would rehost the VIEWER's own */
+    /* kit row, not the bound kit this canvas is actually showing. */
+    expect(
+      getLogoBlockPromptState({
+        hasSavedKit: true,
+        logoUrl: "https://acme.com/logo.svg",
+        isViewerOwnKit: false,
+        confirmedLogo: null,
+        doc,
+        blockId: "img_head",
+      }),
+    ).toEqual({
+      kind: "unconfirmed",
+      suggestedLogoUrl: "https://acme.com/logo.svg",
+      isConfirmableHere: false,
+    });
   });
 
   it("counts every logo block still on the wrong image once the logo is confirmed", () => {
@@ -107,6 +152,7 @@ describe("getLogoBlockPromptState — the three states §5 names, plus the one i
       getLogoBlockPromptState({
         hasSavedKit: true,
         logoUrl: CONFIRMED_LOGO.src,
+        isViewerOwnKit: true,
         confirmedLogo: CONFIRMED_LOGO,
         doc,
         blockId: "img_head",
@@ -118,6 +164,7 @@ describe("getLogoBlockPromptState — the three states §5 names, plus the one i
     const state = getLogoBlockPromptState({
       hasSavedKit: true,
       logoUrl: CONFIRMED_LOGO.src,
+      isViewerOwnKit: true,
       confirmedLogo: CONFIRMED_LOGO,
       doc: buildFixtureDoc({ firstLogoSrc: CONFIRMED_LOGO.src, firstLogoAlt: CONFIRMED_LOGO.alt }),
       blockId: "img_head",

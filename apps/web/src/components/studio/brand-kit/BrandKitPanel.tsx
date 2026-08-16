@@ -33,6 +33,7 @@ import {
   type BrandKitGenerateResult,
   type ThemeVariation,
 } from "@/lib/brand-kit";
+import { confirmBrandAsset } from "@/lib/brand-asset-confirm";
 import { getButtonShapeFromRadius } from "@/lib/brand-theme-builder";
 import { describeBrandKitReconciliation } from "@/lib/brand-kit-reconcile";
 import type { SocialLinkDraft } from "@/lib/brand-social-links";
@@ -392,30 +393,25 @@ export function BrandKitPanel() {
     }
   };
 
-  /** Confirm a suggested asset: binary → Convex storage → durable row URL. */
+  /*
+    Confirm a suggested asset: binary → Convex storage → durable row URL.
+    The call itself lives in lib/brand-asset-confirm so the logo block's
+    property panel confirms through the identical request and the identical
+    failure copy, instead of a second hand-rolled fetch that drifts.
+  */
   const confirmAsset = async (kind: BrandKitAssetKind): Promise<void> => {
     if (sessionId === null || busyAssetKind !== null) {
       return;
     }
     setBusyAssetKind(kind);
     setAssetErrorMessage(null);
-    try {
-      const response = await fetch("/api/brand-kit/confirm-asset", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ sessionId, kind }),
-      });
-      const result = (await response.json()) as { isOk: boolean; message?: string };
-      if (!result.isOk) {
-        setAssetErrorMessage(result.message ?? "Couldn't save that image. Try again.");
-      }
-      // Success needs no local state: the kit row updated and the reactive
-      // query swaps the card to the durable URL + "Saved" chip live.
-    } catch {
-      setAssetErrorMessage("Couldn't save that image right now. Try again.");
-    } finally {
-      setBusyAssetKind(null);
+    const outcome = await confirmBrandAsset({ sessionId, kind });
+    if (!outcome.isOk) {
+      setAssetErrorMessage(outcome.message);
     }
+    // Success needs no local state: the kit row updated and the reactive
+    // query swaps the card to the durable URL + "Saved" chip live.
+    setBusyAssetKind(null);
   };
 
   /**

@@ -13,9 +13,11 @@
 
   1. Only a CONFIRMED logo may enter a document (owner decision 4). An
      unconfirmed suggestion is a third-party hotlink that has not been rehosted
-     into Convex storage, so it may be previewed in kit UI and nowhere else.
-     Callers pass the output of `getConfirmedBrandAssetUrl` — this module never
-     reads `brandKit.logoUrl` for a document write.
+     into Convex storage, so it may be PREVIEWED in brand UI — the kit panel's
+     asset card, and the unconfirmed state below, where seeing the image is the
+     whole point of being asked to confirm it — and written nowhere. Callers
+     pass the output of `getConfirmedBrandAssetUrl` for the write path; this
+     module never turns `brandKit.logoUrl` into a document update.
   2. The "does this block need updating" test is byte-identical to the server's
      in `applyBrandToDocuments`: src OR alt differing is what counts. Two
      different answers to that question would make "Apply to all" and a brand
@@ -44,8 +46,23 @@ export type LogoBlockPromptState =
   | { kind: "no-kit" }
   /* A kit exists but carries no logo at all. */
   | { kind: "no-logo" }
-  /* A logo is present as a SUGGESTION — not yet rehosted, so not usable. */
-  | { kind: "unconfirmed" }
+  /*
+    A logo is present as a SUGGESTION — not yet rehosted, so not usable.
+
+    `suggestedLogoUrl` is carried out so the panel can PREVIEW it: confirming
+    is a judgement call ("is this actually our logo?") and a generic icon does
+    not let anyone make it. Previewing a third-party URL in kit UI is what the
+    brand kit panel already does; the line decision 4 draws is the DOCUMENT,
+    and this field is never an input to `buildLogoBlockUpdates`.
+
+    `isConfirmableHere` is whether the in-place confirm can act at all. The
+    confirm route is session-scoped: it re-reads the suggestion from the
+    VIEWER's own kit row. When this canvas is showing a kit somebody else
+    saved and bound, confirming from here would quietly confirm a different
+    kit than the one on screen, so the panel points at the brand kit instead
+    of offering a button that lies about what it touches.
+  */
+  | { kind: "unconfirmed"; suggestedLogoUrl: string; isConfirmableHere: boolean }
   /*
     A confirmed logo exists. `isBlockUsingLogo` is this block; `staleBlockCount`
     is how many logo blocks in the whole draft (this one included) are not
@@ -61,13 +78,23 @@ export type LogoBlockPromptState =
 export function getLogoBlockPromptState({
   hasSavedKit,
   logoUrl,
+  isViewerOwnKit,
   confirmedLogo,
   doc,
   blockId,
 }: {
   hasSavedKit: boolean;
-  /* The kit's raw logo field — used ONLY to tell "absent" from "unconfirmed". */
+  /*
+    The kit's raw logo field — used ONLY to tell "absent" from "unconfirmed",
+    and to preview the suggestion. Never a document write: that is
+    `confirmedLogo`'s job, and only it reaches `buildLogoBlockUpdates`.
+  */
   logoUrl: string | undefined;
+  /*
+    True when the kit this canvas is using is the viewer's own saved kit —
+    the only kit the session-scoped confirm route can act on.
+  */
+  isViewerOwnKit: boolean;
   /* The confirmed logo, or null. The only value allowed into a document. */
   confirmedLogo: BrandLogoSource | null;
   doc: EmailDocument;
@@ -77,7 +104,9 @@ export function getLogoBlockPromptState({
     return { kind: "no-kit" };
   }
   if (confirmedLogo === null) {
-    return logoUrl === undefined ? { kind: "no-logo" } : { kind: "unconfirmed" };
+    return logoUrl === undefined
+      ? { kind: "no-logo" }
+      : { kind: "unconfirmed", suggestedLogoUrl: logoUrl, isConfirmableHere: isViewerOwnKit };
   }
   const staleBlockIds = buildLogoBlockUpdates({ doc, logo: confirmedLogo }).map(
     (update) => update.blockId,
