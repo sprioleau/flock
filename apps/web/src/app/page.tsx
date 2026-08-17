@@ -69,7 +69,7 @@ export default async function Home() {
         <div className="flex flex-col items-center gap-2">
           <h1 className="text-4xl font-semibold tracking-tight">
             <span className="text-primary" aria-label="Flock">
-              <Logo style={{color: "var(--foreground)"}} variant="full_horizontal" className="w-[200]" />
+              <Logo style={{color: "var(--foreground)"}} variant="full_horizontal" className="w-[200] mb-4" />
             </span>
           </h1>
           <p className="max-w-xs text-center text-sm text-muted-foreground">
