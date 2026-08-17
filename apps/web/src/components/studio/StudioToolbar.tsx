@@ -3,6 +3,7 @@
 import { Redo2Icon, Undo2Icon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { DashboardLinkFallback } from "@/lib/auth/DashboardLinkFallback";
 import { UserButton } from "@/lib/auth/UserButton";
 import { selectCanRedo, selectCanUndo, useEditorStore } from "@/lib/editor-store";
 import { BrandKitPanel } from "./brand-kit/BrandKitPanel";
@@ -73,7 +74,16 @@ export function StudioToolbar({
       <div className="flex min-w-0 items-center gap-1.5">
         {/* ACCOUNT. First in the right cluster, immediately before the human
             avatars it belongs with — both answer "who is here". Renders null
-            when auth is disabled, so the divider below never strands. */}
+            when auth is disabled, so the divider below never strands.
+
+            The two lines below are ONE slot: DashboardLinkFallback renders
+            precisely when UserButton does not (auth off, or identity still
+            resolving), so exactly one of them ever paints here. It is the
+            studio's only way back to /dashboard in those states — the account
+            menu that normally carries that link is not on screen. Same skin,
+            same index in this flex row, so the swap on load moves nothing to
+            its right. See lib/auth/user-menu-visibility.ts. */}
+        <DashboardLinkFallback />
         <UserButton />
 
         {/* PRESENCE. Constrained from the OUTSIDE (facepile internals belong

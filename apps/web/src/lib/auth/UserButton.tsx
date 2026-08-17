@@ -17,8 +17,9 @@ import { Label } from "@/components/ui/label";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { DASHBOARD_PATH } from "./config";
 import { useFlockAuth } from "./use-flock-auth";
+import { willRenderUserMenu } from "./user-menu-visibility";
 
-/**
+/*
  * The account control in the canvas header.
  *
  * It carries the claim flow, because the claim flow needed somewhere a person
@@ -37,16 +38,26 @@ import { useFlockAuth } from "./use-flock-auth";
  *
  * Renders nothing when auth is disabled, so mounting it is unconditional at
  * the call site.
+ *
+ * Job 4 is the catch: on a deploy with auth OFF this whole control is absent,
+ * which took the ONLY way out of the studio with it. `DashboardLinkFallback`
+ * covers exactly those gaps and is gated on the same predicate, so the two
+ * are mutually exclusive by construction — see ./user-menu-visibility.ts.
  */
 export function UserButton() {
-  const { isEnabled, identity, isUnclaimed, credits, magicLinkRequest, sendMagicLink, signOut } =
-    useFlockAuth();
+  const auth = useFlockAuth();
   const [email, setEmail] = useState("");
 
-  if (!isEnabled || identity === undefined || identity === null) {
+  /*
+    The one gate, shared with DashboardLinkFallback so the two can never both
+    be on screen and never both be off it. See ./user-menu-visibility.ts —
+    this early return is half of a pair.
+  */
+  if (!willRenderUserMenu(auth)) {
     return null;
   }
 
+  const { identity, isUnclaimed, credits, magicLinkRequest, sendMagicLink, signOut } = auth;
   const isSending = magicLinkRequest.status === "sending";
   const label = isUnclaimed ? "Save your work" : identity.email;
 
