@@ -199,9 +199,14 @@ describe("updateSocialLinks — the array is finally editable (§7.2)", () => {
       ],
     });
     const kit = await readKit(t);
+    /*
+      Stamped `origin: "user"` server-side (§8.2): these two are the human's
+      now, so the next re-scrape has to leave them alone. See
+      brand-user-control.test.ts for the survival property itself.
+    */
     expect(kit.socialLinks).toEqual([
-      { platform: "x", url: "https://twitter.com/acme" },
-      { platform: "linkedin", url: "https://linkedin.com/company/acme" },
+      { platform: "x", url: "https://twitter.com/acme", origin: "user" },
+      { platform: "linkedin", url: "https://linkedin.com/company/acme", origin: "user" },
     ]);
     /* Metadata only — no draft renders social links, so no pill re-arms. */
     expect(kit.revision).toBe(1);

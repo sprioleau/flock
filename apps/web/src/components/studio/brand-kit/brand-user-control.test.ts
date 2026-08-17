@@ -34,10 +34,17 @@ type Backend = ReturnType<typeof createBackend>;
 function buildKitInput({
   colors,
   toneOfVoice,
+  socialLinks,
   spacingBump = 0,
 }: {
   colors?: BrandColor[];
   toneOfVoice?: { descriptors: string[]; origin: "scraped" | "agent" | "user"; guidance?: string };
+  /*
+    Exactly the scrape's wire shape: platform + url and NOTHING else. The save
+    validator accepts no `origin`, which is what makes these rows byte-identical
+    to the ones sitting in production today.
+  */
+  socialLinks?: { platform: string; url: string }[];
   spacingBump?: number;
 } = {}) {
   return {
@@ -45,6 +52,7 @@ function buildKitInput({
     fonts: { heading: "Georgia, serif", body: "Helvetica, sans-serif" },
     ...(colors === undefined ? {} : { colors }),
     ...(toneOfVoice === undefined ? {} : { toneOfVoice }),
+    ...(socialLinks === undefined ? {} : { socialLinks }),
     variations: [
       {
         id: "classic-light",
@@ -272,6 +280,108 @@ describe("re-scrape reconciliation (§8) — human edits survive", () => {
     expect(after.toneOfVoice!.descriptors).toEqual(["warm"]);
     expect(after.toneOfVoice!.guidance).toBe("Never shout.");
     expect(result.keptUserToneOfVoice).toBe(true);
+  });
+
+  /*
+    Social links (§7.2) are the third field to earn provenance, and the one
+    where the overwrite was still live: before this, hand-editing a link and
+    re-running "Create from website URL" silently restored whatever the scraper
+    had found. These three pin the whole contract end to end.
+  */
+  it("keeps a hand-edited link and refuses the scrape's rival URL for it", async () => {
+    const t = createBackend();
+    await saveKit(
+      t,
+      buildKitInput({
+        socialLinks: [
+          { platform: "x", url: "https://x.com/acme" },
+          { platform: "linkedin", url: "https://linkedin.com/in/acme-ceo" },
+        ],
+      }),
+    );
+    /* The human corrects LinkedIn to the company page. */
+    await t.mutation(api.brandKits.updateSocialLinks, {
+      sessionId: SESSION_ID,
+      socialLinks: [
+        { platform: "x", url: "https://x.com/acme" },
+        { platform: "linkedin", url: "https://linkedin.com/company/acme" },
+      ],
+    });
+
+    /* A re-scrape that still reads the CEO's profile out of the footer. */
+    const result = await saveKit(
+      t,
+      buildKitInput({
+        spacingBump: 4,
+        socialLinks: [
+          { platform: "linkedin", url: "https://linkedin.com/in/acme-ceo" },
+          { platform: "github", url: "https://github.com/acme" },
+        ],
+      }),
+    );
+
+    const after = await readKit(t);
+    /* Stored in the shared display order, not in merge order. */
+    expect(after.socialLinks).toEqual([
+      /* Survived, verbatim, with its provenance intact for the NEXT scrape. */
+      { platform: "linkedin", url: "https://linkedin.com/company/acme", origin: "user" },
+      /* Adopted: a platform nobody had claimed. */
+      { platform: "github", url: "https://github.com/acme" },
+    ]);
+    expect(result.keptUserEditedSocialLinks).toBe(1);
+    /* The X link the human never edited was machine-owned, so it was swept. */
+    expect(after.socialLinks!.some(({ platform }) => platform === "x")).toBe(false);
+  });
+
+  /*
+    THE regression guard for every row already in production: a kit whose links
+    were written before `origin` existed has none on any entry, and a re-scrape
+    must still replace them exactly as it did before this field shipped.
+  */
+  it("replaces links on a pre-provenance row, which is every row today", async () => {
+    const t = createBackend();
+    await saveKit(t, buildKitInput({ socialLinks: [{ platform: "x", url: "https://x.com/acme-2019" }] }));
+    const before = await readKit(t);
+    expect(before.socialLinks).toEqual([{ platform: "x", url: "https://x.com/acme-2019" }]);
+    expect(before.socialLinks![0]!.origin).toBeUndefined();
+
+    const result = await saveKit(
+      t,
+      buildKitInput({
+        spacingBump: 4,
+        socialLinks: [{ platform: "x", url: "https://x.com/acme" }],
+      }),
+    );
+    expect((await readKit(t)).socialLinks).toEqual([
+      { platform: "x", url: "https://x.com/acme" },
+    ]);
+    expect(result.keptUserEditedSocialLinks).toBe(0);
+  });
+
+  it("does not lock a scraped link just because the editor re-sent it unchanged", async () => {
+    const t = createBackend();
+    await saveKit(t, buildKitInput({ socialLinks: [{ platform: "x", url: "https://x.com/acme" }] }));
+    /*
+      The editor commits the whole array on any blur. Re-sending the scraped
+      link untouched must NOT make it the human's, or one stray click through
+      the panel would pin the list against every future scrape.
+    */
+    await t.mutation(api.brandKits.updateSocialLinks, {
+      sessionId: SESSION_ID,
+      socialLinks: [{ platform: "x", url: "https://x.com/acme" }],
+    });
+    expect((await readKit(t)).socialLinks![0]!.origin).toBeUndefined();
+
+    await saveKit(
+      t,
+      buildKitInput({
+        spacingBump: 4,
+        socialLinks: [{ platform: "x", url: "https://x.com/acme-hq" }],
+      }),
+    );
+    expect((await readKit(t)).socialLinks).toEqual([
+      { platform: "x", url: "https://x.com/acme-hq" },
+    ]);
   });
 
   it("lets the scrape refresh a voice the human never touched", async () => {

@@ -9,9 +9,11 @@
  * disposes" principle exists to prevent.
  *
  * THE STRATEGY (§8.2 option 2, provenance + sticky user edits): every
- * editable field carries `origin` and `userEditedAtMs`. A re-scrape writes
- * only into fields NOT touched by a human, and reports what it kept so the
- * panel can say so in words. Chosen over full diff-and-confirm because it
+ * editable field carries an `origin` marker (colors and tone of voice carry a
+ * `userEditedAtMs` alongside it; social links, added later, carry only the
+ * marker — see reconcileSocialLinks). A re-scrape writes only into fields NOT
+ * touched by a human, and reports what it kept so the panel can say so in
+ * words. Chosen over full diff-and-confirm because it
  * needs no new UI surface, no place to park a candidate kit, and no answer to
  * "what if the user walks away mid-diff" — and because provenance is what
  * would make a diff view meaningful later anyway. It composes; it doesn't
@@ -25,8 +27,10 @@ import {
   MAX_BRAND_COLORS,
   type BrandColor,
   type BrandColorCategory,
+  type BrandDataOrigin,
   type BrandToneOfVoice,
 } from "./brand-kit";
+import { SOCIAL_PLATFORM_ORDER } from "./social-links";
 
 /** Lowercased #rrggbb, or null for anything unparseable. */
 function normalizeHex(hex: string): string | null {
@@ -160,6 +164,146 @@ export function reconcileToneOfVoice({
   return { toneOfVoice: incoming ?? existing, keptUserEdit: false };
 }
 
+/*
+  A social profile link as it is STORED on the kit row.
+
+  `platform` is a bare string, not `SocialPlatform`, because the row's schema
+  is `v.string()` and always has been: a kit saved by an older build can hold a
+  platform key this build does not know, and reconciliation is not the place to
+  decide somebody's stored data is worthless.
+
+  `origin` is optional and ABSENT MEANS MACHINE-OWNED — the whole point (see
+  the schema comment). Only `origin` exists here, with no `userEditedAtMs`
+  twin: a link is one URL, so "did a human choose this" is the only question
+  anything asks about it, and `origin` answers it completely. Colors carry a
+  timestamp because they landed with one; copying an unread field into a second
+  place would just give it somewhere else to drift.
+*/
+export interface StoredSocialLink {
+  platform: string;
+  url: string;
+  origin?: BrandDataOrigin;
+}
+
+/* True when a human authored or overrode this link — the re-scrape lock. */
+export function isHumanOwnedSocialLink(link: StoredSocialLink): boolean {
+  return link.origin === "user";
+}
+
+/* Position in the shared display order; unknown platforms sort last. */
+function rankSocialPlatform(platform: string): number {
+  const index = SOCIAL_PLATFORM_ORDER.findIndex((candidate) => candidate === platform);
+  return index === -1 ? SOCIAL_PLATFORM_ORDER.length : index;
+}
+
+/*
+  One link per platform, in the display order every other writer of this array
+  produces (`dedupeSocialLinks`) — the chips, the footer fill and the agent
+  context all read the array in order, so a merge that emitted survivors first
+  and the scrape's finds after would visibly reshuffle the list on every save.
+  First occurrence wins, which is what makes "the human's link keeps the
+  platform" true no matter what the scrape proposes for it.
+*/
+function orderSocialLinksForDisplay(links: StoredSocialLink[]): StoredSocialLink[] {
+  const byPlatform = new Map<string, StoredSocialLink>();
+  for (const link of links) {
+    if (!byPlatform.has(link.platform)) {
+      byPlatform.set(link.platform, link);
+    }
+  }
+  return [...byPlatform.values()].sort(
+    (a, b) => rankSocialPlatform(a.platform) - rankSocialPlatform(b.platform),
+  );
+}
+
+export interface SocialLinksReconciliation {
+  socialLinks: StoredSocialLink[];
+  /* How many human-owned links survived untouched. */
+  keptUserEditedCount: number;
+}
+
+/*
+  Merge a fresh scrape's social links into the stored ones — the third case of
+  the same idea as `reconcileBrandColors` and `reconcileToneOfVoice`.
+
+  Rules, in order:
+  1. Every human-owned link survives VERBATIM, and its PLATFORM is claimed.
+  2. An incoming link for a platform a survivor claims is DROPPED, even when
+     the scrape found a different URL for it. That is the deliberate answer to
+     the conflict case: somebody who typed the brand's real LinkedIn after the
+     scraper picked up the CEO's personal one gets to keep it, and a re-scrape
+     that re-finds the wrong URL cannot quietly win the argument back. Exactly
+     what colors do when the scrape re-proposes a hex a human already named.
+  3. A human-added platform the scrape does NOT find still survives — survival
+     is a property of the entry, never of whether the site re-published it.
+     A brand that lists its Instagram nowhere on its homepage is the ordinary
+     reason somebody types one in.
+  4. Everything else the scrape found is adopted, and machine links from the
+     PREVIOUS scrape are discarded — that is the part a re-scrape is FOR.
+
+  UNLIKE `reconcileBrandColors`, `incoming: undefined` is NOT "leave the stored
+  array alone". The generate pipeline omits `socialLinks` entirely when it
+  found none (generate-brand-kit.ts), so absent here means "this site publishes
+  no profile links", not "this client doesn't send them" — treating it as the
+  latter would strand links a brand has since removed from its own footer.
+  Machine links are therefore swept by a scrape that found nothing, which is
+  precisely what a save did before provenance existed.
+
+  NOT SOLVED, and deliberately: a link a human DELETES leaves no tombstone, so
+  a re-scrape that still finds it re-adds it. Colors have the same gap for the
+  same reason, and inventing a tombstone here would make the two diverge for a
+  case neither has been asked to handle.
+*/
+export function reconcileSocialLinks({
+  existing,
+  incoming,
+}: {
+  existing: StoredSocialLink[] | undefined;
+  incoming: StoredSocialLink[] | undefined;
+}): SocialLinksReconciliation {
+  const survivors = (existing ?? []).filter(isHumanOwnedSocialLink);
+  const claimedPlatforms = new Set(survivors.map((link) => link.platform));
+  const adopted = (incoming ?? []).filter((link) => !claimedPlatforms.has(link.platform));
+  return {
+    socialLinks: orderSocialLinksForDisplay([...survivors, ...adopted]),
+    keptUserEditedCount: survivors.length,
+  };
+}
+
+/*
+  Stamp a human's social-link edit for storage, the counterpart to
+  `planBrandColorsUpdate`: a row whose URL DIFFERS from what is stored for that
+  platform (or whose platform is new) becomes `origin: "user"`; a row that
+  matches keeps whatever provenance it had, verbatim.
+
+  That distinction is load-bearing, not tidiness. The editor commits the WHOLE
+  array on any blur, so focusing a field and tabbing away sends every row back.
+  Stamping all of them would let an idle click lock the entire list against
+  every future scrape — the same reason `planBrandColorsUpdate` leaves an
+  untouched color alone. Saving is not editing.
+
+  Server-side on purpose (same stance as the palette): the client sends the
+  array it is showing, and the server decides what counts as an edit. Nothing
+  the caller claims about provenance is trusted — the save/scrape wire shape
+  carries no `origin` at all, so `"user"` can only ever be minted here.
+*/
+export function stampUserEditedSocialLinks({
+  existing,
+  incoming,
+}: {
+  existing: StoredSocialLink[] | undefined;
+  incoming: StoredSocialLink[];
+}): StoredSocialLink[] {
+  const storedByPlatform = new Map((existing ?? []).map((link) => [link.platform, link]));
+  return incoming.map((link) => {
+    const stored = storedByPlatform.get(link.platform);
+    if (stored !== undefined && stored.url === link.url) {
+      return stored;
+    }
+    return { ...link, origin: "user" as const };
+  });
+}
+
 /**
  * The one-line summary the panel shows after a re-scrape — "silent skip" is
  * exactly the failure mode provenance exists to avoid, so what was kept has
@@ -168,9 +312,15 @@ export function reconcileToneOfVoice({
 export function describeBrandKitReconciliation({
   keptUserEditedColors,
   keptUserToneOfVoice,
+  /*
+    Optional so the two older callers read unchanged, and because omitting it
+    means what 0 means: a save that kept no links of the human's.
+  */
+  keptUserEditedSocialLinks = 0,
 }: {
   keptUserEditedColors: number;
   keptUserToneOfVoice: boolean;
+  keptUserEditedSocialLinks?: number;
 }): string | null {
   const kept: string[] = [];
   if (keptUserEditedColors > 0) {
@@ -178,6 +328,13 @@ export function describeBrandKitReconciliation({
   }
   if (keptUserToneOfVoice) {
     kept.push("your tone of voice");
+  }
+  if (keptUserEditedSocialLinks > 0) {
+    kept.push(
+      keptUserEditedSocialLinks === 1
+        ? "1 social link you edited"
+        : `${keptUserEditedSocialLinks} social links you edited`,
+    );
   }
   if (kept.length === 0) {
     return null;

@@ -403,12 +403,41 @@ export default defineSchema({
     socialImageStorageId: v.optional(v.id("_storage")),
     socialImageSourceUrl: v.optional(v.string()),
     socialImageConfirmedAtMs: v.optional(v.number()),
-    /**
-     * The brand's social profile links (item 26): one per platform (x,
-     * facebook, instagram, …), deterministically extracted and SSRF-guarded.
-     * Replaced wholesale by each save (revision bumps with every save).
-     */
-    socialLinks: v.optional(v.array(v.object({ platform: v.string(), url: v.string() }))),
+    /*
+      The brand's social profile links (item 26): one per platform (x,
+      facebook, instagram, …), deterministically extracted and SSRF-guarded.
+
+      `origin` is the SAME re-scrape lock `colors` and `toneOfVoice` carry
+      (§8.2): a link stamped "user" survives a later "Create from website URL"
+      run, and anything else is swept and replaced by what the scrape found.
+      Without it reconciliation cannot tell a link somebody typed from one the
+      scraper guessed, and a re-scrape silently deletes hand-entered links —
+      which is exactly what it did before this field existed. Do not "simplify"
+      it away; it is the only thing standing between a human's edit and the
+      next scrape.
+
+      ADDITIVE + OPTIONAL, and ABSENT MEANS MACHINE-OWNED. Every row written
+      before this landed — which is every row in production — has no `origin`
+      on any link and therefore reconciles exactly as it always did: replaced
+      wholesale by the scrape. Nothing needs a backfill.
+
+      Only `origin` is stored, NOT the `userEditedAtMs` twin `colors` carries.
+      `updateSocialLinks` stamps "user" server-side on the rows whose URL it
+      sees change, so the marker alone answers every question anything asks,
+      and no reader anywhere wants a timestamp. A field nothing reads can only
+      drift out of agreement with the one that matters.
+    */
+    socialLinks: v.optional(
+      v.array(
+        v.object({
+          platform: v.string(),
+          url: v.string(),
+          origin: v.optional(
+            v.union(v.literal("scraped"), v.literal("agent"), v.literal("user")),
+          ),
+        }),
+      ),
+    ),
     /**
      * The AUTHORED palette (brand-kit-user-control §3): named, categorized
      * brand colors the human can edit. When present and non-empty it REPLACES

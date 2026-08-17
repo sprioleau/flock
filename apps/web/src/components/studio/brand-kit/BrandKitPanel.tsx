@@ -215,6 +215,7 @@ export function BrandKitPanel() {
         describeBrandKitReconciliation({
           keptUserEditedColors: result.keptUserEditedColors,
           keptUserToneOfVoice: result.keptUserToneOfVoice,
+          keptUserEditedSocialLinks: result.keptUserEditedSocialLinks,
         }),
       );
       // The active-kit card (and every tab's ThemeMenu) updates reactively.

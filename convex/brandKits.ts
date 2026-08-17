@@ -35,7 +35,9 @@ import { planSocialLinksUpdate } from "../apps/web/src/lib/brand-social-links";
 import {
   planBrandColorsUpdate,
   reconcileBrandColors,
+  reconcileSocialLinks,
   reconcileToneOfVoice,
+  stampUserEditedSocialLinks,
 } from "../apps/web/src/lib/brand-kit-reconcile";
 import type { Doc, Id } from "./_generated/dataModel";
 import { mutation, query, type MutationCtx, type QueryCtx } from "./_generated/server";
@@ -128,6 +130,23 @@ const toneOfVoiceValidator = v.object({
   userEditedAtMs: v.optional(v.number()),
 });
 
+/*
+  One STORED social profile link. `origin` is the re-scrape lock — optional,
+  and absent means machine-owned, so every row saved before it existed is swept
+  and refreshed by a scrape exactly as it always was (see reconcileSocialLinks
+  and the schema comment).
+
+  READ shape only. The save/scrape wire below deliberately does NOT accept
+  `origin`: a scrape has no business declaring a link the human's, and keeping
+  it off the input means `"user"` can only be minted server-side by
+  `updateSocialLinks`, where a human demonstrably typed something.
+*/
+const storedSocialLinkValidator = v.object({
+  platform: v.string(),
+  url: v.string(),
+  origin: v.optional(v.union(v.literal("scraped"), v.literal("agent"), v.literal("user"))),
+});
+
 /** Save-args wire shape — mirrors the frontend scrape/save `BrandKit` shape. */
 export const brandKitValidator = v.object({
   name: v.string(),
@@ -162,7 +181,7 @@ const activeBrandKitValidator = v.object({
   fonts: v.object({ heading: v.string(), body: v.string() }),
   logoUrl: v.optional(v.string()),
   socialImageUrl: v.optional(v.string()),
-  socialLinks: v.optional(v.array(v.object({ platform: v.string(), url: v.string() }))),
+  socialLinks: v.optional(v.array(storedSocialLinkValidator)),
   colors: v.optional(v.array(brandColorValidator)),
   toneOfVoice: v.optional(toneOfVoiceValidator),
   revision: v.number(),
@@ -208,6 +227,7 @@ const assetKindValidator = v.union(v.literal("logo"), v.literal("socialCard"));
 const saveBrandKitResultValidator = v.object({
   keptUserEditedColors: v.number(),
   keptUserToneOfVoice: v.boolean(),
+  keptUserEditedSocialLinks: v.number(),
 });
 
 type BrandKitInput = Infer<typeof brandKitValidator>;
@@ -406,7 +426,7 @@ export const saveBrandKit = mutation({
         createdAtMs: now,
         updatedAtMs: now,
       });
-      return { keptUserEditedColors: 0, keptUserToneOfVoice: false };
+      return { keptUserEditedColors: 0, keptUserToneOfVoice: false, keptUserEditedSocialLinks: 0 };
     }
     // Defensive: the invariant is one row per session — fold any dupes away
     // (surrendering their storage files) and patch the primary in place.
@@ -415,9 +435,11 @@ export const saveBrandKit = mutation({
       await deleteStorageFilesUnlessRegistered(ctx, collectRowStorageIds(duplicate));
       await ctx.db.delete(duplicate._id);
     }
-    // §8: a save is no longer a wholesale replace for human-editable fields.
-    // Colors and tone the user authored SURVIVE a re-scrape; everything the
-    // machine produced is refreshed from the incoming payload.
+    /*
+      §8: a save is no longer a wholesale replace for human-editable fields.
+      Colors, tone and social links the user authored SURVIVE a re-scrape;
+      everything the machine produced is refreshed from the incoming payload.
+    */
     const reconciledColors = reconcileBrandColors({
       existing: primaryRow.colors,
       incoming: args.brandKit.colors,
@@ -425,6 +447,10 @@ export const saveBrandKit = mutation({
     const reconciledTone = reconcileToneOfVoice({
       existing: primaryRow.toneOfVoice,
       incoming: args.brandKit.toneOfVoice,
+    });
+    const reconciledSocialLinks = reconcileSocialLinks({
+      existing: primaryRow.socialLinks,
+      incoming: args.brandKit.socialLinks,
     });
     const { patch, storageIdsToDelete } = planBrandKitSavePatch({
       existing: primaryRow,
@@ -439,9 +465,18 @@ export const saveBrandKit = mutation({
       sourceUrl: args.brandKit.sourceUrl,
       fonts: args.brandKit.fonts,
       variations: args.brandKit.variations,
-      // Replaced wholesale (undefined removes): social links have no human
-      // edit path yet, so there is nothing of the user's to protect.
-      socialLinks: args.brandKit.socialLinks,
+      /*
+        Reconciled, not replaced (§8.2). Links a human typed in the panel are
+        stamped `origin: "user"` and survive this scrape; the ones the previous
+        scrape guessed are swept and re-proposed from the incoming payload,
+        including when the payload has none at all. `undefined` still removes
+        the field, so a kit left with no links reads exactly as one that never
+        had any.
+      */
+      socialLinks:
+        reconciledSocialLinks.socialLinks.length > 0
+          ? reconciledSocialLinks.socialLinks
+          : undefined,
       colors: reconciledColors.colors.length > 0 ? reconciledColors.colors : undefined,
       toneOfVoice: reconciledTone.toneOfVoice,
       /*
@@ -449,7 +484,8 @@ export const saveBrandKit = mutation({
         overwrite §14.5c promises. The starter's colors and tone carry
         `origin: "agent"` precisely so `reconcileBrandColors` and
         `reconcileToneOfVoice` sweep them instead of protecting them, and the
-        badge goes with them.
+        badge goes with them. (The starter kit ships no social links, so
+        `reconcileSocialLinks` has nothing of its to sweep.)
       */
       isStarterKit: undefined,
       updatedAtMs: now,
@@ -459,6 +495,7 @@ export const saveBrandKit = mutation({
     return {
       keptUserEditedColors: reconciledColors.keptUserEditedCount,
       keptUserToneOfVoice: reconciledTone.keptUserEdit,
+      keptUserEditedSocialLinks: reconciledSocialLinks.keptUserEditedCount,
     };
   },
 });
@@ -1019,13 +1056,17 @@ export const setBrandAssetSuggestion = mutation({
   renders. The footer "Fill from brand kit" affordance reads them on demand and
   is always an explicit user gesture, so nothing needs a staleness pill.
 
-  KNOWN GAP, flagged rather than silently accepted: a re-scrape still replaces
-  this array wholesale, so links edited here do not yet survive one. The fix is
-  the provenance treatment `colors` already has (origin + userEditedAtMs per
-  entry, honored by a reconcileSocialLinks pass in saveBrandKit), which needs
-  two additive optional fields on the socialLinks element in convex/schema.ts —
-  a file this change was scoped out of. Everything else about the edit is
-  durable; only re-scrape survival is outstanding.
+  SURVIVES A RE-SCRAPE, which is the whole reason this is not just a patch.
+  `stampUserEditedSocialLinks` marks the rows whose URL actually CHANGED (and
+  any new platform) `origin: "user"` before they are written, and
+  `reconcileSocialLinks` in saveBrandKit then refuses to let an incoming scrape
+  touch a platform a user-owned link claims. Rows that came back unchanged keep
+  the provenance they had, so blurring a field you did not edit does not
+  quietly lock the whole list against every future scrape.
+
+  Provenance is decided HERE, server-side, exactly as it is for the palette:
+  the client sends the array it is showing and nothing it claims about origin
+  is read — the save wire shape carries no `origin` at all.
 */
 export const updateSocialLinks = mutation({
   args: {
@@ -1053,9 +1094,13 @@ export const updateSocialLinks = mutation({
     if (!plan.isValid) {
       throw new ConvexError(plan.message);
     }
+    const socialLinks = stampUserEditedSocialLinks({
+      existing: row.socialLinks,
+      incoming: plan.links,
+    });
     await ctx.db.patch(row._id, {
       /* Empty removes the field, matching how `colors` stores "none". */
-      socialLinks: plan.links.length > 0 ? plan.links : undefined,
+      socialLinks: socialLinks.length > 0 ? socialLinks : undefined,
       updatedAtMs: Date.now(),
     });
     return null;

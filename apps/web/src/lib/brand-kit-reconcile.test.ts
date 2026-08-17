@@ -15,8 +15,10 @@ import {
   isHumanOwnedColor,
   planBrandColorsUpdate,
   reconcileBrandColors,
+  reconcileSocialLinks,
   reconcileToneOfVoice,
   renumberBrandColors,
+  stampUserEditedSocialLinks,
 } from "./brand-kit-reconcile";
 import { MAX_BRAND_COLORS, type BrandColor, type BrandToneOfVoice } from "./brand-kit";
 
@@ -145,6 +147,106 @@ describe("reconcileToneOfVoice", () => {
   });
 });
 
+describe("reconcileSocialLinks — a typed link outlives the scraper", () => {
+  it("keeps the human's link for a platform the scrape disagrees about", () => {
+    const { socialLinks, keptUserEditedCount } = reconcileSocialLinks({
+      existing: [
+        /* The real company page, typed after the scraper found the CEO's. */
+        { platform: "linkedin", url: "https://linkedin.com/company/acme", origin: "user" },
+        { platform: "x", url: "https://x.com/acme-old" },
+      ],
+      incoming: [
+        { platform: "x", url: "https://x.com/acme" },
+        { platform: "linkedin", url: "https://linkedin.com/in/acme-ceo" },
+      ],
+    });
+    expect(socialLinks).toEqual([
+      /* Display order, not merge order. */
+      { platform: "x", url: "https://x.com/acme" },
+      { platform: "linkedin", url: "https://linkedin.com/company/acme", origin: "user" },
+    ]);
+    expect(keptUserEditedCount).toBe(1);
+  });
+
+  it("keeps a human-added platform the scrape does not find at all", () => {
+    const { socialLinks } = reconcileSocialLinks({
+      existing: [{ platform: "instagram", url: "https://instagram.com/acme", origin: "user" }],
+      incoming: [{ platform: "x", url: "https://x.com/acme" }],
+    });
+    expect(socialLinks).toEqual([
+      { platform: "x", url: "https://x.com/acme" },
+      { platform: "instagram", url: "https://instagram.com/acme", origin: "user" },
+    ]);
+  });
+
+  /*
+    THE production-safety test: every socialLinks row written before provenance
+    existed carries no `origin`. Absent has to mean exactly what it always did
+    — machine-owned, swept by the scrape — or shipping this field changes the
+    behavior of data nobody migrated.
+  */
+  it("replaces a stored link that carries no origin field at all", () => {
+    const { socialLinks, keptUserEditedCount } = reconcileSocialLinks({
+      existing: [{ platform: "x", url: "https://x.com/acme-2019" }],
+      incoming: [{ platform: "x", url: "https://x.com/acme" }],
+    });
+    expect(socialLinks).toEqual([{ platform: "x", url: "https://x.com/acme" }]);
+    expect(keptUserEditedCount).toBe(0);
+  });
+
+  it("sweeps machine links when the scrape found none, and still keeps the human's", () => {
+    const { socialLinks } = reconcileSocialLinks({
+      existing: [
+        { platform: "x", url: "https://x.com/acme" },
+        { platform: "github", url: "https://github.com/acme", origin: "user" },
+      ],
+      incoming: undefined,
+    });
+    expect(socialLinks).toEqual([
+      { platform: "github", url: "https://github.com/acme", origin: "user" },
+    ]);
+  });
+
+  it("keeps a platform key this build does not know rather than dropping it", () => {
+    const { socialLinks } = reconcileSocialLinks({
+      existing: [{ platform: "mastodon", url: "https://example.social/@acme", origin: "user" }],
+      incoming: [{ platform: "x", url: "https://x.com/acme" }],
+    });
+    expect(socialLinks.map(({ platform }) => platform)).toEqual(["x", "mastodon"]);
+  });
+});
+
+describe("stampUserEditedSocialLinks — saving is not editing", () => {
+  const stored = [
+    { platform: "x", url: "https://x.com/acme" },
+    { platform: "linkedin", url: "https://linkedin.com/company/acme", origin: "user" as const },
+  ];
+
+  it("stamps a changed URL and a brand-new platform as the human's", () => {
+    expect(
+      stampUserEditedSocialLinks({
+        existing: stored,
+        incoming: [
+          { platform: "x", url: "https://x.com/acme-hq" },
+          { platform: "github", url: "https://github.com/acme" },
+        ],
+      }),
+    ).toEqual([
+      { platform: "x", url: "https://x.com/acme-hq", origin: "user" },
+      { platform: "github", url: "https://github.com/acme", origin: "user" },
+    ]);
+  });
+
+  /*
+    The editor commits the whole array on any blur, so an untouched row must
+    keep its machine provenance — otherwise tabbing through the panel once
+    would lock every scraped link against every future re-scrape.
+  */
+  it("leaves an untouched link's provenance alone", () => {
+    expect(stampUserEditedSocialLinks({ existing: stored, incoming: stored })).toEqual(stored);
+  });
+});
+
 describe("planBrandColorsUpdate — provenance decided server-side", () => {
   const stored = [
     color({
@@ -209,6 +311,16 @@ describe("describeBrandKitReconciliation — say what was kept", () => {
     expect(
       describeBrandKitReconciliation({ keptUserEditedColors: 1, keptUserToneOfVoice: false }),
     ).toBe("Updated from the site — we kept 1 color you edited.");
+  });
+
+  it("names a kept social link too — the third field is not the silent one", () => {
+    expect(
+      describeBrandKitReconciliation({
+        keptUserEditedColors: 0,
+        keptUserToneOfVoice: false,
+        keptUserEditedSocialLinks: 2,
+      }),
+    ).toBe("Updated from the site — we kept 2 social links you edited.");
   });
 
   it("says nothing when there was nothing of the human's to keep", () => {
