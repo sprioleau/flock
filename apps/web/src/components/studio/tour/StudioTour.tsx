@@ -462,17 +462,49 @@ export function TourCard({ stop, onBack, onNext, onSkip, onOpenSurface }: TourCa
         <p className="text-xs leading-relaxed text-muted-foreground">{stop.body}</p>
       </div>
 
-      <div className="flex items-center justify-between gap-2">
-        <span className="text-[11px] text-muted-foreground" data-testid="studio-tour-progress">
-          {stopNumber} of {TOUR_STOP_COUNT}
-        </span>
-        <div className="flex items-center gap-1">
+      {/*
+        The footer, in two groups either side of a real gap.
+
+        WHAT WAS BROKEN. Everything lived in one `justify-between` row on a
+        288px card: the counter was the only flexible thing in it, so on the
+        stops carrying all four controls it was squeezed until "2 of 5" wrapped
+        onto two lines, while Skip and Back — one `gap-1` apart and both ghost
+        buttons — ran together into what looked like a single control.
+
+        WHAT FIXES IT, in the order it matters:
+
+        - The card is wider (22rem). At the worst case — Skip + Back + "Open
+          it" + Next, which stops 2, 3 and 4 all carry — the two groups measure
+          about 275px inside a 320px content box, so there is slack rather than
+          a squeeze.
+        - The counter is `whitespace-nowrap` and `shrink-0`, so it cannot wrap
+          however narrow things get; `tabular-nums` keeps it from twitching as
+          the number changes. Buttons already carry `whitespace-nowrap` and
+          `shrink-0` from the base variant, so nothing in this row can reflow.
+        - The grouping is by role, not by convenience. The counter and Skip are
+          the secondary pair (where am I, and let me out) and sit left; Back,
+          "Open it" and Next are the navigation cluster and sit right. The gap
+          BETWEEN the groups is wider than the gap within them, which is what
+          stops Skip from reading as part of the cluster it is not part of.
+        - A hairline rule separates the controls from the copy, so the card has
+          a body and a footer rather than one undifferentiated stack.
+      */}
+      <div className="mt-0.5 flex items-center justify-between gap-4 border-t border-foreground/10 pt-3">
+        <div className="flex shrink-0 items-center gap-2">
+          <span
+            className="shrink-0 text-[11px] whitespace-nowrap tabular-nums text-muted-foreground"
+            data-testid="studio-tour-progress"
+          >
+            {stopNumber} of {TOUR_STOP_COUNT}
+          </span>
           {/* Skip stays reachable on EVERY stop, not just the first — the
               proposal's §3.3 rule, and the difference between a tour and a
               hostage situation. */}
           <Button variant="ghost" size="sm" onClick={onSkip} data-testid="studio-tour-skip">
             Skip
           </Button>
+        </div>
+        <div className="flex shrink-0 items-center gap-2">
           {hasPreviousStop && (
             <Button variant="ghost" size="sm" onClick={onBack} data-testid="studio-tour-back">
               Back
