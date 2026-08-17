@@ -49,6 +49,13 @@
   landed) it falls back to the variation's current globals, which for an unedited
   kit is the same payload — that is the whole migration.
 
+  SOFT-DELETED THEMES ARE NOT THEMES (§14.5b). Every variation list this module
+  reads is filtered through `getLiveThemeVariations` first, so a deleted theme
+  can never be matched, pointed at, or reported as a draft's parent. A draft
+  whose pointer names one resolves to `never-applied` — parentless, exactly as
+  the owner asked ("unlinks existing drafts") — while its globals are never
+  touched, so it renders the same bytes it rendered a moment before.
+
   Pure by design (no React, no ctx, no Convex): `apps/web/vitest.config.ts` pins
   `environment: "node"`, and BOTH the server (convex/brandKits.ts) and the client
   (the toolbar's override dot) resolve identity through this one module, so a
@@ -60,7 +67,7 @@ import {
   resolveGlobalStyles,
   type GlobalStyles,
 } from "@flock/email-sdk";
-import { areGlobalsEqual, type ThemeVariation } from "./brand-kit";
+import { areGlobalsEqual, getLiveThemeVariations, type ThemeVariation } from "./brand-kit";
 
 /* Every global style property, as a literal key union — the diff's alphabet. */
 export type GlobalStyleKey = keyof Required<GlobalStyles>;
@@ -200,8 +207,17 @@ export function resolveDraftThemeLink({
   globals: GlobalStyles | undefined;
   pointer: DraftBrandPointer | undefined;
 }): DraftThemeLink {
+  /*
+    LIVE ONLY, at the top, so nothing below can see a soft-deleted theme
+    (§14.5b). The resolver filters rather than trusting its caller: it is
+    called from the Convex query, from propagation and from the toolbar, and a
+    single caller forgetting to filter would resurrect a deleted theme as a
+    draft's parent — the one outcome deletion has to make impossible.
+  */
+  const liveVariations = getLiveThemeVariations(variations);
   const matched =
-    variations.find((variation) => areGlobalsEqual({ a: globals, b: variation.globals })) ?? null;
+    liveVariations.find((variation) => areGlobalsEqual({ a: globals, b: variation.globals })) ??
+    null;
 
   /* An exact payload match is identity with zero overrides, by construction. */
   if (matched !== null) {
@@ -231,24 +247,32 @@ export function resolveDraftThemeLink({
   const isPointerForThisKit = pointer.kitId === kitId;
   const hasStalePointer = !isPointerForThisKit || pointer.revision < revision;
   const pointedVariation = isPointerForThisKit
-    ? (variations.find((variation) => variation.id === pointer.variationId) ?? null)
+    ? (liveVariations.find((variation) => variation.id === pointer.variationId) ?? null)
     : null;
   if (pointedVariation === null) {
     /*
-      A pointer with nothing to point AT in the bound kit. Two shapes, and both
-      keep the state the old ladder gave them:
+      A pointer with nothing to point AT in the bound kit. Two shapes:
 
       - Another kit was bound to this canvas, or this kit moved past a variation
         the pointer named — `outdated`, and the propagation TARGET still falls
         back through pickTargetVariation exactly as before.
-      - A pointer at THIS kit's current revision naming a variation id the kit no
-        longer carries. Only theme DELETION can create it; deletion is unbuilt
-        and undesigned (§14.5a). It reports `overridden` with a null parent,
-        which suppresses both the indicator and the pill — the same silence the
-        old `detached` state gave it.
+      - A pointer at THIS kit's current revision naming a variation the kit no
+        longer offers. Only theme DELETION creates it, and §14.5b is what this
+        branch was waiting for.
+
+      THE DELETED CASE IS `never-applied`, NOT `overridden`. It used to report
+      `overridden` with a null parent because deletion was undesigned and the
+      state at least stayed silent. It is the wrong word now and the owner's
+      decision says so: deleting a theme UNLINKS the draft, so the draft has no
+      parent — and "no parent theme at all" is exactly what `never-applied`
+      names. `overridden` would claim this draft is an instance of something,
+      overridden against a theme that no longer exists, which is a link the
+      user just severed. Nothing about what the draft RENDERS changes either
+      way: both branches return no parent and no overrides, and no code path
+      here writes a document.
     */
     return {
-      state: hasStalePointer ? "outdated" : "overridden",
+      state: hasStalePointer ? "outdated" : "never-applied",
       parentVariationId: null,
       overriddenGlobalKeys: [],
       baselineGlobals: null,

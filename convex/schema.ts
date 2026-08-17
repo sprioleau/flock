@@ -358,6 +358,23 @@ export default defineSchema({
     name: v.string(),
     /** The scraped website, when the kit came from the generate pipeline. */
     sourceUrl: v.optional(v.string()),
+    /**
+     * ADDITIVE + OPTIONAL. True only while this row is the untouched STARTER
+     * kit — Flock's own brand, seeded by `startDefaultBrandKit` so a user
+     * whose site cannot be scraped still has something to edit
+     * (brand-kit-user-control §14.5c, lib/brand-kit-default.ts).
+     *
+     * It drives one thing: the panel's "Starter" badge and the line of copy
+     * saying whose brand this is. Nothing about rendering, propagation or
+     * validation reads it, so an absent field on every existing row means
+     * exactly what it should — "an ordinary kit", which every existing row is.
+     *
+     * CLEARED by the two gestures that mean the kit is about the user's brand
+     * now: `renameBrandKit` and `saveBrandKit` (a scrape replacing it).
+     * Recoloring or re-theming the Flock starter does not clear it — a kit
+     * still called "Flock" is still Flock's.
+     */
+    isStarterKit: v.optional(v.boolean()),
     /** Email-safe CSS font stacks the kit was built around. */
     fonts: v.object({ heading: v.string(), body: v.string() }),
     /**
@@ -454,6 +471,25 @@ export default defineSchema({
         id: v.string(),
         name: v.string(),
         globals: v.record(v.string(), v.any()),
+        /**
+         * ADDITIVE + OPTIONAL. Set when the user SOFT-DELETED this theme
+         * (brand-kit-user-control §14.5b, lib/brand-theme-lifecycle.ts).
+         * Absent — which is every row written before this landed — means live,
+         * so nothing needs a backfill and nothing behaves differently.
+         *
+         * The row survives the delete because the ID does, and the id is what
+         * every draft's `documents.brand.variationId` names: restoring the
+         * variation re-links every draft that pointed at it, overrides intact,
+         * without writing to a single document. A hard splice could never give
+         * that back — ids are slugged from the name, so a re-created theme
+         * gets a new one.
+         *
+         * A deleted variation is invisible wherever a theme is offered,
+         * matched, targeted or counted (getLiveThemeVariations): not in the
+         * dropdown, not in `findMatchingVariation`, never a `pickTargetVariation`
+         * result, and not against the 8-theme cap.
+         */
+        deletedAtMs: v.optional(v.number()),
       }),
     ),
     createdAtMs: v.number(),

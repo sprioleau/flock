@@ -8,8 +8,10 @@ import {
   type BrandColor,
 } from "./brand-kit";
 import {
+  areThemeColorRolesEqual,
   buildCustomThemeName,
   buildCustomThemeVariation,
+  buildEditedThemeVariation,
   buildThemeCandidates,
   buildUniqueVariationId,
   deriveEmailBackgroundColor,
@@ -17,6 +19,8 @@ import {
   getEligibleTextColors,
   getEligibleThemeBackgrounds,
   getPaletteHexes,
+  getThemeColorRoles,
+  getThemeEditPaletteHexes,
   MAX_THEME_CANDIDATES,
   pickNextThemeCandidate,
 } from "./brand-theme-builder";
@@ -286,5 +290,111 @@ describe("naming and derived colors", () => {
     expect(getButtonShapeFromRadius(6)).toBe("rounded");
     expect(getButtonShapeFromRadius(4)).toBe("rounded");
     expect(getButtonShapeFromRadius(undefined)).toBe("rounded");
+  });
+});
+
+describe("editing an existing theme (§14.5b)", () => {
+  const WARM_SAND = MOCK_BRAND_KIT.variations.find((variation) => variation.id === "warm-sand")!;
+  const FONTS = MOCK_BRAND_KIT.fonts;
+
+  it("keeps the theme's ID through a rename, so drafts stay linked to it", () => {
+    /*
+      The id is what every `documents.brand.variationId` names. Deriving a
+      fresh slug from the new name would strand every draft that was an
+      instance of this theme — the deletion behaviour, arrived at by renaming.
+    */
+    const edited = buildEditedThemeVariation({
+      variation: WARM_SAND,
+      name: "Something Else Entirely",
+      roles: getThemeColorRoles(WARM_SAND),
+      fonts: FONTS,
+    });
+    expect(edited?.id).toBe("warm-sand");
+    expect(edited?.name).toBe("Something Else Entirely");
+  });
+
+  it("leaves the payload BYTE-IDENTICAL when only the name changed", () => {
+    /*
+      Why this matters: the expander DERIVES the email background, divider and
+      link color from the four roles, so re-expanding a scraped theme rewrites
+      keys its author chose. A user who only retyped the name would then get a
+      payload edit, a revision bump, and an "Updated brand available" pill on
+      every draft using it — for a change nobody made.
+    */
+    const edited = buildEditedThemeVariation({
+      variation: WARM_SAND,
+      name: "Warm Sand II",
+      roles: getThemeColorRoles(WARM_SAND),
+      fonts: FONTS,
+    });
+    expect(edited?.globals).toEqual(WARM_SAND.globals);
+  });
+
+  it("keeps THIS theme's button shape when its colors change", () => {
+    /* Warm Sand has pill buttons; a color edit must not square them off. */
+    const edited = buildEditedThemeVariation({
+      variation: WARM_SAND,
+      name: WARM_SAND.name,
+      roles: { ...getThemeColorRoles(WARM_SAND), accent: "#166534" },
+      fonts: FONTS,
+    });
+    expect(edited?.globals.buttonBorderRadius).toBe(WARM_SAND.globals.buttonBorderRadius);
+    expect(edited?.globals.buttonBackgroundColor).toBe("#166534");
+  });
+
+  it("produces a payload that still clears the contrast gate", () => {
+    const edited = buildEditedThemeVariation({
+      variation: WARM_SAND,
+      name: WARM_SAND.name,
+      roles: { ...getThemeColorRoles(WARM_SAND), contentBackground: "#3d2c1e", headingText: "#fdf9f2", paragraphText: "#fdf9f2" },
+      fonts: FONTS,
+    });
+    for (const pair of getVariationContrastPairs(edited!)) {
+      expect(pair.ratio ?? 0).toBeGreaterThanOrEqual(MIN_THEME_CONTRAST_RATIO);
+    }
+  });
+
+  it("always offers the theme's OWN colors, even when the palette has none of them", () => {
+    /*
+      A scraped theme's heading color is often a contrast-repaired shade that
+      is not in the authored palette. A select whose options exclude its own
+      current value shows the wrong color selected and changes the theme the
+      instant it is submitted — so the edit palette is the union.
+    */
+    const roles = getThemeColorRoles(WARM_SAND);
+    const merged = getThemeEditPaletteHexes({ paletteHexes: ["#ffffff", "#000000"], roles });
+    expect(merged).toContain(roles.contentBackground);
+    expect(merged).toContain(roles.headingText);
+    expect(merged).toContain(roles.paragraphText);
+    expect(merged).toContain(roles.accent);
+    /* And the current background survives the eligibility filter, so the form
+       opens on a real, legible, saveable combination. */
+    expect(getEligibleThemeBackgrounds(merged)).toContain(roles.contentBackground);
+    expect(
+      getEligibleTextColors({ background: roles.contentBackground, paletteHexes: merged }),
+    ).toContain(roles.headingText);
+  });
+
+  it("does not duplicate a color the palette already has", () => {
+    const roles = getThemeColorRoles(WARM_SAND);
+    const merged = getThemeEditPaletteHexes({
+      paletteHexes: [roles.contentBackground, roles.accent],
+      roles,
+    });
+    expect(new Set(merged).size).toBe(merged.length);
+  });
+
+  it("compares roles case-insensitively, so #FFF and #ffffff are the same choice", () => {
+    expect(
+      areThemeColorRolesEqual({
+        a: { contentBackground: "#FFF", headingText: "#000", paragraphText: "#333", accent: "#F00" },
+        b: {
+          contentBackground: "#ffffff",
+          headingText: "#000000",
+          paragraphText: "#333333",
+          accent: "#ff0000",
+        },
+      }),
+    ).toBe(true);
   });
 });

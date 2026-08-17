@@ -28,6 +28,14 @@
   overridden properties. Appending still does not bump — see both mutations'
   comments for the two halves of that policy.
 
+  The edit FORM's decision logic now lives here too (§14.5b):
+  {@link getThemeColorRoles} reads a stored theme back into the four roles,
+  {@link getThemeEditPaletteHexes} is why its own colors are always on offer,
+  and {@link buildEditedThemeVariation} composes the payload the existing
+  mutation is called with. Contrast filtering applies to an edit exactly as it
+  applies to an add — same eligible sets, same selects, same guarantee that a
+  combination on screen is a combination that saves.
+
   Pure by design (no React, no DOM, no ctx): apps/web/vitest.config.ts pins
   `environment: "node"` for all of src/**, so the decision logic — eligibility,
   candidate generation, shuffle ordering, naming, id uniqueness — lives here
@@ -77,6 +85,79 @@ export interface ThemeCandidate {
   /* Stable within one candidate set — the shuffle's cursor. */
   key: string;
   roles: ThemeColorRoles;
+}
+
+/*
+  The four roles read BACK out of a stored variation — the inverse of
+  {@link buildCustomThemeVariation}'s expansion, and what seeds the edit form.
+
+  It reads the four keys the user picked and nothing else. The rest of the
+  payload (email background, divider, button label, repaired link color) is
+  DERIVED from these four, so re-deriving them is how an edit stays the same
+  kind of object an add produces: one expander, one set of guarantees, no
+  second implementation of "what a theme is".
+*/
+export function getThemeColorRoles(variation: ThemeVariation): ThemeColorRoles {
+  return {
+    contentBackground: variation.globals.contentBackgroundColor,
+    headingText: variation.globals.heading1TextColor,
+    paragraphText: variation.globals.paragraphTextColor,
+    accent: variation.globals.buttonBackgroundColor,
+  };
+}
+
+/*
+  The colors the EDIT form may offer: the kit's palette plus the four this
+  theme already uses.
+
+  Without the union, editing a scraped theme would be a trap. Scraped
+  variations are expanded from the model's semantic picks and contrast-repaired
+  (expand-variations.ts), so their heading or paragraph color is frequently a
+  repaired shade that is not in the authored palette at all — and a select whose
+  option list does not contain its own current value shows the wrong color
+  selected and silently changes the theme the moment it is submitted.
+
+  Adding the theme's own colors keeps filter-before-offering exactly as strong.
+  The stored combination already passes WCAG-AA (nothing else is ever written to
+  a kit row), so admitting those four colors cannot admit a failing pair — it
+  guarantees the current one is on offer, which is the minimum an edit form has
+  to promise.
+*/
+export function getThemeEditPaletteHexes({
+  paletteHexes,
+  roles,
+}: {
+  paletteHexes: string[];
+  roles: ThemeColorRoles;
+}): string[] {
+  const merged = [...paletteHexes];
+  const seen = new Set(paletteHexes);
+  const roleHexes = [roles.contentBackground, roles.headingText, roles.paragraphText, roles.accent];
+  for (const hex of roleHexes) {
+    const normalized = normalizeHex(hex);
+    if (normalized === null || seen.has(normalized)) {
+      continue;
+    }
+    seen.add(normalized);
+    merged.push(normalized);
+  }
+  return merged;
+}
+
+/** True when two role sets name the same color for every role. */
+export function areThemeColorRolesEqual({
+  a,
+  b,
+}: {
+  a: ThemeColorRoles;
+  b: ThemeColorRoles;
+}): boolean {
+  return (
+    normalizeHex(a.contentBackground) === normalizeHex(b.contentBackground) &&
+    normalizeHex(a.headingText) === normalizeHex(b.headingText) &&
+    normalizeHex(a.paragraphText) === normalizeHex(b.paragraphText) &&
+    normalizeHex(a.accent) === normalizeHex(b.accent)
+  );
 }
 
 /* Every distinct, readable hex in the kit's authored palette, in panel order. */
@@ -344,6 +425,13 @@ export function getButtonShapeFromRadius(radius: number | undefined): ButtonShap
 
   Returns null only when a color is unreadable — which the filtered picker
   cannot produce, so it is a genuine backstop rather than a path users meet.
+
+  `existingId` is the EDIT path's one difference (§14.5b). A theme's id is what
+  every draft pointer names, so an edit must keep it byte for byte — deriving a
+  fresh slug from the new name would silently strand every draft that was an
+  instance of this theme, which is the deletion behaviour, arrived at by
+  renaming. Keeping the id is also what makes `updateBrandThemeVariation`'s
+  "a pure rename does not bump the revision" rule reachable from the UI at all.
 */
 export function buildCustomThemeVariation({
   name,
@@ -351,12 +439,14 @@ export function buildCustomThemeVariation({
   fonts,
   buttonShape,
   takenIds,
+  existingId,
 }: {
   name: string;
   roles: ThemeColorRoles;
   fonts: BrandKitFonts;
   buttonShape: ButtonShape;
   takenIds: string[];
+  existingId?: string;
 }): ThemeVariation | null {
   const trimmedName = name.trim().length > 0 ? name.trim() : "Custom theme";
   const expanded = expandSemanticVariation({
@@ -379,9 +469,57 @@ export function buildCustomThemeVariation({
   }
   return {
     ...expanded,
-    id: buildUniqueVariationId({ name: trimmedName, takenIds }),
+    id: existingId ?? buildUniqueVariationId({ name: trimmedName, takenIds }),
     name: trimmedName,
   };
+}
+
+/*
+  The EDIT form's payload: this theme, with the name and colors the user now
+  wants (§14.5b — the UI half of `updateBrandThemeVariation`, which already
+  shipped).
+
+  UNCHANGED COLORS KEEP THE STORED PAYLOAD VERBATIM, and that is the whole
+  reason this is a function rather than a call to the builder above. The
+  expander DERIVES the email background, the divider, the button label and the
+  repaired link color from the four roles, so re-expanding a scraped theme
+  whose author picked a different email background would rewrite those keys —
+  and a user who only retyped the NAME would get a payload edit, a revision
+  bump, and an "Updated brand available" pill on every draft using it, for a
+  change nobody made. Comparing the roles first makes a rename a rename.
+
+  Returns null only when the expander refuses a color, the same backstop the
+  add path has.
+*/
+export function buildEditedThemeVariation({
+  variation,
+  name,
+  roles,
+  fonts,
+}: {
+  variation: ThemeVariation;
+  name: string;
+  roles: ThemeColorRoles;
+  fonts: BrandKitFonts;
+}): ThemeVariation | null {
+  const trimmedName = name.trim().length > 0 ? name.trim() : variation.name;
+  if (areThemeColorRolesEqual({ a: roles, b: getThemeColorRoles(variation) })) {
+    return { ...variation, name: trimmedName };
+  }
+  return buildCustomThemeVariation({
+    name: trimmedName,
+    roles,
+    fonts,
+    /*
+      THIS theme's shape, not the kit's. `BrandKitPanel` passes the kit-wide
+      shape (read off the first variation) to the ADD form, which is right for
+      a brand new theme; using it here would square off the pill buttons of the
+      one variation whose author chose them, on an edit that only touched color.
+    */
+    buttonShape: getButtonShapeFromRadius(variation.globals.buttonBorderRadius),
+    takenIds: [],
+    existingId: variation.id,
+  });
 }
 
 /* Renderer-default globals — the shape a preview falls back to before a pick. */

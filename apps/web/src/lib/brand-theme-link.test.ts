@@ -132,18 +132,23 @@ describe("resolveDraftThemeLink — migration: every existing row shape keeps it
     ).toEqual(movedClassic.globals);
   });
 
-  it("a pointer naming a variation the kit no longer carries stays silent, as `detached` did", () => {
-    /* Only theme DELETION can produce this, and deletion is unbuilt (§14.5a). */
+  it("a pointer naming a variation the kit no longer carries is PARENTLESS, not overridden", () => {
+    /*
+      Only theme DELETION produces this, and §14.5b is what the branch was
+      waiting for. `never-applied` is the honest word: the user unlinked this
+      draft from that theme, so it has no parent — `overridden` would claim it
+      is an instance of something, overridden against a theme that is gone.
+    */
     const link = resolve({
       globals: { ...CLASSIC.globals, buttonBackgroundColor: "#ff0000" },
       brand: pointer({ variationId: "a-theme-that-is-gone" }),
     });
     expect(link).toMatchObject({
-      state: "overridden",
+      state: "never-applied",
       parentVariationId: null,
       overriddenGlobalKeys: [],
     });
-    /* Null parent ⇒ no dot, no note — the same silence the old state gave it. */
+    /* Null parent ⇒ no dot, no note: there is nothing to be overridden AGAINST. */
     expect(
       getThemeOverrideIndicator({
         parentVariationId: link.parentVariationId,

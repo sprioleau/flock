@@ -14,11 +14,14 @@ import {
   getBrandColorsValidationErrors,
   getBrandKitValidationErrors,
   getConfirmedBrandAssetUrl,
+  getLiveThemeVariations,
   getToneOfVoiceValidationErrors,
   MAX_BRAND_KIT_VARIATIONS,
   type BrandKit,
   type BrandToneOfVoice,
 } from "../apps/web/src/lib/brand-kit";
+import { buildDefaultBrandKit } from "../apps/web/src/lib/brand-kit-default";
+import { planThemeVariationDeletion } from "../apps/web/src/lib/brand-theme-lifecycle";
 import { validateBrandAssetUrl } from "../apps/web/src/lib/brand-asset-url";
 import {
   composeThemeGlobals,
@@ -165,12 +168,34 @@ const activeBrandKitValidator = v.object({
   revision: v.number(),
   logoConfirmedAtMs: v.optional(v.number()),
   socialImageConfirmedAtMs: v.optional(v.number()),
+  /** True while this is the untouched Flock STARTER kit — drives the badge only. */
+  isStarterKit: v.optional(v.boolean()),
+  /*
+    LIVE variations only. Soft-deleted rows are filtered out by
+    `projectBrandKitRow` and never cross this boundary, which is what makes
+    "a deleted theme is not in the dropdown" true for every reader at once
+    rather than a rule each component has to remember (§14.5b).
+  */
   variations: v.array(
     v.object({
       id: v.string(),
       name: v.string(),
       globals: v.record(v.string(), v.any()),
     }),
+  ),
+  /*
+    The soft-deleted ones, so the panel can offer Restore and the add form can
+    treat their ids as taken. Omitted entirely when there are none, which keeps
+    the payload byte-identical for every kit nobody has deleted from.
+  */
+  deletedVariations: v.optional(
+    v.array(
+      v.object({
+        id: v.string(),
+        name: v.string(),
+        globals: v.record(v.string(), v.any()),
+      }),
+    ),
   ),
 });
 
@@ -190,6 +215,10 @@ type ActiveBrandKitPayload = Infer<typeof activeBrandKitValidator>;
 
 /** Project a kit row onto the read wire shape (shared by every kit read). */
 function projectBrandKitRow(row: Doc<"brandKits">): ActiveBrandKitPayload {
+  const deletedVariations = row.variations
+    .filter((variation) => variation.deletedAtMs !== undefined)
+    .sort((a, b) => (a.deletedAtMs ?? 0) - (b.deletedAtMs ?? 0))
+    .map((variation) => ({ id: variation.id, name: variation.name, globals: variation.globals }));
   return {
     kitId: row._id,
     name: row.name,
@@ -205,7 +234,21 @@ function projectBrandKitRow(row: Doc<"brandKits">): ActiveBrandKitPayload {
     ...(row.socialImageConfirmedAtMs !== undefined
       ? { socialImageConfirmedAtMs: row.socialImageConfirmedAtMs }
       : {}),
-    variations: row.variations,
+    ...(row.isStarterKit === true ? { isStarterKit: true } : {}),
+    /*
+      THE one place soft deletion becomes invisible (§14.5b). Every kit read in
+      the app — the theme dropdown, the panel, the palette derivation, the
+      identity resolver, propagation — comes through here, so filtering once
+      covers all of them; and the fields are re-listed rather than spread so
+      `deletedAtMs` cannot leak into a return validator that does not declare
+      it.
+    */
+    variations: getLiveThemeVariations(row.variations).map((variation) => ({
+      id: variation.id,
+      name: variation.name,
+      globals: variation.globals,
+    })),
+    ...(deletedVariations.length > 0 ? { deletedVariations } : {}),
   };
 }
 
@@ -401,6 +444,14 @@ export const saveBrandKit = mutation({
       socialLinks: args.brandKit.socialLinks,
       colors: reconciledColors.colors.length > 0 ? reconciledColors.colors : undefined,
       toneOfVoice: reconciledTone.toneOfVoice,
+      /*
+        A scrape REPLACES the starter kit outright — that is the frictionless
+        overwrite §14.5c promises. The starter's colors and tone carry
+        `origin: "agent"` precisely so `reconcileBrandColors` and
+        `reconcileToneOfVoice` sweep them instead of protecting them, and the
+        badge goes with them.
+      */
+      isStarterKit: undefined,
       updatedAtMs: now,
       ...patch,
     });
@@ -409,6 +460,69 @@ export const saveBrandKit = mutation({
       keptUserEditedColors: reconciledColors.keptUserEditedCount,
       keptUserToneOfVoice: reconciledTone.keptUserEdit,
     };
+  },
+});
+
+/*
+  SEED the starter kit — Flock's own brand — for an owner who has none
+  (brand-kit-user-control §14.5c, lib/brand-kit-default.ts).
+
+  THE PROBLEM IT SOLVES: every manual editor in the panel is gated behind
+  `hasSavedKit`, and the only way to earn one was a successful website scrape.
+  A user whose site is bot-protected, or who has no site, had no path at all —
+  not to colors, not to fonts, not to a tone of voice, not even to binding a
+  brand to their canvas. This gives them a real, editable row in one click.
+
+  IDEMPOTENT AND NEVER DESTRUCTIVE. An owner who already has a kit gets that
+  kit's id back, untouched. There is no path here that overwrites a saved kit,
+  which is what lets the panel offer this without a confirmation step.
+
+  RESTYLES NOTHING. It inserts one row. It binds no canvas, writes no document
+  and commits no op, so a person with existing drafts sees them exactly as they
+  were — the canvas is not even using this kit until they choose it, and even
+  then applyBrandToDocuments is still somebody's explicit confirm.
+
+  The kit passes the same gate a scraped one does (strict Zod, completeness,
+  WCAG-AA) because it is built from the app's own contract-passing theme
+  payloads — the assertion below is not a formality, it is what keeps that
+  true if anyone edits the constant.
+*/
+export const startDefaultBrandKit = mutation({
+  args: { sessionId: v.string() },
+  returns: v.object({ kitId: v.id("brandKits"), wasAlreadyPresent: v.boolean() }),
+  handler: async (ctx, args) => {
+    const ownerId = await resolveOwnerId(ctx, { claimedSessionId: args.sessionId });
+    const existingRows = await loadOwnerBrandKitRows(ctx, ownerId);
+    const existingRow = existingRows[0];
+    if (existingRow !== undefined) {
+      return { kitId: existingRow._id, wasAlreadyPresent: true };
+    }
+    const brandKit = buildDefaultBrandKit();
+    assertBrandKitIsValid(brandKit as BrandKitInput);
+    const now = Date.now();
+    const kitId = await ctx.db.insert("brandKits", {
+      sessionId: ownerId,
+      name: brandKit.name,
+      fonts: brandKit.fonts,
+      /*
+        UNCONFIRMED, deliberately. The logo is an inline `data:image/svg+xml`
+        suggestion exactly like a scraped masthead SVG, so the shipped confirm
+        flow — same safety gate, same upload, same Suggested → Saved chip — is
+        what makes it durable and earns it the right to enter a document.
+        `logoConfirmedAtMs` is absent, so getConfirmedBrandAssetUrl answers
+        null and propagation writes no logo op until the user confirms.
+      */
+      logoUrl: brandKit.logoUrl,
+      colors: brandKit.colors,
+      toneOfVoice: brandKit.toneOfVoice,
+      variations: brandKit.variations,
+      /* The badge's whole basis — cleared by a rename or a scrape. */
+      isStarterKit: true,
+      revision: 1,
+      createdAtMs: now,
+      updatedAtMs: now,
+    });
+    return { kitId, wasAlreadyPresent: false };
   },
 });
 
@@ -489,7 +603,14 @@ export const updateBrandFonts = mutation({
     });
     // Same gate every stored kit passes: completeness + WCAG contrast. Fonts
     // can't move a contrast ratio, but the kit is never written unchecked.
-    assertBrandKitIsValid({ ...toBrandKitContract(row), fonts: args.fonts, variations });
+    // Soft-deleted variations ARE re-fonted above (a restored theme must not
+    // come back with two-revisions-old fonts) but are not what the gate counts
+    // against the cap — see getBrandKitValidationErrors.
+    assertBrandKitIsValid({
+      ...toBrandKitContract(row),
+      fonts: args.fonts,
+      variations: getLiveThemeVariations(variations),
+    });
     await ctx.db.patch(row._id, {
       fonts: args.fonts,
       variations,
@@ -548,16 +669,28 @@ export const addBrandThemeVariation = mutation({
     if (name.length === 0) {
       throw new ConvexError("Give the theme a name.");
     }
+    /*
+      Id collisions are checked against EVERY row, live or soft-deleted: a
+      deleted variation still occupies its id (that is what makes restoring it
+      re-link the drafts pointing there), so reusing the id would fuse two
+      different themes into one as far as every pointer is concerned. The panel
+      feeds `buildUniqueVariationId` the deleted ids too, so a person never
+      meets this — it is the backstop, like the contrast gate below.
+    */
     if (row.variations.some((variation) => variation.id === args.variation.id)) {
       throw new ConvexError("A theme with that name already exists in this kit.");
     }
-    if (row.variations.length >= MAX_BRAND_KIT_VARIATIONS) {
+    /* The cap counts THEMES, and a deleted one is not a theme this kit has. */
+    if (getLiveThemeVariations(row.variations).length >= MAX_BRAND_KIT_VARIATIONS) {
       throw new ConvexError(
         `This kit already holds ${MAX_BRAND_KIT_VARIATIONS} themes — the most it can carry.`,
       );
     }
     const variations = [...row.variations, { ...args.variation, name }];
-    assertBrandKitIsValid({ ...toBrandKitContract(row), variations });
+    assertBrandKitIsValid({
+      ...toBrandKitContract(row),
+      variations: getLiveThemeVariations(variations),
+    });
     await ctx.db.patch(row._id, { variations, updatedAtMs: Date.now() });
     return { variationId: args.variation.id };
   },
@@ -609,7 +742,15 @@ export const updateBrandThemeVariation = mutation({
     if (name.length === 0) {
       throw new ConvexError("Give the theme a name.");
     }
-    const existing = row.variations.find((variation) => variation.id === args.variationId);
+    /*
+      LIVE ONLY. Editing a theme the user deleted would silently resurrect it
+      as far as the panel is concerned while leaving `deletedAtMs` in place —
+      an edit is not the restore gesture, and `setBrandThemeVariationDeleted`
+      is (§14.5b).
+    */
+    const existing = getLiveThemeVariations(row.variations).find(
+      (variation) => variation.id === args.variationId,
+    );
     if (existing === undefined) {
       throw new ConvexError("That theme is no longer in this kit.");
     }
@@ -619,7 +760,10 @@ export const updateBrandThemeVariation = mutation({
         : variation,
     );
     /* Same gate every stored kit passes — strict Zod, completeness, WCAG-AA. */
-    assertBrandKitIsValid({ ...toBrandKitContract(row), variations });
+    assertBrandKitIsValid({
+      ...toBrandKitContract(row),
+      variations: getLiveThemeVariations(variations),
+    });
     const hasSameName = existing.name === name;
     const hasSameGlobals = areGlobalsEqual({ a: existing.globals, b: args.globals });
     if (hasSameName && hasSameGlobals) {
@@ -636,6 +780,79 @@ export const updateBrandThemeVariation = mutation({
       ...(hasSameGlobals ? {} : { revision: getEffectiveRevision(row) + 1 }),
       updatedAtMs: Date.now(),
     });
+    return null;
+  },
+});
+
+/*
+  DELETE a theme — softly — or undo that (brand-kit-user-control §14.5b).
+  The owner's decision, verbatim: "I think we should allow theme deletion, but
+  it's a soft deletion (and unlinks existing drafts from using that theme)."
+
+  THIS MUTATION RESTYLES NOTHING, and the proof is that it cannot: it patches
+  `variations` on the kit row and returns. It reads no document, writes no
+  document, commits no operation. `applyBrandToDocuments` is still the only
+  code path that touches a draft, and it is still behind a human confirm. A
+  draft that was rendering the deleted theme goes on rendering the identical
+  bytes; what changes is what it is CALLED — `resolveDraftThemeLink` finds no
+  parent for its pointer and reports `never-applied`. That IS the unlink the
+  owner asked for: the draft reads as parentless, not as "overridden against a
+  theme that no longer exists".
+
+  WHY NOT CLEAR THE DRAFTS' POINTERS INSTEAD. It is the other way to unlink,
+  and it is worse on three counts. It would make a kit mutation write across
+  into `documents` — every draft of every canvas bound to this kit, with no
+  index to reach them by — which breaks the property the whole §14.5a design
+  rests on (no kit mutation touches a document). It is unbounded work in one
+  transaction. And it destroys the thing that makes soft deletion worth
+  anything: the pointer, with its `baselineGlobals` snapshot, is the memory of
+  which theme a draft was an instance of, so clearing it would make the restore
+  below a restore of the theme but not of the link.
+
+  IT DOES NOT BUMP `revision`, and that is the same call as the append
+  exception. A bump re-arms the "Updated brand available" pill on every draft
+  of every bound canvas, and it is only honest when those drafts have something
+  to adopt. After a deletion the surviving themes are untouched, so every draft
+  using one has nothing new — and the drafts that DID use the deleted theme get
+  their signal from the state change (`never-applied` shows the pill) rather
+  than from a kit-wide claim that everything changed.
+
+  RESTORE IS THE SAME WRITE IN REVERSE, which is why it is the same mutation:
+  clearing `deletedAtMs` makes every draft whose pointer still names this theme
+  an instance of it again — `current` if it never diverged, `overridden` with
+  its own properties intact if it did — again without a single document write.
+*/
+export const setBrandThemeVariationDeleted = mutation({
+  args: {
+    sessionId: v.string(),
+    variationId: v.string(),
+    /** true = delete, false = restore. One argument, one symmetric write. */
+    isDeleted: v.boolean(),
+  },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    const ownerId = await resolveOwnerId(ctx, { claimedSessionId: args.sessionId });
+    const row = await requireOwnerBrandKitRow(ctx, ownerId);
+    const plan = planThemeVariationDeletion({
+      variations: row.variations,
+      variationId: args.variationId,
+      isDeleted: args.isDeleted,
+      nowMs: Date.now(),
+    });
+    if (!plan.isOk) {
+      throw new ConvexError(plan.message);
+    }
+    /*
+      The same gate every stored kit passes. It matters most on the DELETE
+      side: `getBrandKitValidationErrors` counts the live set, so a kit that
+      somehow reached zero live themes is refused here rather than becoming a
+      row whose `variations[0]` fallback has nothing to return.
+    */
+    assertBrandKitIsValid({
+      ...toBrandKitContract(row),
+      variations: getLiveThemeVariations(plan.variations),
+    });
+    await ctx.db.patch(row._id, { variations: plan.variations, updatedAtMs: Date.now() });
     return null;
   },
 });
@@ -708,7 +925,18 @@ export const renameBrandKit = mutation({
       throw new ConvexError("The brand kit name can't be empty.");
     }
     const row = await requireOwnerBrandKitRow(ctx, ownerId);
-    await ctx.db.patch(row._id, { name: trimmedName, updatedAtMs: Date.now() });
+    await ctx.db.patch(row._id, {
+      name: trimmedName,
+      /*
+        Naming the kit is one of the two gestures that mean it is about the
+        user's own brand now, so the Starter badge goes (§14.5c). The other is
+        a scrape — see saveBrandKit. Recoloring or re-theming does NOT clear
+        it: a kit still called "Flock" is still Flock's, and saying otherwise
+        on the badge would be the implication the framing forbids.
+      */
+      isStarterKit: undefined,
+      updatedAtMs: Date.now(),
+    });
     return null;
   },
 });
@@ -1046,7 +1274,8 @@ export const recordDocumentBrandPointer = mutation({
     if (kitRow === null) {
       return null;
     }
-    const variation = kitRow.variations.find((entry) => entry.id === args.variationId);
+    /* Live only: a deleted theme is not one the menu can have applied. */
+    const variation = getLiveKitVariations(kitRow).find((entry) => entry.id === args.variationId);
     if (variation === undefined) {
       return null;
     }
@@ -1175,6 +1404,17 @@ function collectSectionThemeOverrides(
  * pointer's variation id, when it survives in the kit ("midnight stays
  * midnight, just updated") → the kit's first variation.
  */
+/*
+  LIVE VARIATIONS ONLY — the guarantee `pickTargetVariation` below depends on.
+  Both Stage-M handlers resolve their variation list through here rather than
+  reading `kitRow.variations`, so a soft-deleted theme can never become a
+  propagation target, never become the "first variation" a never-applied draft
+  falls back to, and never be counted when deciding a kit is empty (§14.5b).
+*/
+function getLiveKitVariations(kitRow: Doc<"brandKits">): Doc<"brandKits">["variations"] {
+  return kitRow.variations.filter((variation) => variation.deletedAtMs === undefined);
+}
+
 function pickTargetVariation({
   variations,
   matchedVariationId,
@@ -1214,13 +1454,14 @@ export const getCanvasBrandStatus = query({
       canvas === null || canvas.brandKitId === undefined
         ? null
         : await ctx.db.get(canvas.brandKitId);
-    if (canvas === null || kitRow === null || kitRow.variations.length === 0) {
+    const liveVariations = kitRow === null ? [] : getLiveKitVariations(kitRow);
+    if (canvas === null || kitRow === null || liveVariations.length === 0) {
       return { binding: null, drafts: [] };
     }
     const kitId = kitRow._id;
     const revision = getEffectiveRevision(kitRow);
     const brandKit = toBrandKitContract(kitRow);
-    const firstVariation = kitRow.variations[0]!;
+    const firstVariation = liveVariations[0]!;
     const documents = await ctx.db
       .query("documents")
       .withIndex("by_canvasId", (q) => q.eq("canvasId", args.canvasId))
@@ -1247,14 +1488,14 @@ export const getCanvasBrandStatus = query({
       */
       const matched = findMatchingVariation({ brandKit, globals });
       const target = pickTargetVariation({
-        variations: kitRow.variations,
+        variations: liveVariations,
         matchedVariationId: matched?.id,
         pointerVariationId: pointer?.variationId,
       });
       const parent =
         link.parentVariationId === null
           ? null
-          : (kitRow.variations.find((variation) => variation.id === link.parentVariationId) ?? null);
+          : (liveVariations.find((variation) => variation.id === link.parentVariationId) ?? null);
       drafts.push({
         documentId: document._id,
         name: document.name,
@@ -1343,7 +1584,8 @@ export const applyBrandToDocuments = mutation({
       throw new ConvexError("This canvas has no brand yet — choose one first.");
     }
     const kitRow = await ctx.db.get(canvas.brandKitId);
-    if (kitRow === null || kitRow.variations.length === 0) {
+    const liveVariations = kitRow === null ? [] : getLiveKitVariations(kitRow);
+    if (kitRow === null || liveVariations.length === 0) {
       throw new ConvexError("The brand this canvas was using is gone — choose a brand again.");
     }
     const kitId = kitRow._id;
@@ -1368,7 +1610,7 @@ export const applyBrandToDocuments = mutation({
           : undefined;
       const matched = findMatchingVariation({ brandKit, globals });
       const target = pickTargetVariation({
-        variations: kitRow.variations,
+        variations: liveVariations,
         matchedVariationId: matched?.id,
         pointerVariationId: state.document.brand?.variationId,
       });

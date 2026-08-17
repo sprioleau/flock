@@ -51,6 +51,7 @@ import { BrandColorsEditor } from "./BrandColorsEditor";
 import { BrandFontsEditor } from "./BrandFontsEditor";
 import { BrandSocialLinksEditor } from "./BrandSocialLinksEditor";
 import { BrandThemeBuilder } from "./BrandThemeBuilder";
+import { BrandThemeList } from "./BrandThemeList";
 import { BrandThemeOverridesNote } from "./BrandThemeOverridesNote";
 import { BrandVoiceEditor, type BrandVoiceDraft } from "./BrandVoiceEditor";
 import { useSessionBrandKit } from "./useActiveBrandKit";
@@ -96,6 +97,9 @@ export function BrandKitPanel() {
   const updateBrandFonts = useMutation(api.brandKits.updateBrandFonts);
   const updateBrandToneOfVoice = useMutation(api.brandKits.updateBrandToneOfVoice);
   const addBrandThemeVariation = useMutation(api.brandKits.addBrandThemeVariation);
+  const updateBrandThemeVariation = useMutation(api.brandKits.updateBrandThemeVariation);
+  const setBrandThemeVariationDeleted = useMutation(api.brandKits.setBrandThemeVariationDeleted);
+  const startDefaultBrandKit = useMutation(api.brandKits.startDefaultBrandKit);
   const setBrandAssetSuggestion = useMutation(api.brandKits.setBrandAssetSuggestion);
   const updateSocialLinks = useMutation(api.brandKits.updateSocialLinks);
   const removeBrandKitAsset = useMutation(api.brandKits.removeBrandKitAsset);
@@ -120,6 +124,8 @@ export function BrandKitPanel() {
   const [reconciliationMessage, setReconciliationMessage] = useState<string | null>(null);
   const [contentErrorMessage, setContentErrorMessage] = useState<string | null>(null);
   const [isAddingTheme, setIsAddingTheme] = useState(false);
+  const [isThemeWriteBusy, setIsThemeWriteBusy] = useState(false);
+  const [isStartingDefaultKit, setIsStartingDefaultKit] = useState(false);
   const [logoUrlDraft, setLogoUrlDraft] = useState("");
 
   const canvasBinding = brandStatus?.binding ?? null;
@@ -332,6 +338,103 @@ export function BrandKitPanel() {
       );
     } finally {
       setIsAddingTheme(false);
+    }
+  };
+
+  /*
+    Save an EDIT of an existing theme (§14.5b) through the mutation that
+    already shipped with §14.5a — gates, propagation and revision policy
+    included. There is deliberately no second write path: this is the one
+    mutation, and it is the same one whose end-to-end coverage proves an edit
+    propagates while each draft's own overridden properties survive it.
+
+    Nothing is restyled by this call. A payload edit bumps the kit revision, so
+    referencing drafts read "outdated" and grow the ordinary non-blocking pill;
+    a pure rename bumps nothing, because nothing a draft renders moved.
+  */
+  const commitThemeEdit = async (variation: ThemeVariation): Promise<void> => {
+    if (sessionId === null || !hasSavedKit || isThemeWriteBusy) {
+      return;
+    }
+    setIsThemeWriteBusy(true);
+    setContentErrorMessage(null);
+    try {
+      await updateBrandThemeVariation({
+        sessionId,
+        variationId: variation.id,
+        name: variation.name,
+        globals: variation.globals,
+      });
+    } catch (error: unknown) {
+      setContentErrorMessage(
+        error instanceof ConvexError ? String(error.data) : "Couldn't save that theme. Try again.",
+      );
+    } finally {
+      setIsThemeWriteBusy(false);
+    }
+  };
+
+  /*
+    Soft-delete a theme, or restore one (§14.5b). One mutation, both
+    directions — it is the same field either way.
+
+    THIS RESTYLES NOTHING, which is why it needs no propagation prompt and no
+    confirmation beyond the dialog's. The write lands on the kit row; drafts
+    that were using the theme keep their globals byte for byte and simply stop
+    being instances of it.
+  */
+  const commitThemeDeletion = async ({
+    variationId,
+    isDeleted,
+  }: {
+    variationId: string;
+    isDeleted: boolean;
+  }): Promise<void> => {
+    if (sessionId === null || !hasSavedKit || isThemeWriteBusy) {
+      return;
+    }
+    setIsThemeWriteBusy(true);
+    setContentErrorMessage(null);
+    try {
+      await setBrandThemeVariationDeleted({ sessionId, variationId, isDeleted });
+    } catch (error: unknown) {
+      setContentErrorMessage(
+        error instanceof ConvexError
+          ? String(error.data)
+          : isDeleted
+            ? "Couldn't delete that theme. Try again."
+            : "Couldn't restore that theme. Try again.",
+      );
+    } finally {
+      setIsThemeWriteBusy(false);
+    }
+  };
+
+  /*
+    Seed the STARTER kit — Flock's own brand — for somebody who has none
+    (§14.5c). Until this existed, every editor in this panel was gated behind a
+    successful website scrape, so a bot-protected site (or no site) meant no
+    kit and nothing to edit at all.
+
+    It inserts one row and stops: no canvas is bound, no draft is touched, and
+    the kit is plainly labelled as Flock's until the user makes it theirs.
+  */
+  const startWithDefaultKit = async (): Promise<void> => {
+    if (sessionId === null || isStartingDefaultKit) {
+      return;
+    }
+    setIsStartingDefaultKit(true);
+    setContentErrorMessage(null);
+    try {
+      await startDefaultBrandKit({ sessionId });
+    } catch (error: unknown) {
+      setContentErrorMessage(
+        error instanceof ConvexError
+          ? String(error.data)
+          : "Couldn't set up a starter kit. Try again.",
+      );
+    } finally {
+      setIsStartingDefaultKit(false);
     }
   };
 
@@ -570,7 +673,7 @@ export function BrandKitPanel() {
               <h3 className="text-sm leading-none font-semibold">Preview</h3>
               <BrandKitSummary
                 brandKit={previewKit}
-                isDefaultKit={false}
+                isStarterKit={false}
                 onNameCommit={(name) =>
                   setPreviewKit((current) => (current === null ? null : { ...current, name }))
                 }
@@ -612,9 +715,40 @@ export function BrandKitPanel() {
 
           <section className="flex flex-col gap-3 border-t pt-5">
             <h3 className="text-sm leading-none font-semibold">Active kit</h3>
+            {/* §14.5c: the way OUT of the scrape-or-nothing dead end. Every
+                editor below is gated on a saved row, so a person whose site
+                can't be scraped had no path at all — this gives them one, in
+                one click, with a kit that says whose brand it is. */}
+            {!hasSavedKit && (
+              <div className="flex flex-col gap-2 rounded-lg border border-dashed p-4">
+                <p className="text-sm text-muted-foreground">
+                  No brand kit yet. Scan your site above — or start from Flock&apos;s own kit and
+                  make it yours. Rename it, recolor it, or run a scan later; a scan replaces it
+                  outright.
+                </p>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="self-start"
+                  onClick={() => void startWithDefaultKit()}
+                  disabled={sessionId === null || isStartingDefaultKit}
+                  data-testid="brand-kit-start-default-button"
+                >
+                  {isStartingDefaultKit && <Loader2Icon className="animate-spin" />}
+                  Start from Flock&apos;s kit
+                </Button>
+              </div>
+            )}
             <BrandKitSummary
               brandKit={activeBrandKit}
-              isDefaultKit={!hasSavedKit}
+              /*
+                The badge means "this is not your brand yet" — true both before
+                a kit exists (the mock is on screen) and while the seeded
+                STARTER kit is untouched. One boolean for one concept, extended
+                rather than duplicated: `isStarterKit` is cleared server-side by
+                a rename or a scrape, the two gestures that make the kit yours.
+              */
+              isStarterKit={!hasSavedKit || activeBrandKit.isStarterKit === true}
               onNameCommit={hasSavedKit ? (name) => void commitActiveKitName(name) : undefined}
               onFontsCommit={hasSavedKit ? (fonts) => void commitBrandFonts(fonts) : undefined}
               assetActions={
@@ -715,15 +849,30 @@ export function BrandKitPanel() {
             </section>
           )}
 
-          {/* Custom themes (v2 §2.1). Placed under Colors on purpose: a theme
-              here IS a set of the kit's colors, so the palette has to be the
-              thing the user just looked at. Add-only — see BrandThemeBuilder. */}
+          {/* Themes (v2 §2.1, user-control §14.5b). Placed under Colors on
+              purpose: a theme here IS a set of the kit's colors, so the palette
+              has to be the thing the user just looked at. The list edits and
+              deletes; the builder below it adds. */}
           {hasSavedKit && (activeBrandKit.colors ?? []).length > 0 && (
             <section
               className="flex flex-col gap-3 border-t pt-5"
               data-testid="brand-kit-themes-section"
             >
-              <h3 className="text-sm leading-none font-semibold">Add a theme</h3>
+              <h3 className="text-sm leading-none font-semibold">Themes</h3>
+              <p className="text-xs text-muted-foreground">
+                Edit one to recolor or rename it, or delete one to take it off the theme menu.
+                Neither changes how any draft looks until you choose to update it.
+              </p>
+              <BrandThemeList
+                variations={activeBrandKit.variations}
+                deletedVariations={activeBrandKit.deletedVariations ?? []}
+                colors={activeBrandKit.colors ?? []}
+                fonts={activeBrandKit.fonts}
+                isBusy={sessionId === null || isThemeWriteBusy}
+                onSaveEdit={(variation) => void commitThemeEdit(variation)}
+                onSetDeleted={(input) => void commitThemeDeletion(input)}
+              />
+              <h4 className="mt-2 text-sm leading-none font-semibold">Add a theme</h4>
               <p className="text-xs text-muted-foreground">
                 Build one from your palette, or shuffle until something looks right. New themes join
                 the theme menu; the ones you already have don&apos;t change.
@@ -734,7 +883,11 @@ export function BrandKitPanel() {
                 buttonShape={getButtonShapeFromRadius(
                   activeBrandKit.variations[0]?.globals.buttonBorderRadius,
                 )}
-                existingVariationIds={activeBrandKit.variations.map((variation) => variation.id)}
+                /* Deleted ids are still TAKEN — see BrandThemeBuilder's prop. */
+                existingVariationIds={[
+                  ...activeBrandKit.variations,
+                  ...(activeBrandKit.deletedVariations ?? []),
+                ].map((variation) => variation.id)}
                 isBusy={sessionId === null || isAddingTheme}
                 onAdd={(variation) => void commitNewTheme(variation)}
               />
@@ -911,13 +1064,20 @@ const KIT_GROUP_LABEL_CLASSNAME = "text-xs font-medium tracking-wide text-muted-
  */
 function BrandKitSummary({
   brandKit,
-  isDefaultKit,
+  isStarterKit,
   onNameCommit,
   onFontsCommit,
   assetActions,
 }: {
   brandKit: BrandKit;
-  isDefaultKit: boolean;
+  /*
+    True while the kit on screen is not the user's own brand: the mock
+    fallback before any row exists, or the seeded Flock STARTER kit before a
+    rename or a scrape makes it theirs (§14.5c). Renamed from `isDefaultKit`
+    because the concept outgrew the word — it now describes a real, saved,
+    fully editable row, not only the read-only fallback.
+  */
+  isStarterKit: boolean;
   onNameCommit?: (name: string) => void;
   onFontsCommit?: (fonts: BrandKitFonts) => void;
   assetActions?: BrandKitAssetActions;
@@ -963,9 +1123,13 @@ function BrandKitSummary({
               data-testid="brand-kit-name-input"
             />
           )}
-          {isDefaultKit && (
-            <span className="shrink-0 rounded-full border bg-muted px-2 py-0.5 text-[11px] font-medium text-muted-foreground">
-              Default
+          {isStarterKit && (
+            <span
+              className="shrink-0 rounded-full border bg-muted px-2 py-0.5 text-[11px] font-medium text-muted-foreground"
+              title="Flock's own brand, so you have something to work with. Rename it or run a site scan to replace it."
+              data-testid="brand-kit-starter-badge"
+            >
+              Starter
             </span>
           )}
         </div>

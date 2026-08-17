@@ -10,7 +10,6 @@ import {
   buildCustomThemeVariation,
   buildThemeCandidates,
   findPaletteColorName,
-  getEligibleTextColors,
   getEligibleThemeBackgrounds,
   getPaletteHexes,
   pickNextThemeCandidate,
@@ -18,6 +17,7 @@ import {
 } from "@/lib/brand-theme-builder";
 import type { ButtonShape } from "@/lib/brand-kit-extraction/expand-variations";
 import { ThemeSwatch } from "../theme/ThemeSwatch";
+import { ThemeRolePicker } from "./ThemeRolePicker";
 
 /*
   "Add a theme" — the user-authored half of brand-kit-v2 §2.1.
@@ -31,10 +31,13 @@ import { ThemeSwatch } from "../theme/ThemeSwatch";
   lib/brand-theme-builder.ts with unit tests — this component only renders it
   and hands the result up.
 
-  Deliberately APPEND-ONLY: there is no control here that edits an existing
-  theme. Editing a variation's globals detaches every draft rendering it
-  (brand-kit-user-control §14.5), which is unresolved; appending does not,
-  because no existing payload changes.
+  ~~Deliberately APPEND-ONLY: there is no control here that edits an existing
+  theme.~~ There is now, and it is `BrandThemeList` beside this form
+  (brand-kit-user-control §14.5b). The blocker was that editing a variation's
+  globals detached every draft rendering it; §14.5a resolved that, and the two
+  forms share their selects (ThemeRolePicker) so the same contrast filter
+  governs an edit and an add. This component is still add-only in the literal
+  sense: what it composes is always a NEW variation with a fresh id.
 */
 export function BrandThemeBuilder({
   colors,
@@ -48,6 +51,13 @@ export function BrandThemeBuilder({
   fonts: BrandKitFonts;
   /* Inherited from the kit's existing themes — never a choice we ask for. */
   buttonShape: ButtonShape;
+  /*
+    Every id already spoken for, INCLUDING soft-deleted themes' (§14.5b): a
+    deleted row keeps its id so restoring it re-links the drafts pointing
+    there, so reusing that id would fuse two themes into one for every pointer
+    — and the server refuses it. Counting it as taken here means
+    `buildUniqueVariationId` suffixes around it and the user never meets that.
+  */
   existingVariationIds: string[];
   isBusy: boolean;
   onAdd: (variation: ThemeVariation) => void;
@@ -81,11 +91,6 @@ export function BrandThemeBuilder({
     setTypedName(undefined);
   }
 
-  const eligibleTextColors =
-    roles === null
-      ? []
-      : getEligibleTextColors({ background: roles.contentBackground, paletteHexes });
-
   const nameForColors = buildCustomThemeName({
     backgroundName:
       roles === null ? undefined : findPaletteColorName({ hex: roles.contentBackground, colors }),
@@ -104,30 +109,6 @@ export function BrandThemeBuilder({
           takenIds: existingVariationIds,
         });
 
-  /*
-    Changing the background can strand the text colors that were legible on the
-    OLD one, so both are re-derived from the new background's eligible set. The
-    alternative — leaving a now-illegible text color selected and disabling
-    Add — is the reject-after-choosing shape this whole feature exists to
-    avoid.
-  */
-  const chooseBackground = (contentBackground: string): void => {
-    const candidate = candidates.find(
-      ({ roles: candidateRoles }) =>
-        candidateRoles.contentBackground === contentBackground &&
-        candidateRoles.accent === roles?.accent,
-    );
-    const fallback = candidates.find(
-      ({ roles: candidateRoles }) => candidateRoles.contentBackground === contentBackground,
-    );
-    const next = candidate ?? fallback;
-    if (next === undefined) {
-      return;
-    }
-    setRoles(next.roles);
-    setCurrentKey(next.key);
-  };
-
   const shuffle = (): void => {
     const next = pickNextThemeCandidate({ candidates, currentKey, randomValue: Math.random() });
     if (next === null) {
@@ -140,7 +121,7 @@ export function BrandThemeBuilder({
     setTypedName(undefined);
   };
 
-  if (eligibleBackgrounds.length === 0) {
+  if (eligibleBackgrounds.length === 0 || roles === null) {
     return (
       <p className="text-xs text-muted-foreground" data-testid="brand-theme-builder-empty">
         No two colors in your palette are readable together, so a theme built from them would be
@@ -151,56 +132,17 @@ export function BrandThemeBuilder({
 
   return (
     <div className="flex flex-col gap-3" data-testid="brand-theme-builder">
-      <div className="grid grid-cols-2 gap-2">
-        <ColorRoleSelect
-          label="Background"
-          value={roles?.contentBackground ?? ""}
-          options={eligibleBackgrounds}
-          colors={colors}
-          isBusy={isBusy}
-          testId="brand-theme-background"
-          onChange={chooseBackground}
-        />
-        <ColorRoleSelect
-          label="Buttons & links"
-          value={roles?.accent ?? ""}
-          /* Every palette color is a safe accent: the button label is derived */
-          /* for legibility and the link color repaired against the background, */
-          /* exactly as the scrape does for its own variations. */
-          options={paletteHexes.filter((hex) => hex !== roles?.contentBackground)}
-          colors={colors}
-          isBusy={isBusy}
-          testId="brand-theme-accent"
-          onChange={(accent) => {
-            setRoles((current) => (current === null ? null : { ...current, accent }));
-            setCurrentKey(
-              roles === null ? null : `${roles.contentBackground}|${accent}`,
-            );
-          }}
-        />
-        <ColorRoleSelect
-          label="Heading text"
-          value={roles?.headingText ?? ""}
-          options={eligibleTextColors}
-          colors={colors}
-          isBusy={isBusy}
-          testId="brand-theme-heading-text"
-          onChange={(headingText) =>
-            setRoles((current) => (current === null ? null : { ...current, headingText }))
-          }
-        />
-        <ColorRoleSelect
-          label="Body text"
-          value={roles?.paragraphText ?? ""}
-          options={eligibleTextColors}
-          colors={colors}
-          isBusy={isBusy}
-          testId="brand-theme-paragraph-text"
-          onChange={(paragraphText) =>
-            setRoles((current) => (current === null ? null : { ...current, paragraphText }))
-          }
-        />
-      </div>
+      <ThemeRolePicker
+        roles={roles}
+        paletteHexes={paletteHexes}
+        colors={colors}
+        isBusy={isBusy}
+        idPrefix="brand-theme"
+        onRolesChange={(nextRoles) => {
+          setRoles(nextRoles);
+          setCurrentKey(`${nextRoles.contentBackground}|${nextRoles.accent}`);
+        }}
+      />
       <p className="text-xs text-muted-foreground">
         Only colors that stay readable on your background are offered, so any theme you build here
         will save.
@@ -242,58 +184,6 @@ export function BrandThemeBuilder({
           {isBusy ? <Loader2Icon className="animate-spin" /> : <PlusIcon />}
           Add theme
         </Button>
-      </div>
-    </div>
-  );
-}
-
-/*
-  One role's color picker. A native select on purpose (the palette editor's
-  category select sets the precedent): the option list IS the filtered set, so
-  the control that shows the choices is also the control that enforces them.
-*/
-function ColorRoleSelect({
-  label,
-  value,
-  options,
-  colors,
-  isBusy,
-  testId,
-  onChange,
-}: {
-  label: string;
-  value: string;
-  options: string[];
-  colors: BrandColor[];
-  isBusy: boolean;
-  testId: string;
-  onChange: (hex: string) => void;
-}) {
-  return (
-    <div className="flex min-w-0 flex-col gap-1">
-      <label htmlFor={testId} className="text-xs text-muted-foreground">
-        {label}
-      </label>
-      <div className="flex min-w-0 items-center gap-1.5">
-        <span
-          className="size-6 shrink-0 rounded border border-input"
-          style={{ backgroundColor: value }}
-          aria-hidden
-        />
-        <select
-          id={testId}
-          value={value}
-          className="h-8 min-w-0 flex-1 cursor-pointer rounded-lg border border-input bg-transparent px-1.5 text-xs outline-none focus-visible:border-ring"
-          onChange={(event) => onChange(event.target.value)}
-          disabled={isBusy || options.length === 0}
-          data-testid={testId}
-        >
-          {options.map((hex) => (
-            <option key={hex} value={hex}>
-              {findPaletteColorName({ hex, colors }) ?? hex}
-            </option>
-          ))}
-        </select>
       </div>
     </div>
   );

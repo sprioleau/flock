@@ -50,6 +50,50 @@ export interface ThemeVariation {
   name: string;
   /** The complete globals payload — the exact `applyTheme` argument. */
   globals: Required<GlobalStyles>;
+  /*
+    SOFT DELETION (brand-kit-user-control §14.5b). Set when the user deleted
+    this theme; the row survives so the id — which is what every draft pointer
+    names — survives with it. Restoring clears the field and every draft that
+    pointed here is linked again, overrides intact, without a single document
+    write. A hard delete could not offer that: a re-created theme slugs to a
+    NEW id, so the link would be gone forever.
+
+    Absent means live. Every read that answers "what themes does this kit
+    have" filters through {@link getLiveThemeVariations} — the dropdown, the
+    8-theme cap, propagation targets and {@link findMatchingVariation} — so a
+    deleted theme cannot be picked, matched, targeted, or counted.
+  */
+  deletedAtMs?: number;
+}
+
+/**
+ * The soft-deletion flag on its own — the minimum a caller has to carry to be
+ * filtered. Declared separately because a Convex ROW's variation is typed
+ * `globals: Record<string, any>` (the table validator's deliberate `v.any()`),
+ * not `Required<GlobalStyles>`, so a filter constrained to the full
+ * {@link ThemeVariation} would force a cast at every server call site. This is
+ * the honest constraint: filtering reads one optional number and nothing else.
+ */
+export interface SoftDeletableVariation {
+  deletedAtMs?: number;
+}
+
+/** True while a variation has not been soft-deleted. */
+export function isThemeVariationLive(variation: SoftDeletableVariation): boolean {
+  return variation.deletedAtMs === undefined;
+}
+
+/*
+  The themes a kit actually HAS, as against the rows it still stores. THE
+  filter for soft deletion: every surface that offers, matches, targets or
+  counts a theme goes through here, so "a deleted theme is invisible" is one
+  function rather than a rule each call site has to remember. Generic in the
+  element type, so it hands back exactly what it was given.
+*/
+export function getLiveThemeVariations<Variation extends SoftDeletableVariation>(
+  variations: Variation[],
+): Variation[] {
+  return variations.filter((variation) => isThemeVariationLive(variation));
 }
 
 /**
@@ -209,6 +253,15 @@ export interface BrandKit {
   /** Monotonic save counter (server-managed; absent on unsaved/mock kits). */
   revision?: number;
   /**
+   * True while this row is the untouched Flock STARTER kit (§14.5c) — the kit
+   * seeded so a user whose site cannot be scraped still has something to edit.
+   *
+   * Drives exactly one thing: the panel's "Starter" badge and the copy beside
+   * it. Server-managed, and cleared by the two gestures that make the kit the
+   * user's own — renaming it, or replacing it with a scrape.
+   */
+  isStarterKit?: boolean;
+  /**
    * The brand's social profile links (item 26), one per platform, extracted
    * deterministically (JSON-LD sameAs → footer/nav scan). Used by the footer
    * fill affordance and exposed to the chat agent's per-request context.
@@ -224,6 +277,20 @@ export interface BrandKit {
   toneOfVoice?: BrandToneOfVoice;
   /** 3–4 agent-generated color variations; the theme dropdown's content. */
   variations: ThemeVariation[];
+  /**
+   * The themes the user SOFT-DELETED (§14.5b), newest deletion last. Present
+   * only on kits read from a stored row, and never on a scrape's output.
+   *
+   * KIT METADATA, NOT CONTENT. Nothing renders it, nothing applies it, and it
+   * is deliberately kept OUT of {@link variations} so every existing consumer
+   * — the dropdown, the palette derivation, contrast validation, propagation
+   * — keeps meaning "the themes this kit has" without knowing deletion exists.
+   * Two surfaces need it: the panel's Restore affordance (the payoff of soft
+   * deletion, and the reason an undo outlives the click that caused it), and
+   * id uniqueness — a deleted row still occupies its id, so the add form has
+   * to count it as taken or the server would refuse the collision.
+   */
+  deletedVariations?: ThemeVariation[];
 }
 
 // ---------------------------------------------------------------------------
@@ -335,12 +402,19 @@ export function getBrandKitValidationErrors(brandKit: BrandKit): string[] {
   if (brandKit.fonts.body.trim().length === 0) {
     errors.push("The body font stack must not be empty.");
   }
-  if (brandKit.variations.length === 0) {
+  /*
+    COUNTED ON THE LIVE SET, checked on all of them. A soft-deleted variation
+    is not a theme this kit has, so it must not fill a slot in the cap and must
+    not satisfy "at least one" — but its payload is still stored and can still
+    be restored, so completeness and contrast below run over every row.
+  */
+  const liveVariations = getLiveThemeVariations(brandKit.variations);
+  if (liveVariations.length === 0) {
     errors.push("The brand kit needs at least one theme variation.");
   }
-  if (brandKit.variations.length > MAX_BRAND_KIT_VARIATIONS) {
+  if (liveVariations.length > MAX_BRAND_KIT_VARIATIONS) {
     errors.push(
-      `The brand kit has ${brandKit.variations.length} variations; the maximum is ${MAX_BRAND_KIT_VARIATIONS}.`,
+      `The brand kit has ${liveVariations.length} variations; the maximum is ${MAX_BRAND_KIT_VARIATIONS}.`,
     );
   }
   const seenVariationIds = new Set<string>();
@@ -855,7 +929,15 @@ export function areGlobalsEqual({
   return serializeGlobals(a) === serializeGlobals(b);
 }
 
-/** The variation a document's raw globals exactly match, or null ("Custom"). */
+/*
+  The variation a document's raw globals exactly match, or null ("Custom").
+
+  LIVE ONLY. A draft still rendering a deleted theme's payload byte for byte
+  keeps rendering it — deletion never touches a document — but it stops being
+  an INSTANCE of that theme, because the theme is gone. Matching it here would
+  put a deleted theme back on the dropdown's trigger label and back in
+  `pickTargetVariation`, which is precisely the unlink this is supposed to be.
+*/
 export function findMatchingVariation({
   brandKit,
   globals,
@@ -864,8 +946,9 @@ export function findMatchingVariation({
   globals: GlobalStyles | undefined;
 }): ThemeVariation | null {
   return (
-    brandKit.variations.find((variation) => areGlobalsEqual({ a: globals, b: variation.globals })) ??
-    null
+    getLiveThemeVariations(brandKit.variations).find((variation) =>
+      areGlobalsEqual({ a: globals, b: variation.globals }),
+    ) ?? null
   );
 }
 
