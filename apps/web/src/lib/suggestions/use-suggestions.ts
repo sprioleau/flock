@@ -12,6 +12,7 @@ import { api } from "@convex/_generated/api";
 import type { Id } from "@convex/_generated/dataModel";
 import { useAppSettings } from "@/components/studio/demo/app-settings";
 import { useEditorStore } from "@/lib/editor-store";
+import { useIsTourRunning } from "@/lib/tour/tour-progress";
 import { persistDismissedPatternKey, readDismissedPatternKeys } from "./dismissals";
 import { serializeBlock } from "./serialize-block";
 import {
@@ -177,7 +178,27 @@ export function useSuggestions(): SuggestionsController {
   const convexClient = useConvex();
   const documentId = useEditorStore((state) => state.documentId);
   const serverHeadVersion = useEditorStore((state) => state.serverHeadVersion);
-  const { isSuggestionsEnabled } = useAppSettings();
+  const { isSuggestionsEnabled: isSuggestionsSettingEnabled } = useAppSettings();
+  /*
+    THE ONBOARDING TOUR SUPPRESSES SUGGESTIONS WHILE IT IS ON SCREEN.
+
+    Both features are unprompted popups anchored to a specific element, so left
+    alone they compete for the same corner of the canvas — and a first-time
+    visitor being told "this icon is your brand kit" is exactly the person least
+    equipped to work out which of two cards is talking to them. The tour is
+    finite and the user is mid-sentence in it; suggestions are ambient and will
+    still be there afterwards.
+
+    Folding it into `isSuggestionsEnabled` rather than adding a second gate is
+    what makes this cheap: every behaviour the setting already has is now the
+    tour's too. Starting the tour clears any live card instead of stranding one
+    behind it, and finishing the tour re-runs the rules over the operations
+    already recorded — so a suggestion the user earned while the tour was up
+    appears the moment it closes, rather than needing a fresh edit to coax back.
+    It never touches the op log; that stays the shared history spine either way.
+  */
+  const isTourRunning = useIsTourRunning();
+  const isSuggestionsEnabled = isSuggestionsSettingEnabled && !isTourRunning;
 
   const [phase, setPhase] = useState<SuggestionPhase>({ name: "hidden" });
   // In-memory dismissals for this session (union'd with localStorage, which

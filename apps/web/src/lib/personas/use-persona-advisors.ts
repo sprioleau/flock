@@ -8,6 +8,7 @@ import { applyOperations, type EmailDocument, type Operation } from "@flock/emai
 import { api } from "@convex/_generated/api";
 import type { Id } from "@convex/_generated/dataModel";
 import { useEditorStore } from "@/lib/editor-store";
+import { getIsTourRunning } from "@/lib/tour/tour-progress";
 import {
   persistDismissedPatternKey,
   readDismissedPatternKeys,
@@ -114,6 +115,27 @@ function tracePersonas(event: Record<string, unknown>): void {
   if (typeof window !== "undefined" && process.env.NODE_ENV !== "production") {
     (window.__flockPersonasDebug ??= []).push({ atMs: Date.now(), ...event });
   }
+}
+
+/*
+  Whether an advisory run should be skipped right now — read LIVE at both the
+  trigger and inside the debounced run, so a state change between the two never
+  lets a request through.
+
+  Two reasons, and the second is the onboarding tour: WHILE THE WALKTHROUGH IS
+  ON SCREEN, ADVISORY RUNS ARE SUPPRESSED ENTIRELY. Findings arrive as their own
+  cards in the chat panel, and the tour's first stop deliberately expands that
+  panel — so left alone, an agent's finding would land under a card that is
+  mid-sentence explaining what agents are. It also costs a Gemini call per
+  settled gesture, spent on a user who has not asked for anything yet.
+
+  Note this is the RUN gate only, not the presence heartbeat: enabled personas
+  keep their avatars on the facepile throughout, because quietly removing
+  collaborators the user already turned on would be a visible regression, not a
+  suppression.
+*/
+function shouldSkipAdvisorRun(): boolean {
+  return getArePersonasPaused() || getIsTourRunning();
 }
 
 type RunnerResponse =
@@ -316,7 +338,7 @@ export function usePersonaAdvisors(): PersonaAdvisorsController {
     const runAdvisors = async (page: OperationsPage): Promise<void> => {
       // Paused = ZERO /api/personas requests (credit conservation). Checked
       // LIVE here too — a debounce armed just before pausing must not fire.
-      if (getArePersonasPaused()) {
+      if (shouldSkipAdvisorRun()) {
         tracePersonas({ step: "skip-paused" });
         return;
       }
@@ -465,7 +487,7 @@ export function usePersonaAdvisors(): PersonaAdvisorsController {
         return;
       }
       // Gate at the TRIGGER while paused: no debounce armed, no request made.
-      if (getArePersonasPaused()) {
+      if (shouldSkipAdvisorRun()) {
         tracePersonas({ step: "skip-paused" });
         return;
       }

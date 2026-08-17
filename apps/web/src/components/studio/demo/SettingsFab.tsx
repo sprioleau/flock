@@ -2,7 +2,7 @@
 
 import { api } from "@convex/_generated/api";
 import { useMutation, useQuery } from "convex/react";
-import { GhostIcon, MonitorIcon, MoonIcon, SettingsIcon, SunIcon } from "lucide-react";
+import { CompassIcon, GhostIcon, MonitorIcon, MoonIcon, SettingsIcon, SunIcon } from "lucide-react";
 import { useTheme } from "next-themes";
 import { Button } from "@/components/ui/button";
 import {
@@ -26,6 +26,7 @@ import {
   type ChatProviderId,
 } from "@/lib/chat-provider";
 import { useEditorStore } from "@/lib/editor-store";
+import { restartTour } from "@/lib/tour/tour-progress";
 import { getShortcutDisplay } from "../shortcuts/ShortcutKbd";
 import { updateAppSettings, useAppSettings } from "./app-settings";
 
@@ -35,6 +36,9 @@ import { updateAppSettings, useAppSettings } from "./app-settings";
  * below dialogs/sheets at z-50) opening a compact settings menu.
  *
  * Settings:
+ * - "Show me around": restarts the first-run walkthrough by resetting its
+ *   localStorage progress (lib/tour/tour-progress.ts). An action, not a
+ *   toggle — and the permanent way back to a tour that has been skipped.
  * - "Demo mode" toggle, persisted per browser via app-settings.ts. Enabling
  *   it reveals the chat panel's "Queue demo messages" button
  *   (DemoQueueButton) and the ghost-collaborator control below.
@@ -139,6 +143,23 @@ export function SettingsFab() {
             {/* The "Agents…" entry moved to the studio header next to the
                 presence facepile (AgentCollaboratorsButton) — collaborators
                 are first-class, not a debug setting. */}
+            {/* An ACTION rather than a toggle, and the only one in this group:
+                it resets the localStorage tour progress to the first stop, so
+                the walkthrough starts over immediately. This is the owner's
+                "there should be a way to trigger the onboarding flow from
+                settings", and it doubles as the way QA re-runs the tour
+                without clearing site data. Closes the menu on click (unlike
+                the toggles below) because the thing it produces appears on the
+                canvas behind it. */}
+            <DropdownMenuItem onClick={restartTour} data-testid="settings-restart-tour">
+              <CompassIcon className="size-4 shrink-0" />
+              <span className="flex flex-col gap-0.5 py-0.5">
+                <span>Show me around</span>
+                <span className="text-xs text-muted-foreground">
+                  Replays the five-step tour of the studio
+                </span>
+              </span>
+            </DropdownMenuItem>
             <DropdownMenuCheckboxItem
               checked={isSuggestionsEnabled}
               onCheckedChange={(isChecked) =>

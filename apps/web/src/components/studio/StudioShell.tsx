@@ -25,6 +25,7 @@ import { HistoryPanel } from "./history/HistoryPanel";
 import { PropertyPanelSlot } from "./PropertyPanelSlot";
 import { StudioShortcuts } from "./shortcuts/StudioShortcuts";
 import { StudioToolbar } from "./StudioToolbar";
+import { StudioTour } from "./tour/StudioTour";
 
 /**
  * The /studio product surface: AI chat panel | toolbar + canvas | property
@@ -241,6 +242,13 @@ export function StudioShell() {
           surfaces. Inside the gate on purpose — no bindings before the
           document is ready. */}
       <StudioShortcuts />
+      {/* First-run walkthrough: a card anchored to each surface's CLOSED
+          toolbar trigger, with an arrow pointing at it. Same reason it sits
+          here rather than in the root layout — its anchors are this shell's
+          toolbar, and inside the gate means no card can point at chrome that
+          has not rendered. Renders null once the tour is skipped or finished
+          (progress lives in localStorage, so anonymous visitors keep it). */}
+      <StudioTour />
     </CanvasDndContext>
   );
 

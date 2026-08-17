@@ -404,7 +404,11 @@ export function ChatPanel() {
             button sits beside it, bottom-aligned. Without a chip the box is
             exactly 36px (size-9) single-line — py-1.75 + one text-sm line +
             1px borders — matching the size-9 send button. */}
-        <div className="shrink-0 border-t p-3">
+        {/* data-testid is also the onboarding tour's anchor for its chat stop
+            (lib/tour/tour-stops.ts) — the card hangs off this box. Note the
+            tour has to expand this panel first: while collapsed everything
+            below is still mounted, just clipped inside the 48px rail. */}
+        <div className="shrink-0 border-t p-3" data-testid="chat-composer">
           {speechErrorMessage !== null && (
             <p className="pb-2 text-xs text-destructive" data-testid="composer-speech-error">
               {speechErrorMessage}
