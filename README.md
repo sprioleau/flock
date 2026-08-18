@@ -75,7 +75,9 @@ The argument this project is making: **an agent should get the same capabilities
 
 ### 🎥 Demo
 
-[View demo](https://drive.google.com/file/d/1wFisUqoCZpDKZrtSQlJ2VxGkeRBH4PZB/view?usp=drive_link).
+**[Try the live demo →](https://flockto.email/demo)** — a scripted walkthrough you can drive yourself. It seeds a real email, puts two advisory agents on the canvas reviewing it, and walks you through three steps: watch them work, accept or dismiss their recommendations, then leave a comment and watch one get answered. No account, no setup. Every model call on that route is served from a deterministic fixture, so nothing you do there spends anyone's quota — everything downstream of the model is the real product.
+
+Prefer to watch? [View the recorded demo](https://drive.google.com/file/d/1wFisUqoCZpDKZrtSQlJ2VxGkeRBH4PZB/view?usp=drive_link).
 
 | Dark | Light |
 |--------|-------|
