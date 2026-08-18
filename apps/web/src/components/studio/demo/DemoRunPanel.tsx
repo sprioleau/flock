@@ -3,9 +3,15 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useQuery } from "convex/react";
-import { HistoryIcon } from "lucide-react";
+import { HistoryIcon, XIcon } from "lucide-react";
 import { api } from "@convex/_generated/api";
 import { Button } from "@/components/ui/button";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { updatePanelPreferences } from "@/components/studio/panel-preferences";
 import { openTimeTravelReplay } from "@/components/studio/replay/replay-handoff";
 import { selectIsDemoDocument } from "@/lib/demo/demo-preset";
@@ -347,17 +353,35 @@ export function DemoRunCardView({
     >
       <div className="flex shrink-0 items-center justify-end">
         {/* Reachable from every step — the difference between a demo and a
-            hostage situation (the tour's §3.3 rule, same reasoning). */}
-        <Button
-          type="button"
-          variant="ghost"
-          size="xs"
-          className="shrink-0 text-muted-foreground"
-          onClick={onExitToRealSession}
-          data-testid="demo-exit"
-        >
-          Exit
-        </Button>
+            hostage situation (the tour's §3.3 rule, same reasoning).
+
+            An icon needs an accessible name and a visible one, so it carries
+            both: `aria-label` for assistive tech and the hit test, a tooltip
+            for the sighted visitor who wants to know before pressing. Both
+            say "Exit the demo" rather than "Close", because the top-right ×
+            of a card normally just dismisses the card — this one ends the run
+            and hands the visitor to a real studio, and a control that does
+            more than its glyph implies has to say so. */}
+        <TooltipProvider>
+          <Tooltip>
+            <TooltipTrigger
+              render={
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon-sm"
+                  className="shrink-0 text-muted-foreground"
+                  aria-label="Exit the demo"
+                  onClick={onExitToRealSession}
+                  data-testid="demo-exit"
+                >
+                  <XIcon />
+                </Button>
+              }
+            />
+            <TooltipContent>Exit the demo</TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
       </div>
 
       {/* The body scrolls, never the card: the footer must stay put, because
@@ -672,21 +696,22 @@ export function DemoCommentsStep({
       <p className="text-[11px] text-muted-foreground" data-testid="demo-mock-disclosure">
         That run was scripted: both reviews were prepared in advance rather than generated
         just now. Everything around them was the real product — real validation, real
-        database rows, real presence, real undo.
+        database rows, real presence, real undo. The next one won&apos;t be scripted.
       </p>
-      {/* `h-auto` + `whitespace-normal` on purpose: the base button variant is
-          `whitespace-nowrap`, and this sentence is longer than a 22rem card is
-          wide — left alone it overflowed its own button and was clipped at
-          both ends. It is worth two lines; shortening it would cost the one
-          sentence that names what the visitor is being handed. */}
+      {/* The contrast this hand-off exists to draw — that one was scripted,
+          this next one is not — lives in the disclosure above, NOT in the
+          label. A button carrying the whole sentence was wider than a 22rem
+          card and had to wrap to two lines to avoid being clipped; prose is
+          better at prose. What is left here is the press itself, short enough
+          to read as one. */}
       <Button
         type="button"
         size="sm"
-        className="h-auto w-full whitespace-normal py-2 leading-snug"
+        className="w-full"
         onClick={onExitToRealSession}
         data-testid="demo-real-session-cta"
       >
-        You&apos;ve seen the scripted version — now start a real one
+        Start a real one
       </Button>
     </>
   );

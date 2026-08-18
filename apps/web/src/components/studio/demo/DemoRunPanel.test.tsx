@@ -84,6 +84,13 @@ function collectElements(node: ReactNode): ElementWithProps[] {
     const element = current as ElementWithProps;
     found.push(element);
     visit(element.props.children as ReactNode);
+    /* Base UI composes a trigger by taking the real control as a `render`
+       PROP rather than as a child — `<TooltipTrigger render={<Button …/>} />`
+       is how every tooltipped icon button in the studio is built. A walker
+       that followed children alone would report those controls as absent,
+       which is worse than a miss: the test would read as "this button does
+       not exist" when it is on screen and working. */
+    visit(element.props.render as ReactNode);
   };
   visit(node);
   return found;
