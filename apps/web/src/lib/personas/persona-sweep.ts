@@ -1,6 +1,7 @@
 "use client";
 
 import { useSyncExternalStore } from "react";
+import { MOCK_MODEL_HEADER } from "@/lib/chat-contract";
 import { recordPersonaRunStart } from "./persona-run-clock";
 
 /**
@@ -70,9 +71,24 @@ const MANUAL_SWEEP_TRIGGER_SUMMARY =
 export async function requestPersonaSweep({
   documentId,
   personaSlugs,
+  isMockRun = false,
 }: {
   documentId: string;
   personaSlugs: readonly string[];
+  /*
+    Ask the route for its deterministic mock findings instead of a model call —
+    the chat route's `x-flock-mock: 1` convention, and everything downstream of
+    the call (dry-run, persistence, presence choreography, staleness) stays
+    real. The scripted /demo run is the caller that wants this: a public route
+    cannot spend a shared free-tier quota per visitor.
+
+    Note where the authority sits. A client header can only ever ask for LESS
+    spend, so it is safe for a caller to set — but it is not a guard, because
+    an abuser can simply not send it. Forcing the mock server-side from the
+    document itself needs an `isDemo` field on `documents`, which is a schema
+    change and therefore a separate stage.
+  */
+  isMockRun?: boolean;
 }): Promise<SweepResult> {
   if (isSweepInFlight || personaSlugs.length === 0) {
     return { isOk: false };
@@ -86,7 +102,10 @@ export async function requestPersonaSweep({
     }
     const response = await fetch("/api/personas", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        ...(isMockRun ? { [MOCK_MODEL_HEADER]: "1" } : {}),
+      },
       body: JSON.stringify({
         documentId,
         personaSlugs: [...personaSlugs],

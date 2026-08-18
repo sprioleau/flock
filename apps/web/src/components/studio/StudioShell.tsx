@@ -18,6 +18,7 @@ import {
 import { PresenceProvider } from "@/lib/presence";
 import { getOrCreateSessionId } from "@/lib/session";
 import { ChatPanel } from "./chat/ChatPanel";
+import { DemoRunPanel } from "./demo/DemoRunPanel";
 import { CanvasDndContext } from "./dnd/CanvasDndContext";
 import { DraftFramesCanvas } from "./drafts/DraftFramesCanvas";
 import { DraftSelector } from "./drafts/DraftSelector";
@@ -234,6 +235,12 @@ export function StudioShell() {
             <HistoryPanel />
           </StudioToolbar>
           <DraftFramesCanvas onActivateDraft={switchToDraft} />
+          {/* The /demo narration, docked over the canvas. Inside <main> on
+              purpose: a viewport-fixed bar would cover either the chat panel
+              (where the agents' recommendation cards land — the exact thing it
+              is pointing at) or the property panel. Renders null on every
+              document that is not the demo's own scratch draft. */}
+          <DemoRunPanel />
           <EditorNotice />
         </main>
         <PropertyPanelSlot />

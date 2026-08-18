@@ -359,8 +359,18 @@ export async function POST(request: Request) {
   // editing. The ambient path is throttled instead by the per-persona cooldown
   // and the server backstops below — a cooldown throttles the system, a credit
   // throttles a person.
+  //
+  // Resolved BEFORE the charge, not at the model call: a mocked run spends no
+  // provider quota, so charging for one would bill a person for work nobody
+  // paid for — and would empty a demo visitor's whole allowance on a scripted
+  // run, or on any deployment with no API key configured at all.
+  // `chargeCreditForRequest` already short-circuits on `isMockRun`; this route
+  // simply was not telling it.
+  const isMockRun =
+    request.headers.get(MOCK_MODEL_HEADER) === "1" ||
+    !process.env.GOOGLE_GENERATIVE_AI_API_KEY;
   if (isManualSweep) {
-    const charge = await chargeCreditForRequest({ request });
+    const charge = await chargeCreditForRequest({ request, isMockRun });
     if (!charge.isAllowed) {
       return failureResponse({ status: 429, message: charge.message });
     }
@@ -489,11 +499,10 @@ export async function POST(request: Request) {
       .join("\n\n");
 
     await setStatusForAll("thinking", { staggerMaxMs: THINKING_STAGGER_MAX_MS });
-    // The chat route's mock convention: `x-flock-mock: 1` forces the
+    // The chat route's mock convention (resolved at the top of the handler,
+    // because the credit charge depends on it): `x-flock-mock: 1` forces the
     // deterministic mock, and an absent key falls back to it — the whole
     // downstream pipeline (dry-run, persistence, statuses) stays real.
-    const hasGoogleApiKey = Boolean(process.env.GOOGLE_GENERATIVE_AI_API_KEY);
-    const isMockRun = request.headers.get(MOCK_MODEL_HEADER) === "1" || !hasGoogleApiKey;
     const telemetryContext: ModelTelemetryContext = {
       operation: "personas.review",
       traceId,

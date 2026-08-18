@@ -24,6 +24,7 @@ import { BeforeAfterChip } from "../history/BeforeAfterChip";
 import { ReadOnlyEmailPreview } from "../history/ReadOnlyEmailPreview";
 import { deriveOpAuthor, describeEntryHuman } from "../history/op-author";
 import { describeValueTransition } from "../history/value-transition";
+import { registerReplayPanelOpener } from "./replay-handoff";
 import { useReplayTimeline } from "./use-replay-timeline";
 
 /** Playback rate: versions advanced per second at 1x. */
@@ -83,6 +84,18 @@ export function ReplayPanel() {
       setIsPlaying(false);
     }
   };
+
+  // The far-away-surface entry point (replay-handoff.ts): the /demo narration
+  // opens this drawer for a visitor who has no idea the toolbar icon exists.
+  // Routed through handleOpenChange, not setIsOpen, so an externally opened
+  // panel gets the same freshly-frozen head version and reset playhead a
+  // clicked one does.
+  const handleOpenChangeRef = useRef(handleOpenChange);
+  // Synced in an effect, never during render (the React Compiler contract).
+  useEffect(() => {
+    handleOpenChangeRef.current = handleOpenChange;
+  });
+  useEffect(() => registerReplayPanelOpener(() => handleOpenChangeRef.current(true)), []);
 
   // Warm the prefetch window around the playhead on every move.
   useEffect(() => {

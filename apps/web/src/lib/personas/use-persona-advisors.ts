@@ -7,6 +7,7 @@ import { generateDocumentOutline } from "@flock/agent";
 import { applyOperations, type EmailDocument, type Operation } from "@flock/email-sdk";
 import { api } from "@convex/_generated/api";
 import type { Id } from "@convex/_generated/dataModel";
+import { getIsScriptedDemoDocument } from "@/lib/demo/demo-session";
 import { useEditorStore } from "@/lib/editor-store";
 import { getIsTourRunning } from "@/lib/tour/tour-progress";
 import {
@@ -122,20 +123,32 @@ function tracePersonas(event: Record<string, unknown>): void {
   trigger and inside the debounced run, so a state change between the two never
   lets a request through.
 
-  Two reasons, and the second is the onboarding tour: WHILE THE WALKTHROUGH IS
+  Three reasons, and the second is the onboarding tour: WHILE THE WALKTHROUGH IS
   ON SCREEN, ADVISORY RUNS ARE SUPPRESSED ENTIRELY. Findings arrive as their own
   cards in the chat panel, and the tour's first stop deliberately expands that
   panel — so left alone, an agent's finding would land under a card that is
   mid-sentence explaining what agents are. It also costs a Gemini call per
   settled gesture, spent on a user who has not asked for anything yet.
 
+  The third reason is the SCRIPTED DEMO (/demo, lib/demo/): on that document
+  the demo's own sequencer is the only trigger, and it runs each agent alone,
+  in order, against the deterministic mock. Leaving the ambient watcher armed
+  as well would fire a BATCHED two-persona run on the visitor's first
+  keystroke — pre-empting the very turn the narration is about to introduce,
+  and doing it with no mock header, which is a real model call on a public
+  route. Gated per DOCUMENT, so the visitor's own drafts in other tabs keep
+  their ambient agents exactly as they were.
+
   Note this is the RUN gate only, not the presence heartbeat: enabled personas
   keep their avatars on the facepile throughout, because quietly removing
   collaborators the user already turned on would be a visible regression, not a
-  suppression.
+  suppression. (This is also why the demo does not simply reuse the pause flag,
+  which stops the heartbeat and would empty the demo's facepile.)
 */
-function shouldSkipAdvisorRun(): boolean {
-  return getArePersonasPaused() || getIsTourRunning();
+function shouldSkipAdvisorRun(documentId: string | null): boolean {
+  return (
+    getArePersonasPaused() || getIsTourRunning() || getIsScriptedDemoDocument(documentId)
+  );
 }
 
 type RunnerResponse =
@@ -338,7 +351,7 @@ export function usePersonaAdvisors(): PersonaAdvisorsController {
     const runAdvisors = async (page: OperationsPage): Promise<void> => {
       // Paused = ZERO /api/personas requests (credit conservation). Checked
       // LIVE here too — a debounce armed just before pausing must not fire.
-      if (shouldSkipAdvisorRun()) {
+      if (shouldSkipAdvisorRun(documentId)) {
         tracePersonas({ step: "skip-paused" });
         return;
       }
@@ -487,7 +500,7 @@ export function usePersonaAdvisors(): PersonaAdvisorsController {
         return;
       }
       // Gate at the TRIGGER while paused: no debounce armed, no request made.
-      if (shouldSkipAdvisorRun()) {
+      if (shouldSkipAdvisorRun(documentId)) {
         tracePersonas({ step: "skip-paused" });
         return;
       }
