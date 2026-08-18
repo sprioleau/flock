@@ -304,6 +304,61 @@ export function selectIsDemoStepComplete({
 }
 
 /**
+ * Is the demo waiting on the VISITOR to act right now?
+ *
+ * Drives the canvas dim in DemoRunPanel: when this is true the card is the
+ * thing to press, so the canvas behind it steps back a shade and stops
+ * competing for the eye. It answers a question about ATTENTION, never about
+ * permission — nothing is blocked either way (the scrim swallows no clicks).
+ *
+ * THIS IS NOT `!selectIsDemoStepComplete`, and the gap between the two is the
+ * entire reason it exists rather than being folded into that one. Step 1 is
+ * incomplete for the whole time the two agents are running — but the visitor
+ * is not what it is waiting on there, the AGENTS are, and watching them move
+ * across the canvas is the headline moment the demo was built to show. Dimming
+ * it would hide the product at the one beat it is showing off. So step 1
+ * awaits the visitor NEVER, finished or not; the other two await only while
+ * their decision is genuinely still outstanding.
+ *
+ * No clock here either, same as everything else in this module: each answer is
+ * a pure function of state that a click already changed.
+ */
+export function selectIsDemoAwaitingVisitor({
+  stepId,
+  progress,
+}: {
+  stepId: DemoStepId;
+  progress: DemoStepProgress;
+}): boolean {
+  switch (stepId) {
+    case "watch":
+      /*
+        Deliberately ignores `progress.isRunFinished` — see the note above.
+        Neither half of step 1 is the visitor's to do: while the turns run the
+        canvas IS the content, and once they have landed the only thing left
+        is a Next press the footer already makes prominent on its own.
+      */
+      return false;
+    case "recommendations":
+      /*
+        The Accept/Dismiss controls this step points at live in the chat
+        panel, which the scrim does not cover — so the dim reads as "there is
+        a decision open over there" rather than as "this is unavailable".
+        Dismissing counts as deciding, exactly as it does for the gate.
+      */
+      return progress.undecidedRecommendationCount > 0;
+    case "comments":
+      /*
+        Only while the choices are still on the card. From "awaiting-agent"
+        onward the agent is editing the hero button and then its reply is
+        sitting in the thread — both are moments to look AT the canvas, so the
+        dim lifts the instant a choice is picked.
+      */
+      return progress.commentPhase === "choosing";
+  }
+}
+
+/**
  * May the visitor leave this step right now?
  *
  * False on the last step for the obvious reason (there is nowhere to go), and

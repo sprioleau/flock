@@ -21,6 +21,7 @@ import {
   getPreviousDemoStepId,
   selectCanAdvanceDemoStep,
   selectDemoCardDock,
+  selectIsDemoAwaitingVisitor,
   selectIsDemoStepComplete,
   type DemoCardDock,
   type DemoCommentPhase,
@@ -154,43 +155,104 @@ export function DemoRunPanel() {
   };
 
   return (
-    <DemoRunCardView
-      stepId={stepId}
-      runState={runState}
-      recommendations={recommendations}
-      progress={progress}
-      chosenChoiceId={commentFlow.chosenChoiceId}
-      onBack={() => {
-        const previousStepId = getPreviousDemoStepId(stepId);
-        if (previousStepId !== null) {
-          setStepId(previousStepId);
-        }
-      }}
-      onNext={() => {
-        const nextStepId = getNextDemoStepId(stepId);
-        if (nextStepId !== null) {
-          setStepId(nextStepId);
-        }
-      }}
-      onOpenRecommendations={() => {
-        updatePanelPreferences({ isChatPanelExpanded: true });
-      }}
-      onChooseComment={commentFlow.chooseComment}
-      onRewind={() => {
-        openTimeTravelReplay();
-      }}
-      onStartOver={() => {
-        /* A restart provisions a FRESH document rather than re-running the
-           turns on this one. Re-running would post the same findings the
-           persistence layer already de-duplicates by patternKey, so the
-           second run would visibly do nothing — and "replayable" has to mean
-           the demo starts clean, not that it looks broken the second time. */
-        router.push("/demo");
-      }}
-      onExitToRealSession={() => {
-        endDemoSession();
-        router.push("/studio");
-      }}
+    <>
+      <DemoCanvasScrim stepId={stepId} progress={progress} />
+      <DemoRunCardView
+        stepId={stepId}
+        runState={runState}
+        recommendations={recommendations}
+        progress={progress}
+        chosenChoiceId={commentFlow.chosenChoiceId}
+        onBack={() => {
+          const previousStepId = getPreviousDemoStepId(stepId);
+          if (previousStepId !== null) {
+            setStepId(previousStepId);
+          }
+        }}
+        onNext={() => {
+          const nextStepId = getNextDemoStepId(stepId);
+          if (nextStepId !== null) {
+            setStepId(nextStepId);
+          }
+        }}
+        onOpenRecommendations={() => {
+          updatePanelPreferences({ isChatPanelExpanded: true });
+        }}
+        onChooseComment={commentFlow.chooseComment}
+        onRewind={() => {
+          openTimeTravelReplay();
+        }}
+        onStartOver={() => {
+          /* A restart provisions a FRESH document rather than re-running the
+             turns on this one. Re-running would post the same findings the
+             persistence layer already de-duplicates by patternKey, so the
+             second run would visibly do nothing — and "replayable" has to mean
+             the demo starts clean, not that it looks broken the second time. */
+          router.push("/demo");
+        }}
+        onExitToRealSession={() => {
+          endDemoSession();
+          router.push("/studio");
+        }}
+      />
+    </>
+  );
+}
+
+/**
+ * The canvas dim, on for exactly the beats the demo is waiting on the VISITOR
+ * (lib/demo/demo-steps.ts §selectIsDemoAwaitingVisitor holds the rule and the
+ * reason step 1 is exempt — the agents moving on the canvas is the show, so it
+ * is never dimmed).
+ *
+ * IT DIMS; IT DOES NOT BLOCK. `pointer-events-none` is the whole design and it
+ * is not an oversight to be tidied up later: /demo is a PRESET OVER THE REAL
+ * PRODUCT, not a second app, and step 3 deliberately arms real comment mode so
+ * a visitor who would rather place their OWN comment than pick a scripted one
+ * simply can (use-demo-comment-flow.ts says exactly that). A scrim that ate
+ * clicks would take the product away at the precise moment the demo is showing
+ * it off — the same "demo, not hostage situation" rule the exit button on this
+ * card is here for. This is a HINT about where to look, and hints do not lock
+ * doors.
+ *
+ * WHAT IT COVERS, and what it must never cover. It is mounted inside <main>
+ * beside the card (StudioShell), so the chat panel and the property panel —
+ * both siblings of <main> — are outside it by construction. That matters most
+ * on step 2, where the Accept/Dismiss buttons the visitor has to press live in
+ * the chat panel: dimming those would point at the wrong surface. `top-12`
+ * clears the toolbar's own `h-12` header for the same reason.
+ *
+ * Z-INDEX. The card is `z-40`; this is `z-30`, so the scrim always passes
+ * UNDER the card it is pointing at — a card dimmed by its own scrim would be
+ * the exact opposite of the instruction it is giving. It still clears the
+ * canvas chrome underneath it (the frames surface tops out at `z-20`).
+ *
+ * The fade is CSS on mount and nothing else: no timer, no interval, no
+ * transition driven from JS. The demo sequencer is clock-free and every
+ * surface hanging off it stays that way.
+ */
+export function DemoCanvasScrim({
+  stepId,
+  progress,
+}: {
+  stepId: DemoStepId;
+  progress: DemoStepProgress;
+}) {
+  if (!selectIsDemoAwaitingVisitor({ stepId, progress })) {
+    return null;
+  }
+  return (
+    <div
+      aria-hidden
+      className={cn(
+        "pointer-events-none absolute inset-x-0 top-12 bottom-0 z-30",
+        /* Half the tour's `bg-black/45`, deliberately. That one is a MODAL
+           dim behind a surface that does take the screen; this one swallows
+           nothing, so it only has to be enough to make the card read as the
+           foreground. */
+        "bg-black/20 duration-200 animate-in fade-in-0",
+      )}
+      data-testid="demo-canvas-scrim"
     />
   );
 }

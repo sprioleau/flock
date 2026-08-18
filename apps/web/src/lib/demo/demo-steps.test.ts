@@ -12,6 +12,7 @@ import {
   selectCanAdvanceDemoStep,
   selectDemoCardDock,
   selectDemoCommentPhase,
+  selectIsDemoAwaitingVisitor,
   selectIsDemoStepComplete,
   type DemoStepId,
   type DemoStepProgress,
@@ -161,6 +162,77 @@ describe("advancing", () => {
     for (const commentPhase of ["choosing", "awaiting-agent", "answered"] as const) {
       expect(
         selectCanAdvanceDemoStep({
+          stepId: "comments",
+          progress: { ...FRESH_PROGRESS, commentPhase },
+        }),
+      ).toBe(false);
+    }
+  });
+});
+
+describe("waiting on the visitor", () => {
+  /*
+    What drives the canvas dim. The rule that actually matters is the negative
+    one: step 1 must never dim, because the agents crossing the canvas is the
+    single thing the whole demo exists to show — and "incomplete" is the state
+    it spends that entire beat in, so anything derived from the completion gate
+    would dim exactly the wrong moment.
+  */
+
+  it("never waits on the visitor during step 1 — that step waits on the AGENTS", () => {
+    /* Driven through the real sequencer so this cannot drift from what the
+       visitor is watching: mid-run, and settled, both answer no. */
+    let run = createDemoRunState();
+    expect(
+      selectIsDemoAwaitingVisitor({ stepId: "watch", progress: progressForRun(run) }),
+    ).toBe(false);
+
+    run = startNextTurn(run);
+    expect(
+      selectIsDemoAwaitingVisitor({ stepId: "watch", progress: progressForRun(run) }),
+    ).toBe(false);
+    /* And this is the case the rule exists for: the step is NOT complete here,
+       so a dim derived from the gate would be on over the agents at work. */
+    expect(
+      selectIsDemoStepComplete({ stepId: "watch", progress: progressForRun(run) }),
+    ).toBe(false);
+
+    run = completeRunningTurn({ state: run, outcome: "completed" });
+    run = completeRunningTurn({ state: startNextTurn(run), outcome: "completed" });
+    expect(
+      selectIsDemoAwaitingVisitor({ stepId: "watch", progress: progressForRun(run) }),
+    ).toBe(false);
+  });
+
+  it("waits on step 2 only while a recommendation is still undecided", () => {
+    expect(
+      selectIsDemoAwaitingVisitor({
+        stepId: "recommendations",
+        progress: { ...FRESH_PROGRESS, isRunFinished: true, undecidedRecommendationCount: 1 },
+      }),
+    ).toBe(true);
+    /* Decided is decided, however they got there — the dim lifts the moment
+       the last card is accepted OR dismissed. */
+    expect(
+      selectIsDemoAwaitingVisitor({
+        stepId: "recommendations",
+        progress: { ...FRESH_PROGRESS, isRunFinished: true, undecidedRecommendationCount: 0 },
+      }),
+    ).toBe(false);
+  });
+
+  it("waits on step 3 only until a choice is picked, not until the agent answers", () => {
+    expect(
+      selectIsDemoAwaitingVisitor({
+        stepId: "comments",
+        progress: { ...FRESH_PROGRESS, commentPhase: "choosing" },
+      }),
+    ).toBe(true);
+    /* From here the agent is editing the hero button and then its reply is in
+       the thread: both are moments to look AT the canvas, not away from it. */
+    for (const commentPhase of ["awaiting-agent", "answered"] as const) {
+      expect(
+        selectIsDemoAwaitingVisitor({
           stepId: "comments",
           progress: { ...FRESH_PROGRESS, commentPhase },
         }),

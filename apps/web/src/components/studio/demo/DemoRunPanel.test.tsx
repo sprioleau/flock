@@ -57,6 +57,7 @@ vi.mock("@/components/studio/replay/replay-handoff", () => ({
 }));
 
 import {
+  DemoCanvasScrim,
   DemoCommentsStep,
   DemoRecommendationsStep,
   DemoRunCardView,
@@ -383,6 +384,32 @@ describe("step 3 — the comment round trip", () => {
     expect(visibleText(cta)).toContain("real one");
     (cta?.props.onClick as () => void)();
     expect(onExitToRealSession).toHaveBeenCalled();
+  });
+});
+
+describe("the canvas dim", () => {
+  it("dims without ever taking the canvas away", () => {
+    /*
+      WHICH beats dim is demo-steps.ts's rule and is tested there. What can
+      only be checked here is the property that makes the dim safe at all:
+      /demo is a preset over the REAL product, and step 3 arms real comment
+      mode on purpose, so a visitor who would rather place their own comment
+      than pick a scripted one has to be able to reach the canvas THROUGH the
+      scrim. Losing `pointer-events-none` would look like a tidy-up and would
+      silently turn a hint into a wall.
+    */
+    const scrim = findByTestId(
+      DemoCanvasScrim({ stepId: "recommendations", progress: UNFINISHED_PROGRESS }),
+      "demo-canvas-scrim",
+    );
+    const scrimClassName = String(scrim?.props.className ?? "");
+    expect(scrimClassName).toContain("pointer-events-none");
+    /* And it passes UNDER the card it is pointing at: a card dimmed by its own
+       scrim would say the opposite of what it is asking for. */
+    expect(scrimClassName).toContain("z-30");
+    expect(String(renderCard({ stepId: "recommendations" }).props.className)).toContain("z-40");
+    /* Nothing at all on step 1 — the agents on the canvas are the show. */
+    expect(DemoCanvasScrim({ stepId: "watch", progress: UNFINISHED_PROGRESS })).toBeNull();
   });
 });
 
