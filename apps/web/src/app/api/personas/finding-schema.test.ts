@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { z } from "zod";
 import {
   FINDING_TEXT_CAPS,
   runnerOutputSchema,
@@ -81,6 +82,67 @@ describe("runnerOutputSchema (suggestedPrompt — main-agent handoff)", () => {
   });
 });
 
+describe("runnerOutputSchema (copy rewrites)", () => {
+  it("accepts a finding whose fix is a plain-text rewrite", () => {
+    const result = runnerOutputSchema.safeParse({
+      findings: [
+        buildFinding({
+          proposedCopyEdits: [
+            { blockId: "txt_a1b2", text: "A calmer opening line.\nAnd the paragraph under it." },
+          ],
+        }),
+      ],
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it("accepts a finding carrying both a property edit and a copy rewrite", () => {
+    const result = runnerOutputSchema.safeParse({
+      findings: [
+        buildFinding({
+          proposedEdits: [{ blockId: "btn_t9u0", property: "align", value: "center" }],
+          proposedCopyEdits: [{ blockId: "txt_a1b2", text: "A calmer opening line." }],
+        }),
+      ],
+    });
+    expect(result.success).toBe(true);
+  });
+
+  it("stays emittable by Gemini: no anyOf, no const, no numeric enum anywhere", () => {
+    /* THE REASON THE CONTRACT IS TWO FLAT ARRAYS rather than one array of a
+       discriminated union. This schema goes to generateObject as a provider
+       response schema, and this project has already had to hand-rewrite
+       numeric literals at the glue layer (api/chat/model-schema.ts) after
+       Gemini rejected them live. A union or a nested rich-text document would
+       reintroduce exactly that failure — so assert the shape stays flat. */
+    const jsonSchema = z.toJSONSchema(runnerOutputSchema, {
+      io: "input",
+      unrepresentable: "any",
+    });
+    const offenders: string[] = [];
+    const walk = (node: unknown, path: string): void => {
+      if (Array.isArray(node)) {
+        node.forEach((child, index) => walk(child, `${path}[${index}]`));
+        return;
+      }
+      if (typeof node !== "object" || node === null) {
+        return;
+      }
+      for (const [key, value] of Object.entries(node)) {
+        if (key === "anyOf" || key === "oneOf" || key === "allOf" || key === "const") {
+          offenders.push(`${path}.${key}`);
+        }
+        if (key === "enum" && Array.isArray(value) && value.some((v) => typeof v === "number")) {
+          offenders.push(`${path}.enum (numeric)`);
+        }
+        walk(value, `${path}.${key}`);
+      }
+    };
+    walk(jsonSchema, "$");
+    expect(offenders).toEqual([]);
+  });
+});
+
 describe("truncateFindingText", () => {
   it("returns short text unchanged (byte-stable under the cap)", () => {
     expect(truncateFindingText({ text: "short", cap: 60 })).toBe("short");
@@ -125,6 +187,20 @@ describe("truncateFindingProse", () => {
       FINDING_TEXT_CAPS.suggestedPrompt,
     );
     expect(truncated.suggestedPrompt!.endsWith("…")).toBe(true);
+  });
+
+  it("never truncates a copy rewrite — that text is the email, not prose about it", () => {
+    /* The backstop exists to keep CARDS card-sized. A rewrite is content on
+       its way into the user's email; ellipsizing it would ship a
+       half-sentence. Over-long rewrites are refused in finding-ops.ts instead. */
+    const longRewrite = "Every bag is roasted the morning it ships. ".repeat(30);
+    const parsed = runnerOutputSchema.parse({
+      findings: [
+        buildFinding({ proposedCopyEdits: [{ blockId: "txt_a1b2", text: longRewrite }] }),
+      ],
+    });
+    const truncated = truncateFindingProse(parsed.findings[0]!);
+    expect(truncated.proposedCopyEdits).toEqual([{ blockId: "txt_a1b2", text: longRewrite }]);
   });
 
   it("leaves suggestedPrompt absent when the model omitted it (no undefined key)", () => {

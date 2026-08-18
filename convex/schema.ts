@@ -618,10 +618,12 @@ export default defineSchema({
    * Shape invariants:
    * - `ops` is unvalidated JSON ON PURPOSE (the ops/blocks column policy in
    *   the header note): its runtime guard is the email-sdk Zod schemas — the
-   *   runner composes ops via `updateBlockPropertiesOperationSchema` and
-   *   dry-runs the batch through pure `applyOperations` BEFORE recording, and
-   *   the client dry-runs again at Apply time. An EMPTY array is legal and
-   *   means an informational finding (dismiss only, no Apply).
+   *   runner composes ops via `updateBlockPropertiesOperationSchema` (property
+   *   fixes) and `updateTextOperationSchema` (copy rewrites, built server-side
+   *   from the plain text a persona proposed) and dry-runs the batch through
+   *   pure `applyOperations` BEFORE recording, and the client dry-runs again
+   *   at Apply time. An EMPTY array is legal and means an informational
+   *   finding (dismiss only, no Apply).
    * - `targetSnapshots` maps blockId → stableStringify(block) (the client's
    *   key-order-insensitive staleness serializer, shared via
    *   apps/web/src/lib/suggestions/serialize-block.ts), computed from the
@@ -657,7 +659,7 @@ export default defineSchema({
     targetBlockNames: v.array(v.string()),
     /** email-sdk block ids this finding depends on (staleness scope). */
     targetBlockIds: v.array(v.string()),
-    /** Pre-validated updateBlockProperties ops JSON; empty = informational. */
+    /** Pre-validated updateBlockProperties / updateText ops JSON; empty = informational. */
     ops: v.array(v.any()),
     /**
      * Main-agent handoff for OP-LESS findings: a ready-to-send chat prompt in

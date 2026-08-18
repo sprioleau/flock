@@ -14,8 +14,11 @@ import { mutation, query, type MutationCtx } from "./_generated/server";
  * ADVISORY invariant restated: nothing in this module dispatches operations.
  * A finding's ops reach the document ONLY when a human clicks Apply in the
  * suggestions UI, which goes through the store's normal dispatch →
- * documents.applyOperations with `persona:<slug>` provenance — the single
- * history spine. markFindingApplied merely records that it happened.
+ * documents.applyOperations (or agentText.applyAgentTextEdit, the routing an
+ * agent-authored `updateText` already takes, so a persona's copy rewrite
+ * merges into the block's live sync doc like any other agent text edit) with
+ * `persona:<slug>` provenance — the single history spine. markFindingApplied
+ * merely records that it happened.
  */
 
 /** Upper bound on open findings returned/held per document (demo scale). */

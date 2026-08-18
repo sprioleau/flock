@@ -3,13 +3,7 @@ import {
   generateDocumentOutline,
   SYSTEM_STATIC,
 } from "@flock/agent";
-import {
-  applyOperations,
-  ROOT_BLOCK_ID,
-  updateBlockPropertiesOperationSchema,
-  type EmailDocument,
-  type Operation,
-} from "@flock/email-sdk";
+import { ROOT_BLOCK_ID, type EmailDocument, type Operation } from "@flock/email-sdk";
 import { generateObject } from "ai";
 import { ConvexHttpClient } from "convex/browser";
 import type { FunctionReturnType } from "convex/server";
@@ -24,8 +18,9 @@ import {
   type ModelTelemetryContext,
 } from "@/lib/observability/model-telemetry";
 import { stableStringify } from "@/lib/suggestions/serialize-block";
-import { selectSeededFinding, type RunnerFindingCandidate } from "./demo-findings";
-import { proposedEditSchema, runnerOutputSchema, truncateFindingProse } from "./finding-schema";
+import { selectSeededFinding } from "./demo-findings";
+import { composeFindingOps } from "./finding-ops";
+import { runnerOutputSchema, truncateFindingProse, type RunnerOutputFinding } from "./finding-schema";
 
 /**
  * POST /api/personas — the multi-agent canvas v0 ADVISORY RUNNER
@@ -38,13 +33,15 @@ import { proposedEditSchema, runnerOutputSchema, truncateFindingProse } from "./
  * enabled set), fresh tokens (outline + trigger summary) always last.
  *
  * Structured output = per-persona findings. A finding MAY carry concrete
- * intent-level property edits ({blockId, property, value} — the
- * llm-tool-interface principle: simple args, deterministic translation to
- * `updateBlockProperties` ops inside this route), and every op batch is
- * DRY-RUN through the SDK's pure `applyOperations` before it is surfaced;
- * findings whose ops fail the dry-run degrade to informational. Personas
- * never dispatch anything — findings become source:"analysis" suggestions
- * client-side, and only a human clicking Apply writes to the document.
+ * intent-level edits — property edits ({blockId, property, value}) and/or
+ * copy rewrites ({blockId, text} as PLAIN TEXT) — which finding-ops.ts
+ * translates deterministically into `updateBlockProperties` / `updateText`
+ * operations (the llm-tool-interface principle: simple args in, structure
+ * built server-side). Every op batch is DRY-RUN through the SDK's pure
+ * `applyOperations` before it is surfaced; findings whose ops fail the dry-run
+ * degrade to informational. Personas never dispatch anything — findings become
+ * source:"analysis" suggestions client-side, and only a human clicking Apply
+ * writes to the document.
  *
  * Budget discipline (§5.1): per-persona cooldowns gate client-side; this
  * route adds a per-document minimum interval and an outline-unchanged skip
@@ -85,6 +82,13 @@ const PERSONA_MODEL_ID = "gemini-3.5-flash-lite";
 
 /** Hard timeout on the one analysis call. */
 const GENERATION_TIMEOUT_MS = 45_000;
+
+/**
+ * How much of each text block's words the outline shows the personas
+ * (the generator's own default is 60). See the outline call for why the
+ * copy-rewrite capability makes the default too narrow to be honest.
+ */
+const PERSONA_OUTLINE_MAX_TEXT_CHARS = 400;
 
 /** Server backstop between runs per document (client cooldowns are the real gate). */
 const MIN_RUN_INTERVAL_MS = 20_000;
@@ -141,10 +145,13 @@ You are NOT editing this email. You are a panel of advisory reviewer personas, e
 Rules for every persona:
 - Emit at most 2 findings per persona, and only issues that persona's definition genuinely covers. Zero findings is a perfectly good answer — never invent a nitpick to have something to say.
 - Tag every finding with the persona's slug in personaSlug.
-- In title, description, and targetBlockNames, refer to content ONLY by what the user can see ("the heading 'Spring sale'", "the button labeled 'Buy now'") — internal block ids must never appear in that prose. Put ids only in targetBlockIds and proposedEdits.blockId, copied exactly from the outline.
+- In title, description, and targetBlockNames, refer to content ONLY by what the user can see ("the heading 'Spring sale'", "the button labeled 'Buy now'") — internal block ids must never appear in that prose. Put ids only in targetBlockIds, proposedEdits.blockId and proposedCopyEdits.blockId, copied exactly from the outline.
 - Keep those visible-content quotes SHORT: when a label or heading is long, quote just its first few words followed by an ellipsis ("the button labeled 'Join thousands of happy…'").
-- When the fix is a change to block properties (colors, alignment, sizes, a button label), include proposedEdits with the exact property values. When the fix is rewording copy, put the suggested rewrite in the description instead and omit proposedEdits.
-- Whenever you OMIT proposedEdits, ALSO fill suggestedPrompt: a short ready-to-send message (1-3 sentences) the user could send to their email-editing assistant to resolve the finding. Write it in the user's first-person voice ("Replace the hero image's placeholder link — help me pick a real image URL from my website."), name the content by its visible text, and make it actionable. Omit suggestedPrompt whenever proposedEdits is present.
+- ALWAYS propose the fix itself when you can express it. A finding the user can accept in one press is worth several a user has to go and ask for.
+- When the fix is a change to block properties (colors, alignment, sizes, a button's label, an image's alt text or href), include proposedEdits with the exact property values.
+- When the fix is a change to the WORDS of a text block, include proposedCopyEdits: the block's id and its complete new wording as PLAIN TEXT. Write out every word the block should say afterwards, not just the part you changed, with ONE LINE per paragraph or heading the block already has, in the same order — the outline shows those pieces separated by " | ", so a block listed as \`h2|p\` takes two lines. Never write JSON or markup; the heading levels, alignment and styling are kept for you.
+- Two limits on a copy rewrite, so it is never destructive: give at least as many lines as the block has pieces (a shorter rewrite would delete a paragraph and is refused), and do not rewrite a block whose outline line shows mixed inline styling on the words themselves (a +link or +bold spanning part of the text) — that formatting cannot survive a reword, so describe the change instead.
+- Whenever you propose NO edits of either kind, ALSO fill suggestedPrompt: a short ready-to-send message (1-3 sentences) the user could send to their email-editing assistant to resolve the finding. Write it in the user's first-person voice ("Replace the hero image's placeholder link — help me pick a real image URL from my website."), name the content by its visible text, and make it actionable. Omit suggestedPrompt whenever you proposed any edit.
 - Findings must be about the document as it is NOW (the outline below is current).`;
 
 // ---------------------------------------------------------------------------
@@ -209,53 +216,6 @@ function skippedResponse(skippedReason: string): Response {
   return Response.json({ isOk: true, findings: [], skippedReason });
 }
 
-/** Deterministic coercion of the model's string values to property scalars. */
-function coercePropertyValue(raw: string): string | number | boolean {
-  if (raw === "true") {
-    return true;
-  }
-  if (raw === "false") {
-    return false;
-  }
-  if (/^-?\d+(\.\d+)?$/.test(raw)) {
-    return Number(raw);
-  }
-  return raw;
-}
-
-/**
- * Intent-level edits → validated `updateBlockProperties` ops (grouped per
- * block), dry-run against the current doc. Null when anything fails — the
- * finding then surfaces as informational instead of carrying broken ops.
- */
-function composeFindingOps({
-  doc,
-  proposedEdits,
-}: {
-  doc: EmailDocument;
-  proposedEdits: z.infer<typeof proposedEditSchema>[];
-}): Operation[] | null {
-  const propertiesByBlockId = new Map<string, Record<string, unknown>>();
-  for (const edit of proposedEdits) {
-    const properties = propertiesByBlockId.get(edit.blockId) ?? {};
-    properties[edit.property] = coercePropertyValue(edit.value);
-    propertiesByBlockId.set(edit.blockId, properties);
-  }
-  const ops: Operation[] = [];
-  for (const [blockId, properties] of propertiesByBlockId) {
-    const parsed = updateBlockPropertiesOperationSchema.safeParse({
-      name: "updateBlockProperties",
-      blockId,
-      properties,
-    });
-    if (!parsed.success) {
-      return null;
-    }
-    ops.push(parsed.data);
-  }
-  return applyOperations(doc, ops).isOk ? ops : null;
-}
-
 const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
 
 /*
@@ -290,7 +250,7 @@ function buildMockRunnerOutput({
 }: {
   doc: EmailDocument;
   personas: PersonaRow[];
-}): { findings: RunnerFindingCandidate[] } {
+}): { findings: RunnerOutputFinding[]; findingSource: string } {
   const leafBlockIds = Object.entries(
     doc as Record<string, { childrenIds?: string[] } | undefined>,
   )
@@ -300,37 +260,35 @@ function buildMockRunnerOutput({
     )
     .map(([blockId]) => blockId);
   if (leafBlockIds.length === 0) {
-    return { findings: [] };
+    return { findings: [], findingSource: "generic-mock" };
   }
   const stride = Math.max(1, Math.floor(leafBlockIds.length / personas.length));
-  return {
-    findings: personas.map((persona, personaIndex) => {
-      const seeded = selectSeededFinding({ doc, personaSlug: persona.slug });
-      if (seeded !== null) {
-        return seeded;
-      }
-      return {
-        personaSlug: persona.slug,
-        title: `Mock note from ${persona.name}`,
-        description:
-          "Deterministic mock finding (x-flock-mock / no model key) — exercises the persona presence choreography without a Gemini call.",
-        targetBlockNames: [`mock target ${personaIndex + 1}`],
-        targetBlockIds: [
-          leafBlockIds[(personaIndex * stride + 1) % leafBlockIds.length] ?? leafBlockIds[0]!,
-        ],
-      };
-    }),
-  };
-}
-
-/*
-  Did this mocked run serve the authored demo fixture, or the generic
-  placeholder? Developer-facing only — it rides the run's log line so that
-  "the demo showed a placeholder" is diagnosable from the ledger without
-  guessing at what the visitor's document looked like at the time.
-*/
-function selectFindingSource(findings: readonly RunnerFindingCandidate[]): string {
-  return findings.some((finding) => finding.seedOps !== undefined) ? "demo-seed" : "generic-mock";
+  /*
+    Which of the two sources actually served this run is decided here, where
+    it is known for certain, and carried out on the return. It rides the run's
+    log line so that "the demo showed a placeholder" stays diagnosable from
+    the ledger without guessing at what the visitor's document looked like at
+    the time — developer-facing only.
+  */
+  let isSeedServed = false;
+  const findings = personas.map((persona, personaIndex) => {
+    const seeded = selectSeededFinding({ doc, personaSlug: persona.slug });
+    if (seeded !== null) {
+      isSeedServed = true;
+      return seeded;
+    }
+    return {
+      personaSlug: persona.slug,
+      title: `Mock note from ${persona.name}`,
+      description:
+        "Deterministic mock finding (x-flock-mock / no model key) — exercises the persona presence choreography without a Gemini call.",
+      targetBlockNames: [`mock target ${personaIndex + 1}`],
+      targetBlockIds: [
+        leafBlockIds[(personaIndex * stride + 1) % leafBlockIds.length] ?? leafBlockIds[0]!,
+      ],
+    };
+  });
+  return { findings, findingSource: isSeedServed ? "demo-seed" : "generic-mock" };
 }
 
 type OpenFindingRow = FunctionReturnType<typeof api.personaFindings.listOpenFindings>[number];
@@ -464,7 +422,17 @@ export async function POST(request: Request) {
   // "blocks" depth omits styling props (a button line is just label+href),
   // which would blind the Styling Recommender AND make the outline-unchanged
   // skip treat pure styling edits as no-ops. Still compact (~1 line/block).
-  const outline = generateDocumentOutline({ doc, options: { depth: "full" } });
+  //
+  // maxTextChars is raised well past the outline default (60) because the
+  // personas may now propose COPY REWRITES, and a reviewer that can read the
+  // first 60 characters of a paragraph cannot honestly rewrite it — it would
+  // be rewriting around an ellipsis. Cost is bounded and small: a few hundred
+  // extra characters on the handful of text blocks in an email, paid once per
+  // run, in the fresh-tokens-last position that was never cacheable anyway.
+  const outline = generateDocumentOutline({
+    doc,
+    options: { depth: "full", maxTextChars: PERSONA_OUTLINE_MAX_TEXT_CHARS },
+  });
   const enabledKey = personas.map((persona) => persona.slug).join(",");
   const runKey = `${enabledKey}\n${outline}`;
 
@@ -568,11 +536,14 @@ export async function POST(request: Request) {
       traceId,
       isMock: isMockRun,
     };
-    let object: { findings: RunnerFindingCandidate[] };
+    let object: { findings: RunnerOutputFinding[] };
+    let mockFindingSource: string | null = null;
     let usage: unknown;
     if (isMockRun) {
       await sleep(MOCK_THINKING_BEAT_MS); // a visible thinking beat to watch
-      object = buildMockRunnerOutput({ doc, personas });
+      const mock = buildMockRunnerOutput({ doc, personas });
+      object = { findings: mock.findings };
+      mockFindingSource = mock.findingSource;
     } else {
       const generated = await generateObject({
         model: google(PERSONA_MODEL_ID),
@@ -601,22 +572,18 @@ export async function POST(request: Request) {
       if (knownTargetBlockIds.length === 0) {
         continue; // finding points at nothing real — drop
       }
-      // Two ways a finding can arrive carrying a fix, and BOTH are dry-run
-      // against this run's doc before they are offered: `proposedEdits` are
-      // the model's scalar property values, translated here; `seedOps` are the
-      // demo fixture's pre-built ops, which exist because a copy rewrite is a
-      // rich-text document and `proposedEditSchema.value` is a string. Writing
-      // the ops directly buys the fixture expressiveness, never trust — a
-      // fixture op that would not apply degrades to informational exactly like
-      // a model's would.
-      const ops =
-        finding.seedOps !== undefined
-          ? applyOperations(doc, finding.seedOps).isOk
-            ? finding.seedOps
-            : null
-          : finding.proposedEdits !== undefined && finding.proposedEdits.length > 0
-            ? composeFindingOps({ doc, proposedEdits: finding.proposedEdits })
-            : [];
+      // The fix, whichever shape the persona expressed it in: scalar property
+      // values, plain-text copy rewrites, or both at once. finding-ops.ts
+      // translates them into real operations and dry-runs the whole batch
+      // against THIS run's doc, so a fix that would not apply becomes an
+      // informational finding rather than a broken Apply button. The demo
+      // fixture goes through the identical path — it is written in the same
+      // model-facing shape and gets no special trust.
+      const ops = composeFindingOps({
+        doc,
+        proposedEdits: finding.proposedEdits,
+        proposedCopyEdits: finding.proposedCopyEdits,
+      });
       // The handoff prompt rides along ONLY while the finding is op-less
       // (informational — including the dry-run-failed degradation): a finding
       // with live ops is served by Apply, and the two CTAs never coexist.
@@ -711,7 +678,7 @@ export async function POST(request: Request) {
       model: PERSONA_MODEL_ID,
       isMock: isMockRun,
       isDemoDocument,
-      ...(isMockRun ? { findingSource: selectFindingSource(object.findings) } : {}),
+      ...(mockFindingSource !== null ? { findingSource: mockFindingSource } : {}),
       personaSlugs: personas.map((persona) => persona.slug),
       findingCount: findings.length,
       usage,

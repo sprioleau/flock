@@ -1,4 +1,4 @@
-import { createDemoDocument, type Block, type EmailDocument, type Operation } from "@flock/email-sdk";
+import { createDemoDocument, type Block, type EmailDocument } from "@flock/email-sdk";
 import { stableStringify } from "@/lib/suggestions/serialize-block";
 import type { RunnerOutputFinding } from "./finding-schema";
 
@@ -27,25 +27,27 @@ import type { RunnerOutputFinding } from "./finding-schema";
   teaches a stranger nothing about what the product says, and the label was
   doing the disclosure work that belongs at the exit.
 
-  EVERY FINDING CARRIES AN APPLYABLE OP. A recommendation a visitor can accept
-  in one press is the product; a recommendation that hands them off to the
-  chat composer to go ask for the edit is a demo of a to-do list. The ops here
-  are ordinary `updateBlockProperties` operations and they go through the
-  route's ordinary dry-run before they are offered, so Apply does the real
-  thing: real validation, a real op-log batch with `persona:<slug>`
-  provenance, real undo.
+  EVERY FINDING CARRIES AN APPLYABLE FIX. A recommendation a visitor can
+  accept in one press is the product; a recommendation that hands them off to
+  the chat composer to go ask for the edit is a demo of a to-do list.
 
-  ONE HONEST ASYMMETRY, worth naming rather than hiding. The Styling
-  Recommender's op is one a REAL run of that persona could also have produced:
-  its fix is three scalar property values, which is exactly what
-  `proposedEditSchema` can express. The Tone Police's op is not — its fix is a
-  rewritten rich-text document, and `proposedEditSchema.value` is a `string`,
-  so today a real Tone Police run can only ever describe a rewrite in prose
-  and hand it to the composer. That is a genuine product gap (a persona whose
-  entire job is copy cannot propose an applyable copy change), not a demo
-  problem, and closing it means widening the model-facing edit schema to carry
-  a text document. Until then this fixture shows the product one change ahead
-  of where the live runner is.
+  AND EVERY FINDING IS WRITTEN IN THE MODEL'S OWN OUTPUT SHAPE — this file
+  contains no operations at all. Each finding carries `proposedEdits` (scalar
+  property values) and/or `proposedCopyEdits` (a plain-text rewrite), exactly
+  the fields the runner's structured-output schema offers a live persona, and
+  the route composes and dry-runs them through finding-ops.ts on the ordinary
+  path. So the fixture buys authored JUDGEMENT and nothing else: no
+  expressiveness a real run lacks, no trust a real run does not get, and a
+  fixture edit that would not apply degrades to informational exactly like a
+  model's would. Apply then does the real thing — real validation, a real
+  op-log batch with `persona:<slug>` provenance, real undo.
+
+  This file used to carry pre-built ops for the Tone Police, because a copy
+  rewrite is a rich-text document and the model-facing schema could only carry
+  scalar property values — a persona whose entire job is copy could not
+  propose an applyable copy change. That gap is closed (see
+  finding-schema.ts's proposedCopyEditSchema: the model writes WORDS, the
+  server builds the doc), and the escape hatch went with it.
 
   FRESHNESS. A fixture finding is only served while every block it is about
   still matches the seed byte for byte (`stableStringify`, the same snapshot
@@ -54,19 +56,6 @@ import type { RunnerOutputFinding } from "./finding-schema";
   takes over — so the fixture can never describe an email that no longer says
   what it describes.
 */
-
-/*
-  A finding on its way into the route's post-processing, which is either
-  model-shaped (`proposedEdits`: scalar property values the route translates to
-  ops) or seed-shaped (`seedOps`: ops written directly, because a rich-text
-  rewrite cannot be expressed as a scalar).
-
-  Both paths are dry-run against the live document before anything is offered —
-  `seedOps` buys the fixture no trust, only expressiveness.
-*/
-export interface RunnerFindingCandidate extends RunnerOutputFinding {
-  seedOps?: Operation[];
-}
 
 /* The seed, materialised once: it is deterministic, and this module compares
    against it on every mocked run. */
@@ -81,24 +70,17 @@ function seedSnapshotFor(blockId: string): string {
   The rewritten hard-sell paragraph, in the voice the rest of the letter is
   already written in: the deadline survives (it is true — the roast is on
   Tuesday), the pressure and the shouting do not.
+
+  PLAIN TEXT, one line because `txt_push` is one paragraph — the exact thing a
+  live Tone Police run emits in `proposedCopyEdits[].text`. The paragraph node
+  it lands in comes from the block, not from here.
 */
-const REWRITTEN_URGENCY_PARAGRAPH = {
-  type: "doc",
-  content: [
-    {
-      type: "paragraph",
-      content: [
-        {
-          type: "text",
-          text: "We only roast what the harvest gives us, so this lot is a small one — about four hundred bags. Yours is set aside until Sunday night, and if you'd rather wait for the next arrival, that's completely fine by us.",
-        },
-      ],
-    },
-  ],
-};
+const REWRITTEN_URGENCY_PARAGRAPH =
+  "We only roast what the harvest gives us, so this lot is a small one — about four hundred bags. " +
+  "Yours is set aside until Sunday night, and if you'd rather wait for the next arrival, that's completely fine by us.";
 
 interface SeededFinding {
-  finding: RunnerFindingCandidate;
+  finding: RunnerOutputFinding;
   /* Blocks that must still match the seed for this finding to be served. */
   requiredSeedBlockIds: readonly string[];
 }
@@ -113,13 +95,7 @@ const SEEDED_FINDINGS_BY_SLUG: Readonly<Record<string, SeededFinding>> = {
         'The letter opens like a note to a regular — "we set one aside for you" — and then switches to pressure and capitals: "everyone else has already claimed theirs", "RESERVE NOW", "LAST CHANCE". Applying this rewrites that paragraph in the opening\'s voice and keeps the real Sunday deadline, which is the only urgency the email has actually earned.',
       targetBlockNames: ['the paragraph beginning "Let\'s be honest…"'],
       targetBlockIds: ["txt_push"],
-      seedOps: [
-        {
-          name: "updateBlockProperties",
-          blockId: "txt_push",
-          properties: { text: REWRITTEN_URGENCY_PARAGRAPH },
-        },
-      ],
+      proposedCopyEdits: [{ blockId: "txt_push", text: REWRITTEN_URGENCY_PARAGRAPH }],
     },
   },
   "builtin/styling-recommender": {
@@ -137,12 +113,14 @@ const SEEDED_FINDINGS_BY_SLUG: Readonly<Record<string, SeededFinding>> = {
          block-presence chrome at `targetBlockIds[0]`, so this is what the
          avatar parks on. */
       targetBlockIds: ["btn_scnd", "btn_prim"],
-      seedOps: [
-        {
-          name: "updateBlockProperties",
-          blockId: "btn_scnd",
-          properties: { backgroundColor: "#1f6f5c", borderRadius: 6, align: "center" },
-        },
+      /* Three scalar values on one block — the route groups them into a
+         single `updateBlockProperties` op, so this is still one press and one
+         undo. `borderRadius` travels as the string "6" because that is what
+         the model-facing schema takes; the route coerces it back to a number. */
+      proposedEdits: [
+        { blockId: "btn_scnd", property: "backgroundColor", value: "#1f6f5c" },
+        { blockId: "btn_scnd", property: "borderRadius", value: "6" },
+        { blockId: "btn_scnd", property: "align", value: "center" },
       ],
     },
   },
@@ -161,7 +139,7 @@ export function selectSeededFinding({
 }: {
   doc: EmailDocument;
   personaSlug: string;
-}): RunnerFindingCandidate | null {
+}): RunnerOutputFinding | null {
   const seeded = SEEDED_FINDINGS_BY_SLUG[personaSlug];
   if (seeded === undefined) {
     return null;

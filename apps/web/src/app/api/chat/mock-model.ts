@@ -223,6 +223,59 @@ const MOCK_SCAFFOLD_TEMPLATE_IDS = [
   "footer",
 ] as const;
 
+/*
+  What a comment-fix turn actually WRITES, keyed off what the reviewer asked
+  for.
+
+  The branch below used to answer every comment with one fixed label, which is
+  fine for a test asserting that the seam runs and useless in front of a
+  person: a surface whose whole claim is "the agent answered what you said"
+  cannot answer three different things identically. These are the same
+  keyword-scripted rules the rest of this mock is built from (see the header),
+  one level deeper — the reviewer's own words reach the model verbatim inside
+  the dispatch prompt (comment-dispatch.ts quotes the thread), so matching on
+  them is matching on the real input.
+
+  The fallback is the previous behaviour, untouched: a comment this table has
+  no opinion about is still acknowledged and still marks the turn.
+*/
+const MOCK_COMMENT_FIX_EDITS: readonly {
+  pattern: RegExp;
+  label: string;
+  acknowledgementText: string;
+}[] = [
+  {
+    pattern: /\b(?:shorter|shorten|too long|tighten|trim)\b/i,
+    label: "Reserve yours",
+    acknowledgementText: "Tightening that label so it fits on a phone.",
+  },
+  {
+    pattern: /\b(?:pushy|pressure|urgent|softer|soften|warmer|friendlier|gentler)\b/i,
+    label: "Reserve when you're ready",
+    acknowledgementText: "Softening that label to match the tone of the rest of the letter.",
+  },
+  {
+    pattern: /\b(?:specific|clearer|spell out|say what)\b/i,
+    label: "Reserve a bag of the spring lot",
+    acknowledgementText: "Making that label say exactly what is being reserved.",
+  },
+];
+
+/** The label + acknowledgement a comment-fix turn resolves to. */
+export function planCommentFixEdit(lastUserText: string): {
+  label: string;
+  acknowledgementText: string;
+} {
+  const match = MOCK_COMMENT_FIX_EDITS.find(({ pattern }) => pattern.test(lastUserText));
+  if (match === undefined) {
+    return {
+      label: "Addressed reviewer feedback",
+      acknowledgementText: "Addressing the reviewer feedback on the canvas now.",
+    };
+  }
+  return { label: match.label, acknowledgementText: match.acknowledgementText };
+}
+
 function planMockToolCall({
   lastUserText,
   selectedBlockId,
@@ -232,14 +285,15 @@ function planMockToolCall({
   // both dispatch shapes contain "reviewer comment(s)" by construction
   // (comment-dispatch.ts). One deterministic content op marks the turn.
   if (/\breviewer comments?\b/i.test(lastUserText)) {
+    const commentFix = planCommentFixEdit(lastUserText);
     return {
       toolName: "updateBlockProperties",
       input: {
         name: "updateBlockProperties",
         blockId: selectedBlockId ?? ("btn_t9u0" as BlockId),
-        properties: { label: "Addressed reviewer feedback" },
+        properties: { label: commentFix.label },
       },
-      acknowledgementText: "Addressing the reviewer feedback on the canvas now.",
+      acknowledgementText: commentFix.acknowledgementText,
     };
   }
   // Agent-parity scripts (checked before the preview/test-email intents so
