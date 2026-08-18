@@ -338,6 +338,23 @@ describe("step 2 — the recommendations", () => {
     expect(onOpenRecommendations).toHaveBeenCalled();
   });
 
+  it("stops offering the agents' cards once none are left to decide", () => {
+    /*
+      A decided recommendation is gone from the chat panel, so this shortcut
+      has nothing to reveal once every row is settled — and for a visitor who
+      already has the panel open it does nothing observable at all. Stepping
+      back from step 3 lands in exactly that state, which is where it was
+      found dead.
+    */
+    const settled = RECOMMENDATIONS.map((row) => ({ ...row, status: "applied" as const }));
+    expect(
+      findByTestId(renderRecommendationsStep(settled), "demo-open-recommendations"),
+    ).toBeUndefined();
+    expect(
+      findByTestId(renderRecommendationsStep(RECOMMENDATIONS), "demo-open-recommendations"),
+    ).toBeDefined();
+  });
+
   it("says so plainly when the agents posted nothing", () => {
     // Sending a visitor to an empty list without a word reads as the agents
     // having failed rather than as having found nothing.

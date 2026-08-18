@@ -555,6 +555,10 @@ export function DemoRecommendationsStep({
   recommendations: readonly DemoRecommendationRow[];
   onOpenRecommendations: () => void;
 }) {
+  /* "Open" is the same word the gate uses for a recommendation nobody has
+     accepted or dismissed yet (see `undecidedRecommendationCount`), so this
+     control and step 2's own Next go quiet on the same beat. */
+  const hasUndecidedRecommendations = recommendations.some((row) => row.status === "open");
   return (
     <>
       {recommendations.length === 0 ? (
@@ -601,16 +605,27 @@ export function DemoRecommendationsStep({
         Agents recommend. Only you apply.
       </p>
       {/* The panel is expanded on arrival at this step; this rescues the
-          visitor who collapsed it again. */}
-      <Button
-        type="button"
-        variant="outline"
-        size="sm"
-        onClick={onOpenRecommendations}
-        data-testid="demo-open-recommendations"
-      >
-        Show the agents&apos; cards
-      </Button>
+          visitor who collapsed it again.
+
+          IT LEAVES ONCE THERE IS NOTHING LEFT TO REVEAL. A decided
+          recommendation is gone from the chat panel, so with none of them
+          still open this button would expand a panel holding no cards — and
+          for the visitor who had ALREADY expanded it, do nothing observable
+          whatsoever. That is the state a visitor lands in by stepping back
+          from step 3, which is exactly where it was found dead. A control
+          that cannot do the thing its label promises is worse than one less
+          control on the card. */}
+      {hasUndecidedRecommendations && (
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          onClick={onOpenRecommendations}
+          data-testid="demo-open-recommendations"
+        >
+          Show the agents&apos; cards
+        </Button>
+      )}
     </>
   );
 }
