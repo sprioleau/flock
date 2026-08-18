@@ -318,13 +318,23 @@ function TourArrow() {
 function useAnchorGeometry(
   element: Element | null,
 ): { anchor: TourRect; viewport: TourViewport } | null {
-  const [geometry, setGeometry] = useState<{ anchor: TourRect; viewport: TourViewport } | null>(
-    null,
-  );
+  /*
+    The measurement is TAGGED with the element it came from, and the hook
+    returns it only when that tag still matches. That is what replaces
+    clearing the state from inside the effect: a synchronous setState there
+    ran on every render that arrived without an anchor and re-rendered the
+    tree to tell it something it could already see. Reading the tag answers
+    the same question during render, so a stale box from the previous stop
+    can never paint for the frame before the loop catches up.
+  */
+  const [geometry, setGeometry] = useState<{
+    element: Element;
+    anchor: TourRect;
+    viewport: TourViewport;
+  } | null>(null);
 
   useEffect(() => {
     if (element === null) {
-      setGeometry(null);
       return;
     }
     let frameId = 0;
@@ -333,6 +343,7 @@ function useAnchorGeometry(
     const measure = (): void => {
       const box = element.getBoundingClientRect();
       const next = {
+        element,
         anchor: { top: box.top, left: box.left, width: box.width, height: box.height },
         viewport: { width: window.innerWidth, height: window.innerHeight },
       };
@@ -357,7 +368,10 @@ function useAnchorGeometry(
     };
   }, [element]);
 
-  return geometry;
+  if (element === null || geometry === null || geometry.element !== element) {
+    return null;
+  }
+  return { anchor: geometry.anchor, viewport: geometry.viewport };
 }
 
 /*
@@ -381,7 +395,7 @@ function useAnchorGeometry(
   gone rather than behind it.
 */
 function TourScrim({ anchor }: { anchor: { anchor: TourRect; viewport: TourViewport } }) {
-  const spotlight = buildTourSpotlight(anchor.anchor, anchor.viewport);
+  const spotlight = buildTourSpotlight({ target: anchor.anchor, viewport: anchor.viewport });
   const panels = buildTourScrimPanels(spotlight, anchor.viewport);
 
   return createPortal(

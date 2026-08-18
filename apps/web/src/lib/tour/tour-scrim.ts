@@ -45,7 +45,7 @@ export interface TourViewport {
 */
 export const TOUR_SPOTLIGHT_PADDING = 6;
 
-function clamp(value: number, min: number, max: number): number {
+function clamp({ value, min, max }: { value: number; min: number; max: number }): number {
   return Math.min(Math.max(value, min), max);
 }
 
@@ -59,15 +59,27 @@ function clamp(value: number, min: number, max: number): number {
   rather than to nearest also guarantees the padded hole still contains the
   anchor, which is what keeps the control the card is pointing at clickable.
 */
-export function buildTourSpotlight(
-  target: TourRect,
-  viewport: TourViewport,
-  padding: number = TOUR_SPOTLIGHT_PADDING,
-): TourRect {
-  const left = clamp(Math.floor(target.left - padding), 0, viewport.width);
-  const top = clamp(Math.floor(target.top - padding), 0, viewport.height);
-  const right = clamp(Math.ceil(target.left + target.width + padding), left, viewport.width);
-  const bottom = clamp(Math.ceil(target.top + target.height + padding), top, viewport.height);
+export function buildTourSpotlight({
+  target,
+  viewport,
+  padding = TOUR_SPOTLIGHT_PADDING,
+}: {
+  target: TourRect;
+  viewport: TourViewport;
+  padding?: number;
+}): TourRect {
+  const left = clamp({ value: Math.floor(target.left - padding), min: 0, max: viewport.width });
+  const top = clamp({ value: Math.floor(target.top - padding), min: 0, max: viewport.height });
+  const right = clamp({
+    value: Math.ceil(target.left + target.width + padding),
+    min: left,
+    max: viewport.width,
+  });
+  const bottom = clamp({
+    value: Math.ceil(target.top + target.height + padding),
+    min: top,
+    max: viewport.height,
+  });
   return { top, left, width: right - left, height: bottom - top };
 }
 
