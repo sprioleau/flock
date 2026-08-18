@@ -1,6 +1,15 @@
 import { isValidElement, type ReactElement, type ReactNode } from "react";
 import { describe, expect, it, vi } from "vitest";
 import {
+  DEMO_COMMENT_CHOICES,
+  findDemoCommentChoice,
+  findDemoStep,
+  selectDemoCardDock,
+  type DemoCommentPhase,
+  type DemoStepId,
+  type DemoStepProgress,
+} from "@/lib/demo/demo-steps";
+import {
   completeRunningTurn,
   createDemoRunState,
   startNextTurn,
@@ -8,26 +17,26 @@ import {
 } from "@/lib/demo/demo-turns";
 
 /**
- * The demo bar's SHAPE, checked the way this app checks components: there is
- * no DOM here (vitest.config.ts pins `environment: "node"`), so the view is
- * called as a plain function over a run state and the element tree it returns
- * is walked.
+ * The demo card's SHAPE, checked the way this app checks components: there is
+ * no DOM here (vitest.config.ts pins `environment: "node"`), so each view is
+ * called as a plain function over its props and the element tree it returns is
+ * walked. Layout is CSS and belongs to the browser pass; what this suite can
+ * prove is everything that would be a real bug in front of a stranger:
  *
- * What this suite can prove is everything that would be a real bug in front of
- * a stranger:
- *
- * - the run is DISCLOSED as scripted at the exit — and NOT described as a mock
- *   anywhere a visitor is still watching it, which is the owner's call about
- *   placement rather than about honesty (the server logs stay blunt);
- * - the visitor is pointed at a recommendation only once one exists, and never
- *   at a turn that failed;
- * - the panel SURFACES findings and never applies them — the advisory boundary
- *   is the product's most defensible claim and the demo must say it;
- * - the run ends on a call to action into a real, unmocked session.
+ * - the flow is STEPPED and MANUAL — one step on screen, Next inert until that
+ *   step's work is done, and no step advancing itself;
+ * - the card docks away from the half of the canvas it is describing;
+ * - step 2 POINTS at the real recommendation cards and grows no Accept button
+ *   of its own (see the component's own note for why that is architectural);
+ * - the comment beat is driven by the choice the visitor picked;
+ * - the run is disclosed as scripted EXACTLY ONCE, on the last step, beside
+ *   the hand-off into a real session — and nowhere the visitor is still
+ *   watching it, which is the owner's call about placement, not about honesty
+ *   (the server logs stay blunt).
  */
 
 // The container half reaches Convex, the editor store and the router; none of
-// that has any bearing on the tree the view returns.
+// that has any bearing on the trees these views return.
 vi.mock("next/navigation", () => ({ useRouter: () => ({ push: vi.fn(), replace: vi.fn() }) }));
 vi.mock("@/lib/editor-store", () => ({
   useEditorStore: (selector: (state: unknown) => unknown) => selector({ documentId: null }),
@@ -39,14 +48,21 @@ vi.mock("@/lib/demo/demo-session", () => ({
 vi.mock("@/lib/demo/use-demo-run", () => ({
   useDemoRun: () => ({ runState: createDemoRunState() }),
 }));
-vi.mock("../personas/PersonaRecommendationsDialog", () => ({
-  PersonaRecommendationsDialog: () => null,
+vi.mock("@/lib/demo/use-demo-comment-flow", () => ({
+  useDemoCommentFlow: () => ({ phase: "choosing", chosenChoiceId: null, chooseComment: vi.fn() }),
 }));
+vi.mock("@/components/studio/panel-preferences", () => ({ updatePanelPreferences: vi.fn() }));
 vi.mock("@/components/studio/replay/replay-handoff", () => ({
   openTimeTravelReplay: vi.fn(() => true),
 }));
 
-import { DemoRunPanelView } from "./DemoRunPanel";
+import {
+  DemoCommentsStep,
+  DemoRecommendationsStep,
+  DemoRunCardView,
+  DemoWatchStep,
+  type DemoRecommendationRow,
+} from "./DemoRunPanel";
 
 interface ElementWithProps extends ReactElement {
   props: Record<string, unknown>;
@@ -76,11 +92,19 @@ function findByTestId(node: ReactNode, testId: string): ElementWithProps | undef
   return collectElements(node).find((element) => element.props["data-testid"] === testId);
 }
 
+function collectTestIds(node: ReactNode): string[] {
+  return collectElements(node)
+    .map((element) => element.props["data-testid"])
+    .filter((testId): testId is string => typeof testId === "string");
+}
+
 function visibleText(node: ReactNode): string {
   const parts: string[] = [];
   const visit = (current: ReactNode): void => {
-    if (typeof current === "string") {
-      parts.push(current);
+    /* Numbers count: the step counter interpolates one, and a walker that
+       dropped it would read "Step  of 3" and still pass. */
+    if (typeof current === "string" || typeof current === "number") {
+      parts.push(String(current));
       return;
     }
     if (Array.isArray(current)) {
@@ -95,15 +119,61 @@ function visibleText(node: ReactNode): string {
     visit((current as ElementWithProps).props.children as ReactNode);
   };
   visit(node);
-  return parts.join(" ");
+  /* Collapse the seams: adjacent children are joined with a space, so an
+     interpolated counter would otherwise read "Step  1  of  3". */
+  return parts.join(" ").replace(/\s+/g, " ").trim();
 }
 
 const noop = (): void => {};
 
-function renderView(runState: DemoRunState, overrides: Record<string, unknown> = {}) {
-  return DemoRunPanelView({
-    runState,
-    onShowRecommendations: noop,
+/* The run states a visitor can catch step 1 in. */
+const IDLE_RUN = createDemoRunState();
+const FIRST_TURN_RUNNING = startNextTurn(IDLE_RUN);
+const FIRST_TURN_LANDED = completeRunningTurn({ state: FIRST_TURN_RUNNING, outcome: "completed" });
+const SECOND_TURN_RUNNING = startNextTurn(FIRST_TURN_LANDED);
+const RUN_FINISHED = completeRunningTurn({ state: SECOND_TURN_RUNNING, outcome: "completed" });
+
+const UNFINISHED_PROGRESS: DemoStepProgress = {
+  isRunFinished: false,
+  undecidedRecommendationCount: 2,
+  commentPhase: "choosing",
+};
+const SETTLED_PROGRESS: DemoStepProgress = {
+  isRunFinished: true,
+  undecidedRecommendationCount: 0,
+  commentPhase: "answered",
+};
+
+const RECOMMENDATIONS: readonly DemoRecommendationRow[] = [
+  {
+    findingId: "finding_tone",
+    personaName: "Tone Police",
+    personaColor: "#e11d48",
+    title: "One paragraph shouts, and the rest of the email doesn't",
+    status: "open",
+    isActionable: true,
+  },
+  {
+    findingId: "finding_style",
+    personaName: "Styling Recommender",
+    personaColor: "#0d9488",
+    title: "The two buttons have drifted apart",
+    status: "applied",
+    isActionable: true,
+  },
+];
+
+function renderCard(overrides: Partial<Parameters<typeof DemoRunCardView>[0]> = {}) {
+  return DemoRunCardView({
+    stepId: "watch",
+    runState: RUN_FINISHED,
+    recommendations: RECOMMENDATIONS,
+    progress: SETTLED_PROGRESS,
+    chosenChoiceId: null,
+    onBack: noop,
+    onNext: noop,
+    onOpenRecommendations: noop,
+    onChooseComment: noop,
     onRewind: noop,
     onStartOver: noop,
     onExitToRealSession: noop,
@@ -111,113 +181,245 @@ function renderView(runState: DemoRunState, overrides: Record<string, unknown> =
   });
 }
 
-/* The three states a visitor can catch the bar in. */
-const IDLE_RUN = createDemoRunState();
-const FIRST_TURN_RUNNING = startNextTurn(IDLE_RUN);
-const FIRST_TURN_LANDED = completeRunningTurn({ state: FIRST_TURN_RUNNING, outcome: "completed" });
-const SECOND_TURN_RUNNING = startNextTurn(FIRST_TURN_LANDED);
-const RUN_FINISHED = completeRunningTurn({ state: SECOND_TURN_RUNNING, outcome: "completed" });
+function renderWatchStep(runState: DemoRunState) {
+  return DemoWatchStep({ runState });
+}
 
-describe("disclosing the script", () => {
-  it("discloses the scripted run at the exit, where the visitor is handed a real one", () => {
-    const tree = renderView(RUN_FINISHED);
-    const disclosure = findByTestId(tree, "demo-mock-disclosure");
-    expect(visibleText(disclosure)).toContain("scripted");
-    expect(visibleText(disclosure)).toContain("prepared in advance");
-    /* And it does not disown the half that was real, which is most of it. */
-    expect(visibleText(disclosure)).toContain("real undo");
+function renderRecommendationsStep(
+  recommendations: readonly DemoRecommendationRow[] = RECOMMENDATIONS,
+  onOpenRecommendations: () => void = noop,
+) {
+  return DemoRecommendationsStep({ recommendations, onOpenRecommendations });
+}
+
+function renderCommentsStep(
+  overrides: Partial<Parameters<typeof DemoCommentsStep>[0]> = {},
+) {
+  return DemoCommentsStep({
+    phase: "choosing" as DemoCommentPhase,
+    chosenChoiceId: null,
+    onChooseComment: noop,
+    onRewind: noop,
+    onExitToRealSession: noop,
+    ...overrides,
   });
+}
 
-  it("never calls anything a mock while the visitor is still watching the run", () => {
-    /* Owner decision 2026-08-17: the word belongs in the logs and at the exit,
-       not stamped across a product surface a stranger is judging. A visitor
-       taught to read every recommendation as fake learns nothing about what
-       the agents actually say. */
-    for (const runState of [IDLE_RUN, FIRST_TURN_RUNNING, FIRST_TURN_LANDED]) {
-      expect(visibleText(renderView(runState)).toLowerCase()).not.toContain("mock");
+const ALL_STEP_IDS: readonly DemoStepId[] = ["watch", "recommendations", "comments"];
+const STEP_COMPONENTS = [DemoWatchStep, DemoRecommendationsStep, DemoCommentsStep];
+
+describe("the card's shape", () => {
+  it("shows ONE step at a time, and says which one", () => {
+    for (const [index, stepId] of ALL_STEP_IDS.entries()) {
+      const tree = renderCard({ stepId });
+      expect(visibleText(findByTestId(tree, "demo-step-counter"))).toContain(
+        `Step ${index + 1} of 3`,
+      );
+      // Exactly one step body is mounted — the whole complaint about what this
+      // replaced was that every beat was on screen simultaneously.
+      const mountedSteps = collectElements(tree).filter((element) =>
+        STEP_COMPONENTS.some((stepComponent) => stepComponent === element.type),
+      );
+      expect(mountedSteps).toHaveLength(1);
     }
   });
 
-  it("keeps the demo identifiable as a demo throughout", () => {
-    for (const runState of [IDLE_RUN, FIRST_TURN_RUNNING, FIRST_TURN_LANDED, RUN_FINISHED]) {
-      expect(findByTestId(renderView(runState), "demo-mock-badge")).toBeDefined();
+  it("docks away from the half of the canvas the step is describing", () => {
+    // The rule and its derivation live in demo-steps.ts; what matters here is
+    // that the card WEARS the answer rather than hard-coding a position, so a
+    // step whose subject moves moves the card with it.
+    for (const stepId of ALL_STEP_IDS) {
+      expect(renderCard({ stepId }).props["data-demo-dock"]).toBe(
+        selectDemoCardDock(findDemoStep(stepId)),
+      );
     }
+  });
+
+  it("keeps an exit and a restart reachable from every step", () => {
+    for (const stepId of ALL_STEP_IDS) {
+      const onExitToRealSession = vi.fn();
+      const onStartOver = vi.fn();
+      const tree = renderCard({ stepId, onExitToRealSession, onStartOver });
+      (findByTestId(tree, "demo-exit")?.props.onClick as () => void)();
+      (findByTestId(tree, "demo-start-over")?.props.onClick as () => void)();
+      expect(onExitToRealSession).toHaveBeenCalled();
+      expect(onStartOver).toHaveBeenCalled();
+    }
+  });
+
+  it("offers no way back from the first step", () => {
+    expect(findByTestId(renderCard({ stepId: "watch" }), "demo-back")).toBeUndefined();
+    const onBack = vi.fn();
+    const tree = renderCard({ stepId: "recommendations", onBack });
+    (findByTestId(tree, "demo-back")?.props.onClick as () => void)();
+    expect(onBack).toHaveBeenCalled();
   });
 });
 
-describe("pacing the turns", () => {
+describe("advancing", () => {
+  it("keeps Next inert and quiet until the step's work is done", () => {
+    const waiting = findByTestId(
+      renderCard({ stepId: "watch", progress: UNFINISHED_PROGRESS }),
+      "demo-next",
+    );
+    expect(waiting?.props.disabled).toBe(true);
+    expect(waiting?.props.variant).toBe("outline");
+  });
+
+  it("makes Next prominent the moment the step's work IS done", () => {
+    const onNext = vi.fn();
+    const ready = findByTestId(
+      renderCard({ stepId: "watch", progress: SETTLED_PROGRESS, onNext }),
+      "demo-next",
+    );
+    expect(ready?.props.disabled).toBe(false);
+    expect(ready?.props.variant).toBe("default");
+    // And it still takes a press: nothing on this card moves on its own.
+    (ready?.props.onClick as () => void)();
+    expect(onNext).toHaveBeenCalledTimes(1);
+  });
+
+  it("offers no Next on the last step — it ends in an exit, not another step", () => {
+    expect(
+      findByTestId(renderCard({ stepId: "comments", progress: SETTLED_PROGRESS }), "demo-next"),
+    ).toBeUndefined();
+  });
+});
+
+describe("step 1 — watching the agents work", () => {
   it("shows one agent taking its turn while the other waits", () => {
-    const tree = renderView(FIRST_TURN_RUNNING);
+    const tree = renderWatchStep(FIRST_TURN_RUNNING);
     expect(findByTestId(tree, "demo-turn-1")?.props["data-turn-status"]).toBe("running");
     expect(findByTestId(tree, "demo-turn-2")?.props["data-turn-status"]).toBe("pending");
   });
 
   it("narrates the turn that is actually in flight", () => {
-    expect(visibleText(findByTestId(renderView(SECOND_TURN_RUNNING), "demo-narration"))).toContain(
-      "Styling Recommender",
+    expect(
+      visibleText(findByTestId(renderWatchStep(SECOND_TURN_RUNNING), "demo-narration")),
+    ).toContain("Styling Recommender");
+  });
+});
+
+describe("step 2 — the recommendations", () => {
+  it("lists every finding with what happened to it", () => {
+    const tree = renderRecommendationsStep();
+    const rows = collectElements(tree).filter(
+      (element) => element.props["data-testid"] === "demo-recommendation",
+    );
+    expect(rows).toHaveLength(2);
+    expect(rows.map((row) => row.props["data-finding-status"])).toEqual(["open", "applied"]);
+    expect(visibleText(tree)).toContain("The two buttons have drifted apart");
+  });
+
+  it("POINTS at the real cards instead of growing an Accept button of its own", () => {
+    /*
+      Applying a finding means calling usePersonaAdvisors().applySuggestion,
+      and that hook must mount exactly once — it hosts the persona presence
+      heartbeat and the batched runner. A second Accept here would mean a
+      second mount. So the only action this step offers is "show me where the
+      real ones are", and the advisory boundary is stated in the visitor's own
+      words rather than left implicit.
+    */
+    const onOpenRecommendations = vi.fn();
+    const tree = renderRecommendationsStep(RECOMMENDATIONS, onOpenRecommendations);
+    for (const testId of collectTestIds(tree)) {
+      expect(testId).not.toMatch(/apply|accept|dismiss/i);
+    }
+    expect(visibleText(findByTestId(tree, "demo-advisory-note"))).toContain("Only you apply");
+    (findByTestId(tree, "demo-open-recommendations")?.props.onClick as () => void)();
+    expect(onOpenRecommendations).toHaveBeenCalled();
+  });
+
+  it("says so plainly when the agents posted nothing", () => {
+    // Sending a visitor to an empty list without a word reads as the agents
+    // having failed rather than as having found nothing.
+    expect(
+      findByTestId(renderRecommendationsStep([]), "demo-recommendations-empty"),
+    ).toBeDefined();
+  });
+});
+
+describe("step 3 — the comment round trip", () => {
+  it("offers the choices, and dispatches the one the visitor picked", () => {
+    const onChooseComment = vi.fn();
+    const tree = renderCommentsStep({ onChooseComment });
+    const [firstChoice] = DEMO_COMMENT_CHOICES;
+    const choiceElement = findByTestId(tree, `demo-comment-choice-${firstChoice!.id}`);
+    expect(visibleText(choiceElement)).toContain(firstChoice!.label);
+    (choiceElement?.props.onClick as () => void)();
+    expect(onChooseComment).toHaveBeenCalledWith(firstChoice!.id);
+  });
+
+  it("replaces the choices with the comment that was actually left", () => {
+    const chosenChoiceId = DEMO_COMMENT_CHOICES[1]!.id;
+    const tree = renderCommentsStep({ phase: "awaiting-agent", chosenChoiceId });
+    expect(findByTestId(tree, "demo-comment-choices")).toBeUndefined();
+    expect(visibleText(findByTestId(tree, "demo-comment-posted"))).toContain(
+      findDemoCommentChoice(chosenChoiceId)!.commentText,
     );
   });
-});
 
-describe("pointing at the recommendations", () => {
-  it("offers nothing to look at before anything has been posted", () => {
-    // Sending a visitor to an empty recommendations list is worse than saying
-    // nothing: it reads as the agents having failed.
-    expect(findByTestId(renderView(FIRST_TURN_RUNNING), "demo-show-recommendations")).toBeUndefined();
+  it("does not claim an answer before the agent has given one", () => {
+    const waiting = renderCommentsStep({
+      phase: "awaiting-agent",
+      chosenChoiceId: DEMO_COMMENT_CHOICES[0]!.id,
+    });
+    expect(visibleText(findByTestId(waiting, "demo-comment-status"))).not.toContain("answered");
+    // The rewind is about "what just happened", so it waits for something to
+    // have happened.
+    expect(findByTestId(waiting, "demo-rewind")).toBeUndefined();
+
+    const answered = renderCommentsStep({
+      phase: "answered",
+      chosenChoiceId: DEMO_COMMENT_CHOICES[0]!.id,
+    });
+    expect(visibleText(findByTestId(answered, "demo-comment-status"))).toContain("answered");
+    expect(findByTestId(answered, "demo-rewind")).toBeDefined();
   });
 
-  it("names the agent that just posted, and opens the modal filtered to it", () => {
-    const onShowRecommendations = vi.fn();
-    const tree = renderView(FIRST_TURN_LANDED, { onShowRecommendations });
-    const handoff = findByTestId(tree, "demo-show-recommendations");
-    expect(visibleText(handoff)).toContain("Tone Police");
-    (handoff?.props.onClick as () => void)();
-    expect(onShowRecommendations).toHaveBeenCalledWith("builtin/tone-police");
-  });
-
-  it("collapses to both agents once the run is done", () => {
-    const onShowRecommendations = vi.fn();
-    const tree = renderView(RUN_FINISHED, { onShowRecommendations });
-    const handoff = findByTestId(tree, "demo-show-recommendations");
-    expect(visibleText(handoff)).toContain("both");
-    (handoff?.props.onClick as () => void)();
-    expect(onShowRecommendations).toHaveBeenCalledWith(null);
-  });
-
-  it("points at nothing when the only turn to report in failed", () => {
-    const failedRun = completeRunningTurn({ state: FIRST_TURN_RUNNING, outcome: "failed" });
-    expect(findByTestId(renderView(failedRun), "demo-show-recommendations")).toBeUndefined();
-  });
-
-  it("surfaces recommendations rather than applying them, and says so", () => {
-    const tree = renderView(RUN_FINISHED);
-    // Nothing in this bar dispatches an operation — the only action it offers
-    // for a finding is to go and LOOK at it. The advisory boundary is stated
-    // in the visitor's words rather than left implicit.
-    expect(visibleText(findByTestId(tree, "demo-advisory-note"))).toContain("Only you apply");
-  });
-});
-
-describe("ending the run", () => {
-  it("keeps an exit available at all times, and asks for a real session at the end", () => {
+  it("ends on a call to action into a real, unmocked session", () => {
     const onExitToRealSession = vi.fn();
-    expect(findByTestId(renderView(FIRST_TURN_RUNNING), "demo-exit")).toBeDefined();
-    expect(findByTestId(renderView(FIRST_TURN_RUNNING), "demo-real-session-cta")).toBeUndefined();
-
-    const finishedTree = renderView(RUN_FINISHED, { onExitToRealSession });
-    const cta = findByTestId(finishedTree, "demo-real-session-cta");
+    const cta = findByTestId(renderCommentsStep({ onExitToRealSession }), "demo-real-session-cta");
     expect(visibleText(cta)).toContain("real one");
     (cta?.props.onClick as () => void)();
     expect(onExitToRealSession).toHaveBeenCalled();
   });
+});
 
-  it("offers the rewind and the restart only once there is something to replay", () => {
-    expect(findByTestId(renderView(FIRST_TURN_RUNNING), "demo-rewind")).toBeUndefined();
-    expect(findByTestId(renderView(RUN_FINISHED), "demo-rewind")).toBeDefined();
+describe("disclosing the script", () => {
+  it("discloses the scripted run once, on the last step, beside the hand-off", () => {
+    const disclosure = findByTestId(renderCommentsStep(), "demo-mock-disclosure");
+    expect(visibleText(disclosure)).toContain("scripted");
+    expect(visibleText(disclosure)).toContain("prepared in advance");
+    /* And it does not disown the half that was real, which is most of it. */
+    expect(visibleText(disclosure)).toContain("real undo");
+    /* Exactly once: not on the steps the visitor is still watching. */
+    expect(findByTestId(renderWatchStep(RUN_FINISHED), "demo-mock-disclosure")).toBeUndefined();
+    expect(
+      findByTestId(renderRecommendationsStep(), "demo-mock-disclosure"),
+    ).toBeUndefined();
+    expect(
+      collectTestIds(renderCommentsStep()).filter((testId) => testId === "demo-mock-disclosure"),
+    ).toHaveLength(1);
+  });
 
-    const onStartOver = vi.fn();
-    const tree = renderView(RUN_FINISHED, { onStartOver });
-    (findByTestId(tree, "demo-start-over")?.props.onClick as () => void)();
-    expect(onStartOver).toHaveBeenCalled();
+  it("never calls anything a mock on a surface a stranger is judging", () => {
+    /* Owner decision 2026-08-17: the word belongs in the logs, not stamped
+       across a product surface. A visitor taught to read every recommendation
+       as fake learns nothing about what the agents actually say. */
+    const everything = [
+      ...ALL_STEP_IDS.map((stepId) => visibleText(renderCard({ stepId }))),
+      visibleText(renderWatchStep(FIRST_TURN_RUNNING)),
+      visibleText(renderRecommendationsStep()),
+      visibleText(renderCommentsStep()),
+      visibleText(renderCommentsStep({ phase: "answered", chosenChoiceId: "shorter" })),
+    ].join(" ");
+    expect(everything.toLowerCase()).not.toContain("mock");
+  });
+
+  it("keeps the demo identifiable as a demo throughout", () => {
+    for (const stepId of ALL_STEP_IDS) {
+      expect(findByTestId(renderCard({ stepId }), "demo-mock-badge")).toBeDefined();
+    }
   });
 });
