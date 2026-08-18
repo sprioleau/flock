@@ -8,7 +8,7 @@ import { api } from "@convex/_generated/api";
 import { Button } from "@/components/ui/button";
 import { authClient } from "@/lib/auth/auth-client";
 import { isAuthEnabled } from "@/lib/auth/config";
-import { ensureDemoIdentity } from "@/lib/demo/demo-identity";
+import { ensureAnonymousIdentity } from "@/lib/auth/ensure-anonymous-identity";
 import { beginDemoSession } from "@/lib/demo/demo-session";
 import { getOrCreateSessionId } from "@/lib/session";
 
@@ -50,22 +50,26 @@ export function DemoBootstrap() {
     }
     isProvisionRequestedRef.current = true;
     /* IDENTITY FIRST, and sequenced rather than raced. A signed-out visitor
-       arriving here has no session: ShareLinkSignIn — the only automatic
-       anonymous sign-in in the app — reads the URL once at root-provider mount
-       and returns unless it names `?doc=` or `?canvas=`, and /demo is mounted
-       at neither. Its handover below is a soft navigation, so that effect
-       never gets a second chance. Establishing the identity BEFORE the studio
-       is ever reached means the session cookie exists while the visitor is
-       still reading step 1, and the Convex client is attaching a token long
-       before step 3 asks it to write a comment — the one demo beat whose
-       mutation derives its owner from a verified identity and refuses without
-       one.
+       arriving here has no session, and /demo never shows them a login page
+       that could have asked for one. EditorEntrySignIn (lib/auth/
+       FlockAuthProvider.tsx) applies the same rule to this route, but it is
+       fire-and-forget — it starts an identity, it does not hold the demo back
+       until there is one. Awaiting it HERE is what guarantees the session
+       cookie exists while the visitor is still reading step 1, so the Convex
+       client is attaching a token long before step 3 asks it to write a
+       comment — the one demo beat whose mutation derives its owner from a
+       verified identity and refuses without one.
+
+       Both callers can fire in the same tick, and that is safe by design
+       rather than by luck: `ensureAnonymousIdentity` shares one in-flight
+       attempt, so the second caller awaits the first instead of minting a
+       rival anonymous user that would strand this document's owner.
 
        It never rejects: an unreachable auth flow resolves to "unavailable" and
        the demo provisions anyway, because steps 1 and 2 need no identity. That
        is what keeps the `.catch` below meaning "provisioning failed" and
        nothing else — sign-in trouble must not raise the error screen. */
-    ensureDemoIdentity({
+    ensureAnonymousIdentity({
       isAuthEnabled: isAuthEnabled(),
       getSession: () => authClient.getSession(),
       signInAnonymously: async () => {
