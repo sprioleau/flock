@@ -6,6 +6,9 @@ import { useConvex } from "convex/react";
 import { Loader2Icon, TriangleAlertIcon } from "lucide-react";
 import { api } from "@convex/_generated/api";
 import { Button } from "@/components/ui/button";
+import { authClient } from "@/lib/auth/auth-client";
+import { isAuthEnabled } from "@/lib/auth/config";
+import { ensureDemoIdentity } from "@/lib/demo/demo-identity";
 import { beginDemoSession } from "@/lib/demo/demo-session";
 import { getOrCreateSessionId } from "@/lib/session";
 
@@ -46,19 +49,44 @@ export function DemoBootstrap() {
       return;
     }
     isProvisionRequestedRef.current = true;
-    convexClient
-      .mutation(api.documents.createDocument, {
-        sessionId: getOrCreateSessionId(),
-        name: "Demo draft",
-        canvasTitle: "Flock demo",
-        /* The one flag that makes this route public-safe. It seeds the demo
-           email — the one with the two planted problems the agents are here to
-           find — and stamps `isDemo` on the row, which is what /api/chat and
-           /api/personas read to force the deterministic mock. The authority is
-           the ROW, deliberately: this browser can ask for a demo document, but
-           it cannot ask a demo document to spend real inference. */
-        isDemo: true,
-      })
+    /* IDENTITY FIRST, and sequenced rather than raced. A signed-out visitor
+       arriving here has no session: ShareLinkSignIn — the only automatic
+       anonymous sign-in in the app — reads the URL once at root-provider mount
+       and returns unless it names `?doc=` or `?canvas=`, and /demo is mounted
+       at neither. Its handover below is a soft navigation, so that effect
+       never gets a second chance. Establishing the identity BEFORE the studio
+       is ever reached means the session cookie exists while the visitor is
+       still reading step 1, and the Convex client is attaching a token long
+       before step 3 asks it to write a comment — the one demo beat whose
+       mutation derives its owner from a verified identity and refuses without
+       one.
+
+       It never rejects: an unreachable auth flow resolves to "unavailable" and
+       the demo provisions anyway, because steps 1 and 2 need no identity. That
+       is what keeps the `.catch` below meaning "provisioning failed" and
+       nothing else — sign-in trouble must not raise the error screen. */
+    ensureDemoIdentity({
+      isAuthEnabled: isAuthEnabled(),
+      getSession: () => authClient.getSession(),
+      signInAnonymously: async () => {
+        await authClient.signIn.anonymous();
+      },
+    })
+      .then(() =>
+        convexClient.mutation(api.documents.createDocument, {
+          sessionId: getOrCreateSessionId(),
+          name: "Demo draft",
+          canvasTitle: "Flock demo",
+          /* The one flag that makes this route public-safe. It seeds the demo
+             email — the one with the two planted problems the agents are here
+             to find — and stamps `isDemo` on the row, which is what /api/chat
+             and /api/personas read to force the deterministic mock. The
+             authority is the ROW, deliberately: this browser can ask for a
+             demo document, but it cannot ask a demo document to spend real
+             inference. */
+          isDemo: true,
+        }),
+      )
       .then(({ documentId }) => {
         /* Preset BEFORE the navigation: /studio mounts once, and it has to
            mount with the two agents already enabled and the first-run tour

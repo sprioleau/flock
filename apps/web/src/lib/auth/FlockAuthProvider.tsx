@@ -63,6 +63,18 @@ export function FlockAuthProvider({
  * (their own brand kit, their own image library, their own undo lane) — while
  * their access to the document came from the URL and never from the session.
  *
+ * THE OTHER FRONT DOOR IS /demo, AND THIS EFFECT DOES NOT COVER IT. A demo
+ * visitor is in exactly the same category — a stranger who must reach a
+ * working editor without ever meeting a login page — but they cannot be served
+ * from here. This effect reads `window.location.search` ONCE, at the mount of
+ * the root provider, and /demo is mounted at a URL carrying neither `doc` nor
+ * `canvas`; DemoBootstrap's handover to `/studio?doc=…` is a SOFT navigation,
+ * so the provider never remounts and this effect never gets a second look at
+ * the URL. /demo therefore establishes its own identity at provisioning time
+ * instead — see `ensureDemoIdentity` in lib/demo/demo-identity.ts, called from
+ * DemoBootstrap before it creates the document. If you widen or narrow the
+ * rule below, that is the other half to keep in step.
+ *
  * Failure is survivable ON PURPOSE. If sign-in fails (auth misconfigured,
  * Convex unreachable, a rate limit), the app keeps working: session-scoped
  * functions fall back to the client-supplied id (convex/authIdentity.ts) and
