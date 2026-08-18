@@ -393,15 +393,42 @@ export async function POST(request: Request) {
   // and the server backstops below — a cooldown throttles the system, a credit
   // throttles a person.
   //
-  // Resolved BEFORE the charge, not at the model call: a mocked run spends no
-  // provider quota, so charging for one would bill a person for work nobody
-  // paid for — and would empty a demo visitor's whole allowance on a scripted
-  // run, or on any deployment with no API key configured at all.
-  // `chargeCreditForRequest` already short-circuits on `isMockRun`; this route
-  // simply was not telling it. A demo document therefore never spends a
-  // credit, whether or not its client remembered to ask for the mock.
+  // Resolved BEFORE the charge, not at the model call: a run that will spend no
+  // provider quota must not bill a person for work nobody paid for — that would
+  // empty a demo visitor's whole allowance on a scripted run, or charge on a
+  // deployment with no API key configured at all. `chargeCreditForRequest`
+  // already short-circuits on that flag; this route simply was not telling it.
+  // A demo document therefore never spends a credit, whether or not its client
+  // remembered to ask for the mock.
+  //
+  // THE CHARGE READS A NARROWER FLAG THAN THE MODEL CALL DOES, and the gap
+  // between the two flags is the whole point of there being two. `isMockRun`
+  // above folds in `x-flock-mock: 1` (MOCK_MODEL_HEADER) — a header the CLIENT
+  // chooses to send. The exemption below folds in only what the SERVER
+  // established for itself: the document row said `isDemo`, or this deployment
+  // has no GOOGLE_GENERATIVE_AI_API_KEY at all. Those are the two runs the
+  // server can vouch for as free; a header is not one of them.
+  //
+  // It matters here more than anywhere else on this route because a manual
+  // sweep has deliberately given up the other backstops: it skips the server
+  // cooldown and the outline-unchanged skip below, on the grounds that
+  // explicit human intent deserves a fresh verdict. The credit is then the
+  // ONLY throttle left standing, and a client must not be able to talk its way
+  // out of the only throttle a manual sweep has — sending one header would
+  // otherwise strip every limit on the route at once, and the writes a sweep
+  // makes (findings rows, presence churn, invocations) are real whether or not
+  // a model was called.
+  //
+  // The header keeps its real meaning everywhere else (see the model call and
+  // the run's log line): a caller who sends it still gets the deterministic
+  // mock and no Gemini call. It just pays a credit for the run it asked for.
+  const isFreeRunTheServerVouchesFor =
+    isDemoDocument || !process.env.GOOGLE_GENERATIVE_AI_API_KEY;
   if (isManualSweep) {
-    const charge = await chargeCreditForRequest({ request, isMockRun });
+    const charge = await chargeCreditForRequest({
+      request,
+      isMockRun: isFreeRunTheServerVouchesFor,
+    });
     if (!charge.isAllowed) {
       return failureResponse({ status: 429, message: charge.message });
     }
