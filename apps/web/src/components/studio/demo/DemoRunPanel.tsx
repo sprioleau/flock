@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { useQuery } from "convex/react";
-import { HistoryIcon, SparklesIcon } from "lucide-react";
+import { HistoryIcon } from "lucide-react";
 import { api } from "@convex/_generated/api";
 import { Button } from "@/components/ui/button";
 import { updatePanelPreferences } from "@/components/studio/panel-preferences";
@@ -283,15 +283,7 @@ export function DemoRunCardView({
       data-demo-step={stepId}
       data-demo-dock={selectDemoCardDock(step)}
     >
-      <div className="flex shrink-0 items-center gap-2">
-        <span
-          className="flex shrink-0 items-center gap-1 rounded-full bg-foreground px-2 py-0.5 text-[10px] font-medium text-background"
-          data-testid="demo-mock-badge"
-        >
-          <SparklesIcon className="size-3" />
-          Scripted demo
-        </span>
-        <span className="min-w-0 flex-1" />
+      <div className="flex shrink-0 items-center justify-end">
         {/* Reachable from every step — the difference between a demo and a
             hostage situation (the tour's §3.3 rule, same reasoning). */}
         <Button

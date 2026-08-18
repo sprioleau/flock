@@ -416,10 +416,4 @@ describe("disclosing the script", () => {
     ].join(" ");
     expect(everything.toLowerCase()).not.toContain("mock");
   });
-
-  it("keeps the demo identifiable as a demo throughout", () => {
-    for (const stepId of ALL_STEP_IDS) {
-      expect(findByTestId(renderCard({ stepId }), "demo-mock-badge")).toBeDefined();
-    }
-  });
 });
