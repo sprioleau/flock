@@ -222,6 +222,12 @@ function createFlockChatController(): FlockChatController {
       const { chatProviderId } = getAppSettings();
       return {
         document: store.doc,
+        // WHICH document, not a second copy of it. The route reads
+        // `documents.isDemo` off this row to decide whether the turn may spend
+        // real inference (lib/demo/mock-authority.ts) — on /demo it may not.
+        // Sent from the same store the document came from, so a mid-turn draft
+        // switch cannot pair one draft's content with another's id.
+        ...(store.documentId === null ? {} : { documentId: store.documentId }),
         selectedBlockId: store.selectedBlockId ?? undefined,
         ...(chatProviderId === null ? {} : { providerId: chatProviderId }),
       };

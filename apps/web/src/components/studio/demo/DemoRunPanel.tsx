@@ -26,9 +26,15 @@ import { PersonaRecommendationsDialog } from "../personas/PersonaRecommendations
  *
  * FOUR THINGS IT HAS TO DO, and nothing else:
  *
- * 1. SAY THAT THE RUN IS SCRIPTED. The banner is permanent, not a dismissible
- *    toast. A scripted demo labelled as one is honest; the same demo unlabelled
- *    is a claim about live inference that this route does not make.
+ * 1. SAY THAT THE RUN IS SCRIPTED — ONCE, AT THE EXIT. A scripted demo
+ *    labelled as one is honest; the same demo unlabelled is a claim about live
+ *    inference that this route does not make. But the label used to sit across
+ *    the top of this bar and inside the recommendations themselves, which
+ *    taught a stranger to discount everything on screen — including the
+ *    product's actual judgement. So the disclosure moved to the last beat, the
+ *    hand-off into a real unmocked session, where it is also the most useful
+ *    thing it can say. Nothing about what actually RUNS changed: the mock is
+ *    forced server-side off the document row, and the server logs say so.
  * 2. PACE THE TURNS VISIBLY. The chips show one agent taking its turn while
  *    the other waits, so the sequencing reads as a decision rather than as
  *    latency (lib/demo/demo-turns.ts for why the boundary is the scheduler).
@@ -136,14 +142,7 @@ export function DemoRunPanelView({
           <SparklesIcon className="size-3" />
           Scripted demo
         </span>
-        {/* The disclosure is deliberately specific about WHERE the script
-            stops: a vague "this is a demo" would leave a visitor unsure
-            whether any of it was real, and almost all of it is. */}
-        <p className="min-w-0 flex-1 text-[11px] text-muted-foreground" data-testid="demo-mock-disclosure">
-          Both agent turns below are mocked — no model is called. Everything after the
-          model call is the real product: real validation, real database rows, real
-          presence, real undo.
-        </p>
+        <span className="min-w-0 flex-1" />
         <Button
           type="button"
           variant="ghost"
@@ -239,15 +238,32 @@ export function DemoRunPanelView({
       </div>
 
       {isFinished && (
-        <Button
-          type="button"
-          size="sm"
-          className="w-full"
-          onClick={onExitToRealSession}
-          data-testid="demo-real-session-cta"
-        >
-          You&apos;ve seen the scripted version — now start a real one
-        </Button>
+        <>
+          {/* THE DISCLOSURE LIVES HERE AND NOWHERE ELSE (owner decision,
+              2026-08-17). It used to be stamped across the top of this bar and
+              inside the findings themselves, which taught a stranger to read
+              every recommendation as fake — including the ones that are the
+              product's actual judgement. Honesty is not negotiable, but its
+              PLACEMENT is: it belongs at the moment the visitor is handed into
+              a real, unmocked session, where "that was scripted, this next one
+              is not" is the sentence that matters. Server-side logs and
+              telemetry stay blunt about the mock regardless; this is about
+              what the visitor is told, never about what actually ran. */}
+          <p className="text-[11px] text-muted-foreground" data-testid="demo-mock-disclosure">
+            That run was scripted: both reviews were prepared in advance rather than
+            generated just now. Everything around them was the real product — real
+            validation, real database rows, real presence, real undo.
+          </p>
+          <Button
+            type="button"
+            size="sm"
+            className="w-full"
+            onClick={onExitToRealSession}
+            data-testid="demo-real-session-cta"
+          >
+            You&apos;ve seen the scripted version — now start a real one
+          </Button>
+        </>
       )}
     </div>
   );

@@ -199,6 +199,32 @@ export default defineSchema({
         baselineGlobals: v.optional(v.record(v.string(), v.any())),
       }),
     ),
+    /*
+      This draft is the scratch document of a /demo run — the ONE piece of demo
+      state that lives on the server rather than in localStorage, and it is
+      here because it is a SPEND AUTHORITY, not a preference.
+
+      `/api/chat` and `/api/personas` are open, unauthenticated POST endpoints
+      that spend a Gemini free-tier quota shared with production (15 RPM / 500
+      requests a day for the whole deployment). Before this field, the demo
+      asked for the deterministic mock with an `x-flock-mock: 1` request header
+      — which is fine as a request and useless as a guard, because a client can
+      simply not send it. Both routes now resolve this flag from the row and
+      force the mock from it, so a visitor on a public demo link cannot spend
+      real inference no matter what their client sends.
+
+      OPTIONAL AND ADDITIVE, and it has to stay that way: production is
+      deployed from `main`, every existing row predates this field, and ABSENT
+      MUST MEAN EXACTLY TODAY'S BEHAVIOUR — an ordinary draft that runs live
+      inference and is billed for it. Nothing reads this as a tri-state; every
+      consumer tests `=== true`.
+
+      NOT a cleanup key. Demo drafts are ordinary session documents that the
+      existing 30-day sweep already collects; convex/model/cleanup.ts has a
+      documented data-loss history and this field must not become a new reason
+      for that cron to delete something (demo-mode.md §I).
+    */
+    isDemo: v.optional(v.boolean()),
     createdAtMs: v.number(),
     updatedAtMs: v.number(),
   })

@@ -28,12 +28,20 @@ import {
 
   WHY THE RUN IS MOCKED, unembarrassedly (owner decision): a public route that
   spends real inference is a route that empties a shared free-tier day in
-  minutes and takes the rest of the product down with it. `x-flock-mock: 1`
-  costs nothing and — this is the part worth saying out loud — only replaces
-  the model call itself. The dry-run validation, the Convex persistence, the
+  minutes and takes the rest of the product down with it. The mock costs
+  nothing and — this is the part worth saying out loud — only replaces the
+  model call itself. The dry-run validation, the Convex persistence, the
   cross-tab reactive delivery, the presence choreography, the staleness
-  snapshots and the revert path downstream of it are all the real ones. The UI
-  says so plainly rather than pretending otherwise.
+  snapshots and the revert path downstream of it are all the real ones.
+
+  WHERE THAT DECISION NOW LIVES: on the DOCUMENT, not here. `/api/personas`
+  reads `documents.isDemo` off the row it already fetches and forces the mock
+  from it, so this hook could send nothing at all and the run would still be
+  mocked (lib/demo/mock-authority.ts). The header below stays anyway, as belt
+  and braces: it is free, it is honest about intent, and if the server-side
+  resolution ever regressed, the failure would be a public route spending a
+  shared quota per visitor — the one failure worth paying a redundant header
+  to avoid.
 */
 
 export interface DemoRunController {
@@ -95,6 +103,7 @@ export function useDemoRun({ documentId }: { documentId: string | null }): DemoR
         statuses in the same two seconds, and the demo is about being able to
         watch one agent take a turn while you type.
       */
+      /* Redundant since the row became the authority — see the header. */
       isMockRun: true,
     }).then((result) => {
       if (!isMountedRef.current) {

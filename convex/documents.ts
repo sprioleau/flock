@@ -1,5 +1,6 @@
 import {
   applyOperations as applyOperationsToDocument,
+  createDemoDocument,
   createEmptyDocument,
   createSampleDocument,
   createStarterDocument,
@@ -77,6 +78,19 @@ export const createDocument = mutation({
      * starter sections would only pollute the generated result.
      */
     shouldSeedEmpty: v.optional(v.boolean()),
+    /*
+      Provision this draft as the scratch document of a /demo run.
+
+      ONE flag, not two, and deliberately so: it both seeds the demo email (the
+      one with the two planted problems the advisory agents are meant to find)
+      AND stamps `isDemo` on the row, which is what makes both inference routes
+      force the deterministic mock for it. Splitting them into a "seed the demo
+      email" flag and a "mark it a demo" flag would let the two drift, and the
+      drift is not symmetric: a document carrying the demo email WITHOUT the
+      flag is a public, scripted-looking draft spending real Gemini quota on
+      every turn.
+    */
+    isDemo: v.optional(v.boolean()),
   },
   returns: v.object({ documentId: v.id("documents"), canvasId: v.id("canvases") }),
   handler: async (ctx, args) => {
@@ -108,8 +122,10 @@ export const createDocument = mutation({
     // welcome-style; see createStarterDocument) — never empty. Two exceptions:
     // the deterministic every-block-type sample (tests/demos) and the blank
     // seed the AI draft-generation flow composes into.
-    const doc =
-      args.shouldSeedSample === true
+    const isDemo = args.isDemo === true;
+    const doc = isDemo
+      ? createDemoDocument()
+      : args.shouldSeedSample === true
         ? createSampleDocument()
         : args.shouldSeedEmpty === true
           ? createEmptyDocument()
@@ -120,6 +136,9 @@ export const createDocument = mutation({
       name: args.name ?? "Draft 1",
       orderIndex: await computeAppendOrderIndex(ctx, canvasId),
       headVersion: 0,
+      // Written only when true, so an ordinary draft's row is byte-identical
+      // to the rows every release before this one wrote.
+      ...(isDemo ? { isDemo: true } : {}),
       createdAtMs: now,
       updatedAtMs: now,
     });
@@ -483,6 +502,8 @@ const documentPayloadValidator = v.object({
   forkedFromDocumentId: v.optional(v.id("documents")),
   forkedFromVersion: v.optional(v.number()),
   sessionId: v.string(),
+  /* Absent on every ordinary draft — see the schema comment on `isDemo`. */
+  isDemo: v.optional(v.boolean()),
   createdAtMs: v.number(),
   updatedAtMs: v.number(),
 });
@@ -508,6 +529,9 @@ async function readDocumentPayload(ctx: QueryCtx, documentId: Id<"documents">) {
       ? { forkedFromVersion: document.forkedFromVersion }
       : {}),
     sessionId: document.sessionId,
+    // /api/personas reads its forced-mock verdict off THIS field, which is why
+    // that route needs no lookup of its own: it already fetches this payload.
+    ...(document.isDemo === true ? { isDemo: true } : {}),
     createdAtMs: document.createdAtMs,
     updatedAtMs: document.updatedAtMs,
   };
@@ -533,6 +557,37 @@ export const getDocumentByKey = query({
       return null;
     }
     return readDocumentPayload(ctx, documentId);
+  },
+});
+
+/*
+  Is this `?doc=<id>` a /demo scratch document?
+
+  A DELIBERATELY LEAN QUERY, and the leanness is the point. `/api/chat` has to
+  answer "may this request spend real inference?" on every turn, and the
+  obvious way to answer it — `getDocumentByKey` — replays the version-0
+  snapshot plus every operation since to rebuild the whole document, which is
+  an enormous amount of work to read one boolean. This is a single indexed row
+  get. (`/api/personas` needs no lookup at all: it already fetches the full
+  payload for the outline, so its copy of this answer rides along for free.)
+
+  Keyed by an UNTRUSTED string — a malformed or foreign id normalizes to null
+  and answers false, which is exactly today's behaviour for a request that
+  names no document at all.
+
+  Exposes one boolean per id, and the id is only guessable if you already hold
+  it (the id IS the capability, same as the rest of the app).
+*/
+export const getDocumentIsDemo = query({
+  args: { documentKey: v.string() },
+  returns: v.boolean(),
+  handler: async (ctx, args) => {
+    const documentId = ctx.db.normalizeId("documents", args.documentKey);
+    if (documentId === null) {
+      return false;
+    }
+    const document = await ctx.db.get(documentId);
+    return document?.isDemo === true;
   },
 });
 

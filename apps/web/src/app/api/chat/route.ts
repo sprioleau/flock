@@ -9,7 +9,9 @@ import {
 import { getSessionIdFromCookieHeader } from "@/lib/session-cookie";
 import { chargeCreditForRequest } from "@/lib/auth/credits";
 import { hasOwnerOverride } from "@/lib/auth/owner-override";
+import { selectIsMockForced } from "@/lib/demo/mock-authority";
 import { createTraceId } from "@/lib/observability/log";
+import { resolveIsDemoDocument } from "./demo-document";
 import { createChatErrorLogger } from "./errors";
 import { createMockChatModel, readMockIntentText } from "./mock-model";
 import { runChatPipeline } from "./pipeline";
@@ -29,6 +31,13 @@ import { resolveChatModel } from "./provider";
  * request carries `x-flock-mock: 1` or no provider key exists at all (so CI
  * and tests never need a key). A request's `providerId` from an ordinary
  * visitor is ignored — see the security rule in ./provider.ts.
+ *
+ * One decision this route does NOT delegate to provider.ts: a turn about a
+ * document whose row says `isDemo` is forced to the mock, resolved server-side
+ * from the row rather than from anything the request said (./demo-document.ts,
+ * lib/demo/mock-authority.ts). /demo is a public unauthenticated link onto a
+ * Gemini free tier shared with production, and provider.ts is deliberately
+ * pure — it makes no network calls — so the lookup belongs here.
  */
 
 function badRequest(body: ChatRequestErrorResponse): Response {
@@ -58,7 +67,14 @@ export async function POST(request: Request) {
     });
   }
 
-  const { id: threadId, messages, document, selectedBlockId, providerId } = parsedBody.data;
+  const {
+    id: threadId,
+    messages,
+    document,
+    documentId,
+    selectedBlockId,
+    providerId,
+  } = parsedBody.data;
   // The anonymous session id rides the same-origin cookie (lib/session.ts
   // mirrors localStorage into it) — the generateImage executor registers
   // every generation under this session's library (Content Studio Stage S).
@@ -82,14 +98,33 @@ export async function POST(request: Request) {
     });
   }
 
+  // MAY THIS TURN SPEND REAL INFERENCE? Two inputs, and only one of them is a
+  // guard (the whole argument lives in lib/demo/mock-authority.ts): the client
+  // MAY ask for the mock with a header, and the DOCUMENT ROW may force it. The
+  // row is why /demo is safe to publish — a visitor on a public demo link
+  // cannot turn the mock off by editing a request, because the answer is not
+  // in the request.
+  //
+  const isMockRequestedByClient = request.headers.get(MOCK_MODEL_HEADER) === "1";
+  const isMockForced = selectIsMockForced({
+    isMockRequestedByClient,
+    // The lookup is skipped when the client already asked for the mock: the
+    // answer could not change the outcome, so a turn that was never going to
+    // call a model does not pay for a Convex round trip either.
+    isDemoDocument: isMockRequestedByClient
+      ? false
+      : await resolveIsDemoDocument({ documentId }),
+  });
+
   // The whole provider decision, in one call. Resolved BEFORE the charge
-  // because `isUsingMockModel` decides whether this turn is billable at all.
+  // because `isUsingMockModel` decides whether this turn is billable at all —
+  // which is also what keeps a demo turn from spending a visitor's credits.
   const { model, modelId, isUsingMockModel } = resolveChatModel({
     requestedProviderId: providerId,
     // A client-supplied providerId is honoured only for the owner; everyone
     // else gets the deployment default no matter what they send.
     hasOwnerOverride: hasOwnerOverride(request.headers.get("cookie")),
-    isMockForced: request.headers.get(MOCK_MODEL_HEADER) === "1",
+    isMockForced,
     createMockModel: () =>
       createMockChatModel({
         lastUserText: readMockIntentText(messages),

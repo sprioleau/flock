@@ -124,6 +124,7 @@ export {
   createStarterDocument,
 } from "./store/document";
 export type { EmailDocument } from "./store/document";
+export { createDemoDocument } from "./store/demo-document";
 
 // --- Tree derivation (store/tree) ------------------------------------------------
 export { inflate, deflate } from "./store/tree";

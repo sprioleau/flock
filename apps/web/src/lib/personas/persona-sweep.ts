@@ -82,11 +82,13 @@ export async function requestPersonaSweep({
     real. The scripted /demo run is the caller that wants this: a public route
     cannot spend a shared free-tier quota per visitor.
 
-    Note where the authority sits. A client header can only ever ask for LESS
-    spend, so it is safe for a caller to set — but it is not a guard, because
-    an abuser can simply not send it. Forcing the mock server-side from the
-    document itself needs an `isDemo` field on `documents`, which is a schema
-    change and therefore a separate stage.
+    Note where the authority sits, and it is NOT here. A client header can only
+    ever ask for LESS spend, so it is safe for a caller to set — but it is not
+    a guard, because an abuser can simply not send it. The guard is the
+    document row: `/api/personas` reads `documents.isDemo` off the row it
+    already fetches and forces the mock from it, whatever this argument said
+    (lib/demo/mock-authority.ts). Callers keep this flag as a redundant
+    statement of intent, never as the protection.
   */
   isMockRun?: boolean;
 }): Promise<SweepResult> {

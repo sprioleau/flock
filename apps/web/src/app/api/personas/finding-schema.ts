@@ -93,8 +93,16 @@ export const runnerOutputSchema = z.object({
 
 export type RunnerOutputFinding = z.infer<typeof findingSchema>;
 
-/** Apply the truncation backstop to one parsed finding's prose fields. */
-export function truncateFindingProse(finding: RunnerOutputFinding): RunnerOutputFinding {
+/*
+  Apply the truncation backstop to one parsed finding's prose fields.
+
+  GENERIC over the finding type so it preserves whatever the caller put on the
+  object beyond this schema — the /demo fixture hangs pre-built ops off its
+  findings (api/personas/demo-findings.ts), and a signature pinned to
+  RunnerOutputFinding would have declared them away on the way through here
+  even though the spread below keeps them at runtime.
+*/
+export function truncateFindingProse<T extends RunnerOutputFinding>(finding: T): T {
   return {
     ...finding,
     title: truncateFindingText({ text: finding.title, cap: FINDING_TEXT_CAPS.title }),

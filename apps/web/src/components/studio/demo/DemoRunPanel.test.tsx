@@ -16,9 +16,9 @@ import {
  * What this suite can prove is everything that would be a real bug in front of
  * a stranger:
  *
- * - the run is DISCLOSED as scripted and mocked in every state it can be in,
- *   because an unlabelled scripted demo is a claim about live inference that
- *   this route does not make;
+ * - the run is DISCLOSED as scripted at the exit — and NOT described as a mock
+ *   anywhere a visitor is still watching it, which is the owner's call about
+ *   placement rather than about honesty (the server logs stay blunt);
  * - the visitor is pointed at a recommendation only once one exists, and never
  *   at a turn that failed;
  * - the panel SURFACES findings and never applies them — the advisory boundary
@@ -118,20 +118,30 @@ const FIRST_TURN_LANDED = completeRunningTurn({ state: FIRST_TURN_RUNNING, outco
 const SECOND_TURN_RUNNING = startNextTurn(FIRST_TURN_LANDED);
 const RUN_FINISHED = completeRunningTurn({ state: SECOND_TURN_RUNNING, outcome: "completed" });
 
-describe("disclosing the mock", () => {
-  it("says the run is scripted and mocked in every state it can be seen in", () => {
-    for (const runState of [IDLE_RUN, FIRST_TURN_RUNNING, FIRST_TURN_LANDED, RUN_FINISHED]) {
-      const tree = renderView(runState);
-      expect(findByTestId(tree, "demo-mock-badge")).toBeDefined();
-      const disclosure = findByTestId(tree, "demo-mock-disclosure");
-      expect(visibleText(disclosure)).toContain("mocked");
+describe("disclosing the script", () => {
+  it("discloses the scripted run at the exit, where the visitor is handed a real one", () => {
+    const tree = renderView(RUN_FINISHED);
+    const disclosure = findByTestId(tree, "demo-mock-disclosure");
+    expect(visibleText(disclosure)).toContain("scripted");
+    expect(visibleText(disclosure)).toContain("prepared in advance");
+    /* And it does not disown the half that was real, which is most of it. */
+    expect(visibleText(disclosure)).toContain("real undo");
+  });
+
+  it("never calls anything a mock while the visitor is still watching the run", () => {
+    /* Owner decision 2026-08-17: the word belongs in the logs and at the exit,
+       not stamped across a product surface a stranger is judging. A visitor
+       taught to read every recommendation as fake learns nothing about what
+       the agents actually say. */
+    for (const runState of [IDLE_RUN, FIRST_TURN_RUNNING, FIRST_TURN_LANDED]) {
+      expect(visibleText(renderView(runState)).toLowerCase()).not.toContain("mock");
     }
   });
 
-  it("is specific about where the script stops, so the real half is not disowned", () => {
-    const disclosure = findByTestId(renderView(RUN_FINISHED), "demo-mock-disclosure");
-    expect(visibleText(disclosure)).toContain("no model is called");
-    expect(visibleText(disclosure)).toContain("real");
+  it("keeps the demo identifiable as a demo throughout", () => {
+    for (const runState of [IDLE_RUN, FIRST_TURN_RUNNING, FIRST_TURN_LANDED, RUN_FINISHED]) {
+      expect(findByTestId(renderView(runState), "demo-mock-badge")).toBeDefined();
+    }
   });
 });
 

@@ -51,6 +51,13 @@ export function DemoBootstrap() {
         sessionId: getOrCreateSessionId(),
         name: "Demo draft",
         canvasTitle: "Flock demo",
+        /* The one flag that makes this route public-safe. It seeds the demo
+           email — the one with the two planted problems the agents are here to
+           find — and stamps `isDemo` on the row, which is what /api/chat and
+           /api/personas read to force the deterministic mock. The authority is
+           the ROW, deliberately: this browser can ask for a demo document, but
+           it cannot ask a demo document to spend real inference. */
+        isDemo: true,
       })
       .then(({ documentId }) => {
         /* Preset BEFORE the navigation: /studio mounts once, and it has to

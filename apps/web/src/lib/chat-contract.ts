@@ -104,6 +104,25 @@ export const chatRequestBodySchema = z.object({
     .min(1),
   /** The current email document (flat block map). */
   document: emailDocumentSchema,
+  /*
+    WHICH document this turn is about — the Convex row id, not the payload.
+
+    The route uses it for exactly one thing: reading `documents.isDemo` off the
+    row so it can force the deterministic mock on a /demo document regardless
+    of what this request asked for (lib/demo/mock-authority.ts). The turn still
+    runs against `document` above; this is an identity, not a second copy.
+
+    OPTIONAL, and the honest reason is worth writing down. The editor store has
+    no document id until it connects, so requiring one would 400 a turn sent in
+    that window — and the property this buys is bounded anyway: a request that
+    names NO document behaves exactly as it did before, because the server has
+    nothing to look up. What it closes is the direction that matters, the one
+    /demo actually opens: a demo document cannot have its mock turned off. What
+    it does not close is that `/api/chat` is an open POST endpoint anyone can
+    call without ever visiting /demo — bounding the endpoints generally is
+    separate work (demo-mode.md §H), and /demo does not widen it.
+  */
+  documentId: z.string().min(1).optional(),
   /** The block currently selected in the editor, if any. */
   selectedBlockId: blockIdSchema.optional(),
   /**

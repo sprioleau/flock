@@ -17,12 +17,14 @@ import { z } from "zod";
 import { api } from "@convex/_generated/api";
 import { chargeCreditForRequest } from "@/lib/auth/credits";
 import { MOCK_MODEL_HEADER } from "@/lib/chat-contract";
+import { selectIsMockForced } from "@/lib/demo/mock-authority";
 import { createTraceId, logFailure, logRecord, summarizeError } from "@/lib/observability/log";
 import {
   modelTelemetryFor,
   type ModelTelemetryContext,
 } from "@/lib/observability/model-telemetry";
 import { stableStringify } from "@/lib/suggestions/serialize-block";
+import { selectSeededFinding, type RunnerFindingCandidate } from "./demo-findings";
 import { proposedEditSchema, runnerOutputSchema, truncateFindingProse } from "./finding-schema";
 
 /**
@@ -47,10 +49,17 @@ import { proposedEditSchema, runnerOutputSchema, truncateFindingProse } from "./
  * Budget discipline (§5.1): per-persona cooldowns gate client-side; this
  * route adds a per-document minimum interval and an outline-unchanged skip
  * as server backstops, plus a `flock.personas.request` JSON log line so
- * tokens-per-run stay observable. Requests carrying `x-flock-mock: 1` (or
- * any request when GOOGLE_GENERATIVE_AI_API_KEY is absent — the chat route's
- * exact convention) skip the Gemini call for a deterministic mock findings
- * set; everything else in the pipeline stays real.
+ * tokens-per-run stay observable. Requests carrying `x-flock-mock: 1` (or any
+ * request when GOOGLE_GENERATIVE_AI_API_KEY is absent — the chat route's exact
+ * convention) skip the Gemini call for a deterministic mock findings set;
+ * everything else in the pipeline stays real.
+ *
+ * FORCED MOCK ON DEMO DOCUMENTS (demo-mode.md §H, stage 2). A document whose
+ * row carries `isDemo` runs the mock NO MATTER WHAT THE CLIENT SENT — resolved
+ * from the row this route already fetches, so it costs no extra read. /demo is
+ * a public unauthenticated link onto a Gemini free-tier quota shared with
+ * production; a header the client chooses to send is a request, not a guard.
+ * The rule itself lives in lib/demo/mock-authority.ts.
  *
  * PERSISTENCE (multi-agent v1): surviving findings are RECORDED in the
  * `personaFindings` table (convex/personaFindings.ts) rather than consumed
@@ -249,21 +258,39 @@ function composeFindingOps({
 
 const sleep = (ms: number): Promise<void> => new Promise((resolve) => setTimeout(resolve, ms));
 
-/**
- * Deterministic mock findings for `x-flock-mock: 1` runs (the chat route's
- * exact convention — CI/dev never need a key or quota) and the automatic
- * no-key fallback. One informational finding per persona, each targeting a
- * DIFFERENT leaf block, so the presence choreography (walk → dwell → select
- * → card) is exercised end-to-end without a model call. Real runs are
- * untouched — this path exists only behind the explicit header / absent key.
- */
+/*
+  Findings for a run that will not call a model — `x-flock-mock: 1`, a
+  deployment with no key, or (since demo-mode.md stage 2) a document whose row
+  says `isDemo`. Everything downstream of the call stays real: dry-run
+  validation, Convex persistence, cross-tab delivery, the whole presence
+  choreography.
+
+  TWO SOURCES, in priority order, and the order is the point:
+
+  1. THE SEEDED FIXTURE (demo-findings.ts) when the document still IS the demo
+     seed email. Two recommendations written to pair with the two problems
+     planted in that email, each carrying an op the visitor can apply in one
+     press. This is what a stranger on /demo sees, and it has to read as
+     product output rather than as scaffolding — the honesty about the run
+     being scripted is delivered once, at the exit, not stamped on every card
+     (see demo-findings.ts for the full argument).
+
+  2. THE GENERIC FALLBACK for every other mocked run: one placeholder note per
+     persona, each on a DIFFERENT leaf block, which exercises the choreography
+     end-to-end in CI and on a fresh clone. It also covers a demo document the
+     visitor has since edited out from under the fixture — better a visibly
+     generic note than a confident recommendation about a paragraph that no
+     longer says what the recommendation quotes.
+
+  Real model runs never reach this function.
+*/
 function buildMockRunnerOutput({
   doc,
   personas,
 }: {
   doc: EmailDocument;
   personas: PersonaRow[];
-}): z.infer<typeof runnerOutputSchema> {
+}): { findings: RunnerFindingCandidate[] } {
   const leafBlockIds = Object.entries(
     doc as Record<string, { childrenIds?: string[] } | undefined>,
   )
@@ -277,17 +304,33 @@ function buildMockRunnerOutput({
   }
   const stride = Math.max(1, Math.floor(leafBlockIds.length / personas.length));
   return {
-    findings: personas.map((persona, personaIndex) => ({
-      personaSlug: persona.slug,
-      title: `Mock note from ${persona.name}`,
-      description:
-        "Deterministic mock finding (x-flock-mock / no model key) — exercises the persona presence choreography without a Gemini call.",
-      targetBlockNames: [`mock target ${personaIndex + 1}`],
-      targetBlockIds: [
-        leafBlockIds[(personaIndex * stride + 1) % leafBlockIds.length] ?? leafBlockIds[0]!,
-      ],
-    })),
+    findings: personas.map((persona, personaIndex) => {
+      const seeded = selectSeededFinding({ doc, personaSlug: persona.slug });
+      if (seeded !== null) {
+        return seeded;
+      }
+      return {
+        personaSlug: persona.slug,
+        title: `Mock note from ${persona.name}`,
+        description:
+          "Deterministic mock finding (x-flock-mock / no model key) — exercises the persona presence choreography without a Gemini call.",
+        targetBlockNames: [`mock target ${personaIndex + 1}`],
+        targetBlockIds: [
+          leafBlockIds[(personaIndex * stride + 1) % leafBlockIds.length] ?? leafBlockIds[0]!,
+        ],
+      };
+    }),
   };
+}
+
+/*
+  Did this mocked run serve the authored demo fixture, or the generic
+  placeholder? Developer-facing only — it rides the run's log line so that
+  "the demo showed a placeholder" is diagnosable from the ledger without
+  guessing at what the visitor's document looked like at the time.
+*/
+function selectFindingSource(findings: readonly RunnerFindingCandidate[]): string {
+  return findings.some((finding) => finding.seedOps !== undefined) ? "demo-seed" : "generic-mock";
 }
 
 type OpenFindingRow = FunctionReturnType<typeof api.personaFindings.listOpenFindings>[number];
@@ -352,6 +395,38 @@ export async function POST(request: Request) {
   const { documentId, personaSlugs, triggerSummary } = parsedBody.data;
   const isManualSweep = parsedBody.data.isManualSweep === true;
 
+  const convexUrl = process.env.NEXT_PUBLIC_CONVEX_URL;
+  if (convexUrl === undefined) {
+    return failureResponse({ status: 500, message: "Convex is not configured." });
+  }
+  const convexClient = new ConvexHttpClient(convexUrl);
+
+  // THE DOCUMENT IS FETCHED FIRST, before anything is decided about this run,
+  // because the row is what decides. `isDemo` is a spend authority
+  // (lib/demo/mock-authority.ts): /demo is a public link, and if the mock it
+  // depends on were requested by the client — which is all stage 1 could do —
+  // then stripping one header off the request would spend the deployment's
+  // shared Gemini quota through a URL published for strangers.
+  //
+  // COSTING NOTHING EXTRA, deliberately. This route already had to read the
+  // document to build the outline, so the forced-mock verdict rides on a fetch
+  // that was happening anyway — no second round trip, no new query. That is
+  // also why the fetch moved ABOVE the credit charge rather than the flag
+  // being looked up separately below it.
+  const document = await convexClient.query(api.documents.getDocumentByKey, {
+    documentKey: documentId,
+  });
+  if (document === null) {
+    return failureResponse({ status: 404, message: "That document does not exist." });
+  }
+  const isDemoDocument = document.isDemo === true;
+
+  const isMockRun =
+    selectIsMockForced({
+      isDemoDocument,
+      isMockRequestedByClient: request.headers.get(MOCK_MODEL_HEADER) === "1",
+    }) || !process.env.GOOGLE_GENERATIVE_AI_API_KEY;
+
   // AI ALLOWANCE (convex/authCredits.ts). Only a MANUAL sweep costs a credit:
   // a human clicked, so they asked for this. The ambient trigger fires off the
   // op log without anyone asking, and charging a person for work they did not
@@ -365,28 +440,13 @@ export async function POST(request: Request) {
   // paid for — and would empty a demo visitor's whole allowance on a scripted
   // run, or on any deployment with no API key configured at all.
   // `chargeCreditForRequest` already short-circuits on `isMockRun`; this route
-  // simply was not telling it.
-  const isMockRun =
-    request.headers.get(MOCK_MODEL_HEADER) === "1" ||
-    !process.env.GOOGLE_GENERATIVE_AI_API_KEY;
+  // simply was not telling it. A demo document therefore never spends a
+  // credit, whether or not its client remembered to ask for the mock.
   if (isManualSweep) {
     const charge = await chargeCreditForRequest({ request, isMockRun });
     if (!charge.isAllowed) {
       return failureResponse({ status: 429, message: charge.message });
     }
-  }
-
-  const convexUrl = process.env.NEXT_PUBLIC_CONVEX_URL;
-  if (convexUrl === undefined) {
-    return failureResponse({ status: 500, message: "Convex is not configured." });
-  }
-  const convexClient = new ConvexHttpClient(convexUrl);
-
-  const document = await convexClient.query(api.documents.getDocumentByKey, {
-    documentKey: documentId,
-  });
-  if (document === null) {
-    return failureResponse({ status: 404, message: "That document does not exist." });
   }
 
   // CAPABILITY ENFORCEMENT (proposal §4.6): only registry rows run, and only
@@ -508,7 +568,7 @@ export async function POST(request: Request) {
       traceId,
       isMock: isMockRun,
     };
-    let object: z.infer<typeof runnerOutputSchema>;
+    let object: { findings: RunnerFindingCandidate[] };
     let usage: unknown;
     if (isMockRun) {
       await sleep(MOCK_THINKING_BEAT_MS); // a visible thinking beat to watch
@@ -541,10 +601,22 @@ export async function POST(request: Request) {
       if (knownTargetBlockIds.length === 0) {
         continue; // finding points at nothing real — drop
       }
+      // Two ways a finding can arrive carrying a fix, and BOTH are dry-run
+      // against this run's doc before they are offered: `proposedEdits` are
+      // the model's scalar property values, translated here; `seedOps` are the
+      // demo fixture's pre-built ops, which exist because a copy rewrite is a
+      // rich-text document and `proposedEditSchema.value` is a string. Writing
+      // the ops directly buys the fixture expressiveness, never trust — a
+      // fixture op that would not apply degrades to informational exactly like
+      // a model's would.
       const ops =
-        finding.proposedEdits !== undefined && finding.proposedEdits.length > 0
-          ? composeFindingOps({ doc, proposedEdits: finding.proposedEdits })
-          : [];
+        finding.seedOps !== undefined
+          ? applyOperations(doc, finding.seedOps).isOk
+            ? finding.seedOps
+            : null
+          : finding.proposedEdits !== undefined && finding.proposedEdits.length > 0
+            ? composeFindingOps({ doc, proposedEdits: finding.proposedEdits })
+            : [];
       // The handoff prompt rides along ONLY while the finding is op-less
       // (informational — including the dry-run-failed degradation): a finding
       // with live ops is served by Apply, and the two CTAs never coexist.
@@ -627,12 +699,19 @@ export async function POST(request: Request) {
       }),
     );
 
-    // The budget ledger line (plan §4.4 cost-logging convention).
+    // The budget ledger line (plan §4.4 cost-logging convention). THE LOG
+    // STAYS BLUNT ABOUT THE MOCK even though the visitor-facing surfaces no
+    // longer are: `isMock`, `isDemoDocument` and `findingSource` are how an
+    // operator tells a scripted run from a real one after the fact, and the
+    // whole point of moving the disclosure to /demo's exit was to stop
+    // shouting at the visitor — not to stop recording.
     logRecord({
       tag: "flock.personas.request",
       traceId,
       model: PERSONA_MODEL_ID,
       isMock: isMockRun,
+      isDemoDocument,
+      ...(isMockRun ? { findingSource: selectFindingSource(object.findings) } : {}),
       personaSlugs: personas.map((persona) => persona.slug),
       findingCount: findings.length,
       usage,
