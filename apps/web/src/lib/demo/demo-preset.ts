@@ -99,12 +99,73 @@ export function buildDemoEnabledPersonasRaw(): string {
  * worse, `shouldSkipAdvisorRun()` suppresses every advisory run while the tour
  * is on screen, so the agents this route exists to show would go quiet.
  *
- * Suppress rather than sequence, and put it back on exit: whichever entry the
- * visitor came in through wins, and the two never run for the same person at
- * the same time.
+ * Suppress rather than sequence: whichever entry the visitor came in through
+ * wins, and the two never run for the same person at the same time. This
+ * write is load-bearing for the agents, not just for tidiness, so it stays.
+ *
+ * The exit path puts a tour state back rather than clearing this one — see
+ * buildRestoredTourProgressRaw for which value, and why a first-timer keeps
+ * this same dismissed value instead of the null they arrived with.
  */
 export function buildDemoTourProgressRaw(): string {
   return JSON.stringify({ status: "dismissed", resumeStopId: null });
+}
+
+/*
+  The tour progress the EXIT path puts back — the one place the restore is
+  deliberately not verbatim.
+
+  Putting the stashed value back literally is correct for everyone who had a
+  tour state worth keeping, and wrong for exactly one person: the first-time
+  visitor, whose stashed value is null. null means "never seen", "never seen"
+  is the state the tour AUTO-STARTS from, so restoring it verbatim hands
+  somebody a second walkthrough the instant they leave the first one — the
+  tour's scrim comes up over a studio they never asked to be toured around.
+
+  So a never-seen stash is restored as the same terminal "dismissed" value the
+  entry path wrote, which is inert rather than lost: selectActiveTourStopId
+  resolves it to null (no card, and nothing suppressing the advisors), while
+  the settings entry's restartTourProgress() still re-runs the tour on demand.
+  The visitor keeps the onboarding, they just are not force-fed it back to back
+  with the demo they only just sat through.
+
+  Anything else — dismissed, completed, or mid-tour with a resume point — is
+  somebody's REAL tour state, and comes back byte for byte.
+*/
+export function buildRestoredTourProgressRaw(stashedRaw: string | null): string | null {
+  return hasNeverSeenTourStatus(stashedRaw) ? buildDemoTourProgressRaw() : stashedRaw;
+}
+
+/*
+  Would putting this stashed value back leave the browser in the "never seen
+  the tour" state?
+
+  Reads the status field and nothing else, and treats everything it cannot read
+  — absent, malformed, no status, an unknown status — as never-seen, because
+  that is precisely what tour-progress.ts's parseTourProgress() does with those
+  values: it falls back to DEFAULT_TOUR_PROGRESS, whose status is "unseen".
+  Mirroring the fallback here rather than importing the parser keeps this
+  module pure; tour-progress.ts is a "use client" localStorage store, which is
+  the same reason the keys above are re-declared instead of imported.
+
+  Note what this does NOT do: nothing is rebuilt from what it reads. The raw
+  string is either handed back untouched or replaced wholesale, so the
+  snapshot's raw-strings-in-raw-strings-out rule survives intact.
+*/
+function hasNeverSeenTourStatus(stashedRaw: string | null): boolean {
+  if (stashedRaw === null) {
+    return true;
+  }
+  try {
+    const parsed: unknown = JSON.parse(stashedRaw);
+    if (typeof parsed !== "object" || parsed === null || !("status" in parsed)) {
+      return true;
+    }
+    const { status } = parsed;
+    return status !== "in-progress" && status !== "dismissed" && status !== "completed";
+  } catch {
+    return true;
+  }
 }
 
 /**

@@ -10,6 +10,7 @@ import {
   buildDemoEnabledPersonasRaw,
   buildDemoRestoreSnapshot,
   buildDemoTourProgressRaw,
+  buildRestoredTourProgressRaw,
   parseDemoSession,
   selectIsDemoDocument,
   type DemoSession,
@@ -174,7 +175,15 @@ export function endDemoSession(): void {
   if (session !== null) {
     writeRaw({ key: APP_SETTINGS_STORAGE_KEY, value: session.restore.appSettingsRaw });
     writeRaw({ key: ENABLED_PERSONAS_STORAGE_KEY, value: session.restore.enabledPersonasRaw });
-    writeRaw({ key: TOUR_PROGRESS_STORAGE_KEY, value: session.restore.tourProgressRaw });
+    /* App settings and persona enablement go back verbatim; tour progress is
+       the one value that does not, because a first-time visitor's stashed
+       "never seen" would auto-start the walkthrough on top of the studio they
+       just landed back on. See buildRestoredTourProgressRaw — a real tour
+       state is still restored byte for byte. */
+    writeRaw({
+      key: TOUR_PROGRESS_STORAGE_KEY,
+      value: buildRestoredTourProgressRaw(session.restore.tourProgressRaw),
+    });
   }
   writeRaw({ key: DEMO_SESSION_STORAGE_KEY, value: null });
   cachedSession = null;

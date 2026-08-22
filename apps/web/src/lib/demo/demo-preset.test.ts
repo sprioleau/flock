@@ -5,6 +5,7 @@ import {
   buildDemoEnabledPersonasRaw,
   buildDemoRestoreSnapshot,
   buildDemoTourProgressRaw,
+  buildRestoredTourProgressRaw,
   parseDemoSession,
   selectIsDemoDocument,
   type DemoRestoreSnapshot,
@@ -96,6 +97,56 @@ describe("the restore snapshot", () => {
       tourProgressRaw: buildDemoTourProgressRaw(),
     };
     expect(buildDemoRestoreSnapshot({ current, activeSession })).toEqual(original);
+  });
+});
+
+describe("the tour progress the exit path puts back", () => {
+  it("does not hand a first-time visitor a second walkthrough", () => {
+    /*
+      A stranger arrives with no stored tour progress, so the stash is null —
+      and null is the state the tour auto-starts from. Restored verbatim, its
+      scrim comes up over the studio the moment they leave /demo. The restored
+      value is terminal instead: no card, no advisor suppression, and the
+      settings entry can still re-run the tour whenever they want it.
+    */
+    expect(buildRestoredTourProgressRaw(null)).toBe(buildDemoTourProgressRaw());
+  });
+
+  it("treats a stash it cannot read as a first-time visitor", () => {
+    /*
+      parseTourProgress() falls back to "unseen" for corrupt, empty and
+      unknown-status values, so all of them would auto-start too.
+    */
+    expect(buildRestoredTourProgressRaw("{not json")).toBe(buildDemoTourProgressRaw());
+    expect(buildRestoredTourProgressRaw("{}")).toBe(buildDemoTourProgressRaw());
+    expect(buildRestoredTourProgressRaw('{"status":"unseen","resumeStopId":null}')).toBe(
+      buildDemoTourProgressRaw(),
+    );
+  });
+
+  it("gives a returning visitor their own tour state back, byte for byte", () => {
+    /*
+      None of these auto-start on their own, so there is nothing to protect the
+      visitor from — and a demo detour must not quietly rewrite where somebody
+      had got to, least of all their resume point.
+    */
+    const midTourRaw = '{"status":"in-progress","resumeStopId":"agents"}';
+    expect(buildRestoredTourProgressRaw(midTourRaw)).toBe(midTourRaw);
+
+    const completedRaw = '{"status":"completed","resumeStopId":null}';
+    expect(buildRestoredTourProgressRaw(completedRaw)).toBe(completedRaw);
+
+    const dismissedRaw = '{"status":"dismissed","resumeStopId":null}';
+    expect(buildRestoredTourProgressRaw(dismissedRaw)).toBe(dismissedRaw);
+  });
+
+  it("keeps a key some later release added to the stored value", () => {
+    /*
+      The whole point of raw-strings-in-raw-strings-out: restoring must not
+      re-serialize a shape this module does not know the whole of.
+    */
+    const futureRaw = '{"status":"completed","resumeStopId":null,"seenAtMs":17}';
+    expect(buildRestoredTourProgressRaw(futureRaw)).toBe(futureRaw);
   });
 });
 
