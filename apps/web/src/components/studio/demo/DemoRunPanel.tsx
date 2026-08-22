@@ -43,6 +43,7 @@ import {
 import { useDemoCommentFlow } from "@/lib/demo/use-demo-comment-flow";
 import { useDemoRun } from "@/lib/demo/use-demo-run";
 import { useEditorStore } from "@/lib/editor-store";
+import { requestUiSurfaceAttention } from "@/lib/ui-surfaces";
 import { cn } from "@/lib/utils";
 import { getRecommendationOutcome } from "../personas/recommendation-outcome";
 
@@ -181,9 +182,7 @@ export function DemoRunPanel() {
             setStepId(nextStepId);
           }
         }}
-        onOpenRecommendations={() => {
-          updatePanelPreferences({ isChatPanelExpanded: true });
-        }}
+        onOpenRecommendations={revealAgentCards}
         onChooseComment={commentFlow.chooseComment}
         onRewind={() => {
           openTimeTravelReplay();
@@ -203,6 +202,37 @@ export function DemoRunPanel() {
       />
     </>
   );
+}
+
+/**
+ * Step 2's "Show the agents' cards", as two named intents and nothing else.
+ *
+ * WHAT WAS WRONG WITH IT (owner, 2026-08-18): "when the chat panel is already
+ * open, pressing it does nothing observable… it looks like nothing happened,
+ * and that's not okay." The handler used to be the first line below on its own,
+ * which is a no-op for every visitor who had already expanded the panel — and
+ * arriving at step 2 expands it, so that was most of them. A button whose
+ * label promises a reveal has to reveal something on every press, from every
+ * starting state.
+ *
+ * The second line is what makes that true. It does NOT reach for the tray: the
+ * rule this whole feature inherits (lib/tour/tour-intents.ts) is that a step
+ * NAMES AN INTENT THE APP ALREADY SUPPORTS, never a DOM interaction — a
+ * `document.querySelector(...).click()` here would need a selector that can go
+ * stale, would race the panel's own re-render, and would diverge from what a
+ * real press does the moment either end changes. So this asks, and
+ * SuggestionCard answers in whatever way it currently knows how: uncollapse
+ * its tray if the visitor collapsed it, scroll itself into view, take focus,
+ * and flash a ring. Focus is part of the answer rather than a nicety — a cue
+ * made only of animation is nothing at all to a screen reader.
+ *
+ * Still clock-free, which is the standing rule for everything hanging off the
+ * demo sequencer: both calls are synchronous store writes, and the highlight's
+ * lifetime is CSS inside the component that owns it.
+ */
+export function revealAgentCards(): void {
+  updatePanelPreferences({ isChatPanelExpanded: true });
+  requestUiSurfaceAttention("suggestions");
 }
 
 /**
@@ -281,7 +311,10 @@ export interface DemoRunCardViewProps {
   chosenChoiceId: string | null;
   onBack: () => void;
   onNext: () => void;
-  /** Reveal the chat panel, where the real Accept/Dismiss controls live. */
+  /**
+   * Reveal the suggestions tray, where the real Accept/Dismiss controls live —
+   * expand, focus and highlight it (revealAgentCards above).
+   */
   onOpenRecommendations: () => void;
   onChooseComment: (choiceId: string) => void;
   onRewind: () => void;
@@ -605,14 +638,14 @@ export function DemoRecommendationsStep({
         Agents recommend. Only you apply.
       </p>
       {/* The panel is expanded on arrival at this step; this rescues the
-          visitor who collapsed it again.
+          visitor who collapsed it — or the tray inside it — again, and points
+          at the cards for the one who simply cannot find them
+          (revealAgentCards holds what the press actually does).
 
           IT LEAVES ONCE THERE IS NOTHING LEFT TO REVEAL. A decided
           recommendation is gone from the chat panel, so with none of them
-          still open this button would expand a panel holding no cards — and
-          for the visitor who had ALREADY expanded it, do nothing observable
-          whatsoever. That is the state a visitor lands in by stepping back
-          from step 3, which is exactly where it was found dead. A control
+          still open this button would point at an empty tray. That is the
+          state a visitor lands in by stepping back from step 3. A control
           that cannot do the thing its label promises is worse than one less
           control on the card. */}
       {hasUndecidedRecommendations && (

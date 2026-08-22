@@ -1,5 +1,5 @@
 import { isValidElement, type ReactElement, type ReactNode } from "react";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   DEMO_COMMENT_CHOICES,
   findDemoCommentChoice,
@@ -51,7 +51,10 @@ vi.mock("@/lib/demo/use-demo-run", () => ({
 vi.mock("@/lib/demo/use-demo-comment-flow", () => ({
   useDemoCommentFlow: () => ({ phase: "choosing", chosenChoiceId: null, chooseComment: vi.fn() }),
 }));
-vi.mock("@/components/studio/panel-preferences", () => ({ updatePanelPreferences: vi.fn() }));
+const updatePanelPreferences = vi.hoisted(() => vi.fn());
+const requestUiSurfaceAttention = vi.hoisted(() => vi.fn());
+vi.mock("@/components/studio/panel-preferences", () => ({ updatePanelPreferences }));
+vi.mock("@/lib/ui-surfaces", () => ({ requestUiSurfaceAttention }));
 vi.mock("@/components/studio/replay/replay-handoff", () => ({
   openTimeTravelReplay: vi.fn(() => true),
 }));
@@ -62,6 +65,7 @@ import {
   DemoRecommendationsStep,
   DemoRunCardView,
   DemoWatchStep,
+  revealAgentCards,
   type DemoRecommendationRow,
 } from "./DemoRunPanel";
 
@@ -309,6 +313,11 @@ describe("step 1 — watching the agents work", () => {
 });
 
 describe("step 2 — the recommendations", () => {
+  beforeEach(() => {
+    updatePanelPreferences.mockReset();
+    requestUiSurfaceAttention.mockReset();
+  });
+
   it("lists every finding with what happened to it", () => {
     const tree = renderRecommendationsStep();
     const rows = collectElements(tree).filter(
@@ -336,6 +345,25 @@ describe("step 2 — the recommendations", () => {
     expect(visibleText(findByTestId(tree, "demo-advisory-note"))).toContain("Only you apply");
     (findByTestId(tree, "demo-open-recommendations")?.props.onClick as () => void)();
     expect(onOpenRecommendations).toHaveBeenCalled();
+  });
+
+  it("does more than expand an already-expanded panel when the cards are asked for", () => {
+    /*
+      The bug this fixes, in one line: the press used to be updatePanelPreferences
+      and nothing else, so for the visitor who already had the panel open — which
+      arriving at step 2 arranges — it produced NOTHING observable.
+
+      Expanding is still half the answer; the other half is a named request for
+      the suggestions region to reveal, focus and highlight ITSELF
+      (lib/ui-surfaces.ts). That it is a request rather than a
+      `document.querySelector(...).click()` is the point: the selector-free path
+      is the one that cannot go stale or race the panel's own re-render, and it
+      is the rule the whole tour/demo feature is built on.
+    */
+    revealAgentCards();
+
+    expect(updatePanelPreferences).toHaveBeenCalledWith({ isChatPanelExpanded: true });
+    expect(requestUiSurfaceAttention).toHaveBeenCalledWith("suggestions");
   });
 
   it("stops offering the agents' cards once none are left to decide", () => {

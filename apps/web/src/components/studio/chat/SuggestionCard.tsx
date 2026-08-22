@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState, useSyncExternalStore } from "react";
+import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import {
   CheckIcon,
   ChevronDownIcon,
@@ -18,6 +18,7 @@ import {
   resolveSuggestionShortcut,
 } from "@/lib/suggestions/shortcuts";
 import { useIsBlockSuggestionPillMounted } from "@/lib/suggestions/suggestion-surface-store";
+import { useUiSurfaceAttentionRequest } from "@/lib/ui-surfaces";
 import { getIsEditableEventTarget } from "../shortcuts/keyboard-guards";
 import { getIsApplePlatform } from "../shortcuts/shortcut-keys";
 import { cn } from "@/lib/utils";
@@ -75,6 +76,12 @@ import { handOffPromptToComposer } from "./composer-handoff";
  * the SAME per-card dismiss paths — persona rows get their Convex status
  * update (cross-tab convergence), the rule card its local/localStorage
  * dismissal.
+ *
+ * THE TRAY IS ALSO AN ATTENTION TARGET. Elsewhere in the app — /demo step 2
+ * today — a control's whole job is "the cards you want are over here". Those
+ * callers name the intent (lib/ui-surfaces.ts §attention channel) and this
+ * component answers it: uncollapse, focus, highlight. See revealForAttention
+ * below for why all three, and why none of them is a DOM query from outside.
  */
 export interface SuggestionCardProps {
   /** Keeps the card's controls out of the tab order while the panel is collapsed. */
@@ -149,6 +156,46 @@ export function SuggestionCard({ isPanelExpanded, suggestions, personaAdvisors }
     setIsTrayCollapsed(!isTrayCollapsed);
   };
 
+  /*
+    "Draw the eye here", answered (lib/ui-surfaces.ts §attention channel). The
+    caller — today /demo step 2's "Show the agents' cards" — NAMES the intent
+    and this region decides what answering it means; nothing outside this file
+    reaches for these elements, and there is no synthesized click anywhere in
+    the path.
+
+    The bug being fixed is a control that did nothing observable: it expanded a
+    chat panel that was often already expanded. So answering has to be
+    unconditional, and it has three parts, none of which is redundant:
+
+    1. UNCOLLAPSE THE TRAY. It collapses independently of the panel and
+       remembers that in localStorage, so a visitor who collapsed it once would
+       get an expanded panel showing no cards — the same dead end one level
+       down. This writes through the real preference (the exact call the tray's
+       own toggle makes), because leaving it collapsed would undo the one thing
+       the press was for.
+    2. SCROLL, THEN FOCUS. `block: "nearest"` is a no-op when the region is
+       already visible and the smallest possible correction when it is not.
+       Focus then takes `preventScroll` because the scroll it would otherwise
+       do itself is the one just done deliberately, with a different alignment.
+    3. HIGHLIGHT. See the ring below — it accompanies focus rather than
+       replacing it.
+  */
+  const regionRef = useRef<HTMLDivElement>(null);
+  const [highlightRequestId, setHighlightRequestId] = useState(0);
+
+  function revealForAttention(): void {
+    setIsTrayCollapsed(false);
+    setHighlightRequestId((previousId) => previousId + 1);
+    const region = regionRef.current;
+    if (region === null) {
+      return;
+    }
+    region.scrollIntoView({ block: "nearest" });
+    region.focus({ preventScroll: true });
+  }
+
+  useUiSurfaceAttentionRequest("suggestions", revealForAttention);
+
   if (visibleSuggestion === null && appliedState === null && personaAdvisors.cards.length === 0) {
     return null;
   }
@@ -171,7 +218,59 @@ export function SuggestionCard({ isPanelExpanded, suggestions, personaAdvisors }
   };
 
   return (
-    <div className="flex shrink-0 flex-col gap-2 border-t px-3 py-2" data-testid="suggestion-card">
+    <div
+      ref={regionRef}
+      /* Programmatically focusable, never in the tab order: this is a
+         destination the app can send someone to, not a control they should
+         have to tab THROUGH to reach the cards inside it. Labelled and given a
+         landmark role so what a screen reader announces on arrival is
+         "Suggestions region" rather than a mute container. */
+      tabIndex={-1}
+      role="region"
+      aria-label="Suggestions"
+      onBlur={() => setHighlightRequestId(0)}
+      className={cn(
+        "relative flex shrink-0 flex-col gap-2 border-t px-3 py-2",
+        /* The quiet half of the focus cue, and the reason `outline-none` is
+           safe: while this region holds focus something visible says so, for
+           as long as that stays true. It costs nothing when focus is
+           elsewhere, which is almost always. */
+        "outline-none focus:ring-1 focus:ring-ring/50 focus:ring-inset",
+      )}
+      data-testid="suggestion-card"
+    >
+      {highlightRequestId > 0 && (
+        /*
+          The loud half: a ring that appears at full strength and fades out on
+          its own over a second.
+
+          NO JS CLOCK. Keying it by the request id restarts the animation on a
+          repeat press (a class that is already applied cannot re-trigger one),
+          and `onAnimationEnd` retires the element — the timing belongs to CSS,
+          which is the same discipline the demo sequencer holds end to end. The
+          `onBlur` above is the other exit, and it is the one that matters
+          under reduced motion.
+
+          REDUCED MOTION KEEPS THE CUE. `motion-reduce:animate-none` drops the
+          fade but NOT the ring: someone who asked for less motion still gets
+          the outline, held until they move focus, rather than a cue that
+          silently does not exist for them.
+
+          It is aria-hidden and pointer-events-none on purpose — the equivalent
+          information reached assistive tech as focus, and this must never sit
+          between the visitor and the Apply button underneath it.
+        */
+        <span
+          key={highlightRequestId}
+          aria-hidden
+          onAnimationEnd={() => setHighlightRequestId(0)}
+          className={cn(
+            "pointer-events-none absolute inset-0 z-10 ring-2 ring-ring ring-inset",
+            "animate-out fade-out duration-1000 fill-mode-forwards motion-reduce:animate-none",
+          )}
+          data-testid="suggestions-attention-ring"
+        />
+      )}
       {/* Tray header — always present: the count (live while collapsed) and
           the collapse/expand toggle; Dismiss all only in the expanded state
           (from 2 dismissible cards up). */}
