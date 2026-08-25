@@ -389,6 +389,8 @@ export {
   createDraftAction,
   createPersonaAction,
   editorEmailActions,
+  inspectRenderedEmailAction,
+  analysisEmailActions,
   emailActionRegistry,
 } from "./actions/builtins";
 
@@ -470,6 +472,24 @@ export type {
   ComposedDraft,
   BuildComposedDraftsInput,
 } from "./actions/compose-draft";
+
+// --- Actions: inspectRenderedEmail — read the rendered email back (actions/inspect-rendered-email)
+export {
+  inspectRenderedEmail,
+  inspectRenderedEmailInputSchema,
+  RENDERED_TEXT_DEFAULT_CHARACTERS,
+  RENDERED_TEXT_MAX_CHARACTERS,
+  RENDER_FAILURE_MESSAGE_MAX_CHARACTERS,
+  RENDERED_TEXT_TRUNCATION_MARKER,
+  GMAIL_CLIPPING_BYTE_LIMIT,
+} from "./actions/inspect-rendered-email";
+export type {
+  InspectRenderedEmailInput,
+  InspectRenderedEmailOptions,
+  InspectRenderedEmailResult,
+  RenderedEmailReport,
+  RenderedEmailFailure,
+} from "./actions/inspect-rendered-email";
 
 // --- Actions: clearContent — strip the copy, keep the design (actions/clear-content) ------------
 export {

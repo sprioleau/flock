@@ -108,8 +108,11 @@ describe("built-in editor actions", () => {
   });
 });
 
-/** 11 op-mirroring content + styleTextSpan + scaffoldSection + 9 editor actions. */
-const BUILTIN_ACTION_COUNT = 24;
+/**
+ * 11 op-mirroring content + styleTextSpan + scaffoldSection + 9 editor actions
+ * + 1 analysis action (inspectRenderedEmail).
+ */
+const BUILTIN_ACTION_COUNT = 25;
 
 describe("emailActionRegistry", () => {
   it(`registers all ${BUILTIN_ACTION_COUNT} built-ins and looks them up by name`, () => {
@@ -125,6 +128,7 @@ describe("emailActionRegistry", () => {
     expect(getAction(emailActionRegistry, "goToVersion")?.kind).toBe("editor");
     expect(getAction(emailActionRegistry, "createDraft")?.kind).toBe("editor");
     expect(getAction(emailActionRegistry, "createPersona")?.kind).toBe("editor");
+    expect(getAction(emailActionRegistry, "inspectRenderedEmail")?.kind).toBe("analysis");
   });
 
   it("generates a tool definition for every action", () => {

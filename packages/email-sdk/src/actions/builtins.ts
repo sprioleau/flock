@@ -19,6 +19,7 @@ import {
 } from "../operations/ops";
 import { resolveCreateDraftCommand } from "./compose-draft";
 import { defineEmailAction, type ContentEmailAction } from "./define";
+import { inspectRenderedEmailAction } from "./inspect-rendered-email";
 import {
   createDraftInputSchema,
   createPersonaInputSchema,
@@ -399,6 +400,25 @@ export const editorEmailActions = [
   createPersonaAction,
 ] as const;
 
+// --- Analysis actions (read-only reads of the rendered email) --------------------
+//
+// The first built-in analysis action. getBlockDetails (§9.4) lives in
+// @flock/agent because it wraps that package's describeBlock; this one belongs
+// HERE, because everything it wraps — the renderers — is already in this
+// package, and the sdk cannot depend on the agent.
+
+/**
+ * Lets the agent look at what it just built. The rendering pipeline was
+ * already reachable from the browser (POST /api/render backs the preview
+ * dialog) and from nowhere else, so the agent could edit an email it had no
+ * way to read. See ./inspect-rendered-email for why the result is the
+ * plain-text rendering plus size facts rather than the HTML.
+ */
+export { inspectRenderedEmailAction };
+
+/** Every built-in analysis action. */
+export const analysisEmailActions = [inspectRenderedEmailAction] as const;
+
 /**
  * The static registry of all built-in actions. Phase 3 feeds
  * `toAISDKToolDefinitions(emailActionRegistry)` to the AI route and routes
@@ -417,4 +437,5 @@ export const emailActionRegistry = createActionRegistry([
   styleTextSpanAction,
   scaffoldSectionAction,
   ...editorEmailActions,
+  ...analysisEmailActions,
 ]);
