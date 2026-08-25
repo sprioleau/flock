@@ -25,7 +25,7 @@ import {
 import { SendTestEmailForm } from "./SendTestEmailForm";
 import { useSendTestEmail } from "./use-send-test-email";
 
-type RenderState =
+export type RenderState =
   | { status: "loading" }
   | { status: "ok"; render: RenderResponseBody }
   | { status: "error"; message: string };
@@ -208,44 +208,69 @@ export function HtmlPreviewDialog({ isIconTrigger = false }: { isIconTrigger?: b
           ) : null}
         </div>
 
-        <div id="html-preview-panel" role="tabpanel" className="min-h-0">
-          {renderState.status === "error" ? (
-            <p className="text-sm text-destructive" data-testid="html-preview-error">
-              {renderState.message}
-            </p>
-          ) : renderState.status === "loading" ? (
-            <div className="flex h-full items-center justify-center text-muted-foreground">
-              <LoaderCircleIcon className="size-5 animate-spin" />
-            </div>
-          ) : activeViewId === "preview" ? (
-            <iframe
-              title="Rendered email preview"
-              sandbox=""
-              srcDoc={renderState.render.html}
-              className="h-full w-full rounded-md border bg-white"
-              data-testid="html-preview-iframe"
-            />
-          ) : (
-            // `overflow-wrap: anywhere` breaks only the lines that cannot fit —
-            // email HTML carries very long inline `style` attributes, and
-            // without it the source would push the dialog wider than the screen.
-            <pre
-              className="h-full overflow-auto rounded-md border bg-muted p-3 font-mono text-xs leading-relaxed whitespace-pre-wrap text-foreground [overflow-wrap:anywhere]"
-              data-testid={
-                activeViewId === "html" ? "html-preview-source" : "html-preview-plain-text"
-              }
-            >
-              {activeViewId === "html"
-                ? renderState.render.prettyHtml
-                : renderState.render.plainText}
-            </pre>
-          )}
-        </div>
+        <PreviewViewPanel renderState={renderState} activeViewId={activeViewId} />
 
         <div className="border-t pt-4" data-testid="html-preview-send-test">
           <SendTestEmailForm control={sendControl} />
         </div>
       </DialogContent>
     </Dialog>
+  );
+}
+
+/**
+ * The body of whichever tab is selected: the render in flight, the failure, or
+ * one of the three views of a finished render.
+ *
+ * Split out of the dialog as a prop-driven view so it can be tested at all —
+ * the app's vitest environment is `node`, so the stateful dialog above cannot
+ * be mounted, but this takes the two things that decide what appears and
+ * returns a tree a test can walk (the convention {@link SendTestEmailForm}'s
+ * neighbours in `demo/` already follow). The branch it guards is worth pinning:
+ * `prettyHtml` and `plainText` arrive in the same object, so transposing them
+ * would leave every clipboard test green while the Plain text tab showed HTML.
+ */
+export function PreviewViewPanel({
+  renderState,
+  activeViewId,
+}: {
+  renderState: RenderState;
+  activeViewId: PreviewViewId;
+}) {
+  return (
+    <div id="html-preview-panel" role="tabpanel" className="min-h-0">
+      {renderState.status === "error" ? (
+        <p className="text-sm text-destructive" data-testid="html-preview-error">
+          {renderState.message}
+        </p>
+      ) : renderState.status === "loading" ? (
+        <div className="flex h-full items-center justify-center text-muted-foreground">
+          <LoaderCircleIcon className="size-5 animate-spin" />
+        </div>
+      ) : activeViewId === "preview" ? (
+        <iframe
+          title="Rendered email preview"
+          sandbox=""
+          srcDoc={renderState.render.html}
+          className="h-full w-full rounded-md border bg-white"
+          data-testid="html-preview-iframe"
+        />
+      ) : (
+        /*
+          `overflow-wrap: anywhere` breaks only the lines that cannot fit —
+          email HTML carries very long inline `style` attributes, and without it
+          the source would push the dialog wider than the screen. The plain-text
+          view shares the treatment: `whitespace-pre-wrap` keeps the blank lines
+          and indentation that ARE the text version's formatting, and the box
+          scrolls because a real email's text part runs well past the dialog.
+        */
+        <pre
+          className="h-full overflow-auto rounded-md border bg-muted p-3 font-mono text-xs leading-relaxed whitespace-pre-wrap text-foreground [overflow-wrap:anywhere]"
+          data-testid={activeViewId === "html" ? "html-preview-source" : "html-preview-plain-text"}
+        >
+          {activeViewId === "html" ? renderState.render.prettyHtml : renderState.render.plainText}
+        </pre>
+      )}
+    </div>
   );
 }
