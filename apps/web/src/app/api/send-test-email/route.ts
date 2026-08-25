@@ -1,4 +1,7 @@
 import { checkDocumentIntegrity } from "@flock/email-sdk";
+import { api } from "@convex/_generated/api";
+import { fetchAuthQuery } from "@/lib/auth/auth-server";
+import { isAuthEnabled } from "@/lib/auth/config";
 import { sendTestEmailWithResend } from "../chat/send-test-email";
 import {
   sendTestEmailRequestBodySchema,
@@ -14,23 +17,134 @@ import {
  * The chat flow gates sends behind a user-approval round because an AGENT
  * proposes them; here the click on the header's Send-test button IS that
  * explicit human intent (the analogue of the persona sweep's isManualSweep),
- * so this route dispatches straight into {@link sendTestEmailWithResend} —
- * same renderer, same subject derivation, same payload-hash idempotency key
- * (a re-click on an unchanged draft replays Resend's original response
- * instead of sending again), same user-facing error copy. There is exactly
- * ONE send path.
+ * so this route does not ask a second time before dispatching into
+ * {@link sendTestEmailWithResend} — same renderer, same subject derivation,
+ * same payload-hash idempotency key (a re-click on an unchanged draft replays
+ * Resend's original response instead of sending again), same user-facing
+ * error copy. There is exactly ONE send path.
  *
  * Audit trail: the module writes the same flock.sendTestEmail.sent/.failed
  * log lines it writes for agent sends; this route adds one provenance line
  * marking the send as user-authored. A test send is a side effect, not a
  * document edit, so (as in the chat flow) nothing enters the op-log spine.
+ *
+ * WHO IS ASKING — the correction to the paragraph above.
+ *
+ * "The click on the Send-test button IS the human intent" is true of the
+ * button and false of the URL. A route handler never sees a click; it sees an
+ * HTTP request, and anything on the internet can make one. Until this gate
+ * landed, the request carried BOTH the entire document (body copy, links,
+ * images) and the recipient, so a stranger with curl could put arbitrary
+ * content in an arbitrary inbox, sent from RESEND_FROM_EMAIL and DKIM-signed
+ * by this project's verified domain — the reputation of that domain being the
+ * asset actually at stake. The Zod email check on `to` is a FORMAT check, not
+ * an allowlist, and never stood between anyone and that.
+ *
+ * So the route now resolves the caller's identity server-side, from the signed
+ * session token Convex verifies, and refuses (401) when there is none. That is
+ * deliberately the lowest possible bar: every browser that loads Flock is
+ * signed in ANONYMOUSLY on arrival, so a visitor who has never typed an email
+ * address — including one who wandered in through /demo — passes it without
+ * noticing. A bare curl with no session does not. The point is not to decide
+ * who deserves to send; it is to make every send attributable to a session
+ * this server minted, which is what a rate limit or a per-identity send meter
+ * would later have to hang off.
+ *
+ * Identity is only who, not how much: this route deliberately does NOT charge
+ * an AI credit. `chargeCreditForRequest` meters the daily MODEL allowance, and
+ * a test send calls no model — spending someone's AI budget to mail themselves
+ * a draft would make the number mean two different things. Metering sends is
+ * separate work with its own counter.
  */
 
 function errorResponse(status: number, body: SendTestEmailErrorResponseBody): Response {
   return Response.json(body, { status });
 }
 
+/**
+ * What the user is told when the gate closes. Phrased as a state of the
+ * session rather than a verdict on them, because on a normal deployment that
+ * is exactly what it is: the anonymous sign-in that happens on page load has
+ * gone missing, and a reload mints a new one.
+ */
+const NOT_SIGNED_IN_MESSAGE =
+  "This Flock couldn't confirm who's sending — reload the page and try again.";
+
+/**
+ * The caller's verified identity, or the fact that there is none.
+ *
+ * `ownerId` is null in exactly one situation: this deployment has auth
+ * switched off entirely, so nobody has an id to be named by.
+ */
+type CallerResolution =
+  | { isIdentified: true; ownerId: string | null }
+  | { isIdentified: false };
+
+async function resolveCaller(): Promise<CallerResolution> {
+  /**
+   * NEXT_PUBLIC_FLOCK_AUTH_ENABLED off means the identity system does not
+   * exist here: nothing signs anyone in, `ctx.auth.getUserIdentity()` is null
+   * in every Convex function, and ownership falls back to the client-supplied
+   * session id (convex/authIdentity.ts). Requiring an identity in that state
+   * would refuse EVERY send forever — a permanently broken button, not a
+   * security control.
+   *
+   * So the flag short-circuits the gate, which is how the rest of the app
+   * already reads it: app/page.tsx passes the front door with
+   * `!isAuthEnabled() || isAuthenticatedSafely()`, and dashboard/page.tsx only
+   * redirects when `isAuthEnabled() && !isAuthenticatedSafely()`. The flag is
+   * the switch for whether identity is consulted at all, and one route
+   * inventing a stricter reading of it is how two surfaces end up disagreeing.
+   *
+   * That does leave an auth-off deployment as open as this route was before —
+   * honestly so, and not silently: such a deployment has no identities of any
+   * kind, so there is nothing to check and the only real fix is turning the
+   * flag on. Production (flockto.email) runs with it ON, which is where the
+   * live exposure was. What is NOT done here is checking the mirrored session
+   * cookie instead: it is JS-writable and client-chosen, so any caller can
+   * mint one, and treating it as a credential would buy the appearance of a
+   * gate with none of the substance.
+   */
+  if (!isAuthEnabled()) {
+    return { isIdentified: true, ownerId: null };
+  }
+
+  try {
+    /**
+     * `fetchAuthQuery` forwards the caller's signed Convex token — the same
+     * route-handler pattern the brand kit, asset library and saved-section
+     * routes use — and `api.auth.getCurrentUser` runs behind
+     * `ctx.auth.getUserIdentity()`. So the answer is the SERVER's belief about
+     * who this is, verified by Convex, not a cookie the browser asserted.
+     */
+    const identity = await fetchAuthQuery(api.auth.getCurrentUser, {});
+    if (identity === null) {
+      return { isIdentified: false };
+    }
+    return { isIdentified: true, ownerId: identity.id };
+  } catch (error) {
+    /**
+     * FAILS CLOSED, unlike the credit meter next door (lib/auth/credits.ts),
+     * which lets a request through when its own check breaks. The trade is the
+     * opposite one here: a broken counter costs a free turn, but a gate that
+     * opens when it cannot see is not a gate at all — an outage would restore
+     * exactly the anonymous-send hole this exists to close. A user gets the
+     * reload message and a retry; the real reason stays in the logs.
+     */
+    console.warn("[send-test-email] identity check failed; refusing the send", error);
+    return { isIdentified: false };
+  }
+}
+
 export async function POST(request: Request): Promise<Response> {
+  // The identity gate runs BEFORE the body is even read: an unauthenticated
+  // caller gets no schema feedback, no integrity verdict, and no work done on
+  // their behalf — just the door.
+  const caller = await resolveCaller();
+  if (!caller.isIdentified) {
+    return errorResponse(401, { error: "not_signed_in", message: NOT_SIGNED_IN_MESSAGE });
+  }
+
   let json: unknown;
   try {
     json = await request.json();
@@ -62,11 +176,24 @@ export async function POST(request: Request): Promise<Response> {
 
   // Provenance: user-initiated from the studio header (the chat path's
   // ActionContext records author "agent"; this is the human counterpart).
+  //
+  // `caller` now says "http" — a member of ACTION_CALLERS, which the previous
+  // "studio-header" was not. The taxonomy names the SURFACE an invocation
+  // arrived through, and what this file sees is an HTTP route, which is the
+  // whole lesson of the gate above: the button is upstream of a request, not
+  // the same thing as one. The lost detail moves to `surface`, an extra field
+  // rather than a wrong value in a typed one.
+  //
+  // `ownerId` is the identity that just passed the gate, so a send in the logs
+  // can be traced to the session that made it. It is null only on an auth-off
+  // deployment, where no id exists to record.
   console.log(
     JSON.stringify({
       tag: "flock.sendTestEmail.userInitiated",
       author: "user",
-      caller: "studio-header",
+      caller: "http",
+      surface: "studio-header",
+      ownerId: caller.ownerId,
       to,
     }),
   );

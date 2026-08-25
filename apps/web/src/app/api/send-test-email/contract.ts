@@ -29,12 +29,20 @@ export interface SendTestEmailErrorResponseBody {
    * `not_configured` is called out separately from `send_failed` because it is
    * not a failure the user can retry their way out of — this server has no
    * email service connected, so the UI says so instead of offering "try again".
+   *
+   * `not_signed_in` (401) is the route's identity gate. It is its own code
+   * rather than a flavour of `send_failed` because the remedy is different in
+   * kind: nothing about the draft or the address is wrong, the server just
+   * doesn't know who is asking, and reloading the page fixes it (a visitor is
+   * signed in anonymously on arrival). Rendering it as "try again" would send
+   * the user hunting for a problem in copy that has none.
    */
   error:
     | "invalid_request"
     | "invalid_document"
     | "invalid_recipient"
     | "not_configured"
+    | "not_signed_in"
     | "send_failed";
   /** User-facing copy — raw provider errors never reach this field. */
   message: string;

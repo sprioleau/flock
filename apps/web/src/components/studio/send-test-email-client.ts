@@ -114,6 +114,7 @@ export function validateRecipient(recipient: string): RecipientValidation {
 export type SendTestEmailFailureKind =
   | "invalid_recipient"
   | "not_configured"
+  | "not_signed_in"
   | "send_failed"
   | "unreachable";
 
@@ -129,6 +130,17 @@ export type SendTestEmailResult =
  */
 const NOT_CONFIGURED_MESSAGE =
   "This Flock can’t send email yet — whoever set it up needs to connect an email service first.";
+
+/**
+ * The route refuses a send it can’t attribute to a signed-in session. Reaching
+ * this from the dialog means the session went missing mid-visit — everyone is
+ * signed in anonymously on arrival — so the copy names the one thing that
+ * fixes it. Owned here rather than echoed from the response for the same
+ * reason as {@link NOT_CONFIGURED_MESSAGE}: “reload the page” is a fact about
+ * the browser this dialog lives in, not about the server.
+ */
+const NOT_SIGNED_IN_MESSAGE =
+  "Your session expired before this could send — reload the page and try again.";
 
 export interface RequestTestEmailSendInput {
   /** The document to send — read from the store at submit time by the caller. */
@@ -176,6 +188,9 @@ export async function requestTestEmailSend({
 
   if (payload.error === "not_configured") {
     return { isSent: false, kind: "not_configured", message: NOT_CONFIGURED_MESSAGE };
+  }
+  if (payload.error === "not_signed_in") {
+    return { isSent: false, kind: "not_signed_in", message: NOT_SIGNED_IN_MESSAGE };
   }
   if (payload.error === "invalid_recipient") {
     return {

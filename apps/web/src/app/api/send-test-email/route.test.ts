@@ -1,5 +1,5 @@
 import { createEmptyDocument, ROOT_BLOCK_ID, type BlockId } from "@flock/email-sdk";
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { SendTestEmailOutcome } from "../chat/send-test-email";
 
 const sendTestEmailWithResendMock = vi.hoisted(() =>
@@ -9,6 +9,13 @@ vi.mock("../chat/send-test-email", () => ({
   sendTestEmailWithResend: sendTestEmailWithResendMock,
 }));
 
+type ResolvedIdentity = { id: string; email: string; name: string; isAnonymous: boolean };
+
+const fetchAuthQueryMock = vi.hoisted(() =>
+  vi.fn<(...args: never[]) => Promise<ResolvedIdentity | null>>(),
+);
+vi.mock("@/lib/auth/auth-server", () => ({ fetchAuthQuery: fetchAuthQueryMock }));
+
 import { POST } from "./route";
 
 /**
@@ -17,6 +24,14 @@ import { POST } from "./route";
  * against the real provider in dev — here it is mocked so the tests pin the
  * route's validation gates and outcome→HTTP mapping.
  */
+
+/** An anonymous visitor: the weakest identity the gate is meant to admit. */
+const ANONYMOUS_VISITOR: ResolvedIdentity = {
+  id: "user_anon_1",
+  email: "temp-user_anon_1@flockto.email",
+  name: "",
+  isAnonymous: true,
+};
 
 function makeRequest(body: unknown): Request {
   return new Request("http://localhost/api/send-test-email", {
@@ -29,6 +44,89 @@ function makeRequest(body: unknown): Request {
 describe("POST /api/send-test-email", () => {
   beforeEach(() => {
     sendTestEmailWithResendMock.mockReset();
+    // Auth ON for the whole suite, so every case below goes through the real
+    // identity gate rather than the auth-off bypass (which has its own test).
+    vi.stubEnv("NEXT_PUBLIC_FLOCK_AUTH_ENABLED", "true");
+    fetchAuthQueryMock.mockReset();
+    fetchAuthQueryMock.mockResolvedValue(ANONYMOUS_VISITOR);
+  });
+
+  afterEach(() => {
+    vi.unstubAllEnvs();
+  });
+
+  /**
+   * The identity gate. A click on the Send-test button and a curl at the same
+   * URL are indistinguishable by the time they reach this handler, so "no
+   * verified session" has to mean "no send" — and the assertion that carries
+   * the security property is that the SEND MODULE was never reached, not that
+   * some status code came back.
+   */
+  it("refuses a caller with no identity, and never reaches the send module", async () => {
+    fetchAuthQueryMock.mockResolvedValue(null);
+    const response = await POST(
+      makeRequest({ document: createEmptyDocument(), to: "stranger@example.com" }),
+    );
+    expect(response.status).toBe(401);
+    expect(await response.json()).toMatchObject({ error: "not_signed_in" });
+    expect(sendTestEmailWithResendMock).not.toHaveBeenCalled();
+  });
+
+  it("refuses the send when the identity check itself fails", async () => {
+    // Fails CLOSED: an unreachable Convex must not reopen the anonymous-send
+    // hole for the length of the outage.
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    fetchAuthQueryMock.mockRejectedValue(new Error("convex unreachable"));
+    const response = await POST(
+      makeRequest({ document: createEmptyDocument(), to: "delivered@resend.dev" }),
+    );
+    expect(response.status).toBe(401);
+    expect(await response.json()).toMatchObject({ error: "not_signed_in" });
+    expect(sendTestEmailWithResendMock).not.toHaveBeenCalled();
+    vi.mocked(console.warn).mockRestore();
+  });
+
+  it("admits an anonymous visitor and records their id as the send's owner", async () => {
+    // Anonymous is the identity every browser gets on arrival, /demo included,
+    // so this is the case that proves the gate costs a visitor nothing.
+    sendTestEmailWithResendMock.mockResolvedValue({
+      isSent: true,
+      messageId: "em_test_anon",
+      idempotencyKey: "test-send/anon",
+    });
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+    const response = await POST(
+      makeRequest({ document: createEmptyDocument(), to: "delivered@resend.dev" }),
+    );
+    expect(response.status).toBe(200);
+    expect(sendTestEmailWithResendMock).toHaveBeenCalledTimes(1);
+    const provenance = logSpy.mock.calls
+      .map(([line]) => String(line))
+      .find((line) => line.includes("flock.sendTestEmail.userInitiated"));
+    expect(provenance).toBeDefined();
+    expect(JSON.parse(provenance ?? "{}")).toMatchObject({
+      caller: "http",
+      ownerId: ANONYMOUS_VISITOR.id,
+    });
+    logSpy.mockRestore();
+  });
+
+  it("sends without an identity on a deployment with auth switched off", async () => {
+    // No identities exist at all in that state, so a gate here would be a
+    // permanently broken button rather than a control.
+    vi.stubEnv("NEXT_PUBLIC_FLOCK_AUTH_ENABLED", "false");
+    sendTestEmailWithResendMock.mockResolvedValue({
+      isSent: true,
+      messageId: "em_test_no_auth",
+      idempotencyKey: "test-send/no-auth",
+    });
+    const response = await POST(
+      makeRequest({ document: createEmptyDocument(), to: "delivered@resend.dev" }),
+    );
+    expect(response.status).toBe(200);
+    expect(sendTestEmailWithResendMock).toHaveBeenCalledTimes(1);
+    // Nothing was asked of Convex — there is nobody to ask about.
+    expect(fetchAuthQueryMock).not.toHaveBeenCalled();
   });
 
   it("rejects malformed JSON without touching the send module", async () => {

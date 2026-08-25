@@ -149,6 +149,27 @@ describe("requestTestEmailSend", () => {
     expect(result).toMatchObject({ message: expect.stringContaining("can’t send email yet") });
   });
 
+  it("turns the route's identity refusal into copy that names the fix", async () => {
+    // A 401 here is not a problem with the draft or the address, so the dialog
+    // must not render it as "try again" — the user has to reload to get a
+    // session back, and nothing else they can do in the form will help.
+    const fetchImpl = vi.fn<typeof fetch>().mockResolvedValue(
+      jsonResponse(401, {
+        error: "not_signed_in",
+        message: "This Flock couldn't confirm who's sending — reload the page and try again.",
+      }),
+    );
+
+    const result = await requestTestEmailSend({
+      document: DOCUMENT,
+      to: "owner@example.com",
+      fetchImpl,
+    });
+
+    expect(result).toMatchObject({ isSent: false, kind: "not_signed_in" });
+    expect(result).toMatchObject({ message: expect.stringContaining("reload the page") });
+  });
+
   it("flags a rejected recipient so the field can be marked invalid", async () => {
     const fetchImpl = vi.fn<typeof fetch>().mockResolvedValue(
       jsonResponse(400, {
