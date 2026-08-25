@@ -7,6 +7,7 @@ import {
   validateEditSuggestions,
 } from "@flock/agent";
 import {
+  dispatchAnalysisAction,
   dispatchEditorAction,
   getAction,
   toAISDKToolDefinitions,
@@ -514,17 +515,51 @@ export function buildChatTools({
         description: definition.description,
         inputSchema: modelInputSchema,
         execute: async (input): Promise<AnalysisToolOutput> => {
-          const parsedInput = action.schema.safeParse(input);
-          if (!parsedInput.success) {
-            // Retryable, mirroring the dispatchers: the model sees the error
-            // as the tool result on the next step and can correct itself.
-            throw new Error(
-              `Input for action "${definition.name}" failed validation: ${parsedInput.error.message}`,
-            );
+          /*
+            Through the registry's dispatcher, exactly like the editor branch
+            above — NOT `action.run` directly. Calling `run` here open-coded a
+            third dispatch path that answered to nothing the registry
+            enforces; `dispatchAnalysisAction` re-validates against the FULL
+            schema and puts this call behind the same authorization gate every
+            other kind passes through.
+          */
+          const result = dispatchAnalysisAction({
+            registry: chatActionRegistry,
+            doc,
+            name: definition.name,
+            input,
+            context: actionContext,
+          });
+          if (!result.isOk) {
+            if (result.failureKind === "terminal") {
+              /*
+                Terminal (an authorization refusal, or a wiring bug): stop the
+                turn with a structured error part, then fail the tool call.
+                Deliberately NOT surfaced as a retryable tool error — a
+                refusal the model can re-ask its way around is not a refusal.
+              */
+              writer.write({
+                type: "error",
+                errorText: serializeChatError({
+                  kind: "flock-chat-error",
+                  failureKind: "terminal",
+                  errors: result.errors.map(({ code, message }) => ({ code, message })),
+                }),
+              });
+              throw new TerminalChatError(result.errors);
+            }
+            /*
+              Retryable (a validation failure): the model sees the error as
+              the tool result on the next step and can correct itself.
+            */
+            throw new Error(result.errors.map((error) => error.message).join("; "));
           }
-          // Analysis runs may be async (fetchWebContent does network I/O);
-          // awaiting a sync result (getBlockDetails) is a no-op.
-          const data = await action.run(doc, parsedInput.data);
+          /*
+            Analysis runs may be async (fetchWebContent does network I/O), and
+            the dispatcher hands the value back unawaited; awaiting a sync
+            result (getBlockDetails) is a no-op.
+          */
+          const data = await result.data;
           if (data === null || data === undefined) {
             return {
               isFound: false,

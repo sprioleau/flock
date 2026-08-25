@@ -67,10 +67,14 @@ describe("row style properties are reachable by the agent", () => {
 
   it("resolves an agent-set background into the styles the renderer reads", () => {
     const doc = createSampleDocument();
-    const applied = updateBlockPropertiesAction.run(doc, {
-      name: "updateBlockProperties",
-      blockId: ROW_ID,
-      properties: { backgroundColor: "#111827", paddingLeft: 12 },
+    const applied = updateBlockPropertiesAction.run({
+      doc,
+      input: {
+        name: "updateBlockProperties",
+        blockId: ROW_ID,
+        properties: { backgroundColor: "#111827", paddingLeft: 12 },
+      },
+      context: agentContext,
     });
 
     expect(applied.isOk).toBe(true);
@@ -82,10 +86,14 @@ describe("row style properties are reachable by the agent", () => {
 
   it("produces an inverse that undoes the change (the history spine)", () => {
     const doc = createSampleDocument();
-    const applied = updateBlockPropertiesAction.run(doc, {
-      name: "updateBlockProperties",
-      blockId: ROW_ID,
-      properties: { backgroundColor: "#111827" },
+    const applied = updateBlockPropertiesAction.run({
+      doc,
+      input: {
+        name: "updateBlockProperties",
+        blockId: ROW_ID,
+        properties: { backgroundColor: "#111827" },
+      },
+      context: agentContext,
     });
     expect(applied.isOk).toBe(true);
     if (!applied.isOk) return;
@@ -104,10 +112,14 @@ describe("row style properties are reachable by the agent", () => {
 
   it("rejects a property the row schema does not define", () => {
     const doc = createSampleDocument();
-    const result = updateBlockPropertiesAction.run(doc, {
-      name: "updateBlockProperties",
-      blockId: ROW_ID,
-      properties: { widthPercent: 50 },
+    const result = updateBlockPropertiesAction.run({
+      doc,
+      input: {
+        name: "updateBlockProperties",
+        blockId: ROW_ID,
+        properties: { widthPercent: 50 },
+      },
+      context: agentContext,
     });
     expect(result.isOk).toBe(false);
   });

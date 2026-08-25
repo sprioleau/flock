@@ -1,4 +1,8 @@
-import { createSampleDocument, emailActionRegistry } from "@flock/email-sdk";
+import {
+  createSampleDocument,
+  emailActionRegistry,
+  type ActionContext,
+} from "@flock/email-sdk";
 import { describe, expect, it, vi } from "vitest";
 import { buildAgentActionRegistry } from "./actions";
 import {
@@ -9,6 +13,16 @@ import {
 import { buildToolGuidance } from "./prompts";
 
 const sampleDoc = createSampleDocument();
+
+/**
+ * Any caller will do: this action declares no `authorize` gate, so the context
+ * is only the provenance the envelope now requires every invocation to name.
+ */
+const agentContext: ActionContext = {
+  caller: "tool",
+  authorId: "agent_thread_1",
+  author: "agent",
+};
 
 const stubPersonResult: PersonHighlightResult = {
   isOk: true,
@@ -49,7 +63,9 @@ describe("definePersonHighlightAction", () => {
 
   it("delegates run to the injected executor", async () => {
     const input = action.schema.parse({ url: "https://riverside.example.edu/people/amara-osei" });
-    await expect(action.run(sampleDoc, input)).resolves.toEqual(stubPersonResult);
+    await expect(
+      action.run({ doc: sampleDoc, input, context: agentContext }),
+    ).resolves.toEqual(stubPersonResult);
     expect(fetchPersonHighlight).toHaveBeenCalledWith({
       url: "https://riverside.example.edu/people/amara-osei",
     });
@@ -60,7 +76,7 @@ describe("definePersonHighlightAction", () => {
       url: "https://riverside.example.edu/people/amara-osei",
       personName: "Amara Osei",
     });
-    await action.run(sampleDoc, input);
+    await action.run({ doc: sampleDoc, input, context: agentContext });
     expect(fetchPersonHighlight).toHaveBeenLastCalledWith({
       url: "https://riverside.example.edu/people/amara-osei",
       personName: "Amara Osei",

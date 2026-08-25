@@ -66,6 +66,15 @@ export const DISPATCH_ERROR_FAILURE_KINDS = {
   /** scaffoldSection named a templateId that is not in the section catalog.
    * The error message lists the valid template ids so the model can pick one. */
   unknown_section_template: "retryable",
+  /** The action's `authorize` gate refused this caller (or the call arrived
+   * with no caller to judge). TERMINAL, and this is the whole point of giving
+   * denial its own code: every other dispatch failure here says "the payload
+   * was wrong, here is how" and invites exactly one repair round. A denial
+   * says the opposite — the payload was fine and the caller is not allowed, so
+   * the SAME call with different arguments is refused too. Classifying it
+   * retryable would spend a repair round teaching the model to rephrase its
+   * way past a permission check, which is both futile and the wrong lesson. */
+  not_authorized: "terminal",
 } as const satisfies Record<string, ActionFailureKind>;
 
 export type ActionDispatchErrorCode = OperationErrorCode | keyof typeof DISPATCH_ERROR_FAILURE_KINDS;

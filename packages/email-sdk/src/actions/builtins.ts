@@ -212,7 +212,31 @@ export const showPreviewAction = defineEmailAction({
   run: (input): ShowPreviewCommand => ({ type: "showPreview", mode: input.mode }),
 });
 
-/** The §9.4 canonical `needsApproval` example: sending email is human-gated. */
+/**
+ * The §9.4 canonical `needsApproval` example: sending email is human-gated.
+ *
+ * It is also the first `authorize` consumer, and the two gates are asking
+ * different questions. `needsApproval: true` asks a human to bless THIS send,
+ * and is honoured only where a human is present to be asked — inside the agent
+ * loop, via the chat route's `toolApproval` mapping. `authorize` asks whether
+ * the caller may send AT ALL, and is enforced inside `run`, so it holds on
+ * every path into this action rather than only the one with a chat window
+ * attached. The HTTP send route grew the same requirement directly; this gives
+ * the agent path the guarantee instead of assuming the loop provides it.
+ *
+ * The bar is attribution, deliberately the lowest one there is: an invocation
+ * must name a caller. `authorId` is the only identity `ActionContext` carries,
+ * so "identified" can mean nothing stronger here than "non-empty `authorId`" —
+ * and a missing context is refused outright by the gate itself. Note what that
+ * does and does not buy: `authorId` is SELF-ASSERTED provenance stamped by the
+ * surface, not a verified principal, so this makes every send attributable to
+ * something a surface was willing to name; it does not prove who that is.
+ * Verified identity is the surface's job — resolve it before dispatch (the
+ * send route does exactly that against the signed token Convex verifies) — and
+ * expressing it in the envelope would need a field `ActionContext` does not
+ * have today. Adding one is a deliberate decision, not a detail to slip in
+ * here.
+ */
 export const sendTestEmailAction = defineEmailAction({
   name: "sendTestEmail",
   description:
@@ -222,6 +246,7 @@ export const sendTestEmailAction = defineEmailAction({
   readOnly: false, // external side effect (an email leaves the building)
   parallelSafe: false,
   needsApproval: true,
+  authorize: (_input, context) => context.authorId.trim().length > 0,
   run: (input): SendTestEmailCommand => ({ type: "sendTestEmail", to: input.to }),
 });
 

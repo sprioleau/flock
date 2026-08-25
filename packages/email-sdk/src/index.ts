@@ -258,11 +258,19 @@ export { ACTION_CALLERS, actionCallerSchema } from "./actions/context";
 export type { ActionCaller, ActionContext } from "./actions/context";
 
 // --- Actions: factory (actions/define) ---------------------------------------------------------
-export { EMAIL_ACTION_KINDS, defineEmailAction, resolveNeedsApproval } from "./actions/define";
+export {
+  EMAIL_ACTION_KINDS,
+  ActionAuthorizationError,
+  defineEmailAction,
+  resolveAuthorize,
+  resolveNeedsApproval,
+} from "./actions/define";
 export type {
   EmailActionKind,
   NeedsApprovalOption,
+  AuthorizeOption,
   ResolveNeedsApprovalInput,
+  ResolveAuthorizeInput,
   ContentEmailActionConfig,
   EditorEmailActionConfig,
   AnalysisEmailActionConfig,
@@ -343,6 +351,7 @@ export {
   toAISDKToolDefinitions,
   dispatchContentAction,
   dispatchEditorAction,
+  dispatchAnalysisAction,
 } from "./actions/registry";
 export type {
   EmailActionRegistry,
@@ -352,6 +361,8 @@ export type {
   DispatchContentActionResult,
   DispatchEditorActionInput,
   DispatchEditorActionResult,
+  DispatchAnalysisActionInput,
+  DispatchAnalysisActionResult,
 } from "./actions/registry";
 
 // --- Actions: built-in definitions & static registry (actions/builtins) ------------------------

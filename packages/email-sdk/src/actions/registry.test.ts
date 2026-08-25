@@ -9,6 +9,7 @@ import { defineEmailAction } from "./define";
 import { sendTestEmailInputSchema, showPreviewInputSchema } from "./editor-commands";
 import {
   createActionRegistry,
+  dispatchAnalysisAction,
   dispatchContentAction,
   dispatchEditorAction,
   getAction,
@@ -407,7 +408,13 @@ describe("stop-vs-retry taxonomy", () => {
     expect(DISPATCH_ERROR_FAILURE_KINDS.wrong_action_kind).toBe("terminal");
     expect(DISPATCH_ERROR_FAILURE_KINDS.span_not_found).toBe("retryable");
     expect(DISPATCH_ERROR_FAILURE_KINDS.unknown_section_template).toBe("retryable");
-    expect(Object.keys(ACTION_ERROR_FAILURE_KINDS)).toHaveLength(14);
+    /*
+      An authorization denial is a STOP, not a repair hint: the arguments were
+      never the problem, so a retry round would only teach the model to
+      rephrase its way at a permission check.
+    */
+    expect(DISPATCH_ERROR_FAILURE_KINDS.not_authorized).toBe("terminal");
+    expect(Object.keys(ACTION_ERROR_FAILURE_KINDS)).toHaveLength(15);
   });
 
   it("classifies a batch as terminal when ANY error is terminal", () => {
@@ -416,5 +423,250 @@ describe("stop-vs-retry taxonomy", () => {
       classifyActionErrors([{ code: "target_not_found" }, { code: "integrity_check_failed" }]),
     ).toBe("terminal");
     expect(classifyActionErrors([])).toBe("retryable");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// Analysis dispatch + the authorization gate on EVERY path
+// ---------------------------------------------------------------------------
+
+const countBlocksInputSchema = z.strictObject({ prefix: z.string() });
+
+/** Records whether the action body executed — the assertion that matters. */
+interface RunSpy {
+  hasRun: boolean;
+}
+
+function defineAnalysisSpy(spy: RunSpy, shouldAuthorize: boolean | undefined) {
+  return defineEmailAction({
+    name: "countBlocks",
+    description: "Count blocks whose id starts with a prefix.",
+    kind: "analysis",
+    schema: countBlocksInputSchema,
+    readOnly: true,
+    parallelSafe: true,
+    needsApproval: false,
+    ...(shouldAuthorize === undefined ? {} : { authorize: shouldAuthorize }),
+    run: (doc, input) => {
+      spy.hasRun = true;
+      return Object.keys(doc).filter((blockId) => blockId.startsWith(input.prefix)).length;
+    },
+  });
+}
+
+describe("dispatchAnalysisAction", () => {
+  it("validates against the FULL schema and returns the run result", () => {
+    const spy: RunSpy = { hasRun: false };
+    const analysisRegistry = createActionRegistry([defineAnalysisSpy(spy, undefined)]);
+    const result = dispatchAnalysisAction({
+      registry: analysisRegistry,
+      doc: createSampleDocument(),
+      name: "countBlocks",
+      input: { prefix: "sec_" },
+      context: agentContext,
+    });
+    expect(result.isOk).toBe(true);
+    if (!result.isOk) return;
+    expect(spy.hasRun).toBe(true);
+    expect(result.data).toBe(
+      Object.keys(createSampleDocument()).filter((blockId) => blockId.startsWith("sec_")).length,
+    );
+    expect(result.isApprovalRequired).toBe(false);
+  });
+
+  it("fails retryable on input that misses the full schema, without running", () => {
+    /*
+      This is the gap the missing dispatcher left open: the chat route called
+      `run` itself, so nothing re-validated the model's payload against the
+      FULL schema the way the other two kinds do.
+    */
+    const spy: RunSpy = { hasRun: false };
+    const analysisRegistry = createActionRegistry([defineAnalysisSpy(spy, undefined)]);
+    const result = dispatchAnalysisAction({
+      registry: analysisRegistry,
+      doc: createSampleDocument(),
+      name: "countBlocks",
+      input: { prefix: 7 },
+      context: agentContext,
+    });
+    expect(result.isOk).toBe(false);
+    if (result.isOk) return;
+    expect(result.failureKind).toBe("retryable");
+    expect(result.errors[0]!.code).toBe("op_validation_failed");
+    expect(spy.hasRun).toBe(false);
+  });
+
+  it("fails terminal with wrong_action_kind when given an editor action", () => {
+    const result = dispatchAnalysisAction({
+      registry,
+      doc: createSampleDocument(),
+      name: "showPreview",
+      input: { mode: "desktop" },
+      context: agentContext,
+    });
+    expect(result.isOk).toBe(false);
+    if (result.isOk) return;
+    expect(result.failureKind).toBe("terminal");
+    expect(result.errors[0]!.code).toBe("wrong_action_kind");
+  });
+
+  it("fails retryable with unknown_action for an unregistered name", () => {
+    const result = dispatchAnalysisAction({
+      registry,
+      doc: createSampleDocument(),
+      name: "nope",
+      input: {},
+      context: agentContext,
+    });
+    expect(result.isOk).toBe(false);
+    if (result.isOk) return;
+    expect(result.failureKind).toBe("retryable");
+    expect(result.errors[0]!.code).toBe("unknown_action");
+  });
+
+  it("hands an async run result back unawaited, so async analysis keeps working", () => {
+    /*
+      fetchWebContent and friends are typed AnalysisEmailAction<S, Promise<T>>
+      and do real network I/O. Dispatch stays synchronous — `run` must not
+      become async — so the promise itself is what comes back.
+    */
+    const asyncAction = defineEmailAction({
+      name: "fetchSomething",
+      description: "An analysis action that does I/O.",
+      kind: "analysis",
+      schema: z.strictObject({}),
+      readOnly: true,
+      parallelSafe: true,
+      needsApproval: false,
+      run: (): Promise<string> => Promise.resolve("fetched"),
+    });
+    const result = dispatchAnalysisAction({
+      registry: createActionRegistry([asyncAction]),
+      doc: createSampleDocument(),
+      name: "fetchSomething",
+      input: {},
+      context: agentContext,
+    });
+    expect(result.isOk).toBe(true);
+    if (!result.isOk) return;
+    return expect(result.data).resolves.toBe("fetched");
+  });
+});
+
+/**
+ * The regression that would undo the whole point: a gate honoured on two of
+ * three dispatch paths is not a gate, it is a coincidence. One denying action
+ * per kind, dispatched through its own dispatcher, asserting the body never
+ * ran and the failure is a STOP.
+ */
+describe("the authorization gate holds on every dispatch path", () => {
+  it("denies a content action through dispatchContentAction", () => {
+    const spy: RunSpy = { hasRun: false };
+    const deniedAction = defineEmailAction({
+      name: "removeBlock",
+      description: "Remove a block, if allowed.",
+      kind: "content",
+      schema: removeBlockOperationSchema,
+      readOnly: false,
+      parallelSafe: false,
+      needsApproval: false,
+      authorize: (_input, context) => context.author === "user",
+      run: (doc, op) => {
+        spy.hasRun = true;
+        return applyOperation(doc, op);
+      },
+    });
+    const doc = createSampleDocument();
+    const result = dispatchContentAction({
+      registry: createActionRegistry([deniedAction]),
+      doc,
+      name: "removeBlock",
+      input: { name: "removeBlock", blockId: "sec_a1b2" },
+      context: agentContext,
+    });
+    expect(result.isOk).toBe(false);
+    if (result.isOk) return;
+    expect(spy.hasRun).toBe(false);
+    expect(result.failureKind).toBe("terminal");
+    expect(result.errors[0]!.code).toBe("not_authorized");
+  });
+
+  it("denies an editor action through dispatchEditorAction", () => {
+    const spy: RunSpy = { hasRun: false };
+    const deniedAction = defineEmailAction({
+      name: "showPreview",
+      description: "Switch the preview, if allowed.",
+      kind: "editor",
+      schema: showPreviewInputSchema,
+      readOnly: false,
+      parallelSafe: false,
+      needsApproval: false,
+      authorize: (_input, context) => context.author === "user",
+      run: (input) => {
+        spy.hasRun = true;
+        return { type: "showPreview" as const, mode: input.mode };
+      },
+    });
+    const result = dispatchEditorAction({
+      registry: createActionRegistry([deniedAction]),
+      name: "showPreview",
+      input: { mode: "mobile" },
+      context: agentContext,
+    });
+    expect(result.isOk).toBe(false);
+    if (result.isOk) return;
+    expect(spy.hasRun).toBe(false);
+    expect(result.failureKind).toBe("terminal");
+    expect(result.errors[0]!.code).toBe("not_authorized");
+  });
+
+  it("denies an analysis action through dispatchAnalysisAction", () => {
+    const spy: RunSpy = { hasRun: false };
+    const result = dispatchAnalysisAction({
+      registry: createActionRegistry([defineAnalysisSpy(spy, false)]),
+      doc: createSampleDocument(),
+      name: "countBlocks",
+      input: { prefix: "sec_" },
+      context: agentContext,
+    });
+    expect(result.isOk).toBe(false);
+    if (result.isOk) return;
+    expect(spy.hasRun).toBe(false);
+    expect(result.failureKind).toBe("terminal");
+    expect(result.errors[0]!.code).toBe("not_authorized");
+  });
+
+  it("lets an allowed caller through on all three paths, unchanged", () => {
+    /*
+      The additive guarantee, stated positively: a gate that authorizes is
+      invisible — same results the ungated actions above produce.
+    */
+    const contentResult = dispatchContentAction({
+      registry,
+      doc: createSampleDocument(),
+      name: "removeBlock",
+      input: { name: "removeBlock", blockId: "sec_a1b2" },
+      context: userContext,
+    });
+    expect(contentResult.isOk).toBe(true);
+
+    const editorResult = dispatchEditorAction({
+      registry,
+      name: "showPreview",
+      input: { mode: "mobile" },
+      context: userContext,
+    });
+    expect(editorResult.isOk).toBe(true);
+
+    const spy: RunSpy = { hasRun: false };
+    const analysisResult = dispatchAnalysisAction({
+      registry: createActionRegistry([defineAnalysisSpy(spy, true)]),
+      doc: createSampleDocument(),
+      name: "countBlocks",
+      input: { prefix: "sec_" },
+      context: userContext,
+    });
+    expect(analysisResult.isOk).toBe(true);
+    expect(spy.hasRun).toBe(true);
   });
 });

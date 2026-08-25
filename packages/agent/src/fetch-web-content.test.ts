@@ -1,4 +1,8 @@
-import { createSampleDocument, emailActionRegistry } from "@flock/email-sdk";
+import {
+  createSampleDocument,
+  emailActionRegistry,
+  type ActionContext,
+} from "@flock/email-sdk";
 import { describe, expect, it, vi } from "vitest";
 import { buildAgentActionRegistry } from "./actions";
 import {
@@ -9,6 +13,16 @@ import {
 import { buildToolGuidance } from "./prompts";
 
 const sampleDoc = createSampleDocument();
+
+/**
+ * Any caller will do: this action declares no `authorize` gate, so the context
+ * is only the provenance the envelope now requires every invocation to name.
+ */
+const agentContext: ActionContext = {
+  caller: "tool",
+  authorId: "agent_thread_1",
+  author: "agent",
+};
 
 const stubArticleResult: FetchWebContentResult = {
   isOk: true,
@@ -38,7 +52,9 @@ describe("defineFetchWebContentAction", () => {
 
   it("delegates run to the injected executor with just the url", async () => {
     const input = action.schema.parse({ url: "https://example.com/story" });
-    await expect(action.run(sampleDoc, input)).resolves.toEqual(stubArticleResult);
+    await expect(
+      action.run({ doc: sampleDoc, input, context: agentContext }),
+    ).resolves.toEqual(stubArticleResult);
     expect(fetchWebArticle).toHaveBeenCalledWith({ url: "https://example.com/story" });
   });
 

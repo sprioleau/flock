@@ -17,6 +17,7 @@ import {
   undoAction,
 } from "./builtins";
 import type { ActionContext } from "./context";
+import { resolveAuthorize } from "./define";
 import {
   dispatchContentAction,
   dispatchEditorAction,
@@ -384,5 +385,67 @@ describe("emailActionRegistry", () => {
       behavior: "Watch for missing alt text and low-contrast color pairs.",
     });
     expect(result.isApprovalRequired).toBe(false);
+  });
+});
+
+/**
+ * `sendTestEmail`'s authorization gate — the first `authorize` consumer.
+ *
+ * `needsApproval` already asks a human to bless a send, but only where a human
+ * is present to ask, which is the agent loop and nowhere else. These pin the
+ * property that does NOT depend on a chat window being attached.
+ */
+describe("sendTestEmail authorization", () => {
+  it("admits a caller the surface was willing to name", () => {
+    const result = dispatchEditorAction({
+      registry: emailActionRegistry,
+      name: "sendTestEmail",
+      input: { to: "reviewer@example.com" },
+      context: agentContext,
+    });
+    expect(result.isOk).toBe(true);
+    if (!result.isOk) return;
+    expect(result.command).toEqual({ type: "sendTestEmail", to: "reviewer@example.com" });
+    /*
+      The two gates are independent: authorized AND still human-approved.
+    */
+    expect(result.isApprovalRequired).toBe(true);
+  });
+
+  it("refuses an unattributable caller, terminally, with no command produced", () => {
+    const anonymousContext: ActionContext = {
+      caller: "tool",
+      authorId: "   ",
+      author: "agent",
+    };
+    const result = dispatchEditorAction({
+      registry: emailActionRegistry,
+      name: "sendTestEmail",
+      input: { to: "reviewer@example.com" },
+      context: anonymousContext,
+    });
+    expect(result.isOk).toBe(false);
+    if (result.isOk) return;
+    /*
+      Terminal, not retryable: the recipient address was perfectly valid, so
+      there is nothing for the model to repair and no reason to invite it to.
+    */
+    expect(result.failureKind).toBe("terminal");
+    expect(result.errors[0]!.code).toBe("not_authorized");
+  });
+
+  it("leaves every other built-in ungated, so nothing else changed behaviour", () => {
+    /*
+      The additive guarantee across the whole shipped registry: exactly one
+      action declares a gate today, and each of the others authorizes by
+      default because it has no `authorize` to consult.
+    */
+    const gatedNames = emailActionRegistry.actions
+      .filter((action) => action.authorize !== undefined)
+      .map((action) => action.name);
+    expect(gatedNames).toEqual(["sendTestEmail"]);
+    for (const action of emailActionRegistry.actions) {
+      expect(resolveAuthorize({ action, input: {}, context: agentContext })).toBe(true);
+    }
   });
 });

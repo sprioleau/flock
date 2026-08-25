@@ -1,9 +1,25 @@
-import { createSampleDocument, emailActionRegistry, SECTION_TEMPLATES } from "@flock/email-sdk";
+import {
+  createSampleDocument,
+  emailActionRegistry,
+  SECTION_TEMPLATES,
+  type ActionContext,
+} from "@flock/email-sdk";
 import { describe, expect, it } from "vitest";
 import { buildAgentActionRegistry, getBlockDetailsAction } from "./actions";
 import { buildToolGuidance } from "./prompts";
 
 const sampleDoc = createSampleDocument();
+
+/**
+ * Any caller will do: none of these actions declares an `authorize` gate, so
+ * the context is only the provenance the envelope now requires every
+ * invocation to name.
+ */
+const agentContext: ActionContext = {
+  caller: "tool",
+  authorId: "agent_thread_1",
+  author: "agent",
+};
 
 describe("getBlockDetailsAction", () => {
   it("is a read-only, parallel-safe, unapproved analysis action", () => {
@@ -17,7 +33,7 @@ describe("getBlockDetailsAction", () => {
 
   it("runs describeBlock: full block JSON plus root-first ancestors", () => {
     const input = getBlockDetailsAction.schema.parse({ blockId: "txt_r7s8" });
-    const details = getBlockDetailsAction.run(sampleDoc, input);
+    const details = getBlockDetailsAction.run({ doc: sampleDoc, input, context: agentContext });
     expect(details).not.toBeNull();
     expect(details!.block).toEqual(sampleDoc.txt_r7s8);
     expect(details!.ancestorIds).toEqual(["root", "sec_c3d4", "row_k1l2", "col_m3n4"]);
@@ -25,7 +41,9 @@ describe("getBlockDetailsAction", () => {
 
   it("returns null for an id not in the document", () => {
     const input = getBlockDetailsAction.schema.parse({ blockId: "btn_none" });
-    expect(getBlockDetailsAction.run(sampleDoc, input)).toBeNull();
+    expect(
+      getBlockDetailsAction.run({ doc: sampleDoc, input, context: agentContext }),
+    ).toBeNull();
   });
 
   it("rejects malformed block ids at the schema gate", () => {

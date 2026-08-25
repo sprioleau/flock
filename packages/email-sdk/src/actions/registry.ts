@@ -1,11 +1,16 @@
 import type { z } from "zod";
-import type { OperationError } from "../operations/apply";
+import type { ApplyOperationResult, OperationError } from "../operations/apply";
 import { createLogEntry, type OperationLogEntry } from "../operations/log";
 import type { Operation } from "../operations/ops";
 import type { BlockId } from "../schema/ids";
 import type { EmailDocument } from "../store/document";
 import type { ActionContext } from "./context";
-import { resolveNeedsApproval, type AnyEmailAction, type NeedsApprovalOption } from "./define";
+import {
+  ActionAuthorizationError,
+  resolveNeedsApproval,
+  type AnyEmailAction,
+  type NeedsApprovalOption,
+} from "./define";
 import type { EditorCommand } from "./editor-commands";
 import {
   classifyActionErrors,
@@ -96,6 +101,34 @@ export interface ActionDispatchError {
   message: string;
   blockId?: BlockId;
   relatedBlockId?: BlockId;
+}
+
+/**
+ * The failure arm every dispatcher shares. Structurally identical across the
+ * three result unions, so one helper can build it for all of them.
+ */
+interface ActionDispatchFailure {
+  isOk: false;
+  failureKind: ActionFailureKind;
+  errors: ActionDispatchError[];
+}
+
+/**
+ * Translate a thrown authorization refusal into the structured failure the
+ * dispatch surfaces return.
+ *
+ * The gate throws from inside `run` (see `defineEmailAction`) because that is
+ * the only channel all three run shapes share; the dispatchers are where the
+ * refusal rejoins the ordinary result taxonomy, so callers of
+ * `dispatch*Action` never have to know a throw was involved. `not_authorized`
+ * classifies terminal — the turn stops rather than inviting a repair round.
+ */
+function toAuthorizationDenial(error: ActionAuthorizationError): ActionDispatchFailure {
+  return {
+    isOk: false,
+    failureKind: classifyActionErrors([{ code: error.code }]),
+    errors: [{ code: error.code, message: error.message }],
+  };
 }
 
 export type DispatchContentActionResult =
@@ -208,7 +241,20 @@ export function dispatchContentAction({
     }
     operation = resolved.op;
   }
-  const result = action.run(doc, operation);
+  /*
+    `run` carries the authorization gate (see `defineEmailAction`), so the
+    context has to reach it — passing it here is not politeness, it is how the
+    gate sees the caller. A refusal throws; it becomes a terminal failure.
+  */
+  let result: ApplyOperationResult;
+  try {
+    result = action.run({ doc, input: operation, context });
+  } catch (error) {
+    if (error instanceof ActionAuthorizationError) {
+      return toAuthorizationDenial(error);
+    }
+    throw error;
+  }
   if (!result.isOk) {
     return {
       isOk: false,
@@ -309,9 +355,140 @@ export function dispatchEditorAction({
       ],
     };
   }
+  /*
+    Same gate, same reason as the content dispatcher: the context is what the
+    authorization check reads, and a refusal arrives as a throw.
+  */
+  let command: EditorCommand;
+  try {
+    command = action.run({ input: parsedInput.data, context });
+  } catch (error) {
+    if (error instanceof ActionAuthorizationError) {
+      return toAuthorizationDenial(error);
+    }
+    throw error;
+  }
   return {
     isOk: true,
-    command: action.run(parsedInput.data),
+    command,
+    isApprovalRequired: resolveNeedsApproval({ action, input: parsedInput.data, context }),
+  };
+}
+
+// ---------------------------------------------------------------------------
+// Surface (d): analysis-action dispatcher (read-only data back to the model)
+// ---------------------------------------------------------------------------
+
+export type DispatchAnalysisActionResult =
+  | {
+      isOk: true;
+      /**
+       * Whatever the action's `run` returned, type erased.
+       *
+       * Analysis `run` is DECLARED synchronous, but an analysis action may
+       * legitimately return a promise as its `TOutput` (the agent package's
+       * web-content and person-research actions do network I/O and are typed
+       * `AnalysisEmailAction<Schema, Promise<...>>`). This dispatcher stays
+       * synchronous and hands that value straight back rather than awaiting it,
+       * so it keeps working for both — the caller awaits when it must. Making
+       * dispatch async instead would have made `run` async, which the editor
+       * store's synchronous local-apply path cannot absorb.
+       */
+      data: unknown;
+      /** Resolved `needsApproval` gate — the loop must halt for approval when true. */
+      isApprovalRequired: boolean;
+    }
+  | {
+      isOk: false;
+      failureKind: ActionFailureKind;
+      errors: ActionDispatchError[];
+    };
+
+export interface DispatchAnalysisActionInput {
+  /** The registry to resolve the action from. */
+  registry: EmailActionRegistry;
+  /** The document the analysis reads. Never mutated — analysis is readOnly. */
+  doc: EmailDocument;
+  /** The action name (the tool name the model called). */
+  name: string;
+  /** Raw, unvalidated input — re-validated here against the action's FULL schema. */
+  input: unknown;
+  /** Caller provenance, which the authorization gate inside `run` reads. */
+  context: ActionContext;
+}
+
+/**
+ * Dispatch one analysis action: resolve it, check the kind, validate the raw
+ * input against the action's FULL schema, and run it behind the same
+ * authorization gate the other two kinds go through.
+ *
+ * This dispatcher exists because its absence WAS the bug. Content and editor
+ * actions had dispatchers; analysis actions did not, so the chat route called
+ * `action.run(doc, input)` itself — a second, hand-rolled dispatch path that
+ * drifted from the other two and answered to nothing the registry enforces.
+ * Two dispatchers plus one open-coded call site is not "three dispatch paths",
+ * it is two paths and a hole. Every action kind now has exactly one door.
+ */
+export function dispatchAnalysisAction({
+  registry,
+  doc,
+  name,
+  input,
+  context,
+}: DispatchAnalysisActionInput): DispatchAnalysisActionResult {
+  const action = getAction(registry, name);
+  if (action === undefined) {
+    const knownAnalysisActionNames = registry.actions
+      .filter((candidate) => candidate.kind === "analysis")
+      .map((candidate) => candidate.name);
+    return {
+      isOk: false,
+      failureKind: classifyActionErrors([{ code: "unknown_action" }]),
+      errors: [
+        {
+          code: "unknown_action",
+          message: `No action named "${name}". Known analysis actions: ${knownAnalysisActionNames.join(", ")}.`,
+        },
+      ],
+    };
+  }
+  if (action.kind !== "analysis") {
+    return {
+      isOk: false,
+      failureKind: classifyActionErrors([{ code: "wrong_action_kind" }]),
+      errors: [
+        {
+          code: "wrong_action_kind",
+          message: `Action "${name}" is a ${action.kind} action; dispatchAnalysisAction only handles analysis actions.`,
+        },
+      ],
+    };
+  }
+  const parsedInput = action.schema.safeParse(input);
+  if (!parsedInput.success) {
+    return {
+      isOk: false,
+      failureKind: classifyActionErrors([{ code: "op_validation_failed" }]),
+      errors: [
+        {
+          code: "op_validation_failed",
+          message: `Input for action "${name}" failed validation: ${formatZodIssues(parsedInput.error)}`,
+        },
+      ],
+    };
+  }
+  let data: unknown;
+  try {
+    data = action.run({ doc, input: parsedInput.data, context });
+  } catch (error) {
+    if (error instanceof ActionAuthorizationError) {
+      return toAuthorizationDenial(error);
+    }
+    throw error;
+  }
+  return {
+    isOk: true,
+    data,
     isApprovalRequired: resolveNeedsApproval({ action, input: parsedInput.data, context }),
   };
 }
