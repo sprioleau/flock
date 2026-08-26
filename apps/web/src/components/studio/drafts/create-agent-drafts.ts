@@ -1,11 +1,13 @@
 import {
   buildComposedDrafts,
+  type ComposedDraft,
   type CreateDraftCommand,
   type EmailDocument,
 } from "@flock/email-sdk";
-import type { ConvexReactClient } from "convex/react";
+import type { FunctionArgs, FunctionReturnType } from "convex/server";
 import { api } from "@convex/_generated/api";
 import type { Id } from "@convex/_generated/dataModel";
+import type { CreateDraftOutcome, CreatedDraftSummary } from "@/lib/create-draft-report";
 import { computeNextDraftName } from "./draft-naming";
 
 /**
@@ -28,10 +30,51 @@ import { computeNextDraftName } from "./draft-naming";
  * NEITHER shape activates the new drafts: the user stays exactly where they
  * are and the drafts bar updates reactively. That is the point — the agent
  * adds a draft beside the user's work instead of taking over the canvas.
+ *
+ * WHAT THIS FUNCTION RETURNS IS THE TOOL RESULT'S ONLY EVIDENCE. It is the
+ * last place in the system that can see both what was asked for and what now
+ * exists, so it reports both — real names as allocated, and per draft where
+ * the copy came from (lib/create-draft-report.ts turns that into the sentence
+ * the model is entitled to say). Before this, the model's confirmation was
+ * assembled server-side from the plan it had sent, which is why "built
+ * directly from your website" was said over sample copy.
  */
 
+type ListDocumentsByCanvas = typeof api.documents.listDocumentsByCanvas;
+type CreateDocument = typeof api.documents.createDocument;
+type ApplyOperations = typeof api.documents.applyOperations;
+
+/**
+ * The Convex surface this executor uses — spelled out as the THREE calls it
+ * makes, and nothing wider.
+ *
+ * Narrower than `ConvexReactClient` on purpose. The browser passes the real
+ * client, which satisfies this; so does convex-test's in-memory backend, whose
+ * own `query`/`mutation` are generic over "a function reference OR an inline
+ * handler" and therefore not assignable to the client's exact signatures. Both
+ * ends being able to satisfy the same interface is what lets the regression
+ * test drive this whole executor against real Convex functions — no stub that
+ * only pretends to apply the ops, and no cast. The bug this file guards is
+ * about what ends up IN the created document, so the test has to run the real
+ * `applyOperations` and read the document back afterwards.
+ */
+export interface AgentDraftsConvexClient {
+  query(
+    reference: ListDocumentsByCanvas,
+    args: FunctionArgs<ListDocumentsByCanvas>,
+  ): Promise<FunctionReturnType<ListDocumentsByCanvas>>;
+  mutation(
+    reference: CreateDocument,
+    args: FunctionArgs<CreateDocument>,
+  ): Promise<FunctionReturnType<CreateDocument>>;
+  mutation(
+    reference: ApplyOperations,
+    args: FunctionArgs<ApplyOperations>,
+  ): Promise<FunctionReturnType<ApplyOperations>>;
+}
+
 export interface CreateAgentDraftsInput {
-  convexClient: ConvexReactClient;
+  convexClient: AgentDraftsConvexClient;
   /** The canvas the new drafts join (the user's current canvas). */
   canvasId: Id<"canvases">;
   /** The browser's anonymous session id. */
@@ -40,14 +83,43 @@ export interface CreateAgentDraftsInput {
   command: CreateDraftCommand;
   /** The draft the user is on — the theme and content source for composition. */
   sourceDoc: EmailDocument;
+  /**
+   * True when THIS turn already read something outside the email — a fetched
+   * page, a looked-up person (lib/ingested-source.ts).
+   *
+   * It decides one thing: whether the composer may fall back to the source
+   * draft's own copy for params the model left out. Required rather than
+   * optional, because the failure it prevents is silent — a caller that
+   * forgets it gets the old, plausible-looking wrong answer rather than an
+   * error, and the compiler is the only thing that will notice.
+   */
+  hasIngestedSource: boolean;
   /** Author id recorded on the composed ops (the chat thread). */
   authorId: string;
 }
 
-export interface CreateAgentDraftsResult {
+export interface CreateAgentDraftsResult extends CreateDraftOutcome {
   createdDocumentIds: Id<"documents">[];
-  /** A user-facing sentence when something went wrong, else null. */
-  failureNotice: string | null;
+}
+
+/** One created draft's report line, from its name and its composition. */
+function toCreatedDraftSummary({
+  name,
+  composed,
+}: {
+  name: string;
+  composed: ComposedDraft | undefined;
+}): CreatedDraftSummary {
+  if (composed === undefined) {
+    // An empty starter draft: no sections at all, so nothing to attribute.
+    return {
+      name,
+      plannedSectionCount: 0,
+      carriedOverSectionCount: 0,
+      templateDefaultSectionCount: 0,
+    };
+  }
+  return { name, ...composed.composition };
 }
 
 /**
@@ -61,18 +133,36 @@ export async function createAgentDrafts({
   sessionId,
   command,
   sourceDoc,
+  hasIngestedSource,
   authorId,
 }: CreateAgentDraftsInput): Promise<CreateAgentDraftsResult> {
-  const composedDrafts = buildComposedDrafts({ sourceDoc, command });
+  /*
+    THE FIX FOR THE REPORTED DEFECT, in one argument. The composer's carry-over
+    turns a plan's gaps into the SOURCE draft's copy, which is right for "make
+    another version of this" and wrong — quietly, plausibly wrong — for "make
+    one from my portfolio site". The turn already knows which of those it is.
+  */
+  const composedDrafts = buildComposedDrafts({
+    sourceDoc,
+    command,
+    shouldCarryOverSourceCopy: !hasIngestedSource,
+  });
+  const isComposed = composedDrafts.length > 0;
+  const requestedCount = isComposed ? composedDrafts.length : command.count;
   const createdDocumentIds: Id<"documents">[] = [];
+  const createdDrafts: CreatedDraftSummary[] = [];
+  const outcomeBase = {
+    requestedCount,
+    isComposed,
+    isSourceCopyCarryOverAllowed: !hasIngestedSource,
+  };
   try {
     const existingDrafts = await convexClient.query(api.documents.listDocumentsByCanvas, {
       canvasId,
     });
     const existingNames = existingDrafts.map((draft) => draft.name);
-    const draftCount = composedDrafts.length > 0 ? composedDrafts.length : command.count;
 
-    for (let index = 0; index < draftCount; index += 1) {
+    for (let index = 0; index < requestedCount; index += 1) {
       const composed = composedDrafts[index];
       // The model's own name for the draft, deduped against the canvas the
       // same way a human's new draft is; unnamed drafts just get "Draft N".
@@ -112,18 +202,29 @@ export async function createAgentDrafts({
         });
         if (!result.isOk) {
           console.error("applyOperations (agent createDraft) rejected", result.errors);
+          /*
+            The row exists but its sections do not, so it is NOT reported as a
+            created draft: an empty document under a name the model would go on
+            to describe is exactly the kind of confident wrongness this whole
+            change is about.
+          */
           return {
+            ...outcomeBase,
             createdDocumentIds,
+            createdDrafts,
             failureNotice: `"${name}" was created but couldn't be filled in — open it and try again.`,
           };
         }
       }
+      createdDrafts.push(toCreatedDraftSummary({ name, composed }));
     }
-    return { createdDocumentIds, failureNotice: null };
+    return { ...outcomeBase, createdDocumentIds, createdDrafts, failureNotice: null };
   } catch (error) {
     console.error("createDocument (agent createDraft) failed", error);
     return {
+      ...outcomeBase,
       createdDocumentIds,
+      createdDrafts,
       failureNotice:
         createdDocumentIds.length > 0
           ? "Only some of the new drafts could be created (connection error)."

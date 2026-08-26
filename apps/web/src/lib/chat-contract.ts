@@ -385,6 +385,65 @@ export type HistoryStepToolOutput =
       note: string;
     };
 
+/*
+  THE createDraft TOOL RESULT — the same rule as the history steps, applied to
+  the other action the server used to answer for.
+
+  The reported defect: "create a draft based on my portfolio website" produced
+  a draft made of the catalog's sample copy and the user's OTHER draft's
+  paragraphs, and the agent said it had built the draft "directly from your
+  website details and portfolio projects". The sentence was not a hallucination
+  in the usual sense — it was assembled from the PLAN the model had sent,
+  server-side, before the browser had created anything. A result composed from
+  intent cannot be wrong about the intent and cannot be right about the outcome.
+
+  So the browser reports what landed: which drafts exist now, under the names
+  the drafts bar actually allocated (they are deduped per canvas, so the
+  model's requested name is not the name), and where each draft's words came
+  from — the model's own copy, the source draft's copy carried over, or the
+  section template's sample text.
+
+  A PARTIAL OR EMPTY OUTCOME RIDES THIS SAME SUCCESS CHANNEL. "Two of the three
+  sections are still sample copy" and "the drafts could not be created" are
+  facts to relay, not errors to repair: re-calling createDraft would add MORE
+  drafts to the user's canvas, which is the one response that makes the
+  situation worse. Every `note` below therefore closes the loop explicitly.
+*/
+
+/** Where one created draft's words came from, in the drafts bar's own terms. */
+export interface CreatedDraftReport {
+  /** The name the drafts bar allocated — deduped, so possibly not the asked-for one. */
+  name: string;
+  /** Sections the model wrote copy for. */
+  plannedSectionCount: number;
+  /** Sections filled from the draft the user is looking at. */
+  carriedOverSectionCount: number;
+  /** Sections left showing the section template's sample copy. */
+  templateDefaultSectionCount: number;
+}
+
+/** What a createDraft call actually did, written by the browser that did it. */
+export interface CreateDraftReport {
+  /** True when at least one new draft now exists in the drafts bar. */
+  isCreated: boolean;
+  /** The drafts that exist now, in creation order. Empty when none landed. */
+  createdDrafts: CreatedDraftReport[];
+  /** What the model may tell the user, in plain English. */
+  note: string;
+}
+
+/*
+  IN TRANSITION, deliberately visible. `createDraft` is still declared
+  `resultSource: "server"` in the SDK, so today the server's dispatch echo
+  ({@link EditorToolOutput}) is what reaches the model; the browser-written
+  {@link CreateDraftReport} takes over the moment that declaration flips to
+  "client", at which point the `EditorToolOutput` arm here is dead and should
+  be deleted with it. Both arms are listed rather than one being asserted,
+  because a contract that describes a wire nobody is putting that shape on is
+  not a contract.
+*/
+export type CreateDraftToolOutput = CreateDraftReport | EditorToolOutput;
+
 /**
  * Tool output returned by ANALYSIS actions (kind: "analysis") — executed
  * server-side against the request's document, returned to the model in-loop.
@@ -466,7 +525,7 @@ export type FlockChatTools = {
   undo: { input: UndoInput; output: HistoryStepToolOutput };
   redo: { input: RedoInput; output: HistoryStepToolOutput };
   goToVersion: { input: GoToVersionInput; output: EditorToolOutput };
-  createDraft: { input: CreateDraftInput; output: EditorToolOutput };
+  createDraft: { input: CreateDraftInput; output: CreateDraftToolOutput };
   createPersona: { input: CreatePersonaInput; output: EditorToolOutput };
   getBlockDetails: { input: { blockId: BlockId }; output: GetBlockDetailsToolOutput };
   fetchWebContent: { input: { url: string }; output: FetchWebContentToolOutput };

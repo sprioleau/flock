@@ -1,0 +1,336 @@
+// @vitest-environment edge-runtime
+import { register as registerProsemirrorSync } from "@convex-dev/prosemirror-sync/test";
+import {
+  applyOperations,
+  buildComposedDrafts,
+  createEmptyDocument,
+  emailDocumentSchema,
+  resolveCreateDraftCommand,
+  type CreateDraftInput,
+  type EmailDocument,
+} from "@flock/email-sdk";
+import { convexTest } from "convex-test";
+import { describe, expect, it } from "vitest";
+import { api } from "@convex/_generated/api";
+import type { Id } from "@convex/_generated/dataModel";
+import schema from "@convex/schema";
+import { toCreateDraftToolOutput } from "@/lib/create-draft-report";
+import { createAgentDrafts, type AgentDraftsConvexClient } from "./create-agent-drafts";
+
+/*
+  THE CAPTURED FAILURE, reproduced against the real Convex functions.
+
+  The owner typed: "create a new draft based on my portfolio website:
+  sprioleau.dev. Pull in the images and details about me." Two green tool
+  chips — the page WAS read — then a new draft that contained none of it, and
+  an agent reply claiming it was "built directly from your website details".
+
+  A CORRECTION TO THE ORIGINAL DIAGNOSIS, worth writing down. The report's
+  decisive evidence was that the new draft's "A note from the team" paragraph
+  was character-identical to the Draft 1 beside it. It is — but that string is
+  the ARTICLE TEMPLATE'S OWN DEFAULT HEADLINE
+  (packages/email-sdk/src/sections/templates/article.ts), as are "Ship email
+  your whole team loves" (hero-split) and the Fast/Flexible/On brand columns
+  (feature-columns). Draft 1 was the stock starter, so both drafts show the
+  same template defaults and the identity proves nothing about carry-over. The
+  captured draft is fully explained by an under-filled plan alone.
+
+  The carry-over defect is real all the same, and is reproduced below with
+  sentinel strings that CANNOT come from a template: the composer backfills
+  params the model left out from the SOURCE draft's own copy, which is right
+  for "make another version of this" and silently wrong the moment the content
+  came from somewhere else. Both failures produce the same user-visible
+  result — an email that is not about what was asked for — and only one of
+  them is honest about it, since sample copy reads as sample copy while the
+  user's own prose reads as deliberate.
+
+  So these tests drive `createAgentDrafts` end to end in convex-test's
+  in-memory backend — real createDocument, real applyOperations — and then
+  RE-READ the stored document and look at its words. A return value saying
+  "created" over a document full of the wrong paragraphs is precisely the
+  failure being fixed, so nothing here trusts a return value about content.
+
+  NOT PROVABLE HERE, and deliberately not claimed: that the model then says
+  the right sentence. The mock model's `sendAutomaticallyWhen` returns false
+  (use-flock-chat.ts), so on a mock run the model never receives a tool result
+  at all. What IS pinned below is the payload the browser hands it.
+*/
+
+const modules = import.meta.glob([
+  "../../../../../../convex/**/*.{ts,js}",
+  "!**/*.d.ts",
+  "!**/*.test.ts",
+]);
+
+function createBackend() {
+  const backend = convexTest(schema, modules);
+  registerProsemirrorSync(backend);
+  return backend;
+}
+
+type Backend = ReturnType<typeof createBackend>;
+
+const BROWSER_SESSION_ID = "8c2e5a71-64b0-4f18-9d3a-1b7e0c4f9a26";
+const CHAT_ID = "chat_2f9b";
+
+/*
+  Sentinels, not the starter email's real copy. The point of the test is that
+  the SOURCE draft's words must not appear in the NEW draft, and phrases like
+  "Get started" collide with the section catalog's own defaults — a collision
+  would make the assertion pass or fail for the wrong reason. These strings
+  can only have come from the source.
+*/
+const SOURCE_HEADLINE = "Draft 1 headline about the spring wholesale launch";
+const SOURCE_BODY = "Draft 1's own paragraph, which no other draft should ever repeat.";
+const SOURCE_LATER_HEADLINE = "A note from the team, as Draft 1 words it";
+const SOURCE_LATER_BODY = "The supporting paragraph Draft 1 carries in its second section.";
+const SOURCE_STRINGS = [SOURCE_HEADLINE, SOURCE_BODY, SOURCE_LATER_HEADLINE, SOURCE_LATER_BODY];
+
+/** The model's own copy for the ONE section it bothered to fill in. */
+const PORTFOLIO_HEADLINE = "Hi, I'm San'Quan Prioleau";
+
+/** Deterministic ids so a composed document is byte-stable across runs. */
+function createSeededRandom(seed: number): () => number {
+  let state = seed;
+  return () => {
+    state = (state * 1664525 + 1013904223) % 4294967296;
+    return state / 4294967296;
+  };
+}
+
+/**
+ * The draft the user is looking at — built through the composer itself with
+ * every param spelled out, so it is a real email whose exact copy is known.
+ */
+function buildSourceDoc(): EmailDocument {
+  const [composed] = buildComposedDrafts({
+    sourceDoc: createEmptyDocument(),
+    command: resolveCreateDraftCommand({
+      drafts: [
+        {
+          name: "Draft 1",
+          sections: [
+            { templateId: "header", params: { brandName: "Draft One Co" } },
+            {
+              templateId: "hero",
+              params: { headline: SOURCE_HEADLINE, body: SOURCE_BODY },
+            },
+            {
+              templateId: "article",
+              params: { headline: SOURCE_LATER_HEADLINE, body: SOURCE_LATER_BODY },
+            },
+            { templateId: "footer" },
+          ],
+        },
+      ],
+    }),
+    random: createSeededRandom(11),
+  });
+  /*
+    Applied through the SDK's own op applier rather than assembled by hand, so
+    the source is a document the editor could really be showing.
+  */
+  const result = applyOperations(createEmptyDocument(), composed?.ops ?? []);
+  if (!result.isOk) {
+    throw new Error(`source draft ops rejected: ${JSON.stringify(result.errors)}`);
+  }
+  return result.doc;
+}
+
+/** The under-filled plan the model actually sent: one headline, nothing else. */
+const UNDER_FILLED_PORTFOLIO_PLAN: CreateDraftInput = {
+  drafts: [
+    {
+      name: "San'Quan Prioleau - Portfolio",
+      sections: [
+        { templateId: "header" },
+        { templateId: "hero", params: { headline: PORTFOLIO_HEADLINE } },
+        { templateId: "article" },
+        { templateId: "footer" },
+      ],
+    },
+  ],
+};
+
+/** Every word the stored document renders — text, button labels, image alts. */
+function readAllText(doc: EmailDocument): string {
+  const collect = (node: unknown): string => {
+    if (typeof node !== "object" || node === null) return "";
+    const candidate = node as { text?: unknown; content?: unknown };
+    if (typeof candidate.text === "string") return candidate.text;
+    if (Array.isArray(candidate.content)) return candidate.content.map(collect).join(" ");
+    return "";
+  };
+  return Object.values(doc)
+    .map((block) => {
+      const properties = block.properties as Record<string, unknown>;
+      if (block.type === "text") return collect(properties.text);
+      if (block.type === "button") return String(properties.label ?? "");
+      if (block.type === "image") return String(properties.alt ?? "");
+      return "";
+    })
+    .join(" | ");
+}
+
+async function readStoredText({
+  t,
+  documentId,
+}: {
+  t: Backend;
+  documentId: Id<"documents">;
+}): Promise<string> {
+  const payload = await t.query(api.documents.getDocument, { documentId });
+  expect(payload).not.toBeNull();
+  return readAllText(emailDocumentSchema.parse(payload!.doc));
+}
+
+async function seedCanvas(t: Backend): Promise<Id<"canvases">> {
+  const { canvasId } = await t.mutation(api.documents.createDocument, {
+    sessionId: BROWSER_SESSION_ID,
+    name: "Draft 1",
+  });
+  return canvasId;
+}
+
+async function runCreateDraft({
+  t,
+  hasIngestedSource,
+  input = UNDER_FILLED_PORTFOLIO_PLAN,
+}: {
+  t: Backend;
+  hasIngestedSource: boolean;
+  input?: CreateDraftInput;
+}) {
+  const convexClient: AgentDraftsConvexClient = t;
+  const canvasId = await seedCanvas(t);
+  const outcome = await createAgentDrafts({
+    convexClient,
+    canvasId,
+    sessionId: BROWSER_SESSION_ID,
+    command: resolveCreateDraftCommand(input),
+    sourceDoc: buildSourceDoc(),
+    hasIngestedSource,
+    authorId: CHAT_ID,
+  });
+  return outcome;
+}
+
+describe("a draft composed in a turn that ingested a source", () => {
+  it("does not inherit the source draft's copy", async () => {
+    const t = createBackend();
+    const outcome = await runCreateDraft({ t, hasIngestedSource: true });
+
+    expect(outcome.failureNotice).toBeNull();
+    expect(outcome.createdDocumentIds).toHaveLength(1);
+    const text = await readStoredText({ t, documentId: outcome.createdDocumentIds[0]! });
+
+    /*
+      THE REPORTED BUG IN ONE ASSERTION. Before the fix the new draft's
+      article section carried SOURCE_LATER_HEADLINE / SOURCE_LATER_BODY
+      verbatim and its header carried the source's brand — the user's own
+      words, presented as an email built from their website.
+    */
+    for (const sourceString of SOURCE_STRINGS) {
+      expect(text).not.toContain(sourceString);
+    }
+    /* The copy the model DID write is still there — the fix suppresses the backfill, not the plan. */
+    expect(text).toContain(PORTFOLIO_HEADLINE);
+  });
+
+  it("reports the sections that fell back to sample copy instead of claiming them", async () => {
+    const t = createBackend();
+    const outcome = await runCreateDraft({ t, hasIngestedSource: true });
+
+    expect(outcome.createdDrafts).toHaveLength(1);
+    const [draft] = outcome.createdDrafts;
+    expect(draft).toMatchObject({
+      name: "San'Quan Prioleau - Portfolio",
+      plannedSectionCount: 1,
+      carriedOverSectionCount: 0,
+    });
+    /* header, article and footer had no copy in the plan. */
+    expect(draft!.templateDefaultSectionCount).toBe(3);
+
+    /*
+      The sentence the model is entitled to say. A partial outcome rides the
+      SUCCESS channel: `isCreated` is true, and the note carries the shortfall
+      plus the instruction not to try again.
+    */
+    const output = toCreateDraftToolOutput(outcome);
+    expect(output.isCreated).toBe(true);
+    expect(output.createdDrafts.map((created) => created.name)).toEqual([
+      "San'Quan Prioleau - Portfolio",
+    ]);
+    expect(output.note).toContain("SAMPLE text");
+    expect(output.note).toContain("Do NOT call createDraft again");
+  });
+});
+
+describe("a draft composed in an ordinary turn", () => {
+  it("still continues the draft the user is looking at", async () => {
+    const t = createBackend();
+    const outcome = await runCreateDraft({ t, hasIngestedSource: false });
+
+    expect(outcome.failureNotice).toBeNull();
+    const text = await readStoredText({ t, documentId: outcome.createdDocumentIds[0]! });
+
+    /*
+      The carry-over is CORRECT behaviour for "make me a variation of this" —
+      the drafts menu's own AI flow depends on it. Deleting it would have been
+      the easy fix and the wrong one.
+    */
+    expect(text).toContain(SOURCE_LATER_HEADLINE);
+    expect(outcome.createdDrafts[0]!.carriedOverSectionCount).toBeGreaterThan(0);
+  });
+});
+
+describe("what createDraft reports back", () => {
+  it("reports the drafts bar's real names, not the ones the model asked for", async () => {
+    const t = createBackend();
+    const convexClient: AgentDraftsConvexClient = t;
+    const canvasId = await seedCanvas(t);
+    /* A draft already carrying the name the model is about to ask for. */
+    await t.mutation(api.documents.createDocument, {
+      sessionId: BROWSER_SESSION_ID,
+      canvasId,
+      name: "Portfolio",
+    });
+
+    const outcome = await createAgentDrafts({
+      convexClient,
+      canvasId,
+      sessionId: BROWSER_SESSION_ID,
+      command: resolveCreateDraftCommand({
+        drafts: [{ name: "Portfolio", sections: [{ templateId: "hero" }] }],
+      }),
+      sourceDoc: buildSourceDoc(),
+      hasIngestedSource: true,
+      authorId: CHAT_ID,
+    });
+
+    const [created] = outcome.createdDrafts;
+    expect(created!.name).not.toBe("Portfolio");
+    /* The model quotes what the note says, and the note says what exists. */
+    expect(toCreateDraftToolOutput(outcome).note).toContain(created!.name);
+  });
+
+  it("calls an empty-starter run empty rather than describing content", async () => {
+    const t = createBackend();
+    const convexClient: AgentDraftsConvexClient = t;
+    const canvasId = await seedCanvas(t);
+
+    const outcome = await createAgentDrafts({
+      convexClient,
+      canvasId,
+      sessionId: BROWSER_SESSION_ID,
+      command: resolveCreateDraftCommand({ count: 2 }),
+      sourceDoc: buildSourceDoc(),
+      hasIngestedSource: false,
+      authorId: CHAT_ID,
+    });
+
+    expect(outcome.createdDrafts).toHaveLength(2);
+    const output = toCreateDraftToolOutput(outcome);
+    expect(output.note).toContain("EMPTY starter draft");
+  });
+});

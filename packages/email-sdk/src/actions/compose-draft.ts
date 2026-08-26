@@ -30,10 +30,13 @@ import type { EmailDocument } from "../store/document";
  * - THEME INHERITANCE. The new draft opens under the theme the user is already
  *   looking at (the source document's `root.properties.globals`), unless the
  *   caller explicitly opts out.
- * - CONTENT CARRY-OVER. Params the model left unspecified are filled from the
- *   SOURCE draft's own content — its headline, its supporting paragraph, its
- *   call to action, its brand name — so a new draft continues the email the
- *   user is working on instead of starting from placeholder copy.
+ * - CONTENT CARRY-OVER, WHEN THE SOURCE DRAFT IS THE SUBJECT. Params the model
+ *   left unspecified are filled from the SOURCE draft's own content — its
+ *   headline, its supporting paragraph, its call to action, its brand name —
+ *   so "another version of this" continues the email the user is working on
+ *   instead of starting from placeholder copy. The caller decides
+ *   (`shouldCarryOverSourceCopy`); see the note on that field for the case
+ *   where this default is not merely unhelpful but dishonest.
  * - REAL VARIATION. Asking for several drafts at once and describing them
  *   identically is the common model failure; identical plans are deterministically
  *   diversified (plain hero ⇄ split hero, feature columns ⇄ feature list, …) so
@@ -77,7 +80,7 @@ const draftSectionPlanSchema = z
       .looseObject({})
       .optional()
       .describe(
-        "The template's CONTENT params (headline, body, ctaLabel, ctaHref, brandName, …), exactly as scaffoldSection takes them. Every field defaults, and anything you leave out is filled from the draft the user is currently looking at — pass the copy this draft should actually say.",
+        "The template's CONTENT params (headline, body, ctaLabel, ctaHref, brandName, …), exactly as scaffoldSection takes them — pass the copy this draft should actually say. WRITE EVERY PARAM YOURSELF whenever you are building from something outside this draft (a page you fetched, a person you looked up, a brief the user typed): a param you leave out falls back to the section template's generic SAMPLE copy, which says nothing about your source. Leave params out only when you are making another version of the draft the user is already looking at — there, and only there, its own copy fills the gaps.",
       ),
   })
   .describe("One section of a new draft: which catalog template, and its copy.");
@@ -514,12 +517,35 @@ export function diversifyDraftSections(plans: DraftSectionPlan[][]): DraftSectio
 // Plan → operations
 // ---------------------------------------------------------------------------
 
-/** One composed draft: what to call it and the ops that build it. */
+/**
+ * WHERE ONE COMPOSED DRAFT'S WORDS CAME FROM. Every section that was actually
+ * built lands in exactly one of these buckets, so the three always sum to the
+ * number of sections in the draft.
+ *
+ * This exists because "the draft was created" and "the draft says what the
+ * user asked for" are different facts, and the surface reporting the call has
+ * no other way to tell them apart. A composition that is entirely
+ * `templateDefaultSectionCount` produced a real, complete email made of the
+ * catalog's sample marketing copy — which is a legitimate outcome for "give me
+ * a starting point" and a silent failure for "build one from my website".
+ */
+export interface ComposedDraftComposition {
+  /** Sections the model wrote copy for itself. */
+  plannedSectionCount: number;
+  /** Sections whose copy was filled in from the SOURCE draft (carry-over). */
+  carriedOverSectionCount: number;
+  /** Sections left on the section template's own sample copy. */
+  templateDefaultSectionCount: number;
+}
+
+/** One composed draft: what to call it, the ops that build it, and its provenance. */
 export interface ComposedDraft {
   /** The model's name for this draft, when it gave one. */
   name?: string;
   /** Ops in apply order: an optional applyTheme, then one addSection per section. */
   ops: Operation[];
+  /** What this draft's copy actually came from. See {@link ComposedDraftComposition}. */
+  composition: ComposedDraftComposition;
 }
 
 export interface BuildComposedDraftsInput {
@@ -527,6 +553,27 @@ export interface BuildComposedDraftsInput {
   sourceDoc: EmailDocument;
   /** The resolved client command. */
   command: CreateDraftCommand;
+  /**
+   * Whether the SOURCE draft's own copy may fill params the plan left out.
+   * Defaults to true, which is right for the case the carry-over was built
+   * for: "make me another version of this", where continuing the email on
+   * screen is the whole request.
+   *
+   * PASS FALSE WHEN THE CONTENT CAME FROM SOMEWHERE ELSE. The reported defect:
+   * "create a draft based on my portfolio website" fetched the site, composed
+   * an under-filled plan, and the backfill quietly supplied the user's OTHER
+   * draft's paragraphs — producing an email that was character-identical to
+   * work they already had while the agent reported it as built from their
+   * site. That is worse than an obviously empty result, because sample copy
+   * reads as sample copy and the user's own prose reads as deliberate.
+   *
+   * The switch is a caller's, not a heuristic here, because the fact it turns
+   * on — did THIS turn ingest an external source — is not visible in a
+   * document or a command. Nothing else about composition changes: theme
+   * inheritance, structural repair and sibling diversification are unaffected,
+   * and params the plan DID specify were always honoured either way.
+   */
+  shouldCarryOverSourceCopy?: boolean;
   /** Randomness source for the new blocks' ids — injectable for tests. */
   random?: RandomFn;
 }
@@ -605,12 +652,13 @@ const MAX_BUILD_ATTEMPTS = 5;
 export function buildComposedDrafts({
   sourceDoc,
   command,
+  shouldCarryOverSourceCopy = true,
   random = Math.random,
 }: BuildComposedDraftsInput): ComposedDraft[] {
   if (command.drafts === undefined || command.drafts.length === 0) {
     return [];
   }
-  const clues = deriveDraftContentClues(sourceDoc);
+  const clues = shouldCarryOverSourceCopy ? deriveDraftContentClues(sourceDoc) : {};
   const sourceRoot = sourceDoc[ROOT_BLOCK_ID];
   const sourceGlobals: GlobalStyles | undefined =
     command.shouldInheritTheme && sourceRoot !== undefined && sourceRoot.type === "root"
@@ -623,10 +671,16 @@ export function buildComposedDrafts({
   );
 
   return command.drafts.map((plan, draftIndex) => {
-    const sections = applyContentClues({ sections: diversified[draftIndex]!, clues });
+    const plannedSections = diversified[draftIndex]!;
+    const sections = applyContentClues({ sections: plannedSections, clues });
     const ops: Operation[] = hasThemeToInherit
       ? [{ name: "applyTheme", globals: sourceGlobals }]
       : [];
+    const composition: ComposedDraftComposition = {
+      plannedSectionCount: 0,
+      carriedOverSectionCount: 0,
+      templateDefaultSectionCount: 0,
+    };
     // Ids must be unique across the WHOLE new document, not just per section.
     const usedIds = new Set<string>([ROOT_BLOCK_ID]);
     sections.forEach((section, sectionIndex) => {
@@ -652,10 +706,48 @@ export function buildComposedDrafts({
             index: sectionIndex,
             children: built.children,
           });
+          /*
+            Counted only for a section that actually reached the document, and
+            counted from the params the template ACCEPTED — a plan whose params
+            were rejected fell back to sample copy no matter how much of it the
+            model wrote, and reporting that as "the model's copy" would be the
+            same lie in a smaller place.
+          */
+          const bucket = getSectionCopySource({
+            plannedParams: plannedSections[sectionIndex]?.params,
+            filledParams: section.params,
+            isPlanAccepted: parsedParams.success,
+          });
+          composition[bucket] += 1;
           return;
         }
       }
     });
-    return { ...(plan.name === undefined ? {} : { name: plan.name }), ops };
+    return { ...(plan.name === undefined ? {} : { name: plan.name }), ops, composition };
   });
+}
+
+/** Which {@link ComposedDraftComposition} bucket one built section belongs in. */
+function getSectionCopySource({
+  plannedParams,
+  filledParams,
+  isPlanAccepted,
+}: {
+  /** The model's own params for this section, before any carry-over. */
+  plannedParams: Record<string, unknown> | undefined;
+  /** The params the section was built from, after carry-over. */
+  filledParams: Record<string, unknown> | undefined;
+  /** Whether the template's schema accepted those params at all. */
+  isPlanAccepted: boolean;
+}): keyof ComposedDraftComposition {
+  if (!isPlanAccepted) {
+    return "templateDefaultSectionCount";
+  }
+  if (Object.keys(plannedParams ?? {}).length > 0) {
+    return "plannedSectionCount";
+  }
+  if (Object.keys(filledParams ?? {}).length > 0) {
+    return "carriedOverSectionCount";
+  }
+  return "templateDefaultSectionCount";
 }

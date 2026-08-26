@@ -687,3 +687,134 @@ describe("buildComposedDrafts", () => {
     expect(doc[ROOT_BLOCK_ID]!.childrenIds).toHaveLength(3);
   });
 });
+
+/*
+  THE REPORTED DEFECT, at the composer's own level.
+
+  "create a new draft based on my portfolio website" fetched the site and then
+  produced an email whose paragraphs were character-identical to the draft
+  already on screen. The carry-over below is not a bug in itself — it is what
+  makes "another version of this" continue the user's email instead of
+  restarting from placeholder copy — but it fired unconditionally, including
+  when the content the user asked for came from somewhere else entirely.
+
+  So the two directions are pinned together: the carry-over still works, and it
+  can be switched off without touching anything else about composition.
+*/
+describe("shouldCarryOverSourceCopy", () => {
+  const SOURCE_HEADLINE = "What shipped in March";
+  const SOURCE_BODY = "Three new integrations and a faster editor.";
+  const LATER_HEADLINE = "A note the source wrote in its own words";
+  const LATER_BODY = "The paragraph the source carries in its second section.";
+
+  /** A source email whose every word is a sentinel that cannot come from anywhere else. */
+  function buildSource(): EmailDocument {
+    return buildSourceEmail([
+      [logoImage("Northwind logo")],
+      [copyText({ headline: SOURCE_HEADLINE, body: SOURCE_BODY })],
+      [copyText({ headline: LATER_HEADLINE, body: LATER_BODY })],
+      [copyText({ body: "Unsubscribe" })],
+    ]);
+  }
+
+  /** An under-filled plan: one headline written, three sections left blank. */
+  const underFilledCommand: CreateDraftCommand = {
+    type: "createDraft",
+    count: 1,
+    shouldInheritTheme: true,
+    drafts: [
+      {
+        name: "Portfolio",
+        sections: [
+          { templateId: "header" },
+          { templateId: "hero", params: { headline: "Hi, I am San'Quan" } },
+          { templateId: "article" },
+          { templateId: "footer" },
+        ],
+      },
+    ],
+  };
+
+  function composeUnderFilled(shouldCarryOverSourceCopy: boolean): EmailDocument {
+    const [composed] = buildComposedDrafts({
+      sourceDoc: buildSource(),
+      command: underFilledCommand,
+      shouldCarryOverSourceCopy,
+      random: createSeededRandom(23),
+    });
+    const result = applyOperations(createEmptyDocument(), composed!.ops);
+    expect(result.isOk).toBe(true);
+    if (!result.isOk) throw new Error("compose failed");
+    return result.doc;
+  }
+
+  it("carries the source's copy into the gaps by default", () => {
+    const text = getAllText(composeUnderFilled(true));
+    expect(text).toContain(LATER_HEADLINE);
+    expect(text).toContain("Northwind");
+  });
+
+  it("leaves the gaps on the template's own sample copy when switched off", () => {
+    const text = getAllText(composeUnderFilled(false));
+    for (const sentinel of [SOURCE_HEADLINE, SOURCE_BODY, LATER_HEADLINE, LATER_BODY]) {
+      expect(text).not.toContain(sentinel);
+    }
+    expect(text).not.toContain("Northwind");
+    /* The model's own copy is untouched — the switch suppresses the backfill, not the plan. */
+    expect(text).toContain("Hi, I am San'Quan");
+  });
+
+  it("still inherits the theme with the copy carry-over switched off", () => {
+    const source = buildSource();
+    const root = source[ROOT_BLOCK_ID]!;
+    source[ROOT_BLOCK_ID] = {
+      ...root,
+      properties: { globals: { paragraphTextColor: "#16a34a" } },
+    } as unknown as EmailDocument[string];
+    const [composed] = buildComposedDrafts({
+      sourceDoc: source,
+      command: underFilledCommand,
+      shouldCarryOverSourceCopy: false,
+      random: createSeededRandom(23),
+    });
+    /*
+      Theme inheritance answers a different question from copy provenance: the
+      user is still looking at their own brand colours whatever the words came
+      from. Switching one must not switch the other.
+    */
+    expect(composed!.ops[0]).toEqual({
+      name: "applyTheme",
+      globals: { paragraphTextColor: "#16a34a" },
+    });
+  });
+
+  it("attributes every built section to where its copy came from", () => {
+    const [carried] = buildComposedDrafts({
+      sourceDoc: buildSource(),
+      command: underFilledCommand,
+      random: createSeededRandom(23),
+    });
+    /*
+      The counts are what the surface reports to the model, so they have to add
+      up to the sections that really landed — four here, after structural
+      repair leaves the plan alone.
+    */
+    expect(carried!.composition).toEqual({
+      plannedSectionCount: 1,
+      carriedOverSectionCount: 3,
+      templateDefaultSectionCount: 0,
+    });
+
+    const [isolated] = buildComposedDrafts({
+      sourceDoc: buildSource(),
+      command: underFilledCommand,
+      shouldCarryOverSourceCopy: false,
+      random: createSeededRandom(23),
+    });
+    expect(isolated!.composition).toEqual({
+      plannedSectionCount: 1,
+      carriedOverSectionCount: 0,
+      templateDefaultSectionCount: 3,
+    });
+  });
+});

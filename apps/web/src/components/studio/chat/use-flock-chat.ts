@@ -48,6 +48,12 @@ import {
   type HistoryStepDirection,
   type HistoryStepOutcome,
 } from "@/lib/history-step-report";
+import {
+  createEmptyDraftOutcome,
+  toCreateDraftToolOutput,
+  type CreateDraftOutcome,
+} from "@/lib/create-draft-report";
+import { getHasIngestedSourceInTurn } from "@/lib/ingested-source";
 import { getOrCreateSessionId } from "@/lib/session";
 import { requestUiSurfaceOpen } from "@/lib/ui-surfaces";
 import { getAppSettings } from "../demo/app-settings";
@@ -171,8 +177,14 @@ interface FlockChatController {
    * the Convex client, so it builds the drafts-machinery loop and hands it
    * to the controller's onData closure here. Takes the whole command — a
    * composed createDraft carries the plan its new drafts are built from.
+   *
+   * It RESOLVES WITH THE OUTCOME (never rejects) because that outcome is the
+   * only honest basis for createDraft's tool result — see
+   * lib/create-draft-report.ts.
    */
-  setCreateDrafts: (createDrafts: (command: CreateDraftCommand) => Promise<void>) => void;
+  setCreateDrafts: (
+    createDrafts: (command: CreateDraftCommand) => Promise<CreateDraftOutcome>,
+  ) => void;
 }
 
 interface SavedSectionsRuntime {
@@ -217,7 +229,8 @@ function createFlockChatController(): FlockChatController {
 
   // The createDraft command executor (injected by the hook — it owns the
   // Convex client). No-op until injected; the hook wires it on mount.
-  let createDrafts: (command: CreateDraftCommand) => Promise<void> = async () => {};
+  let createDrafts: (command: CreateDraftCommand) => Promise<CreateDraftOutcome> = async () =>
+    createEmptyDraftOutcome();
 
   /** Swap the chat's registry hold from the previous turn's doc to `documentId`. */
   const holdTurnDocument = (documentId: Id<"documents"> | null): void => {
@@ -312,9 +325,9 @@ function createFlockChatController(): FlockChatController {
       }
       appliedToolCallIds.add(toolCallId);
 
-      // undo / redo: perform the real history step and report what it did.
+      // undo / redo / createDraft: do the real work, then report what it did.
       if (isClientResultEditorTool) {
-        takeHistoryStep({ toolName, toolCallId, input });
+        runClientResultEditorTool({ toolName, toolCallId, input });
         return;
       }
 
@@ -498,20 +511,22 @@ function createFlockChatController(): FlockChatController {
   });
 
   /**
-   * Perform ONE history step for the agent (undo / redo) and report what it
-   * actually did back to the model.
+   * Run ONE client-result editor action and report what it actually did back
+   * to the model.
    *
-   * This is the whole point of undo/redo being client-result tools. The step
-   * runs against the same store the toolbar's own buttons use — the active
-   * store, or the turn document's retained instance after a mid-turn draft
-   * switch — and the store's outcome (including Convex's "nothing_to_undo")
-   * becomes the tool result. Nothing here reports a success it did not see.
+   * This is the whole point of `resultSource: "client"`. The work happens
+   * where it can be observed — a history step against the same store the
+   * toolbar's own buttons use, a draft creation against the drafts machinery
+   * — and the OUTCOME becomes the tool result. Nothing here reports a success
+   * it did not see.
    *
-   * A FAILED step is still a SUCCESSFUL tool call: "there was nothing left to
-   * undo" is terminal and legitimate, and routing it through the error channel
-   * would invite the model to retry past it. See lib/history-step-report.ts.
+   * A NEGATIVE OUTCOME IS STILL A SUCCESSFUL TOOL CALL: "there was nothing
+   * left to undo", "two sections are still sample copy". Both are terminal and
+   * legitimate, and routing them through the error channel would invite the
+   * model to retry past them — which for createDraft would create a SECOND
+   * draft. See lib/history-step-report.ts and lib/create-draft-report.ts.
    */
-  function takeHistoryStep({
+  function runClientResultEditorTool({
     toolName,
     toolCallId,
     input,
@@ -549,9 +564,35 @@ function createFlockChatController(): FlockChatController {
       });
       return;
     }
+    /*
+      createDraft: build the drafts, then say what landed — real names, and
+      per draft whether its copy came from the plan, from the draft the user
+      is looking at, or from the template's sample text.
+
+      DORMANT UNTIL THE SDK DECLARES IT. `createDraft` is still
+      `resultSource: "server"` in packages/email-sdk/src/actions/builtins.ts,
+      so today it never reaches `onToolCall` — the server answers with its
+      dispatch echo and the browser executes the command from the data part in
+      `onData` below, reporting nothing. Flipping that one declaration to
+      "client" is the whole remaining change: the server then writes no data
+      part, the call arrives here instead, and this branch is the only thing
+      that answers for it. Both routes never run at once, because the same
+      declaration decides which one the call takes.
+    */
+    if (dispatched.command.type === "createDraft") {
+      const command = dispatched.command;
+      void createDrafts(command).then((outcome) => {
+        void chat.addToolOutput({
+          tool: "createDraft",
+          toolCallId,
+          output: toCreateDraftToolOutput(outcome),
+        });
+      });
+      return;
+    }
     const direction = getHistoryStepDirection(dispatched.command.type);
     if (direction === null) {
-      return; // unreachable: only undo/redo are client-result editor actions
+      return; // unreachable: the registry declares no other client-result action
     }
 
     const store = getIsTurnDocumentActive()
@@ -877,19 +918,32 @@ export function useFlockChat(): FlockChat {
     controller.setCreateDrafts(async (command) => {
       const { canvasId, doc } = useEditorStore.getState();
       if (canvasId === null) {
-        return;
+        return {
+          ...createEmptyDraftOutcome(),
+          failureNotice: "The editor isn't connected to a canvas yet.",
+        };
       }
-      const { failureNotice } = await createAgentDrafts({
+      const outcome = await createAgentDrafts({
         convexClient,
         canvasId,
         sessionId: getOrCreateSessionId(),
         command,
         sourceDoc: doc,
+        /*
+          Read HERE, at composition time, not at send time: the ingestion tool
+          result and this createDraft call arrive in the same assistant
+          message, so the answer only becomes true partway through the turn.
+          It decides whether the source draft's copy may fill the plan's gaps
+          — see lib/ingested-source.ts for why the transcript is the only
+          place this fact exists.
+        */
+        hasIngestedSource: getHasIngestedSourceInTurn({ messages: controller.chat.messages }),
         authorId: controller.chat.id,
       });
-      if (failureNotice !== null) {
-        useEditorStore.getState().showNotice(failureNotice);
+      if (outcome.failureNotice !== null) {
+        useEditorStore.getState().showNotice(outcome.failureNotice);
       }
+      return outcome;
     });
   }, [controller, convexClient]);
 
