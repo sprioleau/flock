@@ -81,6 +81,72 @@ describe("scaffoldSectionInputSchema", () => {
     ).toBe(false);
   });
 
+  /*
+    The captured live failure (drafts menu -> "Add design variation", Labor Day
+    sale): the model sent the hero template two params it does not have,
+    `subheadline` (it meant `body`) and `brandName`. Before the fix the ONLY
+    issue Zod surfaced was the saved-section branch's regex complaint
+    ("templateId must match /^saved:.+$/"), which is not the problem and which
+    no model can self-correct from.
+  */
+  it("names the offending hero params — never the saved: regex — for the captured payload", () => {
+    const parsed = scaffoldSectionInputSchema.safeParse({
+      position: "bottom",
+      name: "scaffoldSection",
+      params: {
+        subheadline:
+          "Welcome to Flock. This is a real email, not a blank page — every block is yours to rewrite, restyle, or delete.",
+        brandName: "Flock",
+        ctaLabel: "Shop the Sale",
+        headline: "Labor Day Sale: 20% Off All Merch!",
+        ctaHref: "https://example.com/get-started",
+      },
+      templateId: "hero",
+    });
+    expect(parsed.success).toBe(false);
+    if (parsed.success) return;
+
+    const message = parsed.error.issues.map((issue) => issue.message).join(" ");
+    // The real problem, named.
+    expect(message).toContain("subheadline");
+    expect(message).toContain("brandName");
+    // The valid vocabulary, so the model can map subheadline -> body itself.
+    expect(message).toContain("headline");
+    expect(message).toContain("body");
+    expect(message).toContain("imageAlt");
+    expect(message).toContain("ctaLabel");
+    expect(message).toContain("ctaHref");
+    // The fallback branch's complaint must never be what the model is told.
+    expect(message).not.toContain("saved:");
+  });
+
+  it("names the valid template ids for an unknown templateId", () => {
+    const parsed = scaffoldSectionInputSchema.safeParse({
+      name: "scaffoldSection",
+      templateId: "promo-code",
+    });
+    expect(parsed.success).toBe(false);
+    if (parsed.success) return;
+    const message = parsed.error.issues.map((issue) => issue.message).join(" ");
+    expect(message).toContain('"promo-code"');
+    for (const templateId of SECTION_TEMPLATE_IDS) {
+      expect(message).toContain(templateId);
+    }
+  });
+
+  it("reports unknown fields nested inside a template's list params", () => {
+    const parsed = scaffoldSectionInputSchema.safeParse({
+      name: "scaffoldSection",
+      templateId: "stats",
+      params: { stats: [{ value: "20%", label: "Off", caption: "everything" }] },
+    });
+    expect(parsed.success).toBe(false);
+    if (parsed.success) return;
+    const message = parsed.error.issues.map((issue) => issue.message).join(" ");
+    expect(message).toContain("caption");
+    expect(message).not.toContain("saved:");
+  });
+
   it("accepts all four position shapes", () => {
     for (const position of [
       "top",
@@ -263,9 +329,9 @@ describe("scaffoldSection dispatch (registry end to end)", () => {
     expect(result.isOk).toBe(true);
     if (!result.isOk) return;
 
-    // The op-log entry records the RESOLVED plain operation, not the intent.
-    expect(result.logEntry.op.name).toBe("addSection");
-    expect(result.logEntry.batchId).toBe("batch_1");
+    // The dispatch result carries the RESOLVED plain operation, not the intent.
+    expect(result.op.name).toBe("addSection");
+    expect(result.context.batchId).toBe("batch_1");
     expect(checkDocumentIntegrity(result.doc).errors).toEqual([]);
     const root = result.doc.root!;
     expect(root.childrenIds).toHaveLength(4);

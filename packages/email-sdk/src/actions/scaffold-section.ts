@@ -72,8 +72,9 @@ export interface ScaffoldSectionInput {
   params?: Record<string, unknown>;
 }
 
-const scaffoldSectionBranches = SECTION_TEMPLATES.map((template) =>
-  z.strictObject({
+const scaffoldSectionBranchesByTemplate = SECTION_TEMPLATES.map((template) => ({
+  templateId: template.id,
+  branch: z.strictObject({
     name: z.literal("scaffoldSection").describe("Action discriminator."),
     templateId: z
       .literal(template.id)
@@ -85,6 +86,13 @@ const scaffoldSectionBranches = SECTION_TEMPLATES.map((template) =>
         `Content for the ${template.name} section. Every field has a sensible default — pass only what the user's request specifies, or omit entirely for placeholder content.`,
       ),
   }),
+}));
+
+const scaffoldSectionBranches = scaffoldSectionBranchesByTemplate.map((entry) => entry.branch);
+
+/* Branch lookup for the failure prose below: templateId → that branch alone. */
+const scaffoldSectionBranchesByTemplateId: ReadonlyMap<string, z.ZodType> = new Map(
+  scaffoldSectionBranchesByTemplate.map((entry) => [entry.templateId, entry.branch]),
 );
 
 /**
@@ -105,7 +113,19 @@ const savedSectionBranch = z.strictObject({
   name: z.literal("scaffoldSection").describe("Action discriminator."),
   templateId: z
     .string()
-    .regex(/^saved:.+$/)
+    /*
+      `abort: true` is load-bearing, not decoration. Zod's union reporter
+      (handleUnionResults) returns the issues of the single NON-aborted branch
+      verbatim when there is exactly one. A plain `.regex()` failure is
+      continuable, so for a CATALOG templateId this branch was the lone
+      non-aborted one and its "must match /^saved:.+$/" complaint was the only
+      thing the model and the user ever saw — while the real problem (bad
+      params on the catalog branch) was discarded. Aborting here hands the
+      report to the union's own `error` below, which knows which branch the
+      caller actually meant. The JSON Schema the model reads is unchanged:
+      `pattern` still ships.
+    */
+    .regex(/^saved:.+$/, { abort: true })
     .describe(
       'One of the user\'s own SAVED sections, exactly as listed in the document context (format "saved:<id>"). Inserts that saved section as-is.',
     ),
@@ -116,6 +136,159 @@ const savedSectionBranch = z.strictObject({
     .describe("Saved sections carry their own content — omit params entirely."),
 });
 
+// ---------------------------------------------------------------------------
+// Failure prose: report the branch the caller actually meant
+// ---------------------------------------------------------------------------
+
+/** Depth cap for the wrapper unwrap below — guards against a pathological chain. */
+const MAX_SCHEMA_UNWRAP_DEPTH = 8;
+
+/* Strip optional/default/nullable wrappers down to the node that has a shape. */
+function unwrapSchemaNode(schema: z.core.$ZodType): z.core.$ZodType {
+  let current: z.core.$ZodType = schema;
+  for (let depth = 0; depth < MAX_SCHEMA_UNWRAP_DEPTH; depth += 1) {
+    if (
+      current instanceof z.ZodOptional ||
+      current instanceof z.ZodDefault ||
+      current instanceof z.ZodNullable
+    ) {
+      current = current.unwrap();
+      continue;
+    }
+    return current;
+  }
+  return current;
+}
+
+/*
+  The schema node an issue path points at, or undefined when the path leaves
+  the shapes this walk understands (objects and arrays are all the section
+  params ever use).
+*/
+function resolveSchemaAtPath(
+  schema: z.core.$ZodType,
+  path: readonly PropertyKey[],
+): z.core.$ZodType | undefined {
+  let current: z.core.$ZodType = unwrapSchemaNode(schema);
+  for (const segment of path) {
+    if (current instanceof z.ZodArray && typeof segment === "number") {
+      current = unwrapSchemaNode(current.element);
+      continue;
+    }
+    if (current instanceof z.ZodObject && typeof segment === "string") {
+      const field: z.core.$ZodType | undefined = current.shape[segment];
+      if (field === undefined) {
+        return undefined;
+      }
+      current = unwrapSchemaNode(field);
+      continue;
+    }
+    return undefined;
+  }
+  return current;
+}
+
+/** The field names an object schema accepts, or undefined if it is not an object. */
+function listObjectFieldNames(schema: z.core.$ZodType | undefined): readonly string[] | undefined {
+  if (schema === undefined) {
+    return undefined;
+  }
+  const resolved = unwrapSchemaNode(schema);
+  return resolved instanceof z.ZodObject ? Object.keys(resolved.shape) : undefined;
+}
+
+function formatQuotedList(values: readonly string[]): string {
+  return values.map((value) => `"${value}"`).join(", ");
+}
+
+interface FormatSchemaIssuesInput {
+  /** The schema the issue paths are rooted at. */
+  rootSchema: z.core.$ZodType;
+  error: z.ZodError;
+  /** What to call the root in prose, for issues whose path is empty. */
+  rootLabel: string;
+}
+
+/*
+  One issue, as a sentence a model can act on. An unrecognized-key issue is
+  the whole reason this module formats issues at all: Zod's own message names
+  the keys it refused but NOT the vocabulary it would have accepted, which is
+  exactly the half a model needs to correct itself (the captured failure sent
+  `subheadline` where the field is called `body`). The valid names are read
+  off the schema at the issue's own path, so nested list items are covered
+  too, and nothing about any template is written down here.
+*/
+function formatSchemaIssue(
+  { rootSchema, rootLabel }: Omit<FormatSchemaIssuesInput, "error">,
+  issue: z.core.$ZodIssue,
+): string {
+  const dottedPath = issue.path.map(String).join(".");
+  const label = dottedPath.length > 0 ? dottedPath : rootLabel;
+  if (issue.code !== "unrecognized_keys") {
+    return `${label}: ${issue.message}.`;
+  }
+  const fieldNames = listObjectFieldNames(resolveSchemaAtPath(rootSchema, issue.path));
+  const validFields =
+    fieldNames === undefined ? "" : ` Valid fields here: ${fieldNames.join(", ")}.`;
+  return `${label} got unknown field(s) ${formatQuotedList(issue.keys)}.${validFields}`;
+}
+
+function formatSchemaIssues({ rootSchema, error, rootLabel }: FormatSchemaIssuesInput): string {
+  return error.issues
+    .map((issue) => formatSchemaIssue({ rootSchema, rootLabel }, issue))
+    .join(" ");
+}
+
+/** The templateId a raw input claims, or undefined when it did not send a usable one. */
+function readTemplateId(input: unknown): string | undefined {
+  if (typeof input !== "object" || input === null || Array.isArray(input)) {
+    return undefined;
+  }
+  const templateId = "templateId" in input ? input.templateId : undefined;
+  return typeof templateId === "string" ? templateId : undefined;
+}
+
+const SAVED_SECTION_ID_GUIDANCE =
+  'one of the user\'s own saved sections exactly as listed in the document context (format "saved:<id>")';
+
+/*
+  The union's failure prose, and the whole point of Finding 2: report the
+  branch the caller MEANT, never the fallback's regex complaint.
+
+  Zod cannot do this on its own. When both branches abort it emits a bare
+  `invalid_union` ("Invalid input") whose per-branch errors are nested two
+  arrays deep, and when exactly one branch is non-aborted it reports THAT
+  branch verbatim — which, before the `abort: true` above, meant a hero call
+  with two invented params was told "templateId must match /^saved:.+$/".
+  Here the templateId picks the branch first, then that branch alone is
+  re-parsed and its issues are what the model is told.
+*/
+function describeScaffoldSectionFailure(input: unknown): string {
+  const templateId = readTemplateId(input);
+  if (templateId === undefined) {
+    return `scaffoldSection needs a "templateId": either a catalog template id (${SECTION_TEMPLATE_IDS.join(", ")}) or ${SAVED_SECTION_ID_GUIDANCE}.`;
+  }
+
+  const branch = scaffoldSectionBranchesByTemplateId.get(templateId);
+  if (branch !== undefined) {
+    const parsed = branch.safeParse(input);
+    const detail = parsed.success
+      ? ""
+      : ` ${formatSchemaIssues({ rootSchema: branch, error: parsed.error, rootLabel: "the input" })}`;
+    return `scaffoldSection input for the "${templateId}" section template is invalid.${detail} Every param field is optional and has a sensible default — put the content you meant into one of the valid fields, drop the rest, and do not invent field names.`;
+  }
+
+  if (isSavedSectionTemplateId(templateId)) {
+    const parsed = savedSectionBranch.safeParse(input);
+    const detail = parsed.success
+      ? ""
+      : ` ${formatSchemaIssues({ rootSchema: savedSectionBranch, error: parsed.error, rootLabel: "the input" })}`;
+    return `scaffoldSection input for saved section "${templateId}" is invalid.${detail} Saved sections carry their own content — send only templateId and position.`;
+  }
+
+  return `No section template "${templateId}" exists in the catalog. Valid templateIds: ${SECTION_TEMPLATE_IDS.join(", ")}. You may also use ${SAVED_SECTION_ID_GUIDANCE}.`;
+}
+
 /**
  * Full input schema: a discriminated union on templateId (so each catalog
  * template's content params are typed and documented for the model), plus
@@ -125,16 +298,19 @@ const savedSectionBranch = z.strictObject({
  * resolver re-parses params.
  */
 export const scaffoldSectionInputSchema = z
-  .union([
-    z.discriminatedUnion(
-      "templateId",
-      scaffoldSectionBranches as [
-        (typeof scaffoldSectionBranches)[number],
-        ...(typeof scaffoldSectionBranches)[number][],
-      ],
-    ),
-    savedSectionBranch,
-  ])
+  .union(
+    [
+      z.discriminatedUnion(
+        "templateId",
+        scaffoldSectionBranches as [
+          (typeof scaffoldSectionBranches)[number],
+          ...(typeof scaffoldSectionBranches)[number][],
+        ],
+      ),
+      savedSectionBranch,
+    ],
+    { error: (issue) => describeScaffoldSectionFailure(issue.input) },
+  )
   .describe(
     "Adds one complete, professionally structured section in a single step: pick a templateId (a catalog template, or one of the user's saved sections when listed in the document context), give only the content the user specified, and say where it goes.",
   ) as unknown as z.ZodType<ScaffoldSectionInput>;
@@ -155,14 +331,6 @@ export interface ResolveScaffoldSectionOperationInput {
   /** Randomness source for the new blocks' ids — injectable for tests. */
   random?: RandomFn;
 }
-
-const formatZodIssues = (error: z.ZodError): string =>
-  error.issues
-    .map((issue) => {
-      const path = issue.path.map(String).join(".");
-      return path.length > 0 ? `${path}: ${issue.message}` : issue.message;
-    })
-    .join("; ");
 
 /** Rebuild attempts when generated ids collide with the document (vanishingly rare). */
 const MAX_BUILD_ATTEMPTS = 5;
@@ -277,7 +445,7 @@ export function resolveScaffoldSectionOperation({
       errors: [
         {
           code: "op_validation_failed",
-          message: `params for section template "${template.id}" failed validation: ${formatZodIssues(parsedParams.error)}. Every field is optional (sensible defaults) — pass only valid fields for this template.`,
+          message: `params for section template "${template.id}" failed validation. ${formatSchemaIssues({ rootSchema: template.paramsSchema, error: parsedParams.error, rootLabel: "params" })} Every field is optional (sensible defaults) — pass only valid fields for this template.`,
         },
       ],
     };

@@ -1,10 +1,12 @@
 import { InvalidToolInputError, NoSuchToolError } from "ai";
 import { serializeChatError } from "@/lib/chat-contract";
 import {
+  classifyModelError,
   extractValidationIssues,
   logFailure,
   summarizeError,
   toFailureSignature,
+  type ModelErrorCode,
 } from "@/lib/observability/log";
 import { TerminalChatError } from "./tools";
 
@@ -74,6 +76,43 @@ export function createChatErrorLogger({
   };
 }
 
+/*
+  Which classified error codes mean "the model's tool call did not fit the
+  tool's schema" — i.e. the failures that are retryable from the user's
+  perspective (rephrase and go again) once the repair round-trip is spent.
+*/
+const TOOL_CALL_VALIDATION_ERROR_CODES: ReadonlySet<ModelErrorCode> = new Set<ModelErrorCode>([
+  "invalid_tool_input",
+  "no_such_tool",
+]);
+
+/*
+  Whether a value handed to a stream funnel describes a tool-input validation
+  failure.
+
+  The marker check alone is NOT enough, and that is the bug this exists to
+  close. When a tool call fails its inputSchema and the repair round-trip does
+  not rescue it, the AI SDK's parseToolCall returns an `invalid: true`
+  tool-call part carrying the real InvalidToolInputError, and the stream then
+  ALSO emits a `tool-error` part whose `error` has been flattened with
+  getErrorMessage() — Error.prototype.toString(), a plain STRING. The chat UI
+  renders THAT part (ToolPartChip's "output-error" state), so the value this
+  funnel classifies for the chip is a string, and
+  `InvalidToolInputError.isInstance` is false for it by construction. Live,
+  that turned every rejected scaffoldSection into a terminal "stream_error".
+
+  classifyModelError already reads the name back off the stringified form
+  ("AI_InvalidToolInputError: …") — see toFailureSignature, which documents the
+  SDK's double report — so routing through it covers both shapes with no
+  second copy of the name vocabulary.
+*/
+function isToolCallValidationFailure(error: unknown): boolean {
+  if (InvalidToolInputError.isInstance(error) || NoSuchToolError.isInstance(error)) {
+    return true;
+  }
+  return TOOL_CALL_VALIDATION_ERROR_CODES.has(classifyModelError(error));
+}
+
 /**
  * Serialize a stream-level failure into the client's structured payload. The
  * raw error stays server-side; the client gets codes and human sentences only.
@@ -86,10 +125,7 @@ export function toChatErrorText(error: unknown): string {
       errors: error.errors.map(({ code, message }) => ({ code, message })),
     });
   }
-  // Tool-call validation failures that survived the one repair round-trip are
-  // retryable from the user's perspective (rephrase and go again).
-  const isToolCallValidationError =
-    InvalidToolInputError.isInstance(error) || NoSuchToolError.isInstance(error);
+  const isToolCallValidationError = isToolCallValidationFailure(error);
   return serializeChatError({
     kind: "flock-chat-error",
     failureKind: isToolCallValidationError ? "retryable" : "terminal",
