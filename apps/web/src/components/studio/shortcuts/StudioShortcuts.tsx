@@ -11,6 +11,7 @@ import { QuickAddLayer } from "./QuickAddLayer";
 import { QuickPromptOverlay } from "./QuickPromptOverlay";
 import { STUDIO_SHORTCUTS } from "./shortcut-keys";
 import { useHoldToQuickAdd } from "./use-hold-to-quick-add";
+import { useQuickPromptAnchor, type QuickPromptAnchor } from "./use-quick-prompt-anchor";
 
 /**
  * The studio's keyboard layer, mounted once by StudioShell (only when the
@@ -30,9 +31,18 @@ import { useHoldToQuickAdd } from "./use-hold-to-quick-add";
  *   contexts.
  */
 export function StudioShortcuts() {
-  const [isQuickPromptOpen, setIsQuickPromptOpen] = useState(false);
+  /*
+    Null is CLOSED; an object is one open session, holding the anchor resolved
+    at the moment "/" was pressed (null inside it = nothing was under the
+    cursor, so the card opens centered). Keeping the whole session in one
+    state value is what preserves the card's mount-fresh-per-open contract.
+  */
+  const [quickPromptSession, setQuickPromptSession] = useState<{
+    anchor: QuickPromptAnchor | null;
+  } | null>(null);
   const { theme, setTheme } = useTheme();
   const quickAdd = useHoldToQuickAdd();
+  const resolveQuickPromptAnchor = useQuickPromptAnchor();
 
   useHotkeys(
     STUDIO_SHORTCUTS.toggleChatPanel.combo,
@@ -93,12 +103,18 @@ export function StudioShortcuts() {
     [theme],
   );
 
+  /*
+    Resolving AT PRESS TIME is what binds the prompt to the block under the
+    cursor: the resolver selects it, and the chat transport already sends the
+    selection, so "make this bigger" arrives with a referent attached.
+  */
   useHotkeys(
     STUDIO_SHORTCUTS.quickPrompt.combo,
     () => {
-      setIsQuickPromptOpen(true);
+      setQuickPromptSession({ anchor: resolveQuickPromptAnchor() });
     },
     { preventDefault: true },
+    [resolveQuickPromptAnchor],
   );
 
   // Single-key "c" — like "/" above, the library's default guards keep it
@@ -116,8 +132,9 @@ export function StudioShortcuts() {
   return (
     <>
       <QuickPromptOverlay
-        isOpen={isQuickPromptOpen}
-        onClose={() => setIsQuickPromptOpen(false)}
+        isOpen={quickPromptSession !== null}
+        anchor={quickPromptSession?.anchor ?? null}
+        onClose={() => setQuickPromptSession(null)}
       />
       <QuickAddLayer quickAdd={quickAdd} />
     </>
