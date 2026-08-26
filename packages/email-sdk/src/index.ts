@@ -243,15 +243,9 @@ export type {
   OperationErrorCode,
 } from "./operations/apply";
 
-// --- Operation log (operations/log) ---------------------------------------------------------
-export {
-  OPERATION_AUTHORS,
-  operationAuthorSchema,
-  operationLogEntrySchema,
-  generateLogEntryId,
-  createLogEntry,
-} from "./operations/log";
-export type { OperationAuthor, OperationLogEntry, CreateLogEntryInput } from "./operations/log";
+// --- Operation authorship (operations/log) ----------------------------------------------------
+export { OPERATION_AUTHORS, operationAuthorSchema } from "./operations/log";
+export type { OperationAuthor } from "./operations/log";
 
 // --- Actions: caller provenance (actions/context) ---------------------------------------------
 export { ACTION_CALLERS, actionCallerSchema } from "./actions/context";

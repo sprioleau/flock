@@ -151,7 +151,7 @@ describe("emailActionRegistry", () => {
     expect(result.isOk).toBe(true);
     if (!result.isOk) return;
     expect((result.doc.txt_e5f6!.properties as { paddingTop?: number }).paddingTop).toBe(32);
-    expect(result.logEntry.batchId).toBe("batch_1");
+    expect(result.context.batchId).toBe("batch_1");
     // Undo via the generated inverse round-trips exactly.
     const undone = applyOperation(result.doc, result.inverse);
     expect(undone.isOk).toBe(true);
@@ -159,7 +159,7 @@ describe("emailActionRegistry", () => {
     expect(undone.doc).toEqual(doc);
   });
 
-  it("dispatching removeBlock defaults the empty-container cascade and logs the explicit flag", () => {
+  it("dispatching removeBlock defaults the empty-container cascade and returns the explicit flag", () => {
     const doc = createSampleDocument();
     const result = dispatchContentAction({
       registry: emailActionRegistry,
@@ -179,7 +179,7 @@ describe("emailActionRegistry", () => {
       (result.doc.col_p5q6!.properties as { widthPercent?: number }).widthPercent,
     ).toBeUndefined();
     // The RESOLVED op (explicit flag) is what reaches the replayable log.
-    expect(result.logEntry.op).toEqual({
+    expect(result.op).toEqual({
       name: "removeBlock",
       blockId: "txt_r7s8",
       shouldRemoveEmptyAncestors: true,

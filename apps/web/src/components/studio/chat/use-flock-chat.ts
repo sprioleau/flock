@@ -303,7 +303,7 @@ function createFlockChatController(): FlockChatController {
       // contract), reveal each section as it lands so the user watches the
       // email assemble. The APPLIED op is read from the dispatch result —
       // scaffoldSection resolves to an addSection op inside dispatch.
-      const appliedOp = result.logEntry.op;
+      const appliedOp = result.op;
       if (appliedOp.name === "addSection") {
         scrollBlockIntoView(appliedOp.section.id);
       }

@@ -453,7 +453,7 @@ describe("styleTextSpanAction through dispatchContentAction", () => {
     expect(emailActionRegistry.actionsByName.get("styleTextSpan")).toBe(styleTextSpanAction);
   });
 
-  it("dispatches: log entry records the RESOLVED updateText op; inverse restores the doc", () => {
+  it("dispatches: the result carries the RESOLVED updateText op; inverse restores the doc", () => {
     const result = dispatchContentAction({
       registry: emailActionRegistry,
       doc,
@@ -468,9 +468,9 @@ describe("styleTextSpanAction through dispatchContentAction", () => {
     });
     expect(result.isOk).toBe(true);
     if (!result.isOk) return;
-    expect(result.logEntry.op.name).toBe("updateText");
-    expect(result.logEntry.batchId).toBe("batch_1");
-    expect(result.logEntry.author).toBe("agent");
+    expect(result.op.name).toBe("updateText");
+    expect(result.context.batchId).toBe("batch_1");
+    expect(result.context.author).toBe("agent");
     const block = result.doc.txt_e5f6!;
     if (block.type !== "text") throw new Error("fixture");
     expect(textNodesOf(block.properties.text, 1)).toContainEqual({

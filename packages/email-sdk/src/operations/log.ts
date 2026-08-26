@@ -1,17 +1,19 @@
 import { z } from "zod";
-import { actionCallerSchema, type ActionCaller } from "../actions/context";
-import type { RandomFn } from "../schema/ids";
-import { operationSchema } from "./ops";
 
 /**
- * Operation log — the append-only history of applied operations.
+ * Who authored an operation.
  *
- * Each entry pairs an operation with its generated inverse plus provenance
- * (who applied it, and which batch it belonged to). Phase 4 persists this log
- * in Convex and builds the SDK-owned undo/redo stack on it (Phase 4.3:
- * `undo`/`redo`/`advanceTo`/`rollbackTo`); one-click revert of an AI batch is
- * `rollbackTo` scoped to a batchId. This module ships only the types and a
- * tiny factory — no persistence.
+ * All that survives of what was once a client-side "operation log entry"
+ * type. THE operation log is the `operations` table in convex/schema.ts, and
+ * the only thing that writes a row into it is `commitVersions`
+ * (convex/model/emailDocuments.ts), which authors every field itself: the
+ * version, the inverse (recomputed against the authoritative pre-op document
+ * and re-anchored for updateText), the history `kind`, and the provenance —
+ * including `undoOwnerId`, which this package's discarded entry shape could
+ * not even express. A second, client-authored representation of that row was
+ * a shape nothing ever persisted, so it is gone; `dispatchContentAction`
+ * returns the canonical operation plus the provenance it ran under, and the
+ * write path is unambiguously the row's author.
  */
 
 /** Who authored an operation: a human user or an AI agent. */
@@ -22,114 +24,3 @@ export const operationAuthorSchema = z
   .describe('Who authored the operation: "user" (a human edit) or "agent" (an AI edit).');
 
 export type OperationAuthor = z.infer<typeof operationAuthorSchema>;
-
-/** One append-only operation log entry. */
-export const operationLogEntrySchema = z
-  .strictObject({
-    id: z
-      .string()
-      .min(1)
-      .describe('Unique id of this log entry, e.g. "ople_a1b2c3d4".'),
-    op: operationSchema.describe("The operation that was applied."),
-    inverse: operationSchema.describe(
-      "The inverse operation generated when `op` was applied; applying it undoes `op` exactly.",
-    ),
-    authorId: z
-      .string()
-      .min(1)
-      .describe("Stable identifier of the author: a user id, or an agent/thread id for AI edits."),
-    author: operationAuthorSchema,
-    batchId: z
-      .string()
-      .min(1)
-      .optional()
-      .describe(
-        "Groups entries applied atomically as one batch (e.g. all operations from one AI turn). Batch revert rolls back every entry sharing this id. Omit for standalone operations.",
-      ),
-    caller: actionCallerSchema
-      .optional()
-      .describe(
-        "Which surface the operation arrived through (Phase 1.5 action-dispatch provenance). Omitted when the operation was applied outside the action layer.",
-      ),
-    threadId: z
-      .string()
-      .min(1)
-      .optional()
-      .describe(
-        "Chat/agent thread the operation belongs to, for precise attribution of AI edits. Omitted for non-threaded callers.",
-      ),
-    timestamp: z
-      .number()
-      .int()
-      .nonnegative()
-      .describe("Creation time in epoch milliseconds."),
-  })
-  .describe(
-    "One entry in the append-only operation log: an applied operation, its exact inverse, and authorship provenance.",
-  );
-
-export type OperationLogEntry = z.infer<typeof operationLogEntrySchema>;
-
-const LOG_ENTRY_ID_PREFIX = "ople";
-const LOG_ENTRY_ID_SUFFIX_LENGTH = 8;
-const LOG_ENTRY_ID_ALPHABET = "abcdefghijklmnopqrstuvwxyz0123456789";
-
-/**
- * Generate a log entry id: `ople_<8 lowercase alphanumeric>`. Uniqueness is
- * probabilistic (36^8 ≈ 2.8 trillion); persistence (Phase 4) may substitute
- * its own ids via `createLogEntry`'s `id` override.
- */
-export function generateLogEntryId(random: RandomFn = Math.random): string {
-  let suffix = "";
-  for (let i = 0; i < LOG_ENTRY_ID_SUFFIX_LENGTH; i += 1) {
-    const index =
-      Math.floor(random() * LOG_ENTRY_ID_ALPHABET.length) % LOG_ENTRY_ID_ALPHABET.length;
-    suffix += LOG_ENTRY_ID_ALPHABET[index];
-  }
-  return `${LOG_ENTRY_ID_PREFIX}_${suffix}`;
-}
-
-export interface CreateLogEntryInput {
-  /** The operation that was applied. */
-  op: OperationLogEntry["op"];
-  /** The inverse returned by applyOperation when `op` was applied. */
-  inverse: OperationLogEntry["inverse"];
-  /** Stable identifier of the author (user id or agent/thread id). */
-  authorId: string;
-  /** Whether a human or an AI agent authored the operation. */
-  author: OperationAuthor;
-  /** Optional batch grouping id — same value for every op in one atomic batch. */
-  batchId?: string;
-  /** Optional caller provenance: which surface the operation arrived through. */
-  caller?: ActionCaller;
-  /** Optional chat/agent thread id for attribution of AI edits. */
-  threadId?: string;
-  /** Override the generated entry id (e.g. persistence-layer ids, tests). */
-  id?: string;
-  /** Override the timestamp (epoch ms). Defaults to Date.now(). */
-  timestamp?: number;
-  /** Injectable randomness for deterministic id generation in tests. */
-  random?: RandomFn;
-}
-
-/** Build one operation log entry, generating id and timestamp when omitted. */
-export function createLogEntry(input: CreateLogEntryInput): OperationLogEntry {
-  const entry: OperationLogEntry = {
-    id: input.id ?? generateLogEntryId(input.random),
-    op: input.op,
-    inverse: input.inverse,
-    authorId: input.authorId,
-    author: input.author,
-    timestamp: input.timestamp ?? Date.now(),
-  };
-  if (input.batchId !== undefined) {
-    entry.batchId = input.batchId;
-  }
-  if (input.caller !== undefined) {
-    entry.caller = input.caller;
-  }
-  if (input.threadId !== undefined) {
-    entry.threadId = input.threadId;
-  }
-  return entry;
-}

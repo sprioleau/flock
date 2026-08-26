@@ -29,8 +29,11 @@ import { fetchAuthMutation, fetchAuthQuery } from "@/lib/auth/auth-server";
  * provenance, the recorded inverse really inverts). `name` is a parameter
  * rather than a constant because that is the shape the dispatcher already
  * has — not a claim that every other content action is verified through this
- * path. Two things a generalisation would have to settle first are called out
- * where they bite, below: the discarded `logEntry`, and the sync-doc policy.
+ * path. The sync-doc policy, called out where it bites below, is the
+ * remaining thing a generalisation has to settle; the other one — the
+ * dispatcher's discarded "ready-to-persist" log entry — is settled: it no
+ * longer exists, and the seven lines that persist here are the whole
+ * contract a second headless surface has to copy.
  *
  * NOT AN ENDPOINT, and that is a security property rather than an omission.
  * Documents are capability-scoped — convex/documents.ts: "the document id is
@@ -257,23 +260,26 @@ export async function runStoredContentAction({
   }
 
   /*
-    Only `logEntry.op` survives this line, and the discard is worth naming.
-    `dispatchContentAction` returns a whole ready-to-persist OperationLogEntry
-    — inverse, provenance, batch id — but applyOperations cannot accept one:
-    it takes ops plus a context and builds its own row, recomputing the
-    inverse against the authoritative document and re-anchoring updateText
-    inverses to the op log (withOpLogTextInverses). That recomputation is
-    CORRECT and must stay: the document we dispatched against is a read, not a
-    transaction, so its inverse can be stale. But it means the SDK's log entry
-    and the server's operation row are two representations of the same event
-    with no shared type, and anything wider than this slice has to reconcile
-    them. Forwarding `context` is what keeps the provenance identical across
-    the two.
+    Persisting is now a single forward of the dispatch result: its canonical
+    `op`, under the `context` it echoes back. Nothing about the row is
+    authored here.
+
+    This used to be the place where a "ready-to-persist" OperationLogEntry got
+    thrown away — the dispatcher built one, applyOperations could not accept
+    one, and only `.op` survived. The entry is gone rather than accommodated,
+    because the write path recomputing the inverse is CORRECT and must stay:
+    the document we dispatched against is a read, not a transaction, so an
+    inverse computed from it can be stale, and updateText inverses additionally
+    need re-anchoring to the op log (withOpLogTextInverses). An entry carrying
+    an inverse the server must ignore is a shape that lies. Taking `context`
+    off the result rather than off this function's own parameter is what makes
+    the provenance the server records and the provenance the authorization
+    gate saw the same value by construction, not by the caller's care.
   */
   const persisted = await backend.applyOperations({
     documentId,
-    ops: [dispatched.logEntry.op],
-    context,
+    ops: [dispatched.op],
+    context: dispatched.context,
   });
   if (!persisted.isOk) {
     const errors = persisted.errors.map((error) => ({
@@ -288,5 +294,5 @@ export async function runStoredContentAction({
       errors,
     };
   }
-  return { isOk: true, headVersion: persisted.headVersion, op: dispatched.logEntry.op };
+  return { isOk: true, headVersion: persisted.headVersion, op: dispatched.op };
 }

@@ -610,10 +610,13 @@ export function createEditorStore(): EditorStoreApi {
       // discrete edit with its own provenance.
       const now = Date.now();
       const coalesceKey = context.author === "agent" ? null : getCoalesceKey(op);
-      // logEntry.op is always a plain Operation: for styleTextSpan the SDK's
-      // resolveOperation hook already translated the intent into an updateText
-      // op against the current doc — that's what the local overlay replays.
-      const appliedOp = result.logEntry.op;
+      /*
+        result.op is always a plain, canonical Operation: for styleTextSpan the
+        SDK's resolveOperation hook already translated the intent into an
+        updateText op against the current doc — that's what the local overlay
+        replays, and it is exactly what submitOperationToConvex sends.
+      */
+      const appliedOp = result.op;
       const styleTextSpanIntent = op.name === "styleTextSpan" ? op : null;
       const heldOp = getHeldOp();
       const isSameGesture =

@@ -1,7 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
 import { applyOperation, type OperationErrorCode } from "../operations/apply";
-import { operationLogEntrySchema } from "../operations/log";
 import { removeBlockOperationSchema, updateBlockPropertiesOperationSchema } from "../operations/ops";
 import { createSampleDocument } from "../store/document";
 import type { ActionContext } from "./context";
@@ -150,7 +149,7 @@ describe("toAISDKToolDefinitions", () => {
 });
 
 describe("dispatchContentAction", () => {
-  it("applies the op and returns doc + inverse + a provenance-stamped log entry", () => {
+  it("applies the op and returns doc + canonical op + inverse", () => {
     const doc = createSampleDocument();
     const input = {
       name: "updateBlockProperties",
@@ -169,19 +168,36 @@ describe("dispatchContentAction", () => {
     expect((result.doc.txt_e5f6!.properties as { paddingTop?: number }).paddingTop).toBe(32);
     // The input document is untouched.
     expect((doc.txt_e5f6!.properties as { paddingTop?: number }).paddingTop).toBe(24);
+    expect(result.op).toEqual(input);
     expect(result.inverse.name).toBe("replaceBlockProperties");
-    // Log entry: op, inverse, and the full caller provenance.
-    expect(operationLogEntrySchema.safeParse(result.logEntry).success).toBe(true);
-    expect(result.logEntry.op).toEqual(input);
-    expect(result.logEntry.inverse).toEqual(result.inverse);
-    expect(result.logEntry.authorId).toBe("agent_thread_42");
-    expect(result.logEntry.author).toBe("agent");
-    expect(result.logEntry.batchId).toBe("batch_7");
-    expect(result.logEntry.caller).toBe("tool");
-    expect(result.logEntry.threadId).toBe("thread_42");
   });
 
-  it("omits batchId/threadId from the log entry when the context has none", () => {
+  /*
+    The dispatcher used to hand back a "ready-to-persist" op-log entry: a
+    second representation of the row that only the write path ever authors.
+    Nothing persisted it, and it could not even carry `undoOwnerId`, so a
+    caller reading provenance off it read a strictly lossy copy of the context
+    it had itself just passed in. These two tests pin the replacement: the
+    provenance comes back BY IDENTITY, whole, so persisting is a forward of
+    one value rather than a re-assembly from two.
+  */
+  it("echoes the dispatch context back by identity, undoOwnerId included", () => {
+    const doc = createSampleDocument();
+    const contextWithUndoOwner: ActionContext = { ...agentContext, undoOwnerId: "user_123" };
+    const result = dispatchContentAction({
+      registry,
+      doc,
+      name: "updateBlockProperties",
+      input: { name: "updateBlockProperties", blockId: "txt_e5f6", properties: { paddingTop: 32 } },
+      context: contextWithUndoOwner,
+    });
+    expect(result.isOk).toBe(true);
+    if (!result.isOk) return;
+    expect(result.context).toBe(contextWithUndoOwner);
+    expect(result.context.undoOwnerId).toBe("user_123");
+  });
+
+  it("returns nothing shaped like a persistable row", () => {
     const doc = createSampleDocument();
     const result = dispatchContentAction({
       registry,
@@ -192,9 +208,9 @@ describe("dispatchContentAction", () => {
     });
     expect(result.isOk).toBe(true);
     if (!result.isOk) return;
-    expect(result.logEntry.caller).toBe("frontend");
-    expect(result.logEntry).not.toHaveProperty("batchId");
-    expect(result.logEntry).not.toHaveProperty("threadId");
+    expect(result).not.toHaveProperty("logEntry");
+    // No entry id, no timestamp, no version — the write path owns all three.
+    expect(Object.keys(result).sort()).toEqual(["context", "doc", "inverse", "isOk", "op"]);
   });
 
   it("fails retryable with unknown_action for an unregistered name", () => {

@@ -192,7 +192,7 @@ export function CanvasDndContext({ children }: CanvasDndContextProps) {
     // scaffoldSection resolves to an addSection op inside dispatch — the new
     // section's id is only known from the applied op in the result (the same
     // contract as the click path in use-click-to-add).
-    const appliedOp = result.logEntry.op;
+    const appliedOp = result.op;
     const newBlockId =
       insertion.newBlockId ??
       (appliedOp.name === "addSection" ? (appliedOp.section.id as BlockId) : null);

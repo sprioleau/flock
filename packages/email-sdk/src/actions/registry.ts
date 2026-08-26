@@ -1,6 +1,5 @@
 import type { z } from "zod";
 import type { ApplyOperationResult, OperationError } from "../operations/apply";
-import { createLogEntry, type OperationLogEntry } from "../operations/log";
 import type { Operation } from "../operations/ops";
 import type { BlockId } from "../schema/ids";
 import type { EmailDocument } from "../store/document";
@@ -136,10 +135,34 @@ export type DispatchContentActionResult =
       isOk: true;
       /** The new document. The input document is never mutated. */
       doc: EmailDocument;
-      /** The operation that exactly undoes this one. */
+      /**
+       * The CANONICAL operation that was applied — for an intent-shaped action
+       * (styleTextSpan, scaffoldSection) the RESOLVED operation, never the
+       * intent. This is the value a persistence caller sends onward.
+       */
+      op: Operation;
+      /**
+       * The operation that exactly undoes `op` ON THE DOCUMENT PASSED IN.
+       *
+       * Useful to a pure in-memory caller, and to nobody else: a caller that
+       * persists must NOT forward this. The document a caller dispatches
+       * against is a read, so an inverse computed from it can already be
+       * stale; the write path recomputes the inverse against the
+       * authoritative pre-op document inside its own transaction
+       * (convex/model/emailDocuments.ts, commitVersions) and re-anchors
+       * updateText inverses to the op log. A client-supplied inverse would be
+       * both a correctness and a trust hazard, so no write path accepts one.
+       */
       inverse: Operation;
-      /** Ready-to-persist op-log entry carrying the caller's provenance. */
-      logEntry: OperationLogEntry;
+      /**
+       * The provenance this dispatch ran under, echoed back unchanged.
+       *
+       * Returned so that persisting is a single forward of ONE result value
+       * (`op` + `context`) rather than a pairing of the dispatch output with a
+       * context the caller has to keep hold of separately. Two places to pass
+       * provenance is two places for it to disagree.
+       */
+      context: ActionContext;
     }
   | {
       isOk: false;
@@ -165,18 +188,22 @@ export interface DispatchContentActionInput {
   name: string;
   /** Raw, unvalidated input — re-validated here against the action's FULL schema. */
   input: unknown;
-  /** Caller provenance stamped onto the op-log entry. */
+  /** Caller provenance: read by the authorization gate, echoed back on the result. */
   context: ActionContext;
 }
 
 /**
  * Dispatch one content action: validate the raw input against the action's
  * FULL schema (the model only saw the compact one), run the pure apply, and on
- * success return the new document, the inverse, and a ready-to-persist op-log
- * entry stamped with the caller's provenance.
+ * success return the new document, the canonical operation, its in-memory
+ * inverse, and the provenance the dispatch ran under.
  *
- * Pure — persistence (Convex mutation, Phase 4) and approval gating (the agent
- * loop halts BEFORE dispatch when `needsApproval` resolves true) live outside.
+ * Pure — persistence and approval gating (the agent loop halts BEFORE dispatch
+ * when `needsApproval` resolves true) live outside. This function does NOT
+ * author an op-log row and deliberately no longer returns anything shaped like
+ * one: the persisted row is authored end to end by the write path, which is
+ * the only place that sees the authoritative pre-op document. Callers persist
+ * by forwarding `op` and `context` to that write path.
  */
 export function dispatchContentAction({
   registry,
@@ -262,16 +289,7 @@ export function dispatchContentAction({
       errors: result.errors.map((error: OperationError): ActionDispatchError => ({ ...error })),
     };
   }
-  const logEntry = createLogEntry({
-    op: operation,
-    inverse: result.inverse,
-    authorId: context.authorId,
-    author: context.author,
-    batchId: context.batchId,
-    caller: context.caller,
-    threadId: context.threadId,
-  });
-  return { isOk: true, doc: result.doc, inverse: result.inverse, logEntry };
+  return { isOk: true, doc: result.doc, op: operation, inverse: result.inverse, context };
 }
 
 // ---------------------------------------------------------------------------

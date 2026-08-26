@@ -2,6 +2,8 @@
 import { register as registerProsemirrorSync } from "@convex-dev/prosemirror-sync/test";
 import {
   createTextDoc,
+  dispatchContentAction,
+  emailActionRegistry,
   emailDocumentSchema,
   type ActionContext,
   type TextDoc,
@@ -348,5 +350,106 @@ describe("runStoredContentAction — failures are structured, never thrown", () 
     expect(result.stage).toBe("persist");
     expect(result.failureKind).toBe("retryable");
     expect(result.errors.map((error) => error.code)).toEqual(["target_not_found"]);
+  });
+});
+
+describe("a SECOND headless caller needs no knowledge runStoredContentAction has", () => {
+  /*
+    Task #8's actual deliverable, exercised rather than asserted in prose.
+
+    `dispatchContentAction` used to return an `OperationLogEntry` described as
+    "ready to persist" that no write path could accept: applyOperations takes
+    ops plus a context and authors the row itself, so only `.op` survived and
+    the provenance had to be re-sent from a value the caller was holding
+    separately. Every new surface therefore had to learn that the entry was
+    decorative and that the real contract was `ops[] + context` — the exact
+    tax that blocked generalising this path past one action.
+
+    The entry is gone. What a second surface has to know is now visible in
+    full below: dispatch, forward `result.op` under `result.context`. There is
+    no third fact, and nothing to keep in step by hand — the provenance the
+    server records is the same object the authorization gate read, because it
+    came back on the result.
+
+    The provenance chosen here is the one the old entry could not express at
+    all: an AGENT-authored edit whose undo belongs to a HUMAN. `undoOwnerId`
+    exists on ActionContext and on the operations row and was never on the log
+    entry, which is the sharpest available proof that the entry was a lossy
+    copy of the row rather than a second source of it. So this test ends by
+    undoing as the owner, not the author.
+  */
+  const AGENT_CONTEXT: ActionContext = {
+    caller: "mcp",
+    author: "agent",
+    authorId: "agent_thread_headless",
+    undoOwnerId: BROWSER_SESSION_ID,
+    batchId: "batch_headless_1",
+    threadId: "thread_headless",
+  };
+
+  it("forwards op + context from one dispatch result, and the row carries all of it", async () => {
+    const t = createBackend();
+    const { documentId, blockId, originalText } = await seedDocumentWithTextBlock(t);
+    const payload = await t.query(api.documents.getDocument, { documentId });
+    const beforeVersion = payload!.headVersion;
+
+    /* --- the whole of what a second headless surface writes --- */
+    const dispatched = dispatchContentAction({
+      registry: emailActionRegistry,
+      doc: emailDocumentSchema.parse(payload!.doc),
+      name: "updateText",
+      input: buildUpdateTextInput(blockId, HEADLESS_TEXT),
+      context: AGENT_CONTEXT,
+    });
+    expect(dispatched.isOk).toBe(true);
+    if (!dispatched.isOk) {
+      throw new Error("Unreachable: the assertion above already failed.");
+    }
+    const persisted = await t.mutation(api.documents.applyOperations, {
+      documentId,
+      ops: [dispatched.op],
+      context: dispatched.context,
+    });
+    /* --- end --- */
+
+    expect(persisted.isOk).toBe(true);
+    /*
+      Read the PERSISTED ROW, not the `getOperations` projection: that query
+      does not select `undoOwnerId` (a gap left by the undo fix — the op-log
+      read surface cannot report undo ownership), and this test is about what
+      the write path recorded, which is a stricter thing to assert anyway.
+    */
+    const rows = await t.run(async (ctx) =>
+      ctx.db
+        .query("operations")
+        .withIndex("by_documentId_and_version", (q) =>
+          q.eq("documentId", documentId).gt("version", beforeVersion),
+        )
+        .collect(),
+    );
+    expect(rows).toHaveLength(1);
+    const row = rows[0]!;
+    expect(row.caller).toBe("mcp");
+    expect(row.author).toBe("agent");
+    expect(row.authorId).toBe(AGENT_CONTEXT.authorId);
+    expect(row.batchId).toBe(AGENT_CONTEXT.batchId);
+    expect(row.threadId).toBe(AGENT_CONTEXT.threadId);
+    /*
+      The field the discarded entry had no slot for. Attribution says the
+      agent wrote it; undo ownership says the person who asked may take it
+      back.
+    */
+    expect(row.undoOwnerId).toBe(BROWSER_SESSION_ID);
+
+    /*
+      And it is not merely stored: the owner — who is NOT the author — can
+      actually step it back, which is what undo ownership is for.
+    */
+    const undone = await t.mutation(api.history.undo, {
+      documentId,
+      authorId: BROWSER_SESSION_ID,
+    });
+    expect(undone.isOk).toBe(true);
+    expect((await readStoredText({ t, documentId, blockId })).text).toEqual(originalText);
   });
 });

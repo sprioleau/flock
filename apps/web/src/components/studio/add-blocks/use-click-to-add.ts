@@ -35,7 +35,7 @@ export function useClickToAdd(): (item: PaletteItem) => void {
     }
     // scaffoldSection resolves to an addSection op inside dispatch — the new
     // section's id is only known from the applied op in the result.
-    const appliedOp = result.logEntry.op;
+    const appliedOp = result.op;
     const newBlockId =
       plan.newBlockId ?? (appliedOp.name === "addSection" ? (appliedOp.section.id as BlockId) : null);
     if (newBlockId !== null) {
