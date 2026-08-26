@@ -58,6 +58,19 @@ describe("SYSTEM_STATIC (layer a — cacheable)", () => {
     );
   });
 
+  it("teaches selection-scoped edits and reserves globals for explicitly document-wide requests", () => {
+    expect(SYSTEM_STATIC).toContain("## How far a request reaches");
+    /*
+      Both halves of the owner's rule, in the layer that is cached rather than
+      resent: the ambiguous case scopes down, and only the user's own widening
+      words unlock updateDocumentSettings.
+    */
+    expect(SYSTEM_STATIC).toContain('"make the text green"');
+    expect(SYSTEM_STATIC).toContain("change ONLY that block");
+    expect(SYSTEM_STATIC).toContain('"make ALL the text green"');
+    expect(SYSTEM_STATIC).toContain("THEN use globals (updateDocumentSettings)");
+  });
+
   it("teaches that editing operations reach only the draft on the canvas", () => {
     expect(SYSTEM_STATIC).toContain("## The draft you are editing is not the only draft");
     // The rule that prevents the reported failure: a request for a NEW draft
@@ -200,6 +213,32 @@ describe("buildDocumentContext (layer c — per-request)", () => {
       options: { selectedBlockId: "btn_t9u0" },
     });
     expect(context).toContain("selected: btn_t9u0 (button)");
+  });
+
+  /*
+    The owner's second report: with a text block selected, "make the text
+    green" turned EVERY paragraph green because the agent reached for the
+    document-wide globals tool. Prompt steering is probabilistic and no test
+    can make a model obey — what these two pin is that the instruction the
+    model needs is actually in the bytes it receives, in the section it reads
+    last, naming the block it must scope to. Deleting the steering silently is
+    the regression this catches.
+  */
+  it("tells the model an unqualified request means the selected block, not globals", () => {
+    const context = buildDocumentContext({
+      doc: sampleDoc,
+      options: { selectedBlockId: "btn_t9u0" },
+    });
+    expect(context).toContain("btn_t9u0 and nothing else");
+    expect(context).toContain("not globals");
+    expect(context).toContain('Widen to the whole document only when the user\'s words widen it');
+  });
+
+  it("tells the model an unqualified request has no implied target when nothing is selected", () => {
+    const context = buildDocumentContext({ doc: sampleDoc });
+    expect(context).toContain("Nothing is selected");
+    expect(context).toContain("ask which block they mean");
+    expect(context).not.toContain("and nothing else");
   });
 
   it("falls back to none for a selection id not in the document", () => {
