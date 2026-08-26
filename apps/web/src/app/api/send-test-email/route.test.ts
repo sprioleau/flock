@@ -16,6 +16,13 @@ const fetchAuthQueryMock = vi.hoisted(() =>
 );
 vi.mock("@/lib/auth/auth-server", () => ({ fetchAuthQuery: fetchAuthQueryMock }));
 
+type Reservation = { isAllowed: boolean; message: string; retryAtMs: number | null };
+
+const reserveTestSendMock = vi.hoisted(() =>
+  vi.fn<(...args: never[]) => Promise<Reservation>>(),
+);
+vi.mock("@/lib/auth/send-meter", () => ({ reserveTestSend: reserveTestSendMock }));
+
 import { POST } from "./route";
 
 /**
@@ -49,6 +56,11 @@ describe("POST /api/send-test-email", () => {
     vi.stubEnv("NEXT_PUBLIC_FLOCK_AUTH_ENABLED", "true");
     fetchAuthQueryMock.mockReset();
     fetchAuthQueryMock.mockResolvedValue(ANONYMOUS_VISITOR);
+    // The meter allows by default so the cases below test what they name; the
+    // metered cases set their own refusal. Its own arithmetic is tested against
+    // a real backend in lib/auth/test-send-limits.test.ts.
+    reserveTestSendMock.mockReset();
+    reserveTestSendMock.mockResolvedValue({ isAllowed: true, message: "", retryAtMs: null });
   });
 
   afterEach(() => {
@@ -230,5 +242,85 @@ describe("POST /api/send-test-email", () => {
       error: "send_failed",
       message: "The test email wasn't sent: the email service returned an unexpected error.",
     });
+  });
+
+  /*
+    THE SEND METER, at the route's own altitude. Its bucket arithmetic is proven
+    against a real Convex backend in lib/auth/test-send-limits.test.ts; what
+    these four pin is the part only this file can see — that the meter is wired
+    into the path at all, in the right place, and that a refusal stops the send.
+  */
+
+  it("refuses a capped caller with a 429, and never reaches the send module", async () => {
+    // The security property is the same one the identity gate's test carries:
+    // not the status code, but that no mail was handed to the provider.
+    reserveTestSendMock.mockResolvedValue({
+      isAllowed: false,
+      message: "You've used today's test sends — the allowance refills in about 3 hours.",
+      retryAtMs: Date.now() + 3 * 60 * 60 * 1000,
+    });
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+    const response = await POST(
+      makeRequest({ document: createEmptyDocument(), to: "delivered@resend.dev" }),
+    );
+    expect(response.status).toBe(429);
+    expect(await response.json()).toEqual({
+      error: "send_limit_reached",
+      message: "You've used today's test sends — the allowance refills in about 3 hours.",
+    });
+    expect(sendTestEmailWithResendMock).not.toHaveBeenCalled();
+    logSpy.mockRestore();
+  });
+
+  it("meters the address the mail would actually go to", async () => {
+    // The recipient bucket is only worth having if it is keyed to the inbox
+    // that would receive the mail — the trimmed one the send module is given,
+    // not the raw string the caller typed.
+    sendTestEmailWithResendMock.mockResolvedValue({
+      isSent: true,
+      messageId: "em_metered",
+      idempotencyKey: "test-send/metered",
+    });
+    await POST(makeRequest({ document: createEmptyDocument(), to: "  delivered@resend.dev  " }));
+
+    expect(reserveTestSendMock).toHaveBeenCalledTimes(1);
+    expect(reserveTestSendMock.mock.calls[0]?.[0]).toMatchObject({ to: "delivered@resend.dev" });
+  });
+
+  it("does not spend an allowance on a request it was going to reject anyway", async () => {
+    // A broken draft never reaches an inbox, so charging for it would let a
+    // malformed-body loop burn a real user's day out from under them.
+    const doc = createEmptyDocument();
+    const response = await POST(
+      makeRequest({
+        document: { ...doc, [ROOT_BLOCK_ID]: { ...doc[ROOT_BLOCK_ID]!, childrenIds: ["sec_gone" as BlockId] } },
+        to: "delivered@resend.dev",
+      }),
+    );
+    expect(response.status).toBe(400);
+    expect(reserveTestSendMock).not.toHaveBeenCalled();
+  });
+
+  it("still meters when auth is switched off, where the identity gate does not apply", async () => {
+    // The gate short-circuits on that deployment because no identity exists to
+    // check. The METER must not: there is still an origin and still a
+    // recipient, and leaving the one posture with no gate also unmetered would
+    // be the most exposed configuration of the two.
+    vi.stubEnv("NEXT_PUBLIC_FLOCK_AUTH_ENABLED", "false");
+    reserveTestSendMock.mockResolvedValue({
+      isAllowed: false,
+      message: "That address has had a lot of test emails today.",
+      retryAtMs: null,
+    });
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+    const response = await POST(
+      makeRequest({ document: createEmptyDocument(), to: "delivered@resend.dev" }),
+    );
+
+    expect(fetchAuthQueryMock).not.toHaveBeenCalled();
+    expect(reserveTestSendMock).toHaveBeenCalledTimes(1);
+    expect(response.status).toBe(429);
+    expect(sendTestEmailWithResendMock).not.toHaveBeenCalled();
+    logSpy.mockRestore();
   });
 });

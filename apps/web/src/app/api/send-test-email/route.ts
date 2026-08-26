@@ -2,6 +2,7 @@ import { checkDocumentIntegrity } from "@flock/email-sdk";
 import { api } from "@convex/_generated/api";
 import { fetchAuthQuery } from "@/lib/auth/auth-server";
 import { isAuthEnabled } from "@/lib/auth/config";
+import { reserveTestSend } from "@/lib/auth/send-meter";
 import { sendTestEmailWithResend } from "../chat/send-test-email";
 import {
   sendTestEmailRequestBodySchema,
@@ -50,11 +51,28 @@ import {
  * this server minted, which is what a rate limit or a per-identity send meter
  * would later have to hang off.
  *
- * Identity is only who, not how much: this route deliberately does NOT charge
- * an AI credit. `chargeCreditForRequest` meters the daily MODEL allowance, and
- * a test send calls no model — spending someone's AI budget to mail themselves
- * a draft would make the number mean two different things. Metering sends is
- * separate work with its own counter.
+ * HOW MANY — the other half, and the reason the gate above was not enough.
+ *
+ * Identity is only WHO. The gate makes every send attributable; it caps
+ * nothing, and the sessions it accepts are FREE TO MINT — a browser is signed
+ * in anonymously the moment it lands on /studio, /demo, or a share link. So a
+ * script could still mint a session, send, discard it and repeat, forever,
+ * which puts the domain's reputation back exactly where the gate found it. The
+ * send meter (convex/authTestSends.ts, called through lib/auth/send-meter.ts)
+ * closes that: an identity bucket, an ORIGIN bucket a fresh identity does not
+ * reset, and a RECIPIENT bucket no proxy pool can rotate past.
+ *
+ * It is deliberately NOT an AI credit. `chargeCreditForRequest` meters the
+ * daily MODEL allowance, and a test send calls no model — spending someone's
+ * AI budget to mail themselves a draft would make that number mean two
+ * different things, and would let a person who tested three drafts discover
+ * they can no longer talk to the agent. Separate counter, separate table.
+ *
+ * WHERE IT SITS in the sequence below is deliberate. It runs AFTER the free
+ * refusals (identity, malformed body, failed integrity), so nothing a caller
+ * gets rejected for costs them an allowance; and BEFORE the Resend call, so a
+ * send in flight is already counted and two tabs racing the last unit cannot
+ * both win it. There is no refund on failure — see `reserveTestSend`.
  */
 
 function errorResponse(status: number, body: SendTestEmailErrorResponseBody): Response {
@@ -171,6 +189,31 @@ export async function POST(request: Request): Promise<Response> {
     return errorResponse(400, {
       error: "invalid_document",
       message: "This draft couldn't be sent because its document failed an integrity check.",
+    });
+  }
+
+  /*
+    The meter. Every refusal above this line is free, because none of them could
+    have reached an inbox; from here on a send is being ATTEMPTED, so it counts.
+  */
+  const reservation = await reserveTestSend({ request, to });
+  if (!reservation.isAllowed) {
+    /*
+      Logged so an operator can see the meter biting — a cap that refuses
+      silently is indistinguishable from a broken button in a support thread.
+      The recipient is already logged for successful sends by the send module,
+      so nothing new about the user is recorded here.
+    */
+    console.log(
+      JSON.stringify({
+        tag: "flock.sendTestEmail.limitReached",
+        ownerId: caller.ownerId,
+        retryAtMs: reservation.retryAtMs,
+      }),
+    );
+    return errorResponse(429, {
+      error: "send_limit_reached",
+      message: reservation.message,
     });
   }
 

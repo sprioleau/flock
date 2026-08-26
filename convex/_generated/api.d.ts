@@ -16,6 +16,7 @@ import type * as authEmail from "../authEmail.js";
 import type * as authIdentity from "../authIdentity.js";
 import type * as authMagicLink from "../authMagicLink.js";
 import type * as authMigration from "../authMigration.js";
+import type * as authTestSends from "../authTestSends.js";
 import type * as brandKits from "../brandKits.js";
 import type * as canvases from "../canvases.js";
 import type * as cleanup from "../cleanup.js";
@@ -54,6 +55,7 @@ declare const fullApi: ApiFromModules<{
   authIdentity: typeof authIdentity;
   authMagicLink: typeof authMagicLink;
   authMigration: typeof authMigration;
+  authTestSends: typeof authTestSends;
   brandKits: typeof brandKits;
   canvases: typeof canvases;
   cleanup: typeof cleanup;

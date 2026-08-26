@@ -880,4 +880,53 @@ export default defineSchema({
     /** When the last link went out — the cooldown clock for address buckets. */
     lastSentAtMs: v.number(),
   }).index("by_bucketKey", ["bucketKey"]),
+
+  /*
+    Test-send buckets (convex/authTestSends.ts). The other half of the identity
+    gate on POST /api/send-test-email: that gate made every send attributable to
+    a session this server minted, and these rows are what makes sends COUNTABLE.
+    Without them an anonymous session — free to mint, one per page load — can be
+    discarded and re-minted in a loop, mailing arbitrary content to arbitrary
+    addresses from our verified domain.
+
+    Same rolling-window-not-a-ledger shape as `authCredits` above, and the same
+    lazy expiry: an elapsed window restarts on the next send, so there is no
+    cron and an idle bucket costs nothing. A DIFFERENT counter from `authCredits`
+    on purpose — credits meter the daily MODEL allowance and a send calls no
+    model, so sharing the number would make it mean two things at once.
+
+    THREE KINDS OF BUCKET share the table, distinguished by the `bucketKey`
+    prefix:
+
+      "owner:<id>"      one identity, at the claimed or anonymous tier. The
+                        headline cap, and on its own worth nothing — a fresh
+                        anonymous identity is one click away with a fresh
+                        empty allowance.
+      "origin:<h>"      one coarsened client address, charged to anonymous
+                        callers only. THIS is what a new identity does not
+                        reset, so it is what makes the owner bucket mean
+                        something. Claimed accounts are exempt: they are the
+                        escape hatch for a throttled office network, and
+                        minting one already costs a metered magic link.
+      "recipient:<h>"   one destination inbox, charged to everyone. The only
+                        bucket a proxy pool cannot rotate past, because burying
+                        an inbox requires sending to that inbox. Sized above
+                        every identity tier so it never stops an author mailing
+                        drafts to their own address.
+
+    `<h>` is a salted digest in both hashed cases — never the client address and
+    never the recipient's email — so this table cannot be read back as a list of
+    who Flock has mailed or from where. Owner ids are stored legibly, matching
+    `authCredits`: an opaque internal id is not personal data, it is already in
+    the send logs, and it is what lets an operator explain a block.
+  */
+  authTestSends: defineTable({
+    /** "owner:<user id>", "origin:<salted hash>" or "recipient:<salted hash>". */
+    bucketKey: v.string(),
+    /** Start of the current allowance window. */
+    periodStartMs: v.number(),
+    /** Test sends reserved from this bucket inside the current window. */
+    sentCount: v.number(),
+    updatedAtMs: v.number(),
+  }).index("by_bucketKey", ["bucketKey"]),
 });

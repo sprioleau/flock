@@ -36,6 +36,14 @@ export interface SendTestEmailErrorResponseBody {
    * doesn't know who is asking, and reloading the page fixes it (a visitor is
    * signed in anonymously on arrival). Rendering it as "try again" would send
    * the user hunting for a problem in copy that has none.
+   *
+   * `send_limit_reached` (429) is the send meter (convex/authTestSends.ts) —
+   * the other half of that gate, since identity says who and never how many.
+   * Distinct for the same reason again: the draft is fine, the address is fine,
+   * the session is fine, and the only thing that changes the answer is time.
+   * The `message` carries WHEN, computed from the window that actually blocked,
+   * so it is the field to render — an "out of sends" of our own invention would
+   * drop the one useful fact in it.
    */
   error:
     | "invalid_request"
@@ -43,6 +51,7 @@ export interface SendTestEmailErrorResponseBody {
     | "invalid_recipient"
     | "not_configured"
     | "not_signed_in"
+    | "send_limit_reached"
     | "send_failed";
   /** User-facing copy — raw provider errors never reach this field. */
   message: string;
