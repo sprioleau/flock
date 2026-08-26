@@ -2,6 +2,23 @@
 @import "tw-animate-css";
 @import "shadcn/tailwind.css";
 
+/*
+  Keep build output out of the class scan. The Playwright suite builds into
+  apps/web/.next-e2e (NEXT_DIST_DIR, so it does not fight a running `next
+  dev` over .next), which puts a few hundred MB of minified chunks INSIDE
+  Tailwind's automatic source-detection root.
+
+  Those chunks contain byte sequences that parse as arbitrary-value
+  utilities, so Tailwind emits rules built from them and the CSS then fails
+  to parse -- ".gap-\[-R\1 Q\(var\(\4 \1 <invalid utf8>\)\)\]" and friends,
+  which takes the whole dev server down with "Parsing CSS source code
+  failed". Both directories are gitignored, which is normally enough, but a
+  dev server already running when the e2e build appears has no reason to
+  re-read .gitignore -- so state it here, where it cannot be raced.
+*/
+@source not "../../.next";
+@source not "../../.next-e2e";
+
 @custom-variant dark (&:is(.dark *));
 
 @theme inline {
