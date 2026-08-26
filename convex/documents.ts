@@ -666,6 +666,14 @@ const operationEntryValidator = v.object({
   op: v.any(),
   inverse: v.any(),
   authorId: v.string(),
+  /*
+    Whose undo stack owns the row, when that is not `authorId` -- present on
+    agent edits, absent on ordinary human ones. Projected because a reader
+    that shows attribution ("Agent") cannot otherwise explain why the row is
+    undoable by the person sitting there; the write and query paths carried
+    it from the start and only this read path was missing it.
+  */
+  undoOwnerId: v.optional(v.string()),
   author: operationAuthorValidator,
   caller: actionCallerValidator,
   batchId: v.optional(v.string()),
@@ -714,6 +722,7 @@ export const getOperations = query({
         op: row.op,
         inverse: row.inverse,
         authorId: row.authorId,
+        ...(row.undoOwnerId !== undefined ? { undoOwnerId: row.undoOwnerId } : {}),
         author: row.author,
         caller: row.caller,
         ...(row.batchId !== undefined ? { batchId: row.batchId } : {}),
