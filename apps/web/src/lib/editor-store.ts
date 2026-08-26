@@ -50,7 +50,8 @@ import type { Id } from "@convex/_generated/dataModel";
  *   revert) is submitted, so the server log matches the local apply order.
  *
  * History — one spine, on the server: undo/redo call `history.undo`/`redo`
- * (per-author; authorId = the anonymous session id), and AI-batch revert
+ * (per-session; the anonymous session id, which owns every op this browser
+ * dispatches — including the agent's, see buildDispatchContext), and AI-batch revert
  * calls `history.revertBatch`. The old local undo/redo stacks are gone;
  * button enablement comes from the reactive `history.canUndoRedo` query.
  *
@@ -74,11 +75,43 @@ const LOCAL_ACTION_CONTEXT: Omit<ActionContext, "authorId"> = {
   author: "user",
 };
 
+/** Fallback session id before {@link EditorState.connectDocument} has run. */
+const UNCONNECTED_AUTHOR_ID = "local";
+
+/**
+ * The provenance one dispatch commits under.
+ *
+ * `authorId` is the DISPLAY author and callers override it freely — the chat
+ * panel stamps the chat id, the suggestion and persona surfaces stamp their
+ * own labels. `undoOwnerId` is a separate question: whose undo stack the op
+ * belongs to. Every op dispatched from this browser was asked for by the
+ * person sitting in front of it, so the connected session always owns it,
+ * and no provenance override can take it off their stack.
+ */
+export function buildDispatchContext({
+  sessionAuthorId,
+  provenance,
+}: {
+  sessionAuthorId: string | null;
+  provenance?: DispatchProvenance;
+}): ActionContext {
+  const ownerId = sessionAuthorId ?? UNCONNECTED_AUTHOR_ID;
+  return {
+    ...LOCAL_ACTION_CONTEXT,
+    authorId: ownerId,
+    ...provenance,
+    undoOwnerId: ownerId,
+  };
+}
+
 /**
  * Per-dispatch provenance overrides. The chat panel passes `{ caller: "tool",
  * author: "agent", authorId: <chat id>, batchId: <turn batch id>, threadId }`
  * so agent-applied ops land in Convex with agent authorship and one shared
  * batchId per assistant turn (the AI-batch revert affordance hangs off it).
+ *
+ * An `authorId` override changes ATTRIBUTION only. Undo ownership is stamped
+ * by {@link buildDispatchContext} and always belongs to the connected session.
  */
 export type DispatchProvenance = Partial<ActionContext>;
 
@@ -544,11 +577,10 @@ export function createEditorStore(): EditorStoreApi {
     setHistoryAvailability: ({ canUndo, canRedo }) => set({ canUndo, canRedo }),
 
     dispatch: (op, provenance) => {
-      const context: ActionContext = {
-        ...LOCAL_ACTION_CONTEXT,
-        authorId: get().authorId ?? "local",
-        ...provenance,
-      };
+      const context = buildDispatchContext({
+        sessionAuthorId: get().authorId,
+        ...(provenance === undefined ? {} : { provenance }),
+      });
       const result = dispatchContentAction({
         registry: emailActionRegistry,
         doc: get().doc,

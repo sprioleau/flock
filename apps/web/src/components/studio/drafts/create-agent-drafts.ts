@@ -99,6 +99,12 @@ export async function createAgentDrafts({
           ops: composed.ops,
           context: {
             authorId,
+            /*
+              The agent authored the composition, but the person who asked for
+              the draft owns undoing it — same rule the editor store applies to
+              every agent op it dispatches (buildDispatchContext).
+            */
+            undoOwnerId: sessionId,
             author: "agent",
             caller: "tool",
             batchId: crypto.randomUUID(),

@@ -258,6 +258,16 @@ export default defineSchema({
     inverse: v.any(),
     /** Stable author identifier: anonymous session id, or agent/thread id for AI edits. */
     authorId: v.string(),
+    /**
+     * The session whose undo stack owns this row, when that is not `authorId`.
+     *
+     * An AI edit is attributed to the agent (`authorId` = the chat id) but was
+     * asked for by a person, and that person is the one entitled to undo it.
+     * Set only when the two differ; absent on ordinary human edits and on
+     * server-side writes with no browser session behind them (the demo ghost),
+     * which stay off every human's undo stack.
+     */
+    undoOwnerId: v.optional(v.string()),
     author: operationAuthorValidator,
     caller: actionCallerValidator,
     /** Groups ops applied atomically as one batch (e.g. one AI turn). */
@@ -279,7 +289,8 @@ export default defineSchema({
   })
     .index("by_documentId_and_version", ["documentId", "version"])
     .index("by_documentId_and_batchId", ["documentId", "batchId"])
-    .index("by_documentId_and_authorId", ["documentId", "authorId"]),
+    .index("by_documentId_and_authorId", ["documentId", "authorId"])
+    .index("by_documentId_and_undoOwnerId", ["documentId", "undoOwnerId"]),
 
   /**
    * Demo-mode ghost collaborator (convex/ghost.ts): at most one row per

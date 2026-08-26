@@ -45,6 +45,8 @@ export const operationErrorValidator = v.object({
 
 export const applyContextValidator = v.object({
   authorId: v.string(),
+  /** Whose undo stack the op belongs to when that is not `authorId` — see ActionContext. */
+  undoOwnerId: v.optional(v.string()),
   author: v.union(v.literal("user"), v.literal("agent")),
   caller: v.union(
     v.literal("tool"),
@@ -59,6 +61,7 @@ export const applyContextValidator = v.object({
 
 export interface ApplyContext {
   authorId: string;
+  undoOwnerId?: string;
   author: OperationAuthor;
   caller: ActionCaller;
   batchId?: string;
@@ -232,6 +235,14 @@ export async function commitVersions({
       op: entry.op,
       inverse: entry.inverse,
       authorId: context.authorId,
+      /*
+        Written only when it differs from the author, so the column stays
+        empty for ordinary human edits (whose author already owns them) and
+        for server-side callers with no browser session behind them.
+      */
+      ...(context.undoOwnerId !== undefined && context.undoOwnerId !== context.authorId
+        ? { undoOwnerId: context.undoOwnerId }
+        : {}),
       author: context.author,
       caller: context.caller,
       ...(entry.batchId !== undefined || context.batchId !== undefined

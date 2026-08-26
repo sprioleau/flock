@@ -63,7 +63,39 @@ const historyFailureValidator = v.object({
   errors: v.optional(v.array(operationErrorValidator)),
 });
 
-/** Author's latest operation row matching `kind` that is not itself undone. */
+/** Newest not-yet-undone row of `kind` in one index scan, or null. */
+async function findLatestEligibleInScan({
+  rowsNewestFirst,
+  kind,
+}: {
+  rowsNewestFirst: AsyncIterable<Doc<"operations">>;
+  kind: "edit" | "undo";
+}): Promise<Doc<"operations"> | null> {
+  /*
+    Lazy async iteration: rows are read newest-first and we stop at the first
+    eligible one, so the scan is bounded by how many of the author's recent
+    ops are undo/redo bookkeeping.
+  */
+  for await (const row of rowsNewestFirst) {
+    if (row.kind === kind && row.isUndone !== true) {
+      return row;
+    }
+  }
+  return null;
+}
+
+/**
+ * The requester's latest operation row matching `kind` that is not itself
+ * undone.
+ *
+ * "Theirs" is two things, not one: rows they AUTHORED, and rows authored on
+ * their behalf — an agent turn they prompted, a suggestion they applied —
+ * which carry their session in `undoOwnerId` while `authorId` names the agent
+ * for attribution. Both are indexed, so this is two bounded newest-first
+ * scans and the newer eligible row wins. Undoing only the first would leave
+ * the user's own older edit reachable while the agent's newer one sat there
+ * unreachable, which is exactly the "undo did nothing" the fix is for.
+ */
 async function findLatestEligible({
   ctx,
   documentId,
@@ -75,21 +107,33 @@ async function findLatestEligible({
   authorId: string;
   kind: "edit" | "undo";
 }): Promise<Doc<"operations"> | null> {
-  // Lazy async iteration: rows are read newest-first and we stop at the first
-  // eligible one, so the scan is bounded by how many of the author's recent
-  // ops are undo/redo bookkeeping.
-  const authorOpsNewestFirst = ctx.db
-    .query("operations")
-    .withIndex("by_documentId_and_authorId", (q) =>
-      q.eq("documentId", documentId).eq("authorId", authorId),
-    )
-    .order("desc");
-  for await (const row of authorOpsNewestFirst) {
-    if (row.kind === kind && row.isUndone !== true) {
-      return row;
-    }
+  const [authored, ownedOnTheirBehalf] = await Promise.all([
+    findLatestEligibleInScan({
+      rowsNewestFirst: ctx.db
+        .query("operations")
+        .withIndex("by_documentId_and_authorId", (q) =>
+          q.eq("documentId", documentId).eq("authorId", authorId),
+        )
+        .order("desc"),
+      kind,
+    }),
+    findLatestEligibleInScan({
+      rowsNewestFirst: ctx.db
+        .query("operations")
+        .withIndex("by_documentId_and_undoOwnerId", (q) =>
+          q.eq("documentId", documentId).eq("undoOwnerId", authorId),
+        )
+        .order("desc"),
+      kind,
+    }),
+  ]);
+  if (authored === null) {
+    return ownedOnTheirBehalf;
   }
-  return null;
+  if (ownedOnTheirBehalf === null) {
+    return authored;
+  }
+  return ownedOnTheirBehalf.version > authored.version ? ownedOnTheirBehalf : authored;
 }
 
 // ---------------------------------------------------------------------------

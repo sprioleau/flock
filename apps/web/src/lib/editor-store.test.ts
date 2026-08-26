@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import type { Id } from "@convex/_generated/dataModel";
 import {
   acquireEditorStore,
+  buildDispatchContext,
   createEditorStore,
   getActiveEditorStore,
   peekEditorStore,
@@ -122,5 +123,44 @@ describe("active-instance delegation (the compat surface)", () => {
     unsubscribe();
     storeB.setState({ notice: "after unsubscribe" });
     expect(seenNotices).toEqual(["from A", "from B"]);
+  });
+});
+
+describe("dispatch provenance — who owns the undo", () => {
+  /*
+    The owner-reported bug in its smallest form. The chat panel overrides
+    `authorId` with the chat id so the History panel can say "Agent"; before
+    the fix that override also decided whose undo stack the op landed on, so
+    the agent's edit landed on NOBODY's and "undo" did nothing. Attribution and
+    ownership are now answered separately, and this pins that they stay
+    separate — every op this browser dispatches is undoable by the session
+    sitting in front of it, whatever name the op wears.
+  */
+  it("keeps an agent-attributed op on the connected session's undo stack", () => {
+    const context = buildDispatchContext({
+      sessionAuthorId: "session-a1b2",
+      provenance: {
+        caller: "tool",
+        author: "agent",
+        authorId: "chat_7c1d",
+        batchId: "batch_9f2a",
+        threadId: "chat_7c1d",
+      },
+    });
+
+    expect(context.authorId).toBe("chat_7c1d");
+    expect(context.author).toBe("agent");
+    expect(context.undoOwnerId).toBe("session-a1b2");
+  });
+
+  it("defaults an ordinary UI edit to the session as both author and owner", () => {
+    const context = buildDispatchContext({ sessionAuthorId: "session-a1b2" });
+
+    expect(context).toEqual({
+      caller: "frontend",
+      author: "user",
+      authorId: "session-a1b2",
+      undoOwnerId: "session-a1b2",
+    });
   });
 });
