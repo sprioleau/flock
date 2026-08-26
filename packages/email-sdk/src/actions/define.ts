@@ -3,7 +3,7 @@ import type { ApplyOperationResult } from "../operations/apply";
 import type { Operation } from "../operations/ops";
 import type { BlockId } from "../schema/ids";
 import type { EmailDocument } from "../store/document";
-import type { ActionContext } from "./context";
+import type { ActionContext, VerifiedCaller } from "./context";
 import type { EditorCommand } from "./editor-commands";
 import type { ActionDispatchErrorCode } from "./taxonomy";
 
@@ -63,6 +63,44 @@ export type AuthorizeOption<TInput> =
   | boolean
   | ((input: TInput, context: ActionContext) => boolean);
 
+/**
+ * What an action that requires a verified caller does on a deployment that has
+ * NO identity system at all (Flock's auth flag off: nobody is signed in
+ * anywhere, so no caller can ever be verified).
+ *
+ * There is no safe default here, which is why there is no default. "allow"
+ * silently makes the requirement a no-op on such a deployment; "refuse" makes
+ * the action permanently uncallable there. Both are defensible and they are
+ * opposites, so the action states which one it means, in its definition, where
+ * a reader and a reviewer can see it.
+ */
+export const NO_IDENTITY_SYSTEM_POLICIES = ["allow", "refuse"] as const;
+
+export type NoIdentitySystemPolicy = (typeof NO_IDENTITY_SYSTEM_POLICIES)[number];
+
+/**
+ * An action's DECLARED requirement for a verified caller.
+ *
+ * Declarative on purpose, and modelled on `resultSource`: an implicit property
+ * of an action written by hand into each author's `authorize` closure becomes
+ * one explicit, compile-time-checked field that both ends read. The hand-written
+ * alternative — every author spelling out
+ * `context.verifiedCaller?.isVerified === true` — gets the common case subtly
+ * wrong in a way nothing catches: it silently answers "no identity system on
+ * this deployment" with a refusal (or, if written the other way, with a pass),
+ * and which of those was intended is invisible at the call site. Requiring
+ * `whenNoIdentitySystem` makes that answer impossible to leave unstated.
+ *
+ * It composes WITH `authorize` rather than replacing it: this asks whether the
+ * caller is who they say they are, `authorize` asks whether that caller may do
+ * this thing. The requirement is checked first — there is no point judging an
+ * identity nobody established.
+ */
+export interface VerifiedCallerRequirement {
+  /** See {@link NoIdentitySystemPolicy}. Required: the action must answer it. */
+  whenNoIdentitySystem: NoIdentitySystemPolicy;
+}
+
 interface EmailActionConfigBase<TSchema extends z.ZodType> {
   /** Unique action name; also the tool name advertised to the model. */
   name: string;
@@ -92,6 +130,16 @@ interface EmailActionConfigBase<TSchema extends z.ZodType> {
    * the raw intent — the same contract `run` already documents.
    */
   authorize?: AuthorizeOption<z.output<TSchema>>;
+  /**
+   * Optional declared requirement that the caller's identity be VERIFIED —
+   * established by a surface from something the caller cannot write, not
+   * self-asserted on `authorId`.
+   *
+   * Enforced in the same composed `run` as `authorize`, and checked BEFORE it,
+   * so it holds on every dispatch path. Omitted means the action does not care,
+   * which is every built-in but one.
+   */
+  requiresVerifiedCaller?: VerifiedCallerRequirement;
 }
 
 /** One structured intent-resolution failure — a repair hint for the model. */
@@ -335,26 +383,118 @@ export interface ResolveAuthorizeInput {
 }
 
 /**
- * Resolve an action's `authorize` gate for one invocation. An action with no
- * gate is allowed, which is what keeps the option additive.
+ * Resolve an action's authorization for one invocation — BOTH gates, the
+ * declared verified-caller requirement and the author's `authorize` hook. An
+ * action with neither is allowed, which is what keeps both options additive.
  *
  * This is the READ-ONLY view of the gate, for surfaces that want to explain a
  * refusal before attempting one (e.g. greying out a control). It is NOT how
  * the gate is enforced — enforcement is inside `run` and cannot be skipped by
- * forgetting to call this.
+ * forgetting to call this. The two share {@link findAuthorizationRefusal}, so
+ * a surface's preview of the answer and the answer itself cannot drift apart.
  */
 export function resolveAuthorize({ action, input, context }: ResolveAuthorizeInput): boolean {
-  if (action.authorize === undefined) {
-    return true;
+  return findAuthorizationRefusal({ gate: action, input, context }) === null;
+}
+
+/**
+ * Everything the gate reads off an action. Written structurally so the SAME
+ * decision runs against a not-yet-frozen config (inside the factory) and
+ * against a frozen action (the read-only `resolveAuthorize` view).
+ */
+type AuthorizationGate = AnyEmailAction | AnyEmailActionConfig;
+
+interface FindVerifiedCallerRefusalInput {
+  /** The action name, for the refusal sentence. */
+  name: string;
+  /** The action's declared requirement. */
+  requirement: VerifiedCallerRequirement;
+  /** What the surface established, if it established anything. */
+  verifiedCaller: VerifiedCaller | undefined;
+}
+
+/**
+ * Judge one invocation against a declared verified-caller requirement.
+ * Returns the reason it is refused, or null when it may proceed.
+ *
+ * Every branch is a state some real surface produces, and the four are kept
+ * apart on purpose — "nobody established anything" and "this deployment has
+ * no identities to establish" are different facts and deserve different
+ * sentences, because the fix for each is different.
+ */
+function findVerifiedCallerRefusal({
+  name,
+  requirement,
+  verifiedCaller,
+}: FindVerifiedCallerRefusalInput): string | null {
+  if (verifiedCaller === undefined) {
+    return `Action "${name}" requires a VERIFIED caller and this invocation carries none. All it carries is self-asserted provenance (\`authorId\`), which any surface writes for itself and nothing checks. The calling surface must establish who is asking — from a signed session token, not from anything the caller supplied — and put the answer on the ActionContext before dispatch.`;
   }
-  if (typeof action.authorize === "function") {
-    return action.authorize(input, context);
+  if (verifiedCaller.isVerified) {
+    if (verifiedCaller.ownerId.trim().length === 0) {
+      /*
+        A surface reporting a verified caller it cannot name has a bug, and
+        the one thing that must not happen is that bug reading as a pass.
+      */
+      return `Action "${name}" was invoked with a verified caller that names nobody (empty ownerId). A verification that cannot say who was verified is not a verification.`;
+    }
+    return null;
   }
-  return action.authorize;
+  if (verifiedCaller.reason === "no_identity_system") {
+    if (requirement.whenNoIdentitySystem === "allow") {
+      return null;
+    }
+    return `Action "${name}" requires a verified caller and declares whenNoIdentitySystem: "refuse", but this deployment has no identity system at all — nobody signs in here, so NO caller can ever satisfy it. This is a deployment configuration state, not something about this call: enabling identity on this deployment is the only thing that changes the answer.`;
+  }
+  return `Action "${name}" requires a verified caller. This deployment has an identity system and this caller has no verified session with it, so the server cannot say who is asking.`;
+}
+
+interface FindAuthorizationRefusalInput {
+  /** The action or config carrying the gates and the name to refuse under. */
+  gate: AuthorizationGate;
+  /** What `run` is about to be given (already schema-validated). */
+  input: unknown;
+  /** The caller provenance both gates judge. */
+  context: ActionContext;
+}
+
+/**
+ * THE authorization decision, in one place: the declared verified-caller
+ * requirement first, then the author's `authorize` hook. Returns the reason
+ * for refusal, or null when the call may proceed.
+ *
+ * Order matters and is not arbitrary. `authorize` predicates read the context
+ * to decide what a caller may do; running one over an identity nobody
+ * established asks a question with no subject.
+ */
+function findAuthorizationRefusal({
+  gate,
+  input,
+  context,
+}: FindAuthorizationRefusalInput): string | null {
+  const { name, authorize, requiresVerifiedCaller } = gate;
+  if (requiresVerifiedCaller !== undefined) {
+    const verifiedCallerRefusal = findVerifiedCallerRefusal({
+      name,
+      requirement: requiresVerifiedCaller,
+      verifiedCaller: context.verifiedCaller,
+    });
+    if (verifiedCallerRefusal !== null) {
+      return verifiedCallerRefusal;
+    }
+  }
+  if (authorize === undefined) {
+    return null;
+  }
+  const isAuthorized = typeof authorize === "function" ? authorize(input, context) : authorize;
+  if (isAuthorized) {
+    return null;
+  }
+  return `Action "${name}" is not authorized for this caller.`;
 }
 
 interface AssertAuthorizedInput {
-  /** The config carrying the gate and the name to refuse under. */
+  /** The config carrying the gates and the name to refuse under. */
   config: AnyEmailActionConfig;
   /** What `run` is about to be given. */
   input: unknown;
@@ -373,8 +513,8 @@ interface AssertAuthorizedInput {
  * it may not. Ungated actions return immediately and pay nothing.
  */
 function assertAuthorized({ config, input, context }: AssertAuthorizedInput): void {
-  const { authorize, name } = config;
-  if (authorize === undefined) {
+  const { authorize, requiresVerifiedCaller, name } = config;
+  if (authorize === undefined && requiresVerifiedCaller === undefined) {
     return;
   }
   if (context === undefined) {
@@ -387,11 +527,11 @@ function assertAuthorized({ config, input, context }: AssertAuthorizedInput): vo
       `Action "${name}" is authorization-gated but was invoked without an ActionContext, so there is no caller to authorize. The calling surface must supply the caller's provenance.`,
     );
   }
-  const isAuthorized = typeof authorize === "function" ? authorize(input, context) : authorize;
-  if (!isAuthorized) {
+  const refusal = findAuthorizationRefusal({ gate: config, input, context });
+  if (refusal !== null) {
     throw new ActionAuthorizationError(
       name,
-      `Action "${name}" is not authorized for this caller. This is a refusal, not a validation failure — the same call with different arguments is refused too.`,
+      `${refusal} This is a refusal, not a validation failure — the same call with different arguments is refused too.`,
     );
   }
 }
@@ -443,6 +583,19 @@ export function defineEmailAction(config: AnyEmailActionConfig): AnyEmailAction 
   if (config.kind === "editor" && !EDITOR_RESULT_SOURCES.includes(config.resultSource)) {
     throw new Error(
       `defineEmailAction: editor action "${config.name}" must declare resultSource as one of: ${EDITOR_RESULT_SOURCES.join(", ")} — it decides whether the server may answer for this call at all.`,
+    );
+  }
+  /*
+    Same shape of check as `resultSource` above, and for the same reason: the
+    policy has no safe default, so an action declaring the requirement must
+    declare a real answer for the deployment where it can never be met.
+  */
+  if (
+    config.requiresVerifiedCaller !== undefined &&
+    !NO_IDENTITY_SYSTEM_POLICIES.includes(config.requiresVerifiedCaller.whenNoIdentitySystem)
+  ) {
+    throw new Error(
+      `defineEmailAction: action "${config.name}" requires a verified caller, so it must declare whenNoIdentitySystem as one of: ${NO_IDENTITY_SYSTEM_POLICIES.join(", ")} — a deployment with no identity system can never satisfy the requirement, and the action has to say what happens there.`,
     );
   }
   if (typeof config.run !== "function") {

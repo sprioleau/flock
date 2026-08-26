@@ -12,6 +12,7 @@ import {
   resolveNeedsApproval,
   type AnalysisEmailActionConfig,
   type ContentEmailActionConfig,
+  type VerifiedCallerRequirement,
 } from "./define";
 import { showPreviewInputSchema, type ShowPreviewCommand } from "./editor-commands";
 
@@ -384,6 +385,117 @@ describe("authorize", () => {
     */
     expect(action.run).not.toBe(bodySentinel);
     expect(Object.values(action)).not.toContain(bodySentinel);
+  });
+});
+
+/**
+ * The DECLARED verified-caller requirement — the `resultSource`-shaped answer
+ * to "who may call this".
+ *
+ * What each test pins: the requirement gates `run` on its own, with no
+ * `authorize` hook anywhere; the three non-verified states are told apart
+ * rather than collapsed; and the one state an action can legitimately choose
+ * to run in has to be chosen, in the definition, out loud.
+ */
+describe("requiresVerifiedCaller", () => {
+  function defineGuardedAction(requirement: VerifiedCallerRequirement) {
+    return defineEmailAction({
+      name: "guardedCommand",
+      description: "An action only a verified caller may invoke.",
+      kind: "editor",
+      resultSource: "server" as const,
+      schema: showPreviewInputSchema,
+      readOnly: false,
+      parallelSafe: false,
+      needsApproval: false,
+      requiresVerifiedCaller: requirement,
+      run: (input): ShowPreviewCommand => ({ type: "showPreview", mode: input.mode }),
+    });
+  }
+
+  /*
+    The whole point of making it declarative: an action gets the guarantee
+    without its author writing a predicate, so there is no per-author chance to
+    write the check subtly wrong.
+  */
+  it("gates run with no authorize hook of its own", () => {
+    const action = defineGuardedAction({ whenNoIdentitySystem: "refuse" });
+    expect(action.authorize).toBeUndefined();
+    expect(() => action.run({ input: { mode: "mobile" }, context: toolContext })).toThrow(
+      ActionAuthorizationError,
+    );
+    expect(
+      action.run({
+        input: { mode: "mobile" },
+        context: { ...toolContext, verifiedCaller: { isVerified: true, ownerId: "user_9f2a" } },
+      }),
+    ).toEqual({ type: "showPreview", mode: "mobile" });
+  });
+
+  /*
+    The state the brief calls out: an action that requires verification must
+    not be permanently uncallable on an auth-off deployment WITHOUT saying so.
+    Both answers exist and each action picks one — here, both are exercised
+    against the identical context, so the only thing deciding the outcome is
+    the declaration.
+  */
+  it("lets the action decide what a deployment with no identity system does", () => {
+    const noIdentitySystemContext: ActionContext = {
+      ...toolContext,
+      verifiedCaller: { isVerified: false, reason: "no_identity_system" },
+    };
+    expect(
+      defineGuardedAction({ whenNoIdentitySystem: "allow" }).run({
+        input: { mode: "desktop" },
+        context: noIdentitySystemContext,
+      }),
+    ).toEqual({ type: "showPreview", mode: "desktop" });
+
+    const refusing = defineGuardedAction({ whenNoIdentitySystem: "refuse" });
+    try {
+      refusing.run({ input: { mode: "desktop" }, context: noIdentitySystemContext });
+      expect.unreachable("the gate should have refused");
+    } catch (error) {
+      expect(error).toBeInstanceOf(ActionAuthorizationError);
+      if (!(error instanceof ActionAuthorizationError)) return;
+      /*
+        A refusal that names the deployment state, not the caller: no argument
+        and no sign-in fixes this one, and the message has to say so or an
+        operator debugs the wrong thing.
+      */
+      expect(error.message).toMatch(/no identity system at all/);
+      expect(error.code).toBe("not_authorized");
+    }
+  });
+
+  /*
+    An "allow" policy is not a blanket allow. It excuses the ONE state it names
+    and nothing else — a caller on a deployment that HAS identity is still
+    refused for having no session.
+  */
+  it("does not let whenNoIdentitySystem allow excuse a missing session", () => {
+    const action = defineGuardedAction({ whenNoIdentitySystem: "allow" });
+    expect(() =>
+      action.run({
+        input: { mode: "mobile" },
+        context: {
+          ...toolContext,
+          verifiedCaller: { isVerified: false, reason: "no_verified_session" },
+        },
+      }),
+    ).toThrow(ActionAuthorizationError);
+  });
+
+  /*
+    Runtime re-check for JS callers, exactly like the `resultSource` and
+    `readOnly` invariants next to it: the type stops TS callers at compile
+    time, and a definition that reaches runtime with no policy is a definition
+    whose most important question was never answered.
+  */
+  it("refuses to define an action whose no-identity-system policy is not one of the two", () => {
+    expect(() =>
+      defineGuardedAction({ whenNoIdentitySystem: "maybe" } as unknown as VerifiedCallerRequirement),
+    ).toThrow(/whenNoIdentitySystem/);
   });
 });
 

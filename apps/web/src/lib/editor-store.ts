@@ -88,6 +88,21 @@ const UNCONNECTED_AUTHOR_ID = "local";
  * belongs to. Every op dispatched from this browser was asked for by the
  * person sitting in front of it, so the connected session always owns it,
  * and no provenance override can take it off their stack.
+ *
+ * `verifiedCaller` is a third question and this function answers it the only
+ * way a browser honestly can: it does not. The field is DROPPED off
+ * `provenance` rather than passed through, because `DispatchProvenance` is a
+ * `Partial<ActionContext>` and would otherwise let any client caller assert a
+ * verified identity for itself — the precise thing the field exists to make
+ * impossible. Verification is established server-side from a signed token
+ * (see api/chat/verified-caller.ts) and nowhere else.
+ *
+ * Dropping it also keeps it OFF THE WIRE. This context is passed straight
+ * through to Convex as a mutation argument, and Convex arg validators reject
+ * fields they do not declare, so a field that can reach this object is a field
+ * `applyContextValidator` must be taught about — and taught about in a deploy
+ * that lands BEFORE the frontend that sends it. Nothing here can produce one,
+ * so no validator changes and no deploy ordering.
  */
 export function buildDispatchContext({
   sessionAuthorId,
@@ -97,10 +112,17 @@ export function buildDispatchContext({
   provenance?: DispatchProvenance;
 }): ActionContext {
   const ownerId = sessionAuthorId ?? UNCONNECTED_AUTHOR_ID;
+  /*
+    Deleted off a shallow copy rather than destructured away, so the field is
+    removed by name in code a reader can see, and the caller's own object is
+    left untouched.
+  */
+  const attribution: DispatchProvenance = { ...provenance };
+  delete attribution.verifiedCaller;
   return {
     ...LOCAL_ACTION_CONTEXT,
     authorId: ownerId,
-    ...provenance,
+    ...attribution,
     undoOwnerId: ownerId,
   };
 }
@@ -112,7 +134,9 @@ export function buildDispatchContext({
  * batchId per assistant turn (the AI-batch revert affordance hangs off it).
  *
  * An `authorId` override changes ATTRIBUTION only. Undo ownership is stamped
- * by {@link buildDispatchContext} and always belongs to the connected session.
+ * by {@link buildDispatchContext} and always belongs to the connected session,
+ * and a `verifiedCaller` is dropped there outright — a browser cannot verify
+ * anyone, so it may not claim to.
  */
 export type DispatchProvenance = Partial<ActionContext>;
 

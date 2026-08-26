@@ -224,27 +224,46 @@ export const showPreviewAction = defineEmailAction({
 /**
  * The §9.4 canonical `needsApproval` example: sending email is human-gated.
  *
- * It is also the first `authorize` consumer, and the two gates are asking
- * different questions. `needsApproval: true` asks a human to bless THIS send,
- * and is honoured only where a human is present to be asked — inside the agent
- * loop, via the chat route's `toolApproval` mapping. `authorize` asks whether
- * the caller may send AT ALL, and is enforced inside `run`, so it holds on
- * every path into this action rather than only the one with a chat window
- * attached. The HTTP send route grew the same requirement directly; this gives
- * the agent path the guarantee instead of assuming the loop provides it.
+ * It is also the only action that declares BOTH authorization gates, and the
+ * three questions in play here are genuinely different:
  *
- * The bar is attribution, deliberately the lowest one there is: an invocation
- * must name a caller. `authorId` is the only identity `ActionContext` carries,
- * so "identified" can mean nothing stronger here than "non-empty `authorId`" —
- * and a missing context is refused outright by the gate itself. Note what that
- * does and does not buy: `authorId` is SELF-ASSERTED provenance stamped by the
- * surface, not a verified principal, so this makes every send attributable to
- * something a surface was willing to name; it does not prove who that is.
- * Verified identity is the surface's job — resolve it before dispatch (the
- * send route does exactly that against the signed token Convex verifies) — and
- * expressing it in the envelope would need a field `ActionContext` does not
- * have today. Adding one is a deliberate decision, not a detail to slip in
- * here.
+ * - `needsApproval: true` — should a human bless THIS send? Only answerable
+ *   where a human is present to ask, which is the agent loop and nowhere else.
+ * - `requiresVerifiedCaller` — is the caller who they say they are? Enforced
+ *   inside `run`, so it holds on every path into this action.
+ * - `authorize` — is the invocation attributable at all? Also inside `run`.
+ *
+ * WHAT CHANGED, AND WHY IT HAD TO. Until this action declared a verified-caller
+ * requirement, its whole bar was the `authorize` line below: name SOMEBODY.
+ * `authorId` is self-asserted provenance, so on the agent path — which stamps
+ * `threadId ?? "flock-agent"` — that bar could not be failed. The mechanism was
+ * unbypassable and what it asserted was close to nothing, which is a worse
+ * state than an honest absence: it looks like a control.
+ *
+ * The requirement asks for the fact a surface cannot make up. A verified caller
+ * is established server-side from a signed token Convex verifies, never from
+ * anything on the request the caller controls, and the field carrying it is
+ * stripped off browser-supplied provenance so client code cannot assert one.
+ * The bar is still deliberately the lowest one available — every browser that
+ * loads Flock is signed in ANONYMOUSLY on arrival, so a visitor who has never
+ * typed an email address passes it without noticing, exactly as on the HTTP
+ * send route. What no longer passes is a caller that merely wrote a name down.
+ *
+ * `whenNoIdentitySystem: "allow"` is the deliberate part, and it matches the
+ * HTTP send route's reading of the same flag verbatim: with Flock's auth flag
+ * off, nothing signs anyone in, `getUserIdentity()` is null in every Convex
+ * function, and requiring an identity would refuse EVERY send forever — a
+ * permanently broken feature, not a security control. Such a deployment falls
+ * back to exactly the bar below (an attributable caller), which is what it had
+ * before this requirement existed. That is honestly weaker, and it is stated
+ * here rather than discovered: the fix for it is turning identity on, and
+ * production runs with it ON, which is where the exposure actually was.
+ *
+ * `authorize` STAYS, unchanged, and is not redundant. It asks the attribution
+ * question — every send names something the log can record — and on an
+ * auth-off deployment it is the only bar there is. Collapsing the two into one
+ * field is precisely the conflation that has now caused two separate defects
+ * in this codebase (undo ownership, and this gate).
  */
 export const sendTestEmailAction = defineEmailAction({
   name: "sendTestEmail",
@@ -257,6 +276,7 @@ export const sendTestEmailAction = defineEmailAction({
   resultSource: "server",
   parallelSafe: false,
   needsApproval: true,
+  requiresVerifiedCaller: { whenNoIdentitySystem: "allow" },
   authorize: (_input, context) => context.authorId.trim().length > 0,
   run: (input): SendTestEmailCommand => ({ type: "sendTestEmail", to: input.to }),
 });
@@ -393,10 +413,26 @@ export const createDraftAction = defineEmailAction({
   schema: createDraftInputSchema,
   readOnly: false, // adds drafts to the user's canvas
   /*
-    KNOWN GAP: the drafts are built in the browser, and the compact model-facing
-    note ("Created N drafts…") is composed server-side from the plan rather than
-    from what landed. Honest reporting here means moving that note past the
-    build, which is a larger change than the history steps needed.
+    KNOWN GAP, and the remaining half of a fix: the drafts are built in the
+    BROWSER, so only the browser knows what landed -- how many drafts were
+    created, the names actually allocated (they are deduped, so often not the
+    ones asked for), and whether each section carried real copy or fell back to
+    its template's sample text. The compact model-facing note is still composed
+    server-side from the PLAN, so it can describe drafts it merely intended.
+
+    The client half is BUILT AND DORMANT: create-draft-report.ts composes the
+    honest note, createAgentDrafts returns real names plus per-draft
+    composition counts, and runClientResultEditorTool is ready to report it.
+    Flipping this one word to "client" activates all of it.
+
+    What stops the flip today is routing coverage, not the mechanism. Going
+    client-result makes tools.ts stop writing the editor-command data part, so
+    five create-draft-composition tests that assert that part -- the only
+    coverage proving a composed plan reaches the browser at all -- go silent,
+    and builtins.test.ts pins the exact server/client split. Those tests must
+    be re-pointed at the onToolCall route and proven to still catch a plan that
+    never lands, BEFORE the word changes. Re-pointing them to chase green would
+    delete the evidence that composition works.
   */
   resultSource: "server",
   parallelSafe: false, // draft names are allocated sequentially

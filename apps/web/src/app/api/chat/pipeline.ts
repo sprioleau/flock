@@ -32,6 +32,7 @@ import { buildBrandContextBlock } from "./brand-context";
 import { expandGenerationBriefPart, resolveGenerationBrief } from "./generation-brief";
 import { buildSavedSectionsContext } from "./saved-sections-context";
 import { sanitizeReplayedToolInputs } from "./replayed-tool-inputs";
+import { resolveVerifiedCaller } from "./verified-caller";
 import { buildSystemContext } from "./system-context";
 import { buildChatTools } from "./tools";
 
@@ -294,13 +295,51 @@ async function runSinglePassPipeline(input: ChatPipelineInput): Promise<void> {
     sessionHash: hashIdentifier(sessionId),
   };
 
-  // Provenance for everything this turn dispatches (op-log ready, Phase 4).
+  // Sanitized FIRST and once: `resolveGenerationBrief` identifies the part it
+  // expands by identity, so it has to see the very array being converted.
+  const sanitizedMessages = sanitizeReplayedToolInputs(messages);
+  // Brand social links + saved sections ride the FRESH context layer only
+  // (both fail soft to null; fetched concurrently — same Convex deployment).
+  // The generation brief joins them: it is one more per-request Convex read
+  // (the SOURCE draft of an "Ideate"/"Add design variation" send), and null for
+  // every ordinary typed message.
+  //
+  // `resolveVerifiedCaller` joins the same batch rather than running before it:
+  // it is one more Convex read against the same deployment, and the tools are
+  // not built until every member of this batch has landed anyway.
+  const [brandContextLine, savedSectionsContext, generationBrief, verifiedCaller] =
+    await Promise.all([
+      buildBrandContextBlock({ sessionId }),
+      buildSavedSectionsContext({ sessionId }),
+      resolveGenerationBrief({ messages: sanitizedMessages, targetDoc: doc }),
+      resolveVerifiedCaller(),
+    ]);
+
+  /*
+    Provenance for everything this turn dispatches (op-log ready, Phase 4), and
+    the ONE place the agent path says who is asking.
+
+    Two fields, two different questions, and the whole point is that they are
+    not the same field. `authorId` is the DISPLAY author — a thread id, or
+    "flock-agent" when there is no thread — self-asserted here and nowhere
+    verified, which is exactly what attribution needs and exactly what
+    authorization must not be built on. `verifiedCaller` is the server's own
+    answer, resolved above from the caller's signed Convex token, and it is what
+    an action declaring `requiresVerifiedCaller` reads.
+
+    STAMPED LAST, deliberately, mirroring how `buildDispatchContext` stamps
+    `undoOwnerId` after its provenance spread. Nothing caller-supplied is spread
+    into this literal today; writing the trustworthy field last means nothing
+    caller-supplied could move it if something ever were. The request body
+    reaches this object through `threadId` and through no other field.
+  */
   const actionContext: ActionContext = {
     caller: "tool",
     authorId: threadId ?? "flock-agent",
     author: "agent",
     batchId: crypto.randomUUID(),
     threadId,
+    verifiedCaller,
   };
 
   const { tools, schemaOnlyTools, toolApproval } = buildChatTools({
@@ -310,19 +349,6 @@ async function runSinglePassPipeline(input: ChatPipelineInput): Promise<void> {
     sessionId,
     isUsingMockModel,
   });
-  // Sanitized FIRST and once: `resolveGenerationBrief` identifies the part it
-  // expands by identity, so it has to see the very array being converted.
-  const sanitizedMessages = sanitizeReplayedToolInputs(messages);
-  // Brand social links + saved sections ride the FRESH context layer only
-  // (both fail soft to null; fetched concurrently — same Convex deployment).
-  // The generation brief joins them: it is one more per-request Convex read
-  // (the SOURCE draft of an "Ideate"/"Add design variation" send), and null for
-  // every ordinary typed message.
-  const [brandContextLine, savedSectionsContext, generationBrief] = await Promise.all([
-    buildBrandContextBlock({ sessionId }),
-    buildSavedSectionsContext({ sessionId }),
-    resolveGenerationBrief({ messages: sanitizedMessages, targetDoc: doc }),
-  ]);
   const { staticInstructions, documentContext } = buildSystemContext({
     doc,
     selectedBlockId,

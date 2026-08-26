@@ -153,6 +153,32 @@ describe("dispatch provenance — who owns the undo", () => {
     expect(context.undoOwnerId).toBe("session-a1b2");
   });
 
+  /*
+    The same lesson as the line above, one field further on. `authorId` is
+    self-asserted and callers move it freely; `verifiedCaller` is the server's
+    own answer about who is asking, and a browser has no way to establish one —
+    so client-supplied provenance cannot carry one in, however it is typed.
+
+    Two things ride on this. The gate: `sendTestEmail` requires a verified
+    caller, and a forgeable field would make that requirement decorative. And
+    the wire: this context goes straight to Convex as a mutation argument,
+    whose validator rejects fields it does not declare — a field that cannot
+    get here is a field production cannot receive before its schema does.
+  */
+  it("drops a verifiedCaller a client caller tried to assert", () => {
+    const context = buildDispatchContext({
+      sessionAuthorId: "session-a1b2",
+      provenance: {
+        authorId: "chat_7c1d",
+        verifiedCaller: { isVerified: true, ownerId: "somebody_else" },
+      },
+    });
+
+    expect(context.verifiedCaller).toBeUndefined();
+    expect("verifiedCaller" in context).toBe(false);
+    expect(context.authorId).toBe("chat_7c1d");
+  });
+
   it("defaults an ordinary UI edit to the session as both author and owner", () => {
     const context = buildDispatchContext({ sessionAuthorId: "session-a1b2" });
 

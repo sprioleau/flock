@@ -33,6 +33,22 @@ const agentContext: ActionContext = {
   threadId: "thread_1",
 };
 
+/*
+  The SAME agent turn, on a deployment where the server resolved who is behind
+  it. `authorId` is unchanged — attribution does not move — and the added fact
+  is the one no surface can write for itself.
+*/
+const verifiedAgentContext: ActionContext = {
+  ...agentContext,
+  verifiedCaller: { isVerified: true, ownerId: "user_9f2a" },
+};
+
+/* A deployment with identity switched off entirely: nobody has an id here. */
+const noIdentitySystemContext: ActionContext = {
+  ...agentContext,
+  verifiedCaller: { isVerified: false, reason: "no_identity_system" },
+};
+
 describe("built-in content actions", () => {
   it("covers every 1.3 operation, one action per op, named after it", () => {
     expect(contentEmailActions.map((action) => action.name)).toEqual([...OPERATION_NAMES]);
@@ -246,7 +262,8 @@ describe("emailActionRegistry", () => {
       registry: emailActionRegistry,
       name: "sendTestEmail",
       input: { to: "reviewer@example.com" },
-      context: agentContext,
+      /* sendTestEmail requires a verified caller; see its own describe block. */
+      context: verifiedAgentContext,
     });
     expect(sendResult.isOk).toBe(true);
     if (!sendResult.isOk) return;
@@ -425,12 +442,12 @@ describe("emailActionRegistry", () => {
  * property that does NOT depend on a chat window being attached.
  */
 describe("sendTestEmail authorization", () => {
-  it("admits a caller the surface was willing to name", () => {
+  it("admits a caller the server verified", () => {
     const result = dispatchEditorAction({
       registry: emailActionRegistry,
       name: "sendTestEmail",
       input: { to: "reviewer@example.com" },
-      context: agentContext,
+      context: verifiedAgentContext,
     });
     expect(result.isOk).toBe(true);
     if (!result.isOk) return;
@@ -463,18 +480,117 @@ describe("sendTestEmail authorization", () => {
     expect(result.errors[0]!.code).toBe("not_authorized");
   });
 
+  /*
+    THE CASE THIS EXISTS TO CLOSE. A context carrying only a self-asserted
+    `authorId` is exactly what the agent path stamps — pipeline.ts writes
+    `threadId ?? "flock-agent"` and nothing anywhere verifies it. Before
+    `requiresVerifiedCaller`, that context PASSED the send gate, which made the
+    gate's own bar ("name a caller") one the agent path could never fail.
+
+    A verified caller is a different fact from an attributed one, and this pins
+    that the send action now asks for the fact a surface cannot make up.
+  */
+  it("refuses a caller that is only self-asserted, however well attributed", () => {
+    const result = dispatchEditorAction({
+      registry: emailActionRegistry,
+      name: "sendTestEmail",
+      input: { to: "reviewer@example.com" },
+      context: agentContext,
+    });
+    expect(result.isOk).toBe(false);
+    if (result.isOk) return;
+    expect(result.failureKind).toBe("terminal");
+    expect(result.errors[0]!.code).toBe("not_authorized");
+    expect(result.errors[0]!.message).toMatch(/requires a VERIFIED caller/);
+  });
+
   it("leaves every other built-in ungated, so nothing else changed behaviour", () => {
     /*
       The additive guarantee across the whole shipped registry: exactly one
-      action declares a gate today, and each of the others authorizes by
-      default because it has no `authorize` to consult.
+      action declares a gate of EITHER kind, and each of the others authorizes
+      by default because it has neither to consult. Pinned over both options so
+      adding the declarative one cannot quietly gate a second action.
     */
     const gatedNames = emailActionRegistry.actions
-      .filter((action) => action.authorize !== undefined)
+      .filter(
+        (action) => action.authorize !== undefined || action.requiresVerifiedCaller !== undefined,
+      )
       .map((action) => action.name);
     expect(gatedNames).toEqual(["sendTestEmail"]);
     for (const action of emailActionRegistry.actions) {
+      if (action.name === "sendTestEmail") continue;
       expect(resolveAuthorize({ action, input: {}, context: agentContext })).toBe(true);
     }
+  });
+
+  /*
+    The read-only view and the enforced gate are the same decision. A surface
+    that greys out a control on `resolveAuthorize` must not offer a send that
+    `run` would then refuse — nor hide one that would have worked.
+  */
+  it("answers the same through resolveAuthorize as through run", () => {
+    expect(
+      resolveAuthorize({
+        action: sendTestEmailAction,
+        input: { to: "reviewer@example.com" },
+        context: agentContext,
+      }),
+    ).toBe(false);
+    expect(
+      resolveAuthorize({
+        action: sendTestEmailAction,
+        input: { to: "reviewer@example.com" },
+        context: verifiedAgentContext,
+      }),
+    ).toBe(true);
+  });
+
+  /*
+    The auth-off deployment, declared with `whenNoIdentitySystem: "allow"`.
+    There are no identities here to verify, so refusing would mean a Send-test
+    button that can never work — the same reading of the flag the HTTP send
+    route already takes. What remains is the attribution bar.
+  */
+  it("still sends on a deployment that has no identity system at all", () => {
+    const result = dispatchEditorAction({
+      registry: emailActionRegistry,
+      name: "sendTestEmail",
+      input: { to: "reviewer@example.com" },
+      context: noIdentitySystemContext,
+    });
+    expect(result.isOk).toBe(true);
+  });
+
+  it("refuses when the deployment has identity and this caller has no session", () => {
+    const result = dispatchEditorAction({
+      registry: emailActionRegistry,
+      name: "sendTestEmail",
+      input: { to: "reviewer@example.com" },
+      context: {
+        ...agentContext,
+        verifiedCaller: { isVerified: false, reason: "no_verified_session" },
+      },
+    });
+    expect(result.isOk).toBe(false);
+    if (result.isOk) return;
+    expect(result.failureKind).toBe("terminal");
+    expect(result.errors[0]!.code).toBe("not_authorized");
+  });
+
+  /*
+    Both gates still hold, independently. A verified caller that the surface
+    could not attribute is refused too — verification answers "who", the op log
+    still needs "under what name".
+  */
+  it("refuses a verified caller the surface could not attribute", () => {
+    const result = dispatchEditorAction({
+      registry: emailActionRegistry,
+      name: "sendTestEmail",
+      input: { to: "reviewer@example.com" },
+      context: { ...verifiedAgentContext, authorId: "   " },
+    });
+    expect(result.isOk).toBe(false);
+    if (result.isOk) return;
+    expect(result.errors[0]!.code).toBe("not_authorized");
   });
 });

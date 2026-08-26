@@ -248,13 +248,23 @@ export { OPERATION_AUTHORS, operationAuthorSchema } from "./operations/log";
 export type { OperationAuthor } from "./operations/log";
 
 // --- Actions: caller provenance (actions/context) ---------------------------------------------
-export { ACTION_CALLERS, actionCallerSchema } from "./actions/context";
-export type { ActionCaller, ActionContext } from "./actions/context";
+export {
+  ACTION_CALLERS,
+  actionCallerSchema,
+  VERIFIED_CALLER_ABSENCE_REASONS,
+} from "./actions/context";
+export type {
+  ActionCaller,
+  ActionContext,
+  VerifiedCaller,
+  VerifiedCallerAbsenceReason,
+} from "./actions/context";
 
 // --- Actions: factory (actions/define) ---------------------------------------------------------
 export {
   EMAIL_ACTION_KINDS,
   EDITOR_RESULT_SOURCES,
+  NO_IDENTITY_SYSTEM_POLICIES,
   ActionAuthorizationError,
   defineEmailAction,
   resolveAuthorize,
@@ -263,6 +273,8 @@ export {
 export type {
   EmailActionKind,
   EditorResultSource,
+  NoIdentitySystemPolicy,
+  VerifiedCallerRequirement,
   NeedsApprovalOption,
   AuthorizeOption,
   ResolveNeedsApprovalInput,
@@ -466,6 +478,7 @@ export type {
   DraftContentClues,
   SectionCopy,
   ComposedDraft,
+  ComposedDraftComposition,
   BuildComposedDraftsInput,
 } from "./actions/compose-draft";
 
