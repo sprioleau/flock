@@ -32,8 +32,12 @@ export interface BlockLevelAccent {
   */
   hoverPreviewOutlineClassName: string;
   /*
-    The faint hairline that appears while the pointer is over the block
-    itself. Colour only — the shell adds the width on :hover.
+    The faint hairline that appears while the pointer is inside the block.
+    DASHED, at a lighter shade: `:hover` matches every ANCESTOR containing
+    the pointer, not just the innermost block, so hovering a leaf lights up
+    its column, its row and its section at the same time. None of those is
+    the selection, so none of them may be solid. Colour and stroke style
+    only — the shell adds the 1px width on :hover.
   */
   pointerOutlineClassName: string;
   /*
@@ -78,7 +82,7 @@ const BLOCK_LEVEL_ACCENTS: Record<BlockLevel, BlockLevelAccent> = {
     hue: "sky",
     selectedOutlineClassName: "after:border-2 after:border-solid after:border-sky-500",
     hoverPreviewOutlineClassName: "after:border-2 after:border-dashed after:border-sky-500",
-    pointerOutlineClassName: "after:border-sky-300",
+    pointerOutlineClassName: "after:border-dashed after:border-sky-300",
     selectedChipClassName:
       "border-sky-700 bg-sky-700 text-white dark:border-sky-400 dark:bg-sky-400 dark:text-sky-950",
     ancestorChipClassName:
@@ -89,7 +93,7 @@ const BLOCK_LEVEL_ACCENTS: Record<BlockLevel, BlockLevelAccent> = {
     hue: "violet",
     selectedOutlineClassName: "after:border-2 after:border-solid after:border-violet-500",
     hoverPreviewOutlineClassName: "after:border-2 after:border-dashed after:border-violet-500",
-    pointerOutlineClassName: "after:border-violet-300",
+    pointerOutlineClassName: "after:border-dashed after:border-violet-300",
     selectedChipClassName:
       "border-violet-700 bg-violet-700 text-white dark:border-violet-400 dark:bg-violet-400 dark:text-violet-950",
     ancestorChipClassName:
@@ -100,7 +104,7 @@ const BLOCK_LEVEL_ACCENTS: Record<BlockLevel, BlockLevelAccent> = {
     hue: "orange",
     selectedOutlineClassName: "after:border-2 after:border-solid after:border-orange-500",
     hoverPreviewOutlineClassName: "after:border-2 after:border-dashed after:border-orange-500",
-    pointerOutlineClassName: "after:border-orange-300",
+    pointerOutlineClassName: "after:border-dashed after:border-orange-300",
     selectedChipClassName:
       "border-orange-700 bg-orange-700 text-white dark:border-orange-400 dark:bg-orange-400 dark:text-orange-950",
     ancestorChipClassName:
@@ -111,7 +115,7 @@ const BLOCK_LEVEL_ACCENTS: Record<BlockLevel, BlockLevelAccent> = {
     hue: "fuchsia",
     selectedOutlineClassName: "after:border-2 after:border-solid after:border-fuchsia-500",
     hoverPreviewOutlineClassName: "after:border-2 after:border-dashed after:border-fuchsia-500",
-    pointerOutlineClassName: "after:border-fuchsia-300",
+    pointerOutlineClassName: "after:border-dashed after:border-fuchsia-300",
     selectedChipClassName:
       "border-fuchsia-700 bg-fuchsia-700 text-white dark:border-fuchsia-400 dark:bg-fuchsia-400 dark:text-fuchsia-950",
     ancestorChipClassName:

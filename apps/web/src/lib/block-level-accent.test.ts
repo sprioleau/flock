@@ -160,6 +160,51 @@ describe("selected vs previewed", () => {
   });
 });
 
+describe("what a SOLID stroke means", () => {
+  /*
+    The three treatments a block can be outlined with. Anything added here
+    has to answer the question below: is it the selection, or isn't it?
+  */
+  function outlineTreatmentsOf(accent: BlockLevelAccent): string[] {
+    return [
+      accent.selectedOutlineClassName,
+      accent.hoverPreviewOutlineClassName,
+      accent.pointerOutlineClassName,
+    ];
+  }
+
+  it("names a stroke style on EVERY outline — none may inherit the CSS default", () => {
+    /*
+      A treatment that names no style renders `solid` by browser default,
+      which is how the pointer hairline came to wear the one stroke that is
+      supposed to mean "this block IS the selection".
+    */
+    for (const accent of listBlockLevelAccents()) {
+      for (const className of outlineTreatmentsOf(accent)) {
+        expect(className).toMatch(/after:border-(?:solid|dashed)/);
+      }
+    }
+  });
+
+  it("reserves SOLID for the selection — merely being under the pointer is DASHED", () => {
+    /*
+      The owner's rule. Hovering a block outlines its ancestors too (the
+      pointer is inside them), and those ancestors are not selected, so
+      their hairline must be dashed like every other not-the-selection
+      outline.
+    */
+    for (const accent of listBlockLevelAccents()) {
+      expect(accent.pointerOutlineClassName).toContain("after:border-dashed");
+      expect(accent.pointerOutlineClassName).not.toContain("after:border-solid");
+
+      const solidTreatments = outlineTreatmentsOf(accent).filter((className) =>
+        className.includes("after:border-solid"),
+      );
+      expect(solidTreatments).toEqual([accent.selectedOutlineClassName]);
+    }
+  });
+});
+
 describe("light and dark", () => {
   it("gives every chip a dark-mode fill AND a dark-mode text colour", () => {
     /*

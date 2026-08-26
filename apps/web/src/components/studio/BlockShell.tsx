@@ -151,10 +151,22 @@ export function BlockShell({ block, children, className }: BlockShellProps) {
         // selected block wins over ALL outline chrome; dialogs/popovers
         // (z-50, portaled to body) still cover everything here.
         "after:pointer-events-none after:absolute after:inset-0 after:z-[6] after:transition-colors",
-        // Outline states, all in THIS block's level colour (block-level-accent):
-        // selected = solid, chip-hover preview = dashed (clicking selects it,
-        // so the same line just goes solid), otherwise the faint pointer
-        // hairline.
+        /*
+          Outline states, all in THIS block's level colour
+          (block-level-accent). One rule: a SOLID stroke means this block IS
+          the selection, and nothing else on the canvas may wear one — so at
+          most one solid outline exists at a time. Everything merely being
+          looked at is dashed. That covers the chip-hover preview (clicking
+          the chip selects the block, and the same line just goes solid) and
+          the faint pointer hairline, which is NOT one block: `:hover`
+          matches every ancestor containing the pointer, so hovering a leaf
+          dashes its column, its row and its section too.
+
+          Each accent names its own stroke style, so no treatment falls back
+          to the CSS default of `solid`; the only thing added here is the
+          hover WIDTH, kept at 1px so the ancestor chain stays subordinate to
+          the 2px of preview and selection.
+        */
         isSelected
           ? cn("z-10", accent.selectedOutlineClassName)
           : isHoverPreviewed
@@ -162,8 +174,19 @@ export function BlockShell({ block, children, className }: BlockShellProps) {
             : cn(accent.pointerOutlineClassName, "hover:after:border"),
         // The source block ghosts while its lifted copy rides the overlay.
         isDragging && "opacity-40",
-        // Subtle highlight on the container a valid drop would land in.
-        isValidDropContainer && "bg-sky-400/10 after:border-2 after:border-sky-300",
+        /*
+          Subtle highlight on the container a valid drop would land in. Its
+          identity is the tint — nothing else on the canvas fills — and it
+          declares `dashed` for the same reason everything above does: a
+          drop container is not the selection, and during a drag the
+          selected block is still outlined, so a solid stroke here would put
+          two solid outlines on the canvas at once. Declared LAST so it wins
+          the merge over whichever level treatment ran above it, which also
+          means it must name its own stroke style: without it the container
+          would inherit `solid` from a selected block and `dashed` from any
+          other, i.e. the same state drawn two ways.
+        */
+        isValidDropContainer && "bg-sky-400/10 after:border-2 after:border-dashed after:border-sky-300",
         className,
       )}
     >
