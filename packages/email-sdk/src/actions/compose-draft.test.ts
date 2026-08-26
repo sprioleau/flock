@@ -818,3 +818,46 @@ describe("shouldCarryOverSourceCopy", () => {
     });
   });
 });
+
+describe("a misplaced call option", () => {
+  /*
+    The captured turn: a complete five-section plan for a Yale News article,
+    every section valid, discarded because `shouldInheritTheme` sat inside the
+    draft instead of beside `drafts`. Zod's default text names the stray key
+    and stops there, which leaves the repair round guessing.
+  */
+  const misplacedInput = {
+    drafts: [
+      {
+        name: "Yale News: Newest Students",
+        sections: [{ templateId: "hero", params: { headline: "Climbing mountains" } }],
+        shouldInheritTheme: true,
+      },
+    ],
+  };
+
+  it("tells the model the option belongs one level up, not merely that it is unknown", () => {
+    const parsed = createDraftInputSchema.safeParse(misplacedInput);
+    expect(parsed.success).toBe(false);
+    if (parsed.success) {
+      return;
+    }
+    const message = parsed.error.issues.map((issue) => issue.message).join(" ");
+    expect(message).toContain("shouldInheritTheme");
+    expect(message).toContain("createDraft call itself");
+    expect(message).toContain("up one level");
+  });
+
+  it("still names a key that belongs nowhere, without claiming it should move", () => {
+    const parsed = createDraftInputSchema.safeParse({
+      drafts: [{ sections: [{ templateId: "hero" }], invented: true }],
+    });
+    expect(parsed.success).toBe(false);
+    if (parsed.success) {
+      return;
+    }
+    const message = parsed.error.issues.map((issue) => issue.message).join(" ");
+    expect(message).toContain("is not a field");
+    expect(message).not.toContain("up one level");
+  });
+});

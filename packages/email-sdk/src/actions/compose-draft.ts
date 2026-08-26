@@ -87,6 +87,44 @@ const draftSectionPlanSchema = z
 
 export type DraftSectionPlan = z.infer<typeof draftSectionPlanSchema>;
 
+/*
+  Options that belong to the createDraft CALL, never to one draft inside it.
+
+  The distinction is arbitrary from where the model sits, and it guesses wrong
+  in a predictable direction: "shouldInheritTheme" reads exactly like a
+  property OF a draft ("should this draft inherit the theme"), so it gets
+  written inside the draft object. `drafts[i]` is strict, so that is a hard
+  rejection whose default message names the stray key without saying where it
+  should have gone -- and the model, told only that the key is unrecognised,
+  has no reason to try the other object.
+
+  Observed on a real turn: a complete five-section plan, every section valid,
+  discarded because `shouldInheritTheme: true` sat one level too deep.
+*/
+const CREATE_DRAFT_CALL_OPTION_KEYS = ["count", "shouldInheritTheme"] as const;
+
+/*
+  Say where a misplaced key belongs, and only then that it is unrecognised.
+  This is the same lesson as scaffoldSection's union error: a schema that
+  knows exactly what the caller meant should say so, because the repair round
+  is the only thing standing between a good plan and a discarded turn.
+*/
+function describeDraftPlanFailure(keys: readonly string[]): string {
+  const misplaced = keys.filter((key) =>
+    CREATE_DRAFT_CALL_OPTION_KEYS.some((option) => option === key),
+  );
+  const stray = keys.filter((key) => !misplaced.includes(key));
+  const misplacedNote =
+    misplaced.length === 0
+      ? ""
+      : `${misplaced.map((key) => `"${key}"`).join(", ")} ${misplaced.length === 1 ? "belongs" : "belong"} on the createDraft call itself, alongside "drafts", not inside a draft — move ${misplaced.length === 1 ? "it" : "them"} up one level. `;
+  const strayNote =
+    stray.length === 0
+      ? ""
+      : `${stray.map((key) => `"${key}"`).join(", ")} ${stray.length === 1 ? "is not a field" : "are not fields"} of a draft. `;
+  return `${misplacedNote}${strayNote}A draft takes only "name" and "sections".`;
+}
+
 const draftPlanSchema = z
   .strictObject({
     name: z
@@ -104,7 +142,12 @@ const draftPlanSchema = z
       .describe(
         "The draft's sections in reading order. Give a header, one or more body sections (hero, feature columns, article, call to action, testimonial, …), and a footer — a missing header, body, or footer is added for you.",
       ),
-  })
+    },
+    {
+      error: (issue) =>
+        issue.code === "unrecognized_keys" ? describeDraftPlanFailure(issue.keys) : undefined,
+    },
+  )
   .describe("One complete new draft: its name and the sections it is made of.");
 
 export type DraftPlan = z.infer<typeof draftPlanSchema>;
