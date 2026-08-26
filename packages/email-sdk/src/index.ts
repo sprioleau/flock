@@ -254,6 +254,7 @@ export type { ActionCaller, ActionContext } from "./actions/context";
 // --- Actions: factory (actions/define) ---------------------------------------------------------
 export {
   EMAIL_ACTION_KINDS,
+  EDITOR_RESULT_SOURCES,
   ActionAuthorizationError,
   defineEmailAction,
   resolveAuthorize,
@@ -261,6 +262,7 @@ export {
 } from "./actions/define";
 export type {
   EmailActionKind,
+  EditorResultSource,
   NeedsApprovalOption,
   AuthorizeOption,
   ResolveNeedsApprovalInput,

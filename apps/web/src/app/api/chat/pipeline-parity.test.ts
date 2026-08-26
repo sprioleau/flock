@@ -95,12 +95,30 @@ describe("agent-parity UI actions through the chat pipeline", () => {
     }
   });
 
-  it("undo and redo stream their commands (empty-input tools)", async () => {
+  /*
+    THE HONESTY PROPERTY, at the seam where the lie was written.
+
+    undo/redo are CLIENT-RESULT editor actions: the server advertises them and
+    streams the call, and that is all it is entitled to do, because only the
+    browser knows whether a history step existed to take. So the server must
+    produce NO verdict — no `data-editor-command` part asserting the step
+    happened, and no successful tool output closing the call. Before this
+    change the server wrote both, unconditionally, which is exactly how the
+    agent came to say "I've undone that change for you" over an unchanged
+    draft.
+  */
+  it("never answers for an undo or redo the server did not perform", async () => {
     const undone = await runPipelineProbe("Undo that last change please");
-    expect(getEditorCommands(undone)).toEqual([{ type: "undo" }]);
+    expect(getEditorCommands(undone)).toEqual([]);
+    expect(undone.streamedChunkTypes).toContain("tool-input-available");
+    expect(undone.streamedChunkTypes).not.toContain("tool-output-available");
+    /* Silence is not a hang: the turn still ends, awaiting the client's report. */
+    expect(undone.streamedChunkTypes).toContain("finish");
 
     const redone = await runPipelineProbe("Actually, redo it");
-    expect(getEditorCommands(redone)).toEqual([{ type: "redo" }]);
+    expect(getEditorCommands(redone)).toEqual([]);
+    expect(redone.streamedChunkTypes).toContain("tool-input-available");
+    expect(redone.streamedChunkTypes).not.toContain("tool-output-available");
   });
 
   it("goToVersion halts for approval — no command until the human approves", async () => {

@@ -7,6 +7,7 @@ import { api } from "@convex/_generated/api";
 import type { Id } from "@convex/_generated/dataModel";
 import schema from "@convex/schema";
 import { buildDispatchContext } from "./editor-store";
+import { toHistoryStepOutcome, toHistoryStepToolOutput } from "./history-step-report";
 
 /*
   THE PROOF that an agent's edit lands on the user's undo stack.
@@ -170,5 +171,86 @@ describe("an agent edit is on the prompting session's undo stack", () => {
       authorId: "8d2e5b60-9f14-4c7a-b1d3-6e0a5c92f847",
     });
     expect(otherSession).toEqual({ isOk: false, reason: "nothing_to_undo" });
+  });
+});
+
+/*
+  WHAT THE AGENT IS THEN ALLOWED TO SAY.
+
+  The tests above prove the undo works. These prove the agent's account of it
+  is true, which was a separate bug with a separate cause: `undo` was an editor
+  action, so its `run` executed on the SERVER and returned a command DESCRIBING
+  an undo, which was streamed back as the tool result before the browser had
+  attempted anything. The client then executed it fire-and-forget and never
+  reported back — so "I've undone that change for you" was written whether or
+  not anything was undone.
+
+  undo/redo are now client-result tools: the browser runs the mutation and
+  reports what it did. This drives the REAL chain minus the transport — real
+  history.undo → toHistoryStepOutcome (what the store returns) →
+  toHistoryStepToolOutput (what the model reads) — and re-reads the stored
+  document, because a report that agrees with a return value while disagreeing
+  with the document is exactly the failure being fixed.
+*/
+describe("the agent's account of an undo matches what the undo did", () => {
+  it("reports a real undo as stepped — and the document actually reverted", async () => {
+    const t = createBackend();
+    const documentId = await seedDocument(t);
+    const colorBefore = await readParagraphColor({ t, documentId });
+    await makeTheTextGreen(t, documentId);
+
+    const outcome = toHistoryStepOutcome(
+      await t.mutation(api.history.undo, { documentId, authorId: BROWSER_SESSION_ID }),
+    );
+    const toolOutput = toHistoryStepToolOutput({ direction: "undo", outcome });
+
+    expect(toolOutput.isStepped).toBe(true);
+    expect(await readParagraphColor({ t, documentId })).toBe(colorBefore);
+  });
+
+  it("never reports a success for an undo that did nothing", async () => {
+    const t = createBackend();
+    const documentId = await seedDocument(t);
+    await makeTheTextGreen(t, documentId);
+    await t.mutation(api.history.undo, { documentId, authorId: BROWSER_SESSION_ID });
+    const colorAfterUndo = await readParagraphColor({ t, documentId });
+
+    /* Nothing left on this session's stack — the owner's live case. */
+    const secondUndo = await t.mutation(api.history.undo, {
+      documentId,
+      authorId: BROWSER_SESSION_ID,
+    });
+    expect(secondUndo).toEqual({ isOk: false, reason: "nothing_to_undo" });
+
+    const toolOutput = toHistoryStepToolOutput({
+      direction: "undo",
+      outcome: toHistoryStepOutcome(secondUndo),
+    });
+
+    /*
+      THE HONESTY PROPERTY. Before this change the model's tool result for this
+      exact call was { status: "dispatched", command: { type: "undo" } } — a
+      success, fabricated server-side, over a document nothing had touched.
+    */
+    expect(toolOutput.isStepped).toBe(false);
+    expect(toolOutput).toMatchObject({ reason: "nothing_to_undo" });
+    expect(toolOutput.note).toContain("Nothing was undone");
+    /* And the document is genuinely unchanged, so the report is the truth. */
+    expect(await readParagraphColor({ t, documentId })).toBe(colorAfterUndo);
+  });
+
+  /*
+    A "nothing to undo" must not come back through the tool-ERROR channel: the
+    AI SDK surfaces a tool error to the model as something to correct, and
+    there is no correction — the same reasoning that classifies not_authorized
+    terminal in the SDK taxonomy. So it is a SUCCESSFUL tool result whose note
+    closes the loop explicitly.
+  */
+  it("keeps a terminal 'nothing to undo' off the retry path", () => {
+    const toolOutput = toHistoryStepToolOutput({
+      direction: "undo",
+      outcome: { isOk: false, reason: "nothing_to_undo" },
+    });
+    expect(toolOutput.note).toContain("Do NOT call undo again");
   });
 });

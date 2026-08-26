@@ -115,10 +115,58 @@ export interface GetActivityPhraseInput {
   toolName: string;
   /** The tool call's arguments, if any have streamed in yet. */
   input?: unknown;
+  /**
+   * The tool's RESULT, once it has one. Only consulted for steps that can
+   * legitimately do nothing — see {@link getUnsteppedHistoryPhrase}.
+   */
+  output?: unknown;
+}
+
+/*
+  THE STEP THAT DIDN'T HAPPEN.
+
+  undo and redo are the only tools whose successful result can mean "nothing
+  changed": the browser performs the real history mutation and reports
+  `isStepped: false` when the draft had no step left to take. Law 2 above tenses
+  the sentence, but tense alone would still say "Undid the last change" over a
+  document nobody touched — the same fabricated confirmation the agent's own
+  prose used to give. So the OUTCOME, not just the state, picks the words.
+*/
+function getIsUnsteppedHistoryOutput(output: unknown): boolean {
+  return (
+    typeof output === "object" &&
+    output !== null &&
+    "isStepped" in output &&
+    output.isStepped === false
+  );
+}
+
+const UNSTEPPED_HISTORY_PHRASES: Readonly<Record<string, ActivityPhrase>> = {
+  undo: { present: "Undoing the last change", past: "Nothing left to undo" },
+  redo: { present: "Redoing the last change", past: "Nothing to redo" },
+};
+
+function getUnsteppedHistoryPhrase({
+  toolName,
+  output,
+}: GetActivityPhraseInput): ActivityPhrase | undefined {
+  const phrase = UNSTEPPED_HISTORY_PHRASES[toolName];
+  if (phrase === undefined || !getIsUnsteppedHistoryOutput(output)) {
+    return undefined;
+  }
+  return phrase;
 }
 
 /** The phrase pair for one tool call — never the tool's own name. */
-export function getActivityPhrase({ toolName, input }: GetActivityPhraseInput): ActivityPhrase {
+export function getActivityPhrase({
+  toolName,
+  input,
+  output,
+}: GetActivityPhraseInput): ActivityPhrase {
+  const unsteppedPhrase = getUnsteppedHistoryPhrase({ toolName, output });
+  if (unsteppedPhrase !== undefined) {
+    return unsteppedPhrase;
+  }
   const entry = ACTIVITY_PHRASES[toolName];
   if (entry === undefined) {
     return FALLBACK_ACTIVITY_PHRASE;

@@ -160,6 +160,39 @@ describe("getActivityLabel", () => {
     );
     expect(getActivityLabel({ toolName: "addSection", isComplete: true })).toBe("Added a section");
   });
+
+  /*
+    The chip is the SECOND place the agent claimed an undo it never made: the
+    owner's report was prose, but "Undid the last change" rendered from the
+    same unconditional assumption. undo/redo now report whether a step actually
+    happened, and past tense alone must not overrule that answer.
+  */
+  it("does not say a history step landed when the tool reported it did not", () => {
+    expect(
+      getActivityLabel({
+        toolName: "undo",
+        isComplete: true,
+        output: { isStepped: false, reason: "nothing_to_undo", note: "Nothing was undone." },
+      }),
+    ).toBe("Nothing left to undo");
+    expect(
+      getActivityLabel({
+        toolName: "redo",
+        isComplete: true,
+        output: { isStepped: false, reason: "nothing_to_redo", note: "Nothing was redone." },
+      }),
+    ).toBe("Nothing to redo");
+  });
+
+  it("still reads as a completed undo when the step really happened", () => {
+    expect(
+      getActivityLabel({
+        toolName: "undo",
+        isComplete: true,
+        output: { isStepped: true, note: "The last change was undone." },
+      }),
+    ).toBe("Undid the last change");
+  });
 });
 
 describe("getNonBlockTargetLabel", () => {

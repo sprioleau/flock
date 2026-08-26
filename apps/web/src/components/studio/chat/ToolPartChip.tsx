@@ -236,6 +236,9 @@ export function ToolPartChip({ part, onApprovalResponse, isRetryPending = false 
           {getActivityLabel({
             toolName,
             input: part.input,
+            // undo/redo report whether a step actually happened; the chip must
+            // not say "Undid the last change" when the answer was no.
+            output: part.state === "output-available" ? part.output : undefined,
             isComplete: getIsPartComplete(part),
           })}
           {targetLabel !== undefined && (

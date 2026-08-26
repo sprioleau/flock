@@ -10,6 +10,7 @@ import {
 } from "ai";
 import { useConvex, useMutation, useQuery } from "convex/react";
 import {
+  dispatchEditorAction,
   emailActionRegistry,
   isSavedSectionTemplateId,
   SAVED_SECTION_TEMPLATE_ID_PREFIX,
@@ -42,6 +43,11 @@ import {
   type EditorStoreApi,
 } from "@/lib/editor-store";
 import { setPersonaEnabled } from "@/lib/personas/enabled-personas";
+import {
+  toHistoryStepToolOutput,
+  type HistoryStepDirection,
+  type HistoryStepOutcome,
+} from "@/lib/history-step-report";
 import { getOrCreateSessionId } from "@/lib/session";
 import { requestUiSurfaceOpen } from "@/lib/ui-surfaces";
 import { getAppSettings } from "../demo/app-settings";
@@ -61,6 +67,11 @@ import { takeGenerationRequest } from "./pending-generation-request";
  *   apply results in-loop (`sendAutomaticallyWhen` closes the loop).
  * - Editor commands (`data-editor-command` parts): dispatched in `onData`
  *   (showPreview flips the canvas viewport; sendTestEmail is a Phase 8 stub).
+ * - CLIENT-RESULT editor actions (undo, redo — `resultSource: "client"` in the
+ *   SDK): no server execute, so they reach `onToolCall` like a content op.
+ *   The browser takes the real history step and reports what it did
+ *   (`takeHistoryStep`), because only the browser can know whether there was
+ *   a step to take — the server used to answer anyway, and got it wrong.
  * - sendTestEmail approvals: `addToolApprovalResponse` is exposed for the
  *   approval chip; a response auto-resubmits so the server can execute.
  */
@@ -71,6 +82,52 @@ const CONTENT_TOOL_NAMES: ReadonlySet<string> = new Set(
     .filter((action) => action.kind === "content")
     .map((action) => action.name),
 );
+
+/*
+  Editor actions the CLIENT is the result-source for (`resultSource: "client"`
+  in the SDK): undo and redo. They reach `onToolCall` like a content op, and
+  the browser — the only party that can ask Convex whether a history step
+  exists — writes the tool result.
+
+  Derived from the registry rather than listed here, for the same reason
+  CONTENT_TOOL_NAMES is: the SDK stays the one place an action is declared,
+  including the declaration of who gets to answer for it.
+*/
+const CLIENT_RESULT_EDITOR_TOOL_NAMES: ReadonlySet<string> = new Set(
+  emailActionRegistry.actions
+    .filter((action) => action.kind === "editor" && action.resultSource === "client")
+    .map((action) => action.name),
+);
+
+/** The history direction a client-result editor tool name asks for. */
+function getHistoryStepDirection(toolName: string): HistoryStepDirection | null {
+  if (toolName === "undo" || toolName === "redo") {
+    return toolName;
+  }
+  return null;
+}
+
+/**
+ * Report one history step's REAL outcome as the tool result. `isStepped: false`
+ * rides the success channel on purpose — see lib/history-step-report.ts.
+ */
+function reportHistoryStep({
+  chat,
+  toolCallId,
+  direction,
+  outcome,
+}: {
+  chat: Chat<FlockChatMessage>;
+  toolCallId: string;
+  direction: HistoryStepDirection;
+  outcome: HistoryStepOutcome;
+}): void {
+  void chat.addToolOutput({
+    tool: direction,
+    toolCallId,
+    output: toHistoryStepToolOutput({ direction, outcome }),
+  });
+}
 
 /**
  * Ceiling on automatic follow-up requests per user turn. The loop normally
@@ -237,18 +294,29 @@ function createFlockChatController(): FlockChatController {
   const chat = new Chat<FlockChatMessage>({
     transport,
 
-    // Content ops reach here at input-available (editor/analysis tools have a
-    // server execute and are skipped). Apply → report the outcome as the tool
-    // result (per the hook docs, addToolOutput is called without awaiting).
+    // Content ops and CLIENT-RESULT editor actions reach here at
+    // input-available (every tool with a server execute is skipped). Apply →
+    // report the outcome as the tool result (per the hook docs, addToolOutput
+    // is called without awaiting).
     onToolCall: ({ toolCall }) => {
       if (toolCall.dynamic === true) {
         return;
       }
       const { toolName, toolCallId, input } = toolCall;
-      if (!CONTENT_TOOL_NAMES.has(toolName) || appliedToolCallIds.has(toolCallId)) {
+      const isClientResultEditorTool = CLIENT_RESULT_EDITOR_TOOL_NAMES.has(toolName);
+      if (
+        (!CONTENT_TOOL_NAMES.has(toolName) && !isClientResultEditorTool) ||
+        appliedToolCallIds.has(toolCallId)
+      ) {
         return;
       }
       appliedToolCallIds.add(toolCallId);
+
+      // undo / redo: perform the real history step and report what it did.
+      if (isClientResultEditorTool) {
+        takeHistoryStep({ toolName, toolCallId, input });
+        return;
+      }
 
       // Saved-section scaffolds (templateId "saved:<rowId>") resolve HERE,
       // against the session's saved subtrees — the catalog resolver can't
@@ -354,34 +422,34 @@ function createFlockChatController(): FlockChatController {
         void createDrafts(command);
         return;
       }
-      // undo / redo / goToVersion are DOCUMENT commands pinned to the turn's
-      // origin draft (the generateImage routing rule): they ride the exact
-      // store machinery the toolbar buttons and the history panel's restore
-      // use — acting on the user's behalf per their request — against the
-      // active store, or the turn document's retained instance after a
-      // mid-turn draft switch.
-      if (
-        command.type === "undo" ||
-        command.type === "redo" ||
-        command.type === "goToVersion"
-      ) {
+      /*
+        goToVersion is a DOCUMENT command pinned to the turn's origin draft
+        (the generateImage routing rule): it rides the exact store machinery
+        the history panel's restore uses — acting on the user's behalf per
+        their request — against the active store, or the turn document's
+        retained instance after a mid-turn draft switch.
+
+        undo/redo used to be handled here too. They are now client-result
+        tools handled in `onToolCall` (takeHistoryStep), because a command
+        executed from a data part has nowhere to report its outcome and the
+        model was being told the step succeeded regardless. goToVersion has
+        the SAME defect — `restoreVersion` returns a real result and it is
+        swallowed into a notice below — and is the obvious next one to move;
+        it is left here for now only because it is approval-gated, so moving
+        its execution also moves it relative to the approval halt.
+      */
+      if (command.type === "goToVersion") {
         const store = getIsTurnDocumentActive()
           ? useEditorStore.getState()
           : getTurnDocumentStore()?.getState();
         if (store === undefined) {
           return;
         }
-        if (command.type === "undo") {
-          store.undo();
-        } else if (command.type === "redo") {
-          store.redo();
-        } else {
-          void store.restoreVersion(command.version).then((result) => {
-            if (!result.isOk) {
-              store.showNotice(result.message);
-            }
-          });
-        }
+        void store.restoreVersion(command.version).then((result) => {
+          if (!result.isOk) {
+            store.showNotice(result.message);
+          }
+        });
         return;
       }
       // Mid-turn draft switch (owner decision, follow-on to the op pinning):
@@ -428,6 +496,80 @@ function createFlockChatController(): FlockChatController {
       return false;
     },
   });
+
+  /**
+   * Perform ONE history step for the agent (undo / redo) and report what it
+   * actually did back to the model.
+   *
+   * This is the whole point of undo/redo being client-result tools. The step
+   * runs against the same store the toolbar's own buttons use — the active
+   * store, or the turn document's retained instance after a mid-turn draft
+   * switch — and the store's outcome (including Convex's "nothing_to_undo")
+   * becomes the tool result. Nothing here reports a success it did not see.
+   *
+   * A FAILED step is still a SUCCESSFUL tool call: "there was nothing left to
+   * undo" is terminal and legitimate, and routing it through the error channel
+   * would invite the model to retry past it. See lib/history-step-report.ts.
+   */
+  function takeHistoryStep({
+    toolName,
+    toolCallId,
+    input,
+  }: {
+    toolName: keyof FlockChatTools;
+    toolCallId: string;
+    input: unknown;
+  }): void {
+    /*
+      Through the SDK dispatcher, not straight to the store. Execution moved
+      to the browser; the ACTION SPINE did not. `dispatchEditorAction`
+      re-validates against the action's FULL schema and runs its authorization
+      gate — the same guarantees the server branch gave this call before — so
+      a gate added to undo later is enforced on this path too instead of being
+      silently skipped by a hand-rolled shortcut.
+    */
+    const dispatched = dispatchEditorAction({
+      registry: emailActionRegistry,
+      name: toolName,
+      input,
+      context: {
+        caller: "tool",
+        author: "agent",
+        authorId: chat.id,
+        batchId: turnState.batchId,
+        threadId: chat.id,
+      },
+    });
+    if (!dispatched.isOk) {
+      void chat.addToolOutput({
+        state: "output-error",
+        tool: toolName,
+        toolCallId,
+        errorText: serializeApplyFailure(dispatched),
+      });
+      return;
+    }
+    const direction = getHistoryStepDirection(dispatched.command.type);
+    if (direction === null) {
+      return; // unreachable: only undo/redo are client-result editor actions
+    }
+
+    const store = getIsTurnDocumentActive()
+      ? useEditorStore.getState()
+      : getTurnDocumentStore()?.getState();
+    if (store === undefined) {
+      // The turn's draft was closed mid-turn — say so rather than nothing.
+      reportHistoryStep({
+        chat,
+        toolCallId,
+        direction,
+        outcome: { isOk: false, reason: "draft_unavailable" },
+      });
+      return;
+    }
+    const step = direction === "undo" ? store.undo() : store.redo();
+    void step.then((outcome) => reportHistoryStep({ chat, toolCallId, direction, outcome }));
+  }
 
   /**
    * Commit a FULFILLED generateImage command (agent path): the server already

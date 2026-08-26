@@ -118,7 +118,7 @@ export function StudioToolbar({
                   size="icon-sm"
                   aria-label="Undo"
                   disabled={!canUndo}
-                  onClick={undo}
+                  onClick={() => void undo()}
                 />
               }
             >
@@ -136,7 +136,7 @@ export function StudioToolbar({
                   size="icon-sm"
                   aria-label="Redo"
                   disabled={!canRedo}
-                  onClick={redo}
+                  onClick={() => void redo()}
                 />
               }
             >

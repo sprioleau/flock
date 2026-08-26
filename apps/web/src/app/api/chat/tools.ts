@@ -52,11 +52,16 @@ import { sendTestEmailWithResend } from "./send-test-email";
  *   Server-side, streamText already validates the input against the tool's
  *   inputSchema before `tool-input-available` is emitted (gate layer 1).
  *
- * - EDITOR actions execute server-side: `dispatchEditorAction` re-validates
- *   against the FULL schema and produces the typed EditorCommand, which is
- *   written onto the stream as a `data-editor-command` part for the Phase 3.4
- *   frontend dispatcher. The tool output ({status:"dispatched"}) closes the
- *   tool-call loop so the model can confirm the result.
+ * - EDITOR actions with `resultSource: "server"` execute server-side:
+ *   `dispatchEditorAction` re-validates against the FULL schema and produces
+ *   the typed EditorCommand, which is written onto the stream as a
+ *   `data-editor-command` part for the Phase 3.4 frontend dispatcher. The tool
+ *   output ({status:"dispatched"}) closes the tool-call loop so the model can
+ *   confirm the result.
+ *
+ * - EDITOR actions with `resultSource: "client"` (undo, redo) get NO execute()
+ *   here at all — see the branch below. The server cannot know whether a
+ *   history step existed to take, so it must not answer for one.
  *
  * - ANALYSIS actions (getBlockDetails, §9.4 catalog-lookup) execute
  *   server-side against THIS REQUEST'S document and return their JSON result
@@ -393,6 +398,21 @@ export function buildChatTools({
       tools[definition.name] = widgetTool;
     } else if (ingestionTool !== null) {
       tools[definition.name] = ingestionTool;
+    } else if (action.kind === "editor" && action.resultSource === "client") {
+      /*
+        CLIENT-RESULT editor actions (undo, redo): schema-only, exactly like a
+        content op. The call streams to the browser, which performs the real
+        history mutation and writes the tool result with `addToolOutput`.
+
+        The server is deliberately silent here — no execute, and therefore no
+        `data-editor-command` part either. This is the whole fix: an editor
+        `run` returns a command DESCRIBING what should happen, and streaming
+        that back as the tool result told the model an undo had succeeded
+        before the browser had attempted anything. The agent then said "I've
+        undone that change for you" over an unchanged draft. A result the
+        server cannot verify is not a result it may send.
+      */
+      tools[definition.name] = schemaOnlyTool;
     } else if (action.kind === "editor") {
       tools[definition.name] = tool({
         description: definition.description,

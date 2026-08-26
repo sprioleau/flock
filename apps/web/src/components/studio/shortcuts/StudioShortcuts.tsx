@@ -77,7 +77,7 @@ export function StudioShortcuts() {
     () => {
       const state = useEditorStore.getState();
       if (selectCanUndo(state)) {
-        state.undo();
+        void state.undo();
       }
     },
     { preventDefault: true },
@@ -88,7 +88,7 @@ export function StudioShortcuts() {
     () => {
       const state = useEditorStore.getState();
       if (selectCanRedo(state)) {
-        state.redo();
+        void state.redo();
       }
     },
     { preventDefault: true },

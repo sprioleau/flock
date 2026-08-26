@@ -208,6 +208,14 @@ export const showPreviewAction = defineEmailAction({
   kind: "editor",
   schema: showPreviewInputSchema,
   readOnly: false, // changes what's on the user's screen
+  /*
+    KNOWN GAP, recorded rather than hidden: the viewport flip happens in the
+    browser, so "server" here means the model is told the command was
+    dispatched, not that the canvas changed. The only way it does not is the
+    deliberate mid-turn draft-switch drop, so the lie is small and bounded —
+    unlike a history step, which routinely has nothing to do.
+  */
+  resultSource: "server",
   parallelSafe: false, // last viewport wins; concurrent flips are meaningless
   needsApproval: false,
   run: (input): ShowPreviewCommand => ({ type: "showPreview", mode: input.mode }),
@@ -245,6 +253,8 @@ export const sendTestEmailAction = defineEmailAction({
   kind: "editor",
   schema: sendTestEmailInputSchema,
   readOnly: false, // external side effect (an email leaves the building)
+  /* The send happens server-side; the message id in the result is a verdict. */
+  resultSource: "server",
   parallelSafe: false,
   needsApproval: true,
   authorize: (_input, context) => context.authorId.trim().length > 0,
@@ -270,6 +280,8 @@ export const generateImageAction = defineEmailAction({
   kind: "editor",
   schema: generateImageInputSchema,
   readOnly: false, // effectful: a billed generation + storage upload
+  /* The generation and upload happen server-side; the result is a verdict. */
+  resultSource: "server",
   parallelSafe: false,
   needsApproval: false,
   run: (input): GenerateImageCommand => ({
@@ -295,6 +307,8 @@ export const openPanelAction = defineEmailAction({
   kind: "editor",
   schema: openPanelInputSchema,
   readOnly: false, // changes what's on the user's screen
+  /* Same known gap as showPreview: a bounded, screen-only dispatch report. */
+  resultSource: "server",
   parallelSafe: false, // last surface wins; concurrent opens are meaningless
   needsApproval: false,
   run: (input): OpenPanelCommand => ({ type: "openPanel", panel: input.panel }),
@@ -307,6 +321,13 @@ export const undoAction = defineEmailAction({
   kind: "editor",
   schema: undoInputSchema,
   readOnly: false, // steps the document's history back
+  /*
+    CLIENT. Only the browser's store can ask Convex whether this session has a
+    step left to undo, and "nothing to undo" is a routine answer — the server
+    describing an undo it never attempted is what made the agent claim a
+    success it had never checked.
+  */
+  resultSource: "client",
   parallelSafe: false, // history steps are strictly ordered
   needsApproval: false,
   run: (): UndoCommand => ({ type: "undo" }),
@@ -319,6 +340,8 @@ export const redoAction = defineEmailAction({
   kind: "editor",
   schema: redoInputSchema,
   readOnly: false, // steps the document's history forward
+  /* CLIENT, for the same reason as undo. */
+  resultSource: "client",
   parallelSafe: false, // history steps are strictly ordered
   needsApproval: false,
   run: (): RedoCommand => ({ type: "redo" }),
@@ -336,6 +359,16 @@ export const goToVersionAction = defineEmailAction({
   kind: "editor",
   schema: goToVersionInputSchema,
   readOnly: false, // rewrites the working document to a past state
+  /*
+    KNOWN GAP, and the biggest one left: restoreVersion runs in the browser and
+    CAN legitimately fail (invalid_version, nothing_to_restore,
+    too_many_operations), and today that outcome is swallowed into a toast
+    while the model is told the restore was dispatched. It stays "server" for
+    now only because it is the one approval-gated client-fulfilled action, and
+    moving execution off the server also moves it relative to the approval
+    halt — a change that cannot be verified without a live model turn.
+  */
+  resultSource: "server",
   parallelSafe: false,
   needsApproval: true,
   run: (input): GoToVersionCommand => ({ type: "goToVersion", version: input.version }),
@@ -359,6 +392,13 @@ export const createDraftAction = defineEmailAction({
   kind: "editor",
   schema: createDraftInputSchema,
   readOnly: false, // adds drafts to the user's canvas
+  /*
+    KNOWN GAP: the drafts are built in the browser, and the compact model-facing
+    note ("Created N drafts…") is composed server-side from the plan rather than
+    from what landed. Honest reporting here means moving that note past the
+    build, which is a larger change than the history steps needed.
+  */
+  resultSource: "server",
   parallelSafe: false, // draft names are allocated sequentially
   needsApproval: false,
   run: (input): CreateDraftCommand => resolveCreateDraftCommand(input),
@@ -377,6 +417,8 @@ export const createPersonaAction = defineEmailAction({
   kind: "editor",
   schema: createPersonaInputSchema,
   readOnly: false, // creates a session-owned persona row
+  /* The row is created server-side; the returned slug is a verdict. */
+  resultSource: "server",
   parallelSafe: false, // per-session quota + slug allocation are sequential
   needsApproval: false,
   run: (input): CreatePersonaCommand => ({

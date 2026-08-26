@@ -131,6 +131,31 @@ describe("emailActionRegistry", () => {
     expect(getAction(emailActionRegistry, "inspectRenderedEmail")?.kind).toBe("analysis");
   });
 
+  /*
+    WHO IS ALLOWED TO ANSWER FOR EACH EDITOR ACTION. The chat route branches on
+    this declaration to decide whether to register a server execute at all, so
+    a wrong value here is a fabricated tool result: undo declared "server"
+    would put the server back to reporting a history step it never took, which
+    is exactly how the agent came to say "I've undone that change for you" over
+    an unchanged draft.
+  */
+  it("declares undo and redo as client-result actions and the rest as server", () => {
+    const resultSourceByName = Object.fromEntries(
+      editorEmailActions.map((action) => [action.name, action.resultSource]),
+    );
+    expect(resultSourceByName).toEqual({
+      showPreview: "server",
+      sendTestEmail: "server",
+      generateImage: "server",
+      openPanel: "server",
+      undo: "client",
+      redo: "client",
+      goToVersion: "server",
+      createDraft: "server",
+      createPersona: "server",
+    });
+  });
+
   it("generates a tool definition for every action", () => {
     const definitions = toAISDKToolDefinitions(emailActionRegistry);
     expect(definitions).toHaveLength(BUILTIN_ACTION_COUNT);

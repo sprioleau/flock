@@ -66,9 +66,12 @@ import {
  *   input with {@link validateAndClassifyOp} at `input-available` and applies
  *   it optimistically to the local document (Phase 4 makes Convex
  *   authoritative). Partial input during `input-streaming` is cosmetic only.
- * - `data-editor-command` parts — EDITOR actions (showPreview, sendTestEmail),
- *   dispatched server-side; the frontend dispatcher (Phase 3.4) executes the
- *   typed {@link EditorCommand} in `part.data.command`.
+ * - `data-editor-command` parts — EDITOR actions the SERVER answers for
+ *   (showPreview, sendTestEmail, …): dispatched server-side, and the frontend
+ *   dispatcher (Phase 3.4) executes the typed {@link EditorCommand} in
+ *   `part.data.command`. Editor actions the CLIENT answers for (undo, redo)
+ *   write NO data part — they arrive as an ordinary `tool-<name>` part and
+ *   the browser reports the real outcome (see {@link HistoryStepToolOutput}).
  * - `error` parts — terminal failures; `errorText` is a serialized
  *   {@link ChatErrorPayload} (see {@link parseChatErrorText}).
  */
@@ -335,6 +338,53 @@ export interface EditorToolOutput {
   send?: { messageId: string };
 }
 
+/*
+  THE HISTORY STEPS' TOOL RESULT (undo / redo) — written by the BROWSER, which
+  is the only party that knows whether a step existed to take.
+
+  `isStepped: false` IS A SUCCESSFUL TOOL RESULT. "There was nothing left to
+  undo" is a terminal, legitimate answer, not a repairable error: nothing about
+  the call was wrong and calling it again cannot change it. Routing it through
+  the error channel instead would put the model on the retry path, where the
+  SDK invites it to correct itself — the same instinct `not_authorized` is
+  classified terminal to prevent, and the same rule the web-ingestion tools
+  already follow ("a refusal is not an error", api/chat/tools.ts).
+
+  So the shape mirrors those refusals: the call succeeded, and the payload says
+  what happened. `note` is written to be relayed verbatim-ish — it carries both
+  the fact and the instruction not to try again.
+*/
+export const HISTORY_STEP_FAILURE_REASONS = [
+  /** The document's history has no eligible step for this session. */
+  "nothing_to_undo",
+  "nothing_to_redo",
+  /** The editor never connected to a document, so no step could be attempted. */
+  "not_connected",
+  /** The turn's draft was closed mid-turn; its store was gone. */
+  "draft_unavailable",
+  /** A newer change conflicts with the inverse. */
+  "conflict",
+  "document_not_found",
+  /** The mutation never completed (network). */
+  "connection_error",
+  /** A reason the client does not have curated copy for. */
+  "failed",
+] as const;
+
+export type HistoryStepFailureReason = (typeof HISTORY_STEP_FAILURE_REASONS)[number];
+
+export type HistoryStepToolOutput =
+  | {
+      isStepped: true;
+      /** What the model may tell the user, in plain English. */
+      note: string;
+    }
+  | {
+      isStepped: false;
+      reason: HistoryStepFailureReason;
+      note: string;
+    };
+
 /**
  * Tool output returned by ANALYSIS actions (kind: "analysis") — executed
  * server-side against the request's document, returned to the model in-loop.
@@ -413,8 +463,8 @@ export type FlockChatTools = {
   sendTestEmail: { input: SendTestEmailInput; output: EditorToolOutput };
   generateImage: { input: GenerateImageInput; output: EditorToolOutput };
   openPanel: { input: OpenPanelInput; output: EditorToolOutput };
-  undo: { input: UndoInput; output: EditorToolOutput };
-  redo: { input: RedoInput; output: EditorToolOutput };
+  undo: { input: UndoInput; output: HistoryStepToolOutput };
+  redo: { input: RedoInput; output: HistoryStepToolOutput };
   goToVersion: { input: GoToVersionInput; output: EditorToolOutput };
   createDraft: { input: CreateDraftInput; output: EditorToolOutput };
   createPersona: { input: CreatePersonaInput; output: EditorToolOutput };

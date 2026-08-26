@@ -135,6 +135,37 @@ export interface ContentEmailActionConfig<TSchema extends z.ZodType = z.ZodType>
   run: (doc: EmailDocument, input: z.output<TSchema>) => ApplyOperationResult;
 }
 
+/*
+  WHICH END PRODUCES AN EDITOR ACTION'S TOOL RESULT — the sentence the model
+  is entitled to say once the call returns.
+
+  "server": the server does the work inside its own executor and reports what
+  actually happened (sendTestEmail returns the provider's message id;
+  generateImage returns a stored image; createPersona returns a created row).
+  The result is a verdict because the process that produced it is the process
+  that did the work.
+
+  "client": the server has NO executor at all. The call streams to the browser,
+  the browser performs it, and the browser writes the tool result. Costs a
+  round trip; buys a result that is not a guess.
+
+  This exists because a `run` that merely DESCRIBES a command cannot answer
+  "did it work?", and the transport used to answer anyway: the command object
+  was streamed back as the tool result before the client had attempted
+  anything. For undo that is not a harmless optimism — "there was nothing left
+  to undo" is a routine, legitimate outcome, and the model was never told about
+  it, so it reported a success it had never checked.
+
+  Server-fulfilled actions keep "server" and are honest already. Four
+  client-fulfilled actions (showPreview, openPanel, goToVersion, createDraft)
+  are declared "server" today and are NOT yet honest: they still report the
+  dispatch rather than the outcome. That is a known remaining gap, deliberately
+  not closed in the same change as the history steps — see the notes on each.
+*/
+export const EDITOR_RESULT_SOURCES = ["server", "client"] as const;
+
+export type EditorResultSource = (typeof EDITOR_RESULT_SOURCES)[number];
+
 /**
  * Editor action config: NO document effect. `run` produces a typed
  * `EditorCommand` payload that Phase 3 streams to the frontend as a data part;
@@ -147,6 +178,11 @@ export interface EditorEmailActionConfig<
   kind: "editor";
   /** Editor actions never change the document, but most affect the screen. */
   readOnly: boolean;
+  /*
+    REQUIRED, so every editor action has to answer the question rather than
+    inherit an answer. See {@link EditorResultSource}.
+  */
+  resultSource: EditorResultSource;
   run: (input: z.output<TSchema>) => TCommand;
 }
 
@@ -402,6 +438,11 @@ export function defineEmailAction(config: AnyEmailActionConfig): AnyEmailAction 
   if (config.kind === "analysis" && (config.readOnly as boolean) !== true) {
     throw new Error(
       `defineEmailAction: analysis action "${config.name}" must be readOnly — analysis actions only read the document.`,
+    );
+  }
+  if (config.kind === "editor" && !EDITOR_RESULT_SOURCES.includes(config.resultSource)) {
+    throw new Error(
+      `defineEmailAction: editor action "${config.name}" must declare resultSource as one of: ${EDITOR_RESULT_SOURCES.join(", ")} — it decides whether the server may answer for this call at all.`,
     );
   }
   if (typeof config.run !== "function") {

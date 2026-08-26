@@ -18,6 +18,7 @@ import { useStore, type StoreApi } from "zustand";
 import { createStore } from "zustand/vanilla";
 import { api } from "@convex/_generated/api";
 import type { Id } from "@convex/_generated/dataModel";
+import { toHistoryStepOutcome, type HistoryStepOutcome } from "./history-step-report";
 
 /**
  * The Phase 4 document store — Convex is the source of truth; this store is
@@ -358,10 +359,16 @@ export interface EditorState {
    * the held op to Convex; the next dispatch starts a fresh gesture.
    */
   endCoalescing: () => void;
-  /** Server-side per-author undo (history.undo); failures surface as a notice. */
-  undo: () => void;
-  /** Server-side per-author redo (history.redo); failures surface as a notice. */
-  redo: () => void;
+  /*
+    Server-side per-author undo (history.undo). Failures still surface as a
+    notice for the toolbar's benefit, and are ALSO returned: the agent's undo
+    tool reports this outcome back to the model, so "nothing to undo" has to
+    be something a caller can read, not only something a toast says and
+    forgets. See lib/history-step-report.ts.
+  */
+  undo: () => Promise<HistoryStepOutcome>;
+  /** Server-side per-author redo (history.redo) — same contract as {@link undo}. */
+  redo: () => Promise<HistoryStepOutcome>;
   /** Revert one AI turn's batch (history.revertBatch). */
   revertAgentBatch: (batchId: string) => Promise<RevertBatchResult>;
   /** Restore the document to a historical version (history.rollbackToVersion). */
@@ -663,37 +670,41 @@ export function createEditorStore(): EditorStoreApi {
 
     endCoalescing: () => flushHeldOp(),
 
-    undo: () => {
+    undo: async () => {
       const { documentId, authorId } = get();
       if (documentId === null || authorId === null || convexClient === null) {
-        return;
+        return { isOk: false as const, reason: "not_connected" as const };
       }
       // Settle the open gesture first so it is what gets undone.
       flushHeldOp();
-      convexClient
-        .mutation(api.history.undo, { documentId, authorId })
-        .then((result) => {
-          if (!result.isOk) {
-            get().showNotice(toHistoryFailureMessage(result.reason));
-          }
-        })
-        .catch(() => get().showNotice("Undo failed (connection error)."));
+      try {
+        const result = await convexClient.mutation(api.history.undo, { documentId, authorId });
+        if (!result.isOk) {
+          get().showNotice(toHistoryFailureMessage(result.reason));
+        }
+        return toHistoryStepOutcome(result);
+      } catch {
+        get().showNotice("Undo failed (connection error).");
+        return { isOk: false as const, reason: "connection_error" as const };
+      }
     },
 
-    redo: () => {
+    redo: async () => {
       const { documentId, authorId } = get();
       if (documentId === null || authorId === null || convexClient === null) {
-        return;
+        return { isOk: false as const, reason: "not_connected" as const };
       }
       flushHeldOp();
-      convexClient
-        .mutation(api.history.redo, { documentId, authorId })
-        .then((result) => {
-          if (!result.isOk) {
-            get().showNotice(toHistoryFailureMessage(result.reason));
-          }
-        })
-        .catch(() => get().showNotice("Redo failed (connection error)."));
+      try {
+        const result = await convexClient.mutation(api.history.redo, { documentId, authorId });
+        if (!result.isOk) {
+          get().showNotice(toHistoryFailureMessage(result.reason));
+        }
+        return toHistoryStepOutcome(result);
+      } catch {
+        get().showNotice("Redo failed (connection error).");
+        return { isOk: false as const, reason: "connection_error" as const };
+      }
     },
 
     revertAgentBatch: async (batchId) => {
