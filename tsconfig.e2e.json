@@ -1,0 +1,26 @@
+{
+  /*
+    Types for the Playwright suite only.
+
+    It needs its own config because the specs live outside every workspace
+    package: `apps/web/tsconfig.json` covers `apps/web/**` and its vitest
+    include is `src/**/*.test.{ts,tsx}`, so neither the app's `tsc --noEmit`
+    nor its unit run can see (or accidentally collect) anything here.
+
+    Playwright's own runner transpiles without type checking, so `pnpm e2e:types`
+    is the only thing that ever reads this file.
+  */
+  "compilerOptions": {
+    "target": "ES2022",
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "module": "esnext",
+    "moduleResolution": "bundler",
+    "strict": true,
+    "noEmit": true,
+    "esModuleInterop": true,
+    "skipLibCheck": true,
+    "isolatedModules": true,
+    "types": ["node"]
+  },
+  "include": ["e2e/**/*.ts", "playwright.config.ts"]
+}

@@ -13,9 +13,11 @@
   · THEME: dark, throughout. App chrome only — settings FAB (bottom right) →
     Appearance → Dark, or ⇧⌘L to cycle. The email document keeps its own
     author-chosen colors in either mode, so this only moves the studio's chrome.
-  · URL: http://localhost:3000 ONLY. Any other port, or 127.0.0.1, or a LAN IP,
-    makes every auth route 403 with "Invalid origin". Run `pnpm dev` from the repo
-    root and make sure it did not fall through to :3001 because 3000 was taken.
+  · URL: any LOOPBACK address — localhost or 127.0.0.1, on whatever port `next
+    dev` actually took (convex/auth.ts trusts `http://localhost:*` and
+    `http://127.0.0.1:*` whenever SITE_URL is unset, so a fall-through to :3001
+    is harmless). A LAN IP is still fatal: every auth route 403s with "Invalid
+    origin". Frame the shots from http://localhost:3000 anyway, for consistency.
   · THE ONBOARDING TOUR WILL PHOTOBOMB YOU. It auto-starts for a first-time
     visitor and its card sits over the studio. Let it run to the end or dismiss it
     before framing anything. Progress lives in localStorage under

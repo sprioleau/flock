@@ -86,6 +86,25 @@ export const CHAT_API_PATH = "/api/chat";
  */
 export const MOCK_MODEL_HEADER = "x-flock-mock";
 
+/*
+  RESPONSE header naming the model that actually served the turn — the real
+  model id, never a boolean, and never the id that was merely asked for.
+  Sent by /api/chat and /api/personas.
+
+  WHY IT EXISTS. Which model ran was previously recorded in ONE place: a
+  server log line. That makes the deployment's most expensive guarantee — that
+  a /demo turn, or a deployment with no key, spends no provider quota —
+  unobservable to anything outside the process. A caller could believe it;
+  nothing could assert it. This header moves the verdict onto the wire, where
+  an end-to-end test (or an operator with curl) can read it back and FAIL when
+  a turn that was supposed to be free reached for Gemini.
+
+  It leaks nothing a caller does not already control: the model id is either a
+  published id the deployment configured or the mock's constant. It is not a
+  spend authority — mock-authority.ts is, and it reads a Convex row.
+*/
+export const MODEL_RESPONSE_HEADER = "x-flock-model";
+
 // ---------------------------------------------------------------------------
 // Request body
 // ---------------------------------------------------------------------------

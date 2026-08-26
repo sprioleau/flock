@@ -496,6 +496,13 @@ export function ChatPanel() {
               disabled={draftText.trim().length === 0}
               size="icon-lg"
               aria-label={isAgentBusy || hasQueuedMessages ? "Queue message" : "Send message"}
+              /* The one control on this panel with no stable accessible handle:
+                 the label above flips to "Queue message" the moment a turn is in
+                 flight, so an end-to-end test querying it by role+name would
+                 pass or fail on timing. The textarea beside it keeps
+                 aria-label="Chat message" in every state and is queried that
+                 way — no testid needed there. */
+              data-testid="chat-composer-send"
               tabIndex={isExpanded ? 0 : -1}
               onClick={submitDraft}
             >

@@ -36,3 +36,8 @@ apps/web/src/app/api/spike/
 .claude-screenshots/
 .playwright-mcp/
 .claude/settings.local.json
+
+# Playwright e2e artifacts
+/test-results/
+/playwright-report/
+.next-e2e/

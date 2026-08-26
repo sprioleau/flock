@@ -10,7 +10,7 @@ import type { FunctionReturnType } from "convex/server";
 import { z } from "zod";
 import { api } from "@convex/_generated/api";
 import { chargeCreditForRequest } from "@/lib/auth/credits";
-import { MOCK_MODEL_HEADER } from "@/lib/chat-contract";
+import { MOCK_MODEL_HEADER, MODEL_RESPONSE_HEADER } from "@/lib/chat-contract";
 import { selectIsMockForced } from "@/lib/demo/mock-authority";
 import { createTraceId, logFailure, logRecord, summarizeError } from "@/lib/observability/log";
 import {
@@ -18,6 +18,7 @@ import {
   type ModelTelemetryContext,
 } from "@/lib/observability/model-telemetry";
 import { stableStringify } from "@/lib/suggestions/serialize-block";
+import { MOCK_MODEL_ID } from "../chat/constants";
 import { selectSeededFinding } from "./demo-findings";
 import { composeFindingOps } from "./finding-ops";
 import { runnerOutputSchema, truncateFindingProse, type RunnerOutputFinding } from "./finding-schema";
@@ -711,7 +712,13 @@ export async function POST(request: Request) {
       usage,
     });
 
-    return Response.json({ isOk: true, findings, usage });
+    /* The same model verdict the log line above carries, on the wire — see
+       MODEL_RESPONSE_HEADER. Only the success response names a model, because
+       it is the only one that ran (or deliberately did not run) one. */
+    return Response.json(
+      { isOk: true, findings, usage },
+      { headers: { [MODEL_RESPONSE_HEADER]: isMockRun ? MOCK_MODEL_ID : PERSONA_MODEL_ID } },
+    );
   } catch (error) {
     const summary = summarizeError(error);
     logFailure({

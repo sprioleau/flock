@@ -3,6 +3,7 @@ import { createUIMessageStream, createUIMessageStreamResponse } from "ai";
 import {
   chatRequestBodySchema,
   MOCK_MODEL_HEADER,
+  MODEL_RESPONSE_HEADER,
   type ChatRequestErrorResponse,
   type FlockChatMessage,
 } from "@/lib/chat-contract";
@@ -172,6 +173,11 @@ export async function POST(request: Request) {
     onError: createChatErrorLogger({ traceId, source: "pipeline" }),
   });
 
-  return createUIMessageStreamResponse({ stream });
+  /* `modelId` is the REAL id in play (provider.ts guarantees it is never ""),
+     so the header is the turn's model verdict, readable by the caller. */
+  return createUIMessageStreamResponse({
+    stream,
+    headers: { [MODEL_RESPONSE_HEADER]: modelId },
+  });
 }
 
