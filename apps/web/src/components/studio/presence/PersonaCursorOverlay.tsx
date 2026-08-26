@@ -26,7 +26,8 @@ import {
   getPresentationPhase,
   type FindingPresentationPhase,
 } from "./persona-cursor-helpers";
-import { PointerCursorArrow, resolvePointerPosition } from "./PointerPresenceOverlay";
+import { AgentCursorGlyph } from "./AgentCursorGlyph";
+import { resolvePointerPosition } from "./PointerPresenceOverlay";
 import "./pointer-presence.css";
 
 /**
@@ -35,6 +36,12 @@ import "./pointer-presence.css";
  * cursor glyphs matching the human remote-cursor grammar, with a
  * thinking/status badge at the cursor that rhymes with the facepile's
  * PersonaStatusDot).
+ *
+ * Owner revision 2026-08-25: agents diverge from the human arrow. They render
+ * the larger bird glyph (AgentCursorGlyph, 24x30 vs the humans' 15x15) so it
+ * is obvious at a glance that something is working, and their name tag is
+ * hover-revealed rather than always-on. The human cursors keep the original
+ * arrow and always-on tag — both live on their own components/classes now.
  *
  * CHOREOGRAPHY IS 100% CLIENT-SIDE — zero new presence writes. The driver
  * signals are shared reactive state on every collaborator's client:
@@ -526,7 +533,15 @@ function PersonaCursor({
         cursorElement.style.transition = "";
       }
     }
-    cursorElement.style.opacity = position !== null ? "1" : "0";
+    const isVisible = position !== null;
+    cursorElement.style.opacity = isVisible ? "1" : "0";
+    /* Gates the glyph's pointer-events in pointer-presence.css — set in the
+     * same breath as opacity so the two can never disagree. A faded-out
+     * cursor is still in the DOM and still hit-testable, so without this an
+     * invisible glyph would sit on the canvas swallowing clicks. The
+     * attribute is absent until the first positioning pass, which reads as
+     * "not visible" — the safe default. */
+    cursorElement.dataset.isVisible = String(isVisible);
   }, [
     activity,
     slug,
@@ -550,8 +565,13 @@ function PersonaCursor({
       data-activity={activity}
     >
       <div className="flock-persona-cursor__bob">
-        <PointerCursorArrow color={color} />
-        <span className="flock-pointer-cursor__label" style={{ backgroundColor: color }}>
+        <AgentCursorGlyph color={color} />
+        {/* Hover-revealed name chip (owner 2026-08-25). MUST stay the glyph's
+         * immediate next sibling — pointer-presence.css reveals it with an
+         * adjacent-sibling selector off the glyph's :hover. Its own class,
+         * not the humans' .flock-pointer-cursor__label, whose name tag stays
+         * always-on. */}
+        <span className="flock-persona-cursor__label" style={{ backgroundColor: color }}>
           {name}
         </span>
         {activity !== "hidden" && (

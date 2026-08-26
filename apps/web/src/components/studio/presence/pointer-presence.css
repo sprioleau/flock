@@ -8,7 +8,11 @@
  * selection ring z-10 < CURSORS z-20 < action row / breadcrumb z-30 <
  * bubble menu / dnd chrome z-50.
  *
- * Nothing here may affect layout or intercept input: everything is
+ * Nothing here may affect layout, and nothing may intercept input except the
+ * one documented exception: .flock-persona-cursor__glyph takes pointer events
+ * back for its own 24x30 box while it is visible, because the agent cursor's
+ * hover-revealed name chip needs a :hover target (owner 2026-08-25). That
+ * grant is spelled out where it is made, further down. Everything else is
  * pointer-events-none and moves only via GPU-composited transforms.
  */
 
@@ -81,13 +85,39 @@
   }
 }
 
+/*
+ * The agent glyph itself — the bird cursor (AgentCursorGlyph), 24x30 against
+ * the humans' 15x15 arrow so it is obvious at a glance that an agent is
+ * working (owner 2026-08-25).
+ *
+ * This box is the ONE exception to the file's pointer-events-none contract
+ * (see the header): it is the hover target that reveals the name chip, and
+ * a :hover state cannot fire on a pointer-events-none element. The grant is
+ * scoped as tightly as it can be — this 24x30 glyph only, never the overlay,
+ * never the cursor wrapper, never a full-bleed layer — and it is further
+ * gated on [data-is-visible], stamped by PersonaCursorOverlay's positioning
+ * effect alongside `opacity`, so a faded-out or unresolved cursor cannot
+ * swallow canvas clicks invisibly. Everything else in the overlay, including
+ * the chip and the badge, stays pointer-events-none by inheritance.
+ */
+.flock-persona-cursor__glyph {
+  display: block;
+  filter: drop-shadow(0 1px 1px rgb(0 0 0 / 0.25));
+}
+
+.flock-persona-cursor[data-is-visible="true"] .flock-persona-cursor__glyph {
+  pointer-events: auto;
+}
+
 /* The at-cursor status badge — same size/ring/pulse treatment as the
  * facepile's PersonaStatusDot (color + animate-pulse come from the
- * component's Tailwind classes, matching the avatar-stack indicator). */
+ * component's Tailwind classes, matching the avatar-stack indicator).
+ * Sits in the open wedge to the upper right of the beak, clear of both the
+ * body and the hover chip. */
 .flock-persona-cursor__badge {
   position: absolute;
-  top: -5px;
-  left: 9px;
+  top: -3px;
+  left: 16px;
   width: 8px;
   height: 8px;
   border-radius: 9999px;
@@ -113,4 +143,58 @@
   color: white;
   white-space: nowrap;
   text-overflow: ellipsis;
+}
+
+/*
+ * Agent name chip — hidden until the glyph is hovered (owner 2026-08-25).
+ *
+ * Deliberately NOT .flock-pointer-cursor__label above: that class is the
+ * HUMAN remote cursors' always-on name tag and must keep behaving that way.
+ *
+ * Geometry is lifted from `components/ui/agent-cursor-with-label.svg`: at the
+ * glyph's 24x30 size the asset's chip lands at 23px/14px with a ~16px height
+ * and a ~1px white keyline, so those are the numbers below. The asset's own
+ * chip artwork is unusable directly — it is a FIXED 429-unit-wide rect with
+ * its label baked in as letterform outlines, which cannot fit a variable
+ * persona name ("Stylist" vs "Tone police"). The name stays real DOM text and
+ * the chip is drawn in CSS so it sizes to it.
+ */
+.flock-persona-cursor__label {
+  position: absolute;
+  top: 14px;
+  left: 23px;
+  max-width: 160px;
+  overflow: hidden;
+  padding: 2px 5px;
+  border-radius: 2px;
+  font-size: 10px;
+  font-weight: 500;
+  line-height: 12px;
+  color: white;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  /* White keyline + lift, matching the glyph's stroke and drop shadow. */
+  box-shadow:
+    0 0 0 1px #fff,
+    0 1px 2px rgb(0 0 0 / 0.25);
+  /* Resting state: tucked behind the glyph's right edge, invisible. */
+  opacity: 0;
+  transform: translateX(-4px) scale(0.96);
+  transform-origin: left center;
+  /* The 240ms delay is the anti-strobe: persona cursors glide between
+   * anchors for 1100ms, so the glyph can slip out from under a stationary
+   * pointer for a beat. The chip holds through that instead of blinking. */
+  transition:
+    opacity 200ms ease 240ms,
+    transform 200ms ease 240ms;
+}
+
+/* Reveal: the chip eases out from behind the glyph's right edge. No delay in
+ * — the answer to a hover has to feel immediate. */
+.flock-persona-cursor__glyph:hover + .flock-persona-cursor__label {
+  opacity: 1;
+  transform: translateX(0) scale(1);
+  transition:
+    opacity 180ms cubic-bezier(0.22, 1, 0.36, 1),
+    transform 180ms cubic-bezier(0.22, 1, 0.36, 1);
 }
