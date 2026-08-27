@@ -1,3 +1,4 @@
+import { z } from "zod";
 import type {
   Block,
   ButtonBlock,
@@ -117,6 +118,39 @@ export interface PlaceholderImageInput {
  */
 export function placeholderImageUrl({ width, height }: PlaceholderImageInput): string {
   return `https://placehold.co/${width}x${height}.png`;
+}
+
+/*
+  The image-source override every image-bearing template accepts, and the ONE
+  place its wording lives.
+
+  It is deliberately absent from the model-facing schema (see
+  `modelFacingParamsSchema` in ./types): the model writes copy, and a URL
+  field would invite it to invent or hotlink an address. The caller this
+  exists for is programmatic — the content-ingestion pipeline rehosts a source
+  image into our own storage and passes the resulting URL down through a
+  createDraft section plan.
+*/
+export const imageSrcParamSchema = z
+  .string()
+  .min(1)
+  .optional()
+  .describe(
+    "Absolute https URL of the image to show. Omit for a correctly sized placeholder.",
+  );
+
+export interface ResolveImageSrcInput extends PlaceholderImageInput {
+  /** The caller-supplied source, when there is one. */
+  src?: string;
+}
+
+/*
+  A supplied source wins; otherwise the template keeps the exact placeholder
+  dimensions it has always emitted. Templates call this instead of
+  placeholderImageUrl so the fallback and its size stay one expression.
+*/
+export function resolveImageSrc({ src, width, height }: ResolveImageSrcInput): string {
+  return src ?? placeholderImageUrl({ width, height });
 }
 
 // ---------------------------------------------------------------------------

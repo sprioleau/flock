@@ -1,8 +1,9 @@
 import { z } from "zod";
 import {
   createSectionComposer,
+  imageSrcParamSchema,
   paragraphNode,
-  placeholderImageUrl,
+  resolveImageSrc,
   textDocOf,
   textRun,
 } from "../build-helpers";
@@ -38,6 +39,7 @@ export const headerCenteredParamsSchema = z
         { label: "Contact", href: "https://example.com/contact" },
       ])
       .describe("Up to 4 navigation links centered under the logo. Pass [] for a logo-only header."),
+    imageSrc: imageSrcParamSchema,
   })
   .describe("Centered-header content: brand name and optional navigation links.");
 
@@ -48,11 +50,16 @@ export const headerCenteredTemplate = defineSectionTemplate({
   useWhen:
     "Open the email with a centered brand lockup: the logo on its own line with navigation links centered beneath it.",
   paramsSchema: headerCenteredParamsSchema,
+  /*
+    imageSrc is for programmatic callers only (a rehosted image URL from the
+    content-ingestion pipeline) — never for the model.
+  */
+  modelFacingParamsSchema: headerCenteredParamsSchema.omit({ imageSrc: true }),
   build: ({ params, random }) => {
     const composer = createSectionComposer(random);
     composer.addLeaf({
       kind: "image",
-      src: placeholderImageUrl({ width: 280, height: 80 }),
+      src: resolveImageSrc({ src: params.imageSrc, width: 280, height: 80 }),
       alt: `${params.brandName} logo`,
       width: 140,
       align: "center",

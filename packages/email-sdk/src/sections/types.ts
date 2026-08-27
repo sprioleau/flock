@@ -63,8 +63,33 @@ export interface SectionTemplate<TSchema extends z.ZodType = z.ZodType> {
   useWhen: string;
   /** CONTENT-ONLY params: every field `.describe()`d and defaulted; `parse({})` succeeds. */
   paramsSchema: TSchema;
+  /*
+    The NARROWED params schema the model is offered, for the templates whose
+    `paramsSchema` carries a field the model must not be able to write.
+
+    Today that is exactly one thing: the image-source override on the seven
+    image-bearing templates. The model's job is COPY — handing it a URL field
+    would let it invent or hotlink an image address, and would churn a large
+    cached prompt prefix for a field it should never fill. The override exists
+    for PROGRAMMATIC callers: the content-ingestion pipeline rehosts a source
+    image into our own storage and passes the resulting URL through a
+    createDraft section plan, which validates against `paramsSchema`.
+
+    Templates with nothing to hide leave this undefined and are handed to the
+    model untouched. Always read it through `getModelFacingParamsSchema`.
+  */
+  modelFacingParamsSchema?: z.ZodType;
   /** Pure builder: validated params (+ optional RandomFn) → one addSection payload. */
   build(input: SectionBuildInput<z.output<TSchema>>): SectionBuildResult;
+}
+
+/*
+  The params schema to show the model: a template's narrowed schema when it
+  declares one, otherwise `paramsSchema` itself — so a template that hides
+  nothing presents exactly the surface it always has.
+*/
+export function getModelFacingParamsSchema(template: SectionTemplate): z.ZodType {
+  return template.modelFacingParamsSchema ?? template.paramsSchema;
 }
 
 /** Lowercase start, then lowercase letters/digits/hyphens: `hero`, `feature-columns`. */
@@ -90,6 +115,19 @@ export function defineSectionTemplate<TSchema extends z.ZodType>(
   if (!SECTION_CATEGORIES.includes(template.category)) {
     throw new Error(
       `defineSectionTemplate: template "${template.id}" has unknown category "${String(template.category)}" — expected one of: ${SECTION_CATEGORIES.join(", ")}.`,
+    );
+  }
+  /*
+    The narrowed schema must still be demo-ready on its own: the model omits
+    params constantly, and a hidden field that took a default with it would
+    make `scaffoldSection` fail for the model alone.
+  */
+  if (
+    template.modelFacingParamsSchema !== undefined &&
+    !template.modelFacingParamsSchema.safeParse({}).success
+  ) {
+    throw new Error(
+      `defineSectionTemplate: template "${template.id}" has a modelFacingParamsSchema that rejects {} — the model-facing schema must still yield a complete demo section.`,
     );
   }
   return Object.freeze({ ...template });

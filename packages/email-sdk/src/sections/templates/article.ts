@@ -2,8 +2,9 @@ import { z } from "zod";
 import {
   createSectionComposer,
   headingNode,
+  imageSrcParamSchema,
   paragraphNode,
-  placeholderImageUrl,
+  resolveImageSrc,
   textDocOf,
 } from "../build-helpers";
 import { defineSectionTemplate } from "../types";
@@ -35,6 +36,7 @@ export const articleParamsSchema = z
       .describe(
         "Alt text for an optional supporting image shown above the heading. Omit for a text-only article.",
       ),
+    imageSrc: imageSrcParamSchema,
   })
   .describe("Article content: heading, body paragraph, and an optional supporting image.");
 
@@ -45,12 +47,17 @@ export const articleTemplate = defineSectionTemplate({
   useWhen:
     "Tell one story in editorial form: a heading and a rich paragraph, with an optional supporting image.",
   paramsSchema: articleParamsSchema,
+  /*
+    imageSrc is for programmatic callers only (a rehosted image URL from the
+    content-ingestion pipeline) — never for the model.
+  */
+  modelFacingParamsSchema: articleParamsSchema.omit({ imageSrc: true }),
   build: ({ params, random }) => {
     const composer = createSectionComposer(random);
     if (params.imageAlt !== undefined) {
       composer.addLeaf({
         kind: "image",
-        src: placeholderImageUrl({ width: 1200, height: 675 }),
+        src: resolveImageSrc({ src: params.imageSrc, width: 1200, height: 675 }),
         alt: params.imageAlt,
       });
     }

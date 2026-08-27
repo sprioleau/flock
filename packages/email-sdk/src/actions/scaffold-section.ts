@@ -2,6 +2,7 @@ import { z } from "zod";
 import { applyOperation } from "../operations/apply";
 import type { AddSectionOperation, Operation } from "../operations/ops";
 import { getSectionTemplate, SECTION_TEMPLATE_IDS, SECTION_TEMPLATES } from "../sections/catalog";
+import { getModelFacingParamsSchema } from "../sections/types";
 import { ROOT_BLOCK_ID, sectionBlockIdSchema, type RandomFn } from "../schema/ids";
 import type { EmailDocument } from "../store/document";
 import {
@@ -80,7 +81,13 @@ const scaffoldSectionBranchesByTemplate = SECTION_TEMPLATES.map((template) => ({
       .literal(template.id)
       .describe(`The "${template.name}" section template. Use when: ${template.useWhen}`),
     position: scaffoldSectionPositionSchema.optional(),
-    params: (template.paramsSchema as z.ZodType)
+    /*
+      The MODEL-FACING schema, not `paramsSchema`: the image-bearing templates
+      accept an image-source override that only programmatic callers may set
+      (see getModelFacingParamsSchema). Every other template is handed through
+      unchanged, so this union is the same surface the model has always seen.
+    */
+    params: getModelFacingParamsSchema(template)
       .optional()
       .describe(
         `Content for the ${template.name} section. Every field has a sensible default — pass only what the user's request specifies, or omit entirely for placeholder content.`,

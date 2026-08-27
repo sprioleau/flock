@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { applyOperation } from "../operations/apply";
-import { SECTION_TEMPLATE_IDS } from "../sections/catalog";
+import { getSectionTemplate, SECTION_TEMPLATE_IDS } from "../sections/catalog";
 import type { SectionBlock } from "../schema/blocks";
 import type { RandomFn } from "../schema/ids";
 import { createSampleDocument } from "../store/document";
@@ -145,6 +145,61 @@ describe("scaffoldSectionInputSchema", () => {
     const message = parsed.error.issues.map((issue) => issue.message).join(" ");
     expect(message).toContain("caption");
     expect(message).not.toContain("saved:");
+  });
+
+  /*
+    The image-bearing templates accept an image-source override so the
+    content-ingestion pipeline can put a REHOSTED image into a section. The
+    model must never be able to write one: it would invent or hotlink an
+    address, and the field would churn a large cached prompt prefix for no
+    gain. This is the assertion that stops someone re-widening the model
+    surface by feeding `paramsSchema` back into the union.
+  */
+  const IMAGE_SOURCE_PARAMS_BY_TEMPLATE_ID: readonly (readonly [
+    string,
+    Record<string, unknown>,
+  ])[] = [
+    ["hero", { imageSrc: "https://storage.example.com/rehosted/a.png" }],
+    ["hero-split", { imageSrc: "https://storage.example.com/rehosted/a.png" }],
+    [
+      "article",
+      { imageAlt: "A portrait", imageSrc: "https://storage.example.com/rehosted/a.png" },
+    ],
+    ["product", { imageSrc: "https://storage.example.com/rehosted/a.png" }],
+    ["header", { imageSrc: "https://storage.example.com/rehosted/a.png" }],
+    ["header-centered", { imageSrc: "https://storage.example.com/rehosted/a.png" }],
+    [
+      "image-gallery",
+      { images: [{ alt: "One", src: "https://storage.example.com/rehosted/a.png" }, { alt: "Two" }] },
+    ],
+  ];
+
+  it.each(IMAGE_SOURCE_PARAMS_BY_TEMPLATE_ID)(
+    "%s: refuses an image source from the model though the template itself accepts one",
+    (templateId, params) => {
+      expect(
+        scaffoldSectionInputSchema.safeParse({ name: "scaffoldSection", templateId, params })
+          .success,
+      ).toBe(false);
+      expect(getSectionTemplate(templateId)!.paramsSchema.safeParse(params).success).toBe(true);
+    },
+  );
+
+  it("still accepts the model-visible params of every image-bearing template", () => {
+    expect(
+      scaffoldSectionInputSchema.safeParse({
+        name: "scaffoldSection",
+        templateId: "hero",
+        params: { headline: "New season", imageAlt: "A coat on a rail" },
+      }).success,
+    ).toBe(true);
+    expect(
+      scaffoldSectionInputSchema.safeParse({
+        name: "scaffoldSection",
+        templateId: "image-gallery",
+        params: { images: [{ alt: "One", href: "https://example.com" }, { alt: "Two" }] },
+      }).success,
+    ).toBe(true);
   });
 
   it("accepts all four position shapes", () => {

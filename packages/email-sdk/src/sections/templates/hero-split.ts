@@ -2,8 +2,9 @@ import { z } from "zod";
 import {
   createSectionComposer,
   headingNode,
+  imageSrcParamSchema,
   paragraphNode,
-  placeholderImageUrl,
+  resolveImageSrc,
   textDocOf,
 } from "../build-helpers";
 import { defineSectionTemplate } from "../types";
@@ -33,6 +34,7 @@ export const heroSplitParamsSchema = z
       .min(1)
       .default("Product preview")
       .describe("Alt text describing the hero image (required for accessibility)."),
+    imageSrc: imageSrcParamSchema,
     ctaLabel: z
       .string()
       .min(1)
@@ -53,6 +55,11 @@ export const heroSplitTemplate = defineSectionTemplate({
   useWhen:
     "Lead with a side-by-side hero: headline, supporting line, and CTA button on the left, an image on the right.",
   paramsSchema: heroSplitParamsSchema,
+  /*
+    imageSrc is for programmatic callers only (a rehosted image URL from the
+    content-ingestion pipeline) — never for the model.
+  */
+  modelFacingParamsSchema: heroSplitParamsSchema.omit({ imageSrc: true }),
   build: ({ params, random }) => {
     const composer = createSectionComposer(random);
     composer.addColumns([
@@ -76,7 +83,7 @@ export const heroSplitTemplate = defineSectionTemplate({
         leaves: [
           {
             kind: "image",
-            src: placeholderImageUrl({ width: 600, height: 600 }),
+            src: resolveImageSrc({ src: params.imageSrc, width: 600, height: 600 }),
             alt: params.imageAlt,
           },
         ],

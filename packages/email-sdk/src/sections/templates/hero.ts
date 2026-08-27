@@ -2,8 +2,9 @@ import { z } from "zod";
 import {
   createSectionComposer,
   headingNode,
+  imageSrcParamSchema,
   paragraphNode,
-  placeholderImageUrl,
+  resolveImageSrc,
   textDocOf,
 } from "../build-helpers";
 import { defineSectionTemplate } from "../types";
@@ -34,6 +35,7 @@ export const heroParamsSchema = z
       .min(1)
       .default("Product preview")
       .describe("Alt text describing the hero image (required for accessibility)."),
+    imageSrc: imageSrcParamSchema,
     ctaLabel: z
       .string()
       .min(1)
@@ -54,11 +56,16 @@ export const heroTemplate = defineSectionTemplate({
   useWhen:
     "Lead the email with one big idea: a full-width image above a headline, a supporting line, and a single CTA button.",
   paramsSchema: heroParamsSchema,
+  /*
+    imageSrc is for programmatic callers only (a rehosted image URL from the
+    content-ingestion pipeline) — never for the model.
+  */
+  modelFacingParamsSchema: heroParamsSchema.omit({ imageSrc: true }),
   build: ({ params, random }) => {
     const composer = createSectionComposer(random);
     composer.addLeaf({
       kind: "image",
-      src: placeholderImageUrl({ width: 1200, height: 600 }),
+      src: resolveImageSrc({ src: params.imageSrc, width: 1200, height: 600 }),
       alt: params.imageAlt,
     });
     composer.addLeaf({

@@ -1,8 +1,9 @@
 import { z } from "zod";
 import {
   createSectionComposer,
+  imageSrcParamSchema,
   paragraphNode,
-  placeholderImageUrl,
+  resolveImageSrc,
   textDocOf,
   textRun,
   type LeafSpec,
@@ -38,6 +39,7 @@ export const headerParamsSchema = z
         { label: "Contact", href: "https://example.com/contact" },
       ])
       .describe("Up to 4 navigation links shown right of the logo. Pass [] for a logo-only header."),
+    imageSrc: imageSrcParamSchema,
   })
   .describe("Header content: brand name and optional navigation links.");
 
@@ -48,11 +50,16 @@ export const headerTemplate = defineSectionTemplate({
   useWhen:
     "Open the email with brand identity: a slim bar with the logo on the left and a few navigation links on the right.",
   paramsSchema: headerParamsSchema,
+  /*
+    imageSrc is for programmatic callers only (a rehosted image URL from the
+    content-ingestion pipeline) — never for the model.
+  */
+  modelFacingParamsSchema: headerParamsSchema.omit({ imageSrc: true }),
   build: ({ params, random }) => {
     const composer = createSectionComposer(random);
     const logo: LeafSpec = {
       kind: "image",
-      src: placeholderImageUrl({ width: 280, height: 80 }),
+      src: resolveImageSrc({ src: params.imageSrc, width: 280, height: 80 }),
       alt: `${params.brandName} logo`,
       width: 140,
       align: "left",

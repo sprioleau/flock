@@ -435,7 +435,11 @@ export {
   getSectionTemplate,
 } from "./sections/catalog";
 export type { SectionTemplateId } from "./sections/catalog";
-export { SECTION_CATEGORIES, defineSectionTemplate } from "./sections/types";
+export {
+  SECTION_CATEGORIES,
+  defineSectionTemplate,
+  getModelFacingParamsSchema,
+} from "./sections/types";
 export type {
   SectionCategory,
   SectionTemplate,

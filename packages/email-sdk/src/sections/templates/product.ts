@@ -2,8 +2,9 @@ import { z } from "zod";
 import {
   createSectionComposer,
   headingNode,
+  imageSrcParamSchema,
   paragraphNode,
-  placeholderImageUrl,
+  resolveImageSrc,
   textDocOf,
   textRun,
 } from "../build-helpers";
@@ -37,6 +38,7 @@ export const productParamsSchema = z
       .min(1)
       .default("Product photo")
       .describe("Alt text describing the product photo (required for accessibility)."),
+    imageSrc: imageSrcParamSchema,
     ctaLabel: z
       .string()
       .min(1)
@@ -57,6 +59,11 @@ export const productTemplate = defineSectionTemplate({
   useWhen:
     "Feature one product for sale: its photo beside the name, a one-line description, the price, and a buy button.",
   paramsSchema: productParamsSchema,
+  /*
+    imageSrc is for programmatic callers only (a rehosted image URL from the
+    content-ingestion pipeline) — never for the model.
+  */
+  modelFacingParamsSchema: productParamsSchema.omit({ imageSrc: true }),
   build: ({ params, random }) => {
     const composer = createSectionComposer(random);
     composer.addColumns([
@@ -66,7 +73,7 @@ export const productTemplate = defineSectionTemplate({
         leaves: [
           {
             kind: "image",
-            src: placeholderImageUrl({ width: 600, height: 600 }),
+            src: resolveImageSrc({ src: params.imageSrc, width: 600, height: 600 }),
             alt: params.imageAlt,
           },
         ],
