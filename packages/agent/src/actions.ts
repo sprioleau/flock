@@ -7,8 +7,7 @@ import {
 } from "@flock/email-sdk";
 import { z } from "zod";
 import { describeBlock, type BlockDetails } from "./describe-block";
-import { defineFetchWebContentAction, type FetchWebArticleFn } from "./fetch-web-content";
-import { definePersonHighlightAction, type FetchPersonHighlightFn } from "./person-highlight";
+import { defineReadWebPageAction, type ReadWebPageFn } from "./read-web-page";
 import { widgetActions } from "./widget-actions";
 
 /**
@@ -51,21 +50,17 @@ export const agentAnalysisActions = [getBlockDetailsAction] as const;
 
 export interface BuildAgentActionRegistryOptions {
   /**
-   * Host-app implementation of the Phase 7.4 web-content fetch (SSRF-guarded
-   * fetch + article extraction). When provided, the `fetchWebContent` analysis
-   * action is registered and buildToolGuidance switches on the web-content
-   * workflow guidance; when omitted (e.g. a host with no network layer), the
-   * tool and its guidance are absent — the registry stays purely local.
+   * Host-app implementation of reading one public web page (guarded fetch +
+   * generic extraction). When provided, the `readWebPage` analysis action is
+   * registered and buildToolGuidance switches on the source-page workflow
+   * guidance; when omitted (e.g. a host with no network layer), the tool and
+   * its guidance are absent — the registry stays purely local.
+   *
+   * ONE option, where there were two. They differed only by which extractor
+   * the host would run, which is a decision that can no longer be made before
+   * the page has been fetched and read.
    */
-  fetchWebArticle?: FetchWebArticleFn;
-  /**
-   * Host-app implementation of the Phase 7.4(b) person research (guarded
-   * profile fetch + extraction + public-web search fan-out). When provided,
-   * the `fetchPersonHighlight` analysis action is registered and
-   * buildToolGuidance switches on the person-spotlight workflow guidance;
-   * when omitted, the tool and its guidance are absent.
-   */
-  fetchPersonHighlight?: FetchPersonHighlightFn;
+  readWebPage?: ReadWebPageFn;
   /**
    * Register the generative-UI widget actions (askForClarification,
    * proposeSectionVariations, proposeEdits, listAssets — see
@@ -82,25 +77,20 @@ export interface BuildAgentActionRegistryOptions {
  * email-sdk built-in action (registration order preserved) plus the agent
  * analysis actions. Registering getBlockDetails also switches on
  * buildToolGuidance's catalog-lookup hint (see prompts/tool-guidance.ts);
- * likewise the injected fetchWebContent switches on the web-content workflow.
+ * likewise the injected readWebPage switches on the source-page workflow.
  */
 export function buildAgentActionRegistry(
   options?: BuildAgentActionRegistryOptions,
 ): EmailActionRegistry {
-  const webContentActions =
-    options?.fetchWebArticle === undefined
+  const pageReadingActions =
+    options?.readWebPage === undefined
       ? []
-      : [defineFetchWebContentAction({ fetchWebArticle: options.fetchWebArticle })];
-  const personHighlightActions =
-    options?.fetchPersonHighlight === undefined
-      ? []
-      : [definePersonHighlightAction({ fetchPersonHighlight: options.fetchPersonHighlight })];
+      : [defineReadWebPageAction({ readWebPage: options.readWebPage })];
   const optionalWidgetActions = options?.shouldIncludeWidgetActions === true ? widgetActions : [];
   return createActionRegistry([
     ...emailActionRegistry.actions,
     ...agentAnalysisActions,
-    ...webContentActions,
-    ...personHighlightActions,
+    ...pageReadingActions,
     ...optionalWidgetActions,
   ]);
 }

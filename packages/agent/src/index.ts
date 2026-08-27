@@ -67,27 +67,6 @@ export type {
   ReadWebPageResult,
 } from "./read-web-page";
 
-// --- Web content ingestion contract (§7.4a — executor injected by the host) ------
-export { defineFetchWebContentAction, fetchWebContentInputSchema } from "./fetch-web-content";
-export type {
-  FetchWebArticleFn,
-  FetchWebContentInput,
-  FetchWebContentResult,
-  WebArticlePayload,
-  WebContentConfidence,
-} from "./fetch-web-content";
-
-// --- Person-highlight contract (§7.4b — executor injected by the host) -----------
-export { definePersonHighlightAction, personHighlightInputSchema } from "./person-highlight";
-export type {
-  FetchPersonHighlightFn,
-  PersonFact,
-  PersonHighlightInput,
-  PersonHighlightPayload,
-  PersonHighlightResult,
-  PersonSearchStatus,
-  PersonSource,
-} from "./person-highlight";
 
 // --- Prompt layers (static/cacheable → per-request, §3.2) --------------------------
 export {

@@ -1,25 +1,23 @@
-import { MOCK_MODEL_HEADER } from "@/lib/chat-contract";
-import { ingestArticle } from "@/lib/content-ingestion/ingest-article";
-import { ingestPerson } from "@/lib/content-ingestion/ingest-person";
+import { ingestPage } from "@/lib/content-ingestion/ingest-page";
 import { getSessionIdFromCookieHeader } from "@/lib/session-cookie";
 import { ingestRequestBodySchema } from "./contract";
 
 /**
- * POST /api/ingest — read one public web page server-side and return its
- * ACTUAL content (Phase 7.4).
+ * POST /api/ingest — read one public web page server-side and return what is
+ * ACTUALLY on it.
  *
- * Two modes, the plan's two flagship cases:
- *   { kind: "article", url }               → title, byline, date, source,
- *                                            canonical URL, stored lead image,
- *                                            and the article's own text.
- *   { kind: "person", url, personName? }   → name, role, organization, stored
- *                                            portrait, bio, and attributed
- *                                            facts with their sources.
+ * One mode, where there were two. The old route branched on a `kind` the
+ * caller had to supply, which required the caller to know what kind of page it
+ * was pointing at before anyone had fetched it.
+ *
+ *   { url }  → title, source name, canonical URL, the page's description, its
+ *              prose in reading order, the lists it wrote, the structured data
+ *              its publisher declared, and its stored lead image.
  *
  * Responses:
- *   200 { isOk: true,  kind, article | person }
- *   422 { isOk: false, kind, reason, message }   — the page could not be read
- *   400 { isOk: false, message }                 — the request itself was bad
+ *   200 { isOk: true,  page }
+ *   422 { isOk: false, reason, message }   — the page could not be read
+ *   400 { isOk: false, message }           — the request itself was bad
  *
  * A 422 is the faithfulness rule in HTTP form: robots.txt, a paywall, a block,
  * or a page with no readable content produces a REFUSAL with a user-facing
@@ -49,37 +47,18 @@ export async function POST(request: Request) {
   const parsedBody = ingestRequestBodySchema.safeParse(json);
   if (!parsedBody.success) {
     return Response.json(
-      {
-        isOk: false,
-        message: 'Tell us what to read: { kind: "article" | "person", url: "https://…" }.',
-      },
+      { isOk: false, message: 'Tell us what to read: { url: "https://…" }.' },
       { status: 400 },
     );
   }
-  const { kind, url, personName } = parsedBody.data;
+  const { url } = parsedBody.data;
   const sessionId = getSessionIdFromCookieHeader(request.headers.get("cookie"));
-  const isMockRun = request.headers.get(MOCK_MODEL_HEADER) === "1";
 
-  if (kind === "article") {
-    const result = await ingestArticle({ url, sessionId });
-    return result.isOk
-      ? Response.json({ isOk: true, kind, article: result.article })
-      : Response.json(
-          { isOk: false, kind, reason: result.reason, message: result.message },
-          { status: 422 },
-        );
-  }
-
-  const result = await ingestPerson({
-    url,
-    sessionId,
-    isMockRun,
-    ...(personName === undefined ? {} : { personName }),
-  });
+  const result = await ingestPage({ url, sessionId });
   return result.isOk
-    ? Response.json({ isOk: true, kind, person: result.person })
+    ? Response.json({ isOk: true, page: result.page })
     : Response.json(
-        { isOk: false, kind, reason: result.reason, message: result.message },
+        { isOk: false, reason: result.reason, message: result.message },
         { status: 422 },
       );
 }

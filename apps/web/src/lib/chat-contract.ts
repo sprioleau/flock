@@ -1,11 +1,9 @@
 import type {
   AskForClarificationInput,
   BlockDetails,
-  FetchWebContentResult,
+  ReadWebPageResult,
   ListAssetsInput,
   ListAssetsResult,
-  PersonHighlightInput,
-  PersonHighlightResult,
   ProposeEditsInput,
   ProposeSectionVariationsInput,
 } from "@flock/agent";
@@ -458,18 +456,11 @@ export type AnalysisToolOutput<TData = unknown> =
 export type GetBlockDetailsToolOutput = AnalysisToolOutput<BlockDetails>;
 
 /**
- * fetchWebContent result data (Phase 7.4a): the extracted article payload or
- * the structured refusal — both are SUCCESSFUL tool outputs (`isFound: true`);
- * a refusal is information the model must relay, not an execution error.
+ * readWebPage result data: what one fetched page actually said, or an honest
+ * refusal. ONE output type, where there were two — the split existed only
+ * because there were two readers.
  */
-export type FetchWebContentToolOutput = AnalysisToolOutput<FetchWebContentResult>;
-
-/**
- * fetchPersonHighlight result data (Phase 7.4b): the attributed person payload
- * or the structured refusal. Same rule as fetchWebContent — a refusal is a
- * SUCCESSFUL tool output the model must relay, not an execution error.
- */
-export type FetchPersonHighlightToolOutput = AnalysisToolOutput<PersonHighlightResult>;
+export type ReadWebPageToolOutput = AnalysisToolOutput<ReadWebPageResult>;
 
 /**
  * Model-facing output of a widget tool (proposeSectionVariations,
@@ -528,11 +519,7 @@ export type FlockChatTools = {
   createDraft: { input: CreateDraftInput; output: CreateDraftToolOutput };
   createPersona: { input: CreatePersonaInput; output: EditorToolOutput };
   getBlockDetails: { input: { blockId: BlockId }; output: GetBlockDetailsToolOutput };
-  fetchWebContent: { input: { url: string }; output: FetchWebContentToolOutput };
-  fetchPersonHighlight: {
-    input: PersonHighlightInput;
-    output: FetchPersonHighlightToolOutput;
-  };
+  readWebPage: { input: { url: string }; output: ReadWebPageToolOutput };
   // Widget tools (generative UI). askForClarification never executes — the
   // turn ends on the call and the user's answer arrives as their next message.
   askForClarification: { input: AskForClarificationInput; output: never };

@@ -36,8 +36,7 @@ export interface ActivityPhrase {
 /** Tools that only LOOK at things — the chip renders them quieter. */
 export const READ_ONLY_TOOL_NAMES: ReadonlySet<string> = new Set([
   "getBlockDetails",
-  "fetchWebContent",
-  "fetchPersonHighlight",
+  "readWebPage",
   "listAssets",
 ]);
 
@@ -91,8 +90,12 @@ const ACTIVITY_PHRASES: Readonly<Record<string, ActivityEntry>> = {
   proposeEdits: { present: "Looking for improvements", past: "Found some improvements" },
   listAssets: { present: "Checking your image library", past: "Checked your image library" },
   getBlockDetails: { present: "Taking a closer look", past: "Took a closer look" },
-  fetchWebContent: { present: "Reading the page you linked", past: "Read the page you linked" },
-  fetchPersonHighlight: { present: "Looking that person up", past: "Looked that person up" },
+  /*
+    Deliberately neutral. This chip is written BEFORE the page has been read,
+    so it cannot say what kind of page it is without making exactly the guess
+    this pipeline was rebuilt to stop making.
+  */
+  readWebPage: { present: "Reading the page you linked", past: "Read the page you linked" },
 };
 
 /**

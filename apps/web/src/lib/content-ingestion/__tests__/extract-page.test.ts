@@ -2,7 +2,6 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
-import { extractArticle } from "../extract-article";
 import { extractPage } from "../extract-page";
 
 /**
@@ -309,29 +308,35 @@ describe("extractPage — image candidates", () => {
 
 describe("extractPage — honest refusals", () => {
   /*
-    Both refusals must fire on exactly the pages they fire on today, so they are
-    tested against the article extractor's own verdict rather than against a
-    copy of its wording.
+    These two used to assert parity with the article extractor's verdict, which
+    was the right check while both existed and the risk was drift during the
+    migration. That extractor is gone, so the refusals are asserted directly.
+
+    The messages are checked for being TYPE-NEUTRAL, because one reader now
+    serves every kind of page: telling someone their portfolio contains no
+    readable "article" is both wrong and confusing, and the old copy said
+    exactly that.
   */
-  it("refuses a paywall stub identically to the article extractor", () => {
-    const html = loadFixture("paywall-stub.html");
-    const finalUrl = "https://harborbusinessjournal.com/ports/merger-talks";
-    const pageResult = extractPage({ html, finalUrl });
-    const articleResult = extractArticle({ html, finalUrl });
-    expect(pageResult).toMatchObject({ isOk: false, reason: "paywalled" });
-    if (pageResult.isOk || articleResult.isOk) return;
-    expect(pageResult.message).toBe(articleResult.message);
-    expect(pageResult.message).toContain("paywall or sign-in");
+  it("refuses a paywall stub", () => {
+    const result = extractPage({
+      html: loadFixture("paywall-stub.html"),
+      finalUrl: "https://harborbusinessjournal.com/ports/merger-talks",
+    });
+    expect(result).toMatchObject({ isOk: false, reason: "paywalled" });
+    if (result.isOk) return;
+    expect(result.message).toContain("paywall or sign-in");
+    expect(result.message).not.toMatch(/\barticle\b|\bstory\b/i);
   });
 
-  it("refuses a nav-heavy index page identically to the article extractor", () => {
-    const html = loadFixture("nav-heavy-page.html");
-    const finalUrl = "https://www.dailymeridian.com/";
-    const pageResult = extractPage({ html, finalUrl });
-    const articleResult = extractArticle({ html, finalUrl });
-    expect(pageResult).toMatchObject({ isOk: false, reason: "no_main_content" });
-    if (pageResult.isOk || articleResult.isOk) return;
-    expect(pageResult.message).toBe(articleResult.message);
+  it("refuses a nav-heavy index page", () => {
+    const result = extractPage({
+      html: loadFixture("nav-heavy-page.html"),
+      finalUrl: "https://www.dailymeridian.com/",
+    });
+    expect(result).toMatchObject({ isOk: false, reason: "no_main_content" });
+    if (result.isOk) return;
+    expect(result.message).toContain("readable content");
+    expect(result.message).not.toMatch(/\barticle\b|\bstory\b/i);
   });
 
   it("refuses an empty-ish page rather than returning an empty scrape", () => {

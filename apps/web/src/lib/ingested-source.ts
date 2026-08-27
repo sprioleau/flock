@@ -20,7 +20,7 @@ import type { FlockChatMessage } from "./chat-contract";
   sample copy in the gaps rather than their old paragraphs. That is the honest
   failure of the two, and the model can always close it by passing the copy.
 
-  A REFUSAL DOES NOT COUNT. Both ingestion tools report a paywalled or blocked
+  A REFUSAL DOES NOT COUNT. The ingestion tool reports a paywalled or blocked
   page as a SUCCESSFUL tool call carrying `isOk: false` (api/chat/tools.ts) —
   nothing was read, so nothing external is competing with the source draft.
 */
@@ -29,15 +29,11 @@ type MessagePart = FlockChatMessage["parts"][number];
 
 /**
  * True when this part is an ingestion tool call that actually returned
- * content. The two tool part types are narrowed separately (rather than
- * through a shared predicate) because that is what makes `output` typed on
- * each branch — the check reads the real result shapes, not a cast.
+ * content. Narrowing on the part type is what makes `output` typed here — the
+ * check reads the real result shape rather than casting to it.
  */
 function getIsFulfilledIngestionPart(part: MessagePart): boolean {
-  if (part.type === "tool-fetchWebContent") {
-    return part.state === "output-available" && part.output.isFound && part.output.data.isOk;
-  }
-  if (part.type === "tool-fetchPersonHighlight") {
+  if (part.type === "tool-readWebPage") {
     return part.state === "output-available" && part.output.isFound && part.output.data.isOk;
   }
   return false;
@@ -45,7 +41,7 @@ function getIsFulfilledIngestionPart(part: MessagePart): boolean {
 
 /**
  * True when the CURRENT turn has successfully ingested an external source —
- * a fetched page or a looked-up person profile.
+ * a page fetched in this turn.
  *
  * Read at the moment a draft is composed, not at send time: the ingestion tool
  * result and the createDraft call arrive in the same assistant message, so the

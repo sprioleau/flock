@@ -544,7 +544,7 @@ describe("dispatchAnalysisAction", () => {
 
   it("hands an async run result back unawaited, so async analysis keeps working", () => {
     /*
-      fetchWebContent and friends are typed AnalysisEmailAction<S, Promise<T>>
+      readWebPage and friends are typed AnalysisEmailAction<S, Promise<T>>
       and do real network I/O. Dispatch stays synchronous — `run` must not
       become async — so the promise itself is what comes back.
     */

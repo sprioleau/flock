@@ -2,7 +2,7 @@ import { describe, expect, it } from "vitest";
 import { GENERATION_REQUEST_DATA_PART_TYPE, type FlockChatMessage } from "@/lib/chat-contract";
 import {
   MOCK_COMPOSE_EMAIL_TEMPLATE_IDS,
-  PERSON_INTENT_REGEX,
+  planMockToolCall,
   readMockIntentText,
 } from "./mock-model";
 
@@ -64,32 +64,46 @@ describe("readMockIntentText", () => {
   });
 });
 
-describe("PERSON_INTENT_REGEX", () => {
+describe("planMockToolCall — a URL routes to the one page reader", () => {
   /*
-    The mock decides which page reader a no-key run calls, and /demo forces the
-    mock server-side -- so this vocabulary is what those runs exercise instead
-    of the routing guidance in tool-guidance.ts. When the two disagree, a mock
-    run reproduces a bug the real path no longer has.
+    This replaces a fifteen-keyword PERSON_INTENT_REGEX that decided WHICH of
+    two readers a no-key run called. The regex is gone with the second reader,
+    and the property worth pinning is now the opposite of what it asserted:
+    HOW the user phrases the request must not change which tool runs.
+
+    That matters here specifically because /demo forces the mock server-side,
+    so these runs are what a no-API-key user actually exercises. A mock that
+    routed on phrasing would keep reproducing the original bug long after the
+    real path stopped having it.
   */
-  it("matches the way someone actually asks for an email about themselves", () => {
-    const asked = [
-      "create a new draft based on my portfolio website: sprioleau.dev. Pull in the images and details about me.",
-      "make an email from my site: sprioleau.dev",
-      "build a draft from my personal website",
-      "turn my portfolio into an email",
-    ];
-    for (const message of asked) {
-      expect(PERSON_INTENT_REGEX.test(message)).toBe(true);
+  /*
+    These span the exact axis the deleted regex split on: "about a person" on
+    one side, "about a topic" on the other. Under the two-reader design the
+    first two routed to the person reader and the last three to the article
+    reader; now every one of them reads the page, and which one it is becomes
+    a question answered AFTER the fetch instead of before it.
+  */
+  const phrasings = [
+    "make an email from my site: https://example.com",
+    "build a draft from my personal website https://example.com",
+    "introduce this person https://example.com",
+    "turn this into an email: https://example.com",
+    "summarize these release notes for a newsletter: https://example.com",
+    "https://example.com",
+  ];
+
+  it("calls readWebPage no matter how the request is worded", () => {
+    for (const message of phrasings) {
+      const planned = planMockToolCall({ lastUserText: message, selectedBlockId: undefined });
+      expect(planned.toolName).toBe("readWebPage");
     }
   });
 
-  it("still leaves a topic page to the article reader", () => {
-    const asked = [
-      "turn this into an email: https://example.com/blog/shipping-faster",
-      "summarize these release notes for a newsletter",
-    ];
-    for (const message of asked) {
-      expect(PERSON_INTENT_REGEX.test(message)).toBe(false);
-    }
+  it("passes the URL through unchanged", () => {
+    const planned = planMockToolCall({
+      lastUserText: "build from https://example.com/a/b?c=d",
+      selectedBlockId: undefined,
+    });
+    expect(planned.input).toMatchObject({ url: "https://example.com/a/b?c=d" });
   });
 });

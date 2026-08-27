@@ -40,30 +40,27 @@ export function buildToolGuidance(registry: EmailActionRegistry): string {
     : "";
   // Generative-UI widget routing: gated on askForClarification (the widget
   // action set ships together — see widget-actions.ts). Constant text —
-  // cache-stable. Resolved early: the web-content workflow's "ask the user"
+  // cache-stable. Resolved early: the source-page workflow's "ask the user"
   // step names the clarification widget only when it is registered.
   const hasWidgetTools = registry.actionsByName.has("askForClarification");
-  // Phase 7.4(a) web-content workflow: faithfulness, attribution, and honest
-  // failure rules for building from a fetched URL. Only advertised while the
-  // host app has injected the fetchWebContent executor.
-  const hasFetchWebContentTool = registry.actionsByName.has("fetchWebContent");
-  const webContentWorkflow = hasFetchWebContentTool
-    ? `\n\n${buildWebContentWorkflow({ hasClarificationTool: hasWidgetTools })}`
-    : "";
-  // Phase 7.4(b) person-spotlight workflow: same faithfulness law, sharpened
-  // because the subject is a person. Only advertised while the host app has
-  // injected the fetchPersonHighlight executor.
-  const hasPersonHighlightTool = registry.actionsByName.has("fetchPersonHighlight");
-  const personHighlightWorkflow = hasPersonHighlightTool ? `\n\n${PERSON_HIGHLIGHT_WORKFLOW}` : "";
   /*
-    Slice 1 routing rule: which of the two page readers to call. It can only
-    be stated when BOTH are registered — naming a tool the registry does not
-    have is how a model gets told to call something that does not exist.
-    Placed BEFORE the two workflows so the choice is read before either
-    workflow's "call this FIRST" line. Constant text — cache-stable.
+    Faithfulness, attribution, and honest-failure rules for building from a
+    fetched page. Only advertised while the host app has injected the
+    readWebPage executor.
+
+    There used to be TWO of these — one for articles, one for people — plus a
+    routing section telling the model which reader to call. All three are gone,
+    and the reason is worth keeping: the routing section had to describe pages
+    in the abstract ("a page about ONE PERSON", "from my portfolio", "a bare
+    personal domain with no path"), because the choice was made BEFORE anything
+    was fetched. That is a rule about the user's sentence, and a new kind of
+    page needed a new phrase in it. With one reader there is no choice left to
+    describe, so the guesswork disappears rather than being reworded.
   */
-  const hasBothPageReaders = hasFetchWebContentTool && hasPersonHighlightTool;
-  const sourcePageRouting = hasBothPageReaders ? `\n\n${SOURCE_PAGE_ROUTING}` : "";
+  const hasReadWebPageTool = registry.actionsByName.has("readWebPage");
+  const sourcePageWorkflow = hasReadWebPageTool
+    ? `\n\n${buildSourcePageWorkflow({ hasClarificationTool: hasWidgetTools })}`
+    : "";
   // Agent-parity capability summary: gated on openPanel (the UI-action set
   // ships together), so a registry without the parity actions never
   // advertises capabilities it lacks. Constant text — cache-stable.
@@ -75,36 +72,10 @@ export function buildToolGuidance(registry: EmailActionRegistry): string {
   // createDraft is registered. Constant text — cache-stable.
   const hasCreateDraftTool = registry.actionsByName.has("createDraft");
   const draftCompositionWorkflow = hasCreateDraftTool ? `\n\n${DRAFT_COMPOSITION_WORKFLOW}` : "";
-  return `## Available tools\n\n${catalogHint}${lines.join("\n")}${sectionCatalogListing}${sourcePageRouting}${webContentWorkflow}${personHighlightWorkflow}${draftCompositionWorkflow}${capabilitySummary}${widgetGuidance}`;
+  return `## Available tools\n\n${catalogHint}${lines.join("\n")}${sectionCatalogListing}${sourcePageWorkflow}${draftCompositionWorkflow}${capabilitySummary}${widgetGuidance}`;
 }
 
-/*
-  Which page reader to call. The defect this exists to prevent, in the owner's
-  own words: "create a new draft based on my portfolio website: sprioleau.dev.
-  Pull in the images and details about me." That ran through fetchWebContent —
-  an article extractor — and produced the stock starter email, because nothing
-  in the prompt divided the space the request lands in and both descriptions
-  split on what the USER CALLED the page rather than what the page is about.
 
-  Two rules do the work here: subject decides, and when a page is both a
-  person and their work, the person wins. A portfolio is nearly always both,
-  so a rule that merely "prefers" one would leave the ambiguous case exactly
-  where it was.
-
-  Constant text so the cached prefix stays byte-identical. Appended only when
-  BOTH page readers are registered (see buildToolGuidance).
-*/
-const SOURCE_PAGE_ROUTING = `## Which page reader to call (fetchWebContent or fetchPersonHighlight)
-
-Both tools read ONE public URL. Choose by WHAT THE PAGE IS ABOUT, never by the word the user used for it.
-
-- A page about ONE PERSON — a personal site or portfolio, an about page, a profile, a bio, a staff or faculty page — is fetchPersonHighlight.
-- A page about A TOPIC OR AN EVENT — a news article, a blog post, release notes, docs, an announcement — is fetchWebContent.
-- "Make an email from my site", "from my portfolio", "based on my personal website", "about me", "details about me", "who I am", or a bare personal domain with no path (janedoe.com, jane.dev) is the FIRST case. Call fetchPersonHighlight. These are ordinary phrasings, not article requests, and reading them as article requests is the specific mistake this rule exists to stop.
-- A personal site is usually BOTH: a bio AND write-ups of the person's work. When both descriptions fit, THE PERSON WINS — call fetchPersonHighlight. fetchWebContent is for a page that would still be the same page if someone else had written it: one specific post or article, linked directly, that the user asked you to turn into an email about ITS subject.
-- The user's words break the tie in one direction only. An ask about the person ("about me", "introduce them", "who they are") makes it a person page whatever the URL looks like. An ask about a subject the page happens to cover does NOT turn a personal homepage into an article.
-- If the payload that comes back is plainly not what the user asked about — prose with no name in it when they asked for an email about themselves — say so and call the other tool once. Never build the email from a payload that is not about what they asked for.
-- fetchPersonHighlight returns one portrait, a name, a role, an organization, a bio, and attributed facts. It does not return a skills list, project cards, or company logos. Build from what it returned and tell the user plainly what their page did not give you — do not invent the rest.`;
 
 /**
  * The §10.2 new-draft rules. The failure this exists to prevent: asked for a
@@ -140,7 +111,7 @@ Beyond answering questions about this email, you can act on it and on the editor
 
 /**
  * The §7.4 faithfulness rules as model guidance — constant text so the cached
- * prefix stays byte-identical. Appended only when fetchWebContent is
+ * prefix stays byte-identical. Appended only when readWebPage is
  * registered (see buildToolGuidance).
  */
 /**
@@ -154,41 +125,46 @@ const WIDGET_GUIDANCE = `## In-chat widgets
 - When the user asks for variations, options, or alternatives for a section, call proposeSectionVariations with 2-4 meaningfully different takes — never scaffold the candidates into the email; the user picks one from the chat.
 - When the user asks how to improve the email (feedback, review, suggestions) without asking you to change it, call proposeEdits — the suggestions render as Apply cards; do not also apply them yourself.`;
 
-function buildWebContentWorkflow({
+/**
+ * The faithfulness rules for building from a page that was fetched in this
+ * conversation. Constant text so the cached prefix stays byte-identical.
+ * Appended only when readWebPage is registered (see buildToolGuidance).
+ *
+ * ONE workflow, deliberately. This replaces an article workflow and a person
+ * workflow that said the same law twice in two vocabularies, plus a routing
+ * section that had to describe kinds of page in order to choose between them.
+ *
+ * Nothing below names a kind of page. That is not squeamishness — it is the
+ * design: the payload carries what the page actually said, and the same rules
+ * (write only what is there, attribute to the canonical URL, relay a refusal
+ * and stop) are correct whether the page was a portfolio, a product, a set of
+ * documentation, or something nobody anticipated. A workflow that enumerated
+ * page kinds would need a new clause every time the web produced a new one.
+ */
+function buildSourcePageWorkflow({
   hasClarificationTool,
 }: {
   hasClarificationTool: boolean;
 }): string {
-  // The user picks the shape (plan §7.4: "the user chooses"). With the
-  // clarification widget registered the question is a widget call; without it,
-  // one plain-language question and a stop.
+  /*
+    The user picks the shape ("the user chooses"). With the clarification
+    widget registered the question is a widget call; without it, one
+    plain-language question and a stop.
+  */
   const askForShapeStep = hasClarificationTool
     ? `call askForClarification with the question "Should this become a whole email, or one new section?" and the options "A whole email" and "One new section", then stop and wait for their answer`
     : `ask them in one short question whether they want a whole email or one new section, then stop and wait for their answer`;
-  return `## Building from a web page (fetchWebContent)
+  return `## Building from a page the user linked (readWebPage)
 
-When the user shares a URL and asks you to build content from it, call fetchWebContent FIRST — never write about a page you have not fetched in this conversation.
+When the user points at a URL and asks you to build from it, call readWebPage FIRST — never write about a page you have not fetched in this conversation.
 
-- Compose ONLY from the returned payload. Condense the real mainText faithfully; never add facts, quotes, names, or numbers that are not in it. If mainText was truncated, work with what you have — do not guess at the rest.
+- Compose ONLY from the returned payload. Condense what it says faithfully; never add a fact, a name, a number, a date, or a price that is not in it. When isTruncated is true the page was long and the tail was cut — work with what you have and do not guess at the rest.
+- Read the whole payload, not just the prose. \`blocks\` are the page's headings and paragraphs IN READING ORDER, and that order is evidence: paragraphs under a heading belong to it. \`lists\` are lists the page wrote as lists — skills, specifications, sessions, features — each with the heading it sat under. A list is often the most concrete thing on a page; use it rather than flattening it into a sentence.
+- \`structuredData\` is what the page's own publisher declared about itself. When it disagrees with the prose, prefer it for names, titles, prices, and dates. It is frequently absent, so never wait for it.
 - THE USER CHOOSES the shape: a whole email, or one section added to the draft they are working on. When they already said which ("add a section from this", "turn this into an email"), do that. When they only shared a link, ${askForShapeStep}. Never guess between the two.
-- Hand-compose with addSection (not scaffoldSection — templates cannot carry a real image URL or link): a heading with the real title, one or two short paragraphs condensed from mainText, the returned heroImageUrl as an image (with meaningful alt text) when there is one, and ALWAYS a button labeled like "Read the full story" whose href is the returned canonicalUrl. Naming the source (sourceName) in the copy is good practice.
-- For a whole email, that is several addSection calls telling the story in order — headline section, body sections, a closing section with the read-the-full-story link — still built only from the payload.
-- Use heroImageUrl exactly as returned and only when it is present; it is already stored on our servers. A missing image means the page had none we could use — leave the image out rather than substituting a placeholder or an address you assembled yourself.
-- If the result has isOk: false, the page could not be read (blocked by the site's robots rules, paywalled, not an article, unreachable). Relay the returned message to the user in your own short words, make NO edits, and STOP — inventing plausible content for an unread page is the one unforgivable failure here.
-- If confidence is "low", tell the user the page was hard to read and the section may need their review.`;
+- Hand-compose with addSection (not scaffoldSection — a catalog template cannot carry a real image address or link): the page's own title as a heading, one or two short paragraphs condensed from its blocks, its lists as real lists where they earn it, the returned leadImageUrl as an image with meaningful alt text when there is one, and a button whose href is the returned canonicalUrl. Naming the source (sourceName) in the copy is good practice.
+- For a whole email, that is several addSection calls telling the page's story in order — an opening section, body sections, a closing section carrying the link back — still built only from the payload.
+- Use leadImageUrl exactly as returned and only when it is present; it is already stored on our servers. A missing image means the page offered none we could use — leave the image out rather than substituting a placeholder or an address you assembled yourself.
+- If the result has isOk: false the page could not be read (the site's robots rules, a paywall, a bot block, nothing readable on it, unreachable). Relay the returned message in your own short words, make NO edits, and STOP. Inventing plausible content for a page you could not read is the one unforgivable failure here.
+- If what came back is plainly not what the user was asking about, say so plainly and ask them which page they meant. Never build an email from a payload that is not about what they asked for.`;
 }
-
-/**
- * The §7.4(b) person-spotlight rules. Constant text so the cached prefix stays
- * byte-identical. Appended only when fetchPersonHighlight is registered.
- */
-const PERSON_HIGHLIGHT_WORKFLOW = `## Spotlighting a person (fetchPersonHighlight)
-
-When the user links someone's profile and asks for an intro, spotlight, or highlight of them, call fetchPersonHighlight FIRST — never write about a person from memory or inference.
-
-- Write ONLY what the payload supports: the name, role, and organization as given, the bio as returned, and the listed facts. Every fact carries the page it came from; a claim with no fact behind it does not go in the email.
-- Attribute: the section ALWAYS links back to profileUrl (a button or link like "See their full profile"). When a fact came from a different page than the profile, name that source in the copy.
-- searchStatus tells you how wide the evidence is. "unavailable" means nothing beyond the profile page was consulted — write a spotlight from that page alone and do not imply wider research.
-- Use photoUrl exactly as returned, with alt text naming the person. When it is absent there is no usable photo: compose without an image and never describe how they look.
-- Never guess at pronouns, titles, achievements, or dates. If the user wants something the payload does not support, say what is missing and ask them for it.
-- If the result has isOk: false, the profile could not be read. Relay the returned message, make NO edits, and STOP.`;

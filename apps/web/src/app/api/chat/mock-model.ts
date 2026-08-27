@@ -18,7 +18,7 @@ import type {
   UndoInput,
   UpdateBlockPropertiesOperation,
 } from "@flock/email-sdk";
-import type { FetchWebContentResult, PersonHighlightResult } from "@flock/agent";
+import type { ReadWebPageResult } from "@flock/agent";
 import { simulateReadableStream } from "ai";
 import { MockLanguageModelV4 } from "ai/test";
 import {
@@ -26,9 +26,8 @@ import {
   type FlockChatMessage,
 } from "@/lib/chat-contract";
 import {
-  composeArticleSection,
-  composePersonSection,
-} from "@/lib/content-ingestion/compose-article-section";
+  composeScrapedSection,
+} from "@/lib/content-ingestion/compose-scraped-section";
 
 /**
  * Deterministic mock chat model (no API key needed — CI/tests use this via
@@ -58,7 +57,7 @@ import {
  *   comments-mode fix turn (the comment-dispatch prompts embed the phrase)
  * - mentions preview/mobile/desktop → showPreview editor tool call
  * - mentions "test email"           → sendTestEmail (exercises approval flow)
- * - contains a URL                  → fetchWebContent with that URL (the
+ * - contains a URL                  → readWebPage with that URL (the
  *   server then performs the REAL fetch + extraction — Phase 7.4a seam)
  * - contains a saved-section id ("saved:<rowId>") → scaffoldSection with
  *   that saved templateId (the owner-V2 saved-sections compose seam)
@@ -204,24 +203,7 @@ function buildMockDraftPlans({
   });
 }
 
-/*
-  Person-spotlight vocabulary (Phase 7.4b). Only consulted when the message
-  also carries a URL — "spotlight" alone is not a profile link.
 
-  The second alternation is the ordinary way people ask, and it is here because
-  its absence actively misled: the vocabulary above is all words someone uses
-  when they already think in terms of profiles, and none of them appear in
-  "create a new draft based on my portfolio website, pull in the details about
-  me". That request routed to the article reader, which is the exact defect the
-  routing guidance in tool-guidance.ts now exists to prevent — so a mock run
-  reproduced the bug after the fix, and anyone retesting without an API key (or
-  on /demo, which forces the mock server-side) would have concluded the fix did
-  not work.
-
-  A mock that contradicts the rule it stands in for is worse than no mock.
-*/
-export const PERSON_INTENT_REGEX =
-  /\b(spotlight|profile|bio|biography|introduce|introduction|highlight|portfolio|about me|about myself|personal site|personal website|my site|my website|who i am)\b/i;
 
 /** Catalog templateIds the mock recognizes by keyword in the user message. */
 const MOCK_SCAFFOLD_TEMPLATE_IDS = [
@@ -288,7 +270,14 @@ export function planCommentFixEdit(lastUserText: string): {
   return { label: match.label, acknowledgementText: match.acknowledgementText };
 }
 
-function planMockToolCall({
+/*
+  Exported so the routing it performs is directly testable. What is worth
+  testing here is not that a particular phrase maps to a particular tool, but
+  that PHRASING NO LONGER DECIDES ANYTHING — /demo forces this mock
+  server-side, so a mock that routed on wording would keep reproducing the
+  original defect long after the real path stopped having it.
+*/
+export function planMockToolCall({
   lastUserText,
   selectedBlockId,
 }: CreateMockChatModelInput): MockToolCallPlan {
@@ -490,22 +479,23 @@ function planMockToolCall({
       acknowledgementText: `Requesting a test send to ${to}.`,
     };
   }
-  // A URL in the message → one of the Phase 7.4 ingestion tools. Checked
-  // BEFORE the scaffold intent: "make a section from this article <url>" must
-  // fetch, not scaffold placeholder content. The server executes the REAL
-  // fetch + extraction, so tests exercise the whole read-only tool seam.
+  /*
+    A URL in the message → the ingestion tool. Checked BEFORE the scaffold
+    intent: "make a section from this <url>" must fetch, not scaffold
+    placeholder content. The server executes the REAL fetch + extraction, so
+    tests exercise the whole read-only tool seam.
+
+    There used to be a fifteen-keyword regex here deciding WHICH reader to
+    call, because there were two. It was the only keyword matcher on user
+    phrasing anywhere in the system, and it existed solely so the mock would
+    agree with a routing rule that was itself a rule about phrasings. With one
+    reader there is nothing to route, and it goes away as a consequence of the
+    architecture rather than as a cleanup somebody had to remember.
+  */
   const urlMatch = lastUserText.match(/https?:\/\/[^\s"'<>)]+/i);
   if (urlMatch !== null) {
-    // Person-spotlight vocabulary routes to 7.4(b); everything else to 7.4(a).
-    if (PERSON_INTENT_REGEX.test(lastUserText)) {
-      return {
-        toolName: "fetchPersonHighlight",
-        input: { url: urlMatch[0] },
-        acknowledgementText: "Reading their profile now.",
-      };
-    }
     return {
-      toolName: "fetchWebContent",
+      toolName: "readWebPage",
       input: { url: urlMatch[0] },
       acknowledgementText: "Reading that page now.",
     };
@@ -770,10 +760,10 @@ function buildSchemaInvalidProbeChunks() {
 // Phase 7.4 compose step (the mock standing in for the model)
 // ---------------------------------------------------------------------------
 
-/** The ingestion tool results this mock knows how to compose from. */
-type IngestionToolResult =
-  | { toolName: "fetchWebContent"; result: FetchWebContentResult }
-  | { toolName: "fetchPersonHighlight"; result: PersonHighlightResult };
+/** The ingestion tool result this mock composes from. */
+interface IngestionToolResult {
+  result: ReadWebPageResult;
+}
 
 /**
  * Find the newest ingestion tool result in the prompt the SDK just handed us.
@@ -803,11 +793,8 @@ function findIngestionToolResult(prompt: unknown): IngestionToolResult | null {
       if (data === undefined) {
         continue;
       }
-      if (part.toolName === "fetchWebContent") {
-        return { toolName: "fetchWebContent", result: data as FetchWebContentResult };
-      }
-      if (part.toolName === "fetchPersonHighlight") {
-        return { toolName: "fetchPersonHighlight", result: data as PersonHighlightResult };
+      if (part.toolName === "readWebPage") {
+        return { result: data as ReadWebPageResult };
       }
     }
   }
@@ -844,23 +831,12 @@ function buildIngestionComposeChunks({
       { type: "finish" as const, finishReason: { unified: "stop" as const, raw: undefined }, usage },
     ];
   }
-  const { operation, acknowledgement } =
-    ingestion.toolName === "fetchWebContent"
-      ? {
-          operation: composeArticleSection({
-            // Narrowed by refusalMessage === null above.
-            article: (ingestion.result as { isOk: true; article: never }).article,
-            index: rootSectionCount,
-          }),
-          acknowledgement: "Adding a section built from that story.",
-        }
-      : {
-          operation: composePersonSection({
-            person: (ingestion.result as { isOk: true; person: never }).person,
-            index: rootSectionCount,
-          }),
-          acknowledgement: "Adding a spotlight section from their profile.",
-        };
+  /* Narrowed by refusalMessage === null above. */
+  const operation = composeScrapedSection({
+    page: (ingestion.result as { isOk: true; page: never }).page,
+    index: rootSectionCount,
+  });
+  const acknowledgement = "Adding a section built from that page.";
   const toolCallId = `call_${crypto.randomUUID()}`;
   const inputJson = JSON.stringify(operation);
   return [

@@ -27,7 +27,7 @@ function assistantWithArticle({
     role: "assistant",
     parts: [
       {
-        type: "tool-fetchWebContent",
+        type: "tool-readWebPage",
         toolCallId: `call_${id}`,
         state: "output-available",
         input: { url: "https://sprioleau.dev" },
@@ -36,13 +36,14 @@ function assistantWithArticle({
               isFound: true,
               data: {
                 isOk: true,
-                article: {
+                page: {
                   title: "San'Quan Prioleau",
                   sourceName: "sprioleau.dev",
                   canonicalUrl: "https://sprioleau.dev",
-                  mainText: "Projects: Flock, Dobble Go, teeny.fun.",
+                  blocks: [{ kind: "paragraph", text: "Projects: Flock, Dobble Go, teeny.fun." }],
+                  lists: [],
+                  structuredData: [],
                   isTruncated: false,
-                  confidence: "high",
                 },
               },
             }

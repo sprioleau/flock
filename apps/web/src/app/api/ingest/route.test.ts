@@ -1,24 +1,35 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import type { IngestArticleInput } from "@/lib/content-ingestion/ingest-article";
-import type { IngestPersonInput } from "@/lib/content-ingestion/ingest-person";
+import type { IngestPageInput } from "@/lib/content-ingestion/ingest-page";
 
-const ingestArticleMock = vi.hoisted(() => vi.fn<(input: IngestArticleInput) => Promise<unknown>>());
-const ingestPersonMock = vi.hoisted(() => vi.fn<(input: IngestPersonInput) => Promise<unknown>>());
+const ingestPageMock = vi.hoisted(() => vi.fn<(input: IngestPageInput) => Promise<unknown>>());
 
-vi.mock("@/lib/content-ingestion/ingest-article", () => ({ ingestArticle: ingestArticleMock }));
-vi.mock("@/lib/content-ingestion/ingest-person", () => ({ ingestPerson: ingestPersonMock }));
+vi.mock("@/lib/content-ingestion/ingest-page", () => ({ ingestPage: ingestPageMock }));
 
 import { POST } from "./route";
 
 /**
- * Contract tests for the ingestion pipeline's HTTP surface. The pipelines
- * themselves are covered in lib/content-ingestion; here we pin the request
- * gates, the session/mock plumbing, and — the part that matters — that an
- * unreadable page comes back as a REFUSAL with a user-facing message and no
- * content, rather than as a 200 with something invented in its place.
+ * Contract tests for the page pipeline's HTTP surface. The pipeline itself is
+ * covered in lib/content-ingestion; here we pin the request gates, the session
+ * plumbing, the compatibility promise made to callers of the old two-mode
+ * route, and — the part that matters — that an unreadable page comes back as a
+ * REFUSAL with a user-facing message and no content, rather than as a 200 with
+ * something invented in its place.
  */
 
-const ARTICLE_URL = "https://www.dailymeridian.com/climate/solar-canopy-city";
+const PAGE_URL = "https://www.dailymeridian.com/climate/solar-canopy-city";
+
+const READ_PAGE = {
+  isOk: true as const,
+  page: {
+    title: "A solar canopy over the city",
+    sourceName: "Daily Meridian",
+    canonicalUrl: PAGE_URL,
+    blocks: [{ kind: "paragraph" as const, text: "The canopy went up in March." }],
+    lists: [],
+    structuredData: [],
+    isTruncated: false,
+  },
+};
 
 function makeRequest(body: unknown, headers: Record<string, string> = {}): Request {
   return new Request("http://localhost/api/ingest", {
@@ -29,131 +40,78 @@ function makeRequest(body: unknown, headers: Record<string, string> = {}): Reque
 }
 
 beforeEach(() => {
-  ingestArticleMock.mockReset();
-  ingestPersonMock.mockReset();
+  ingestPageMock.mockReset();
 });
 
 describe("POST /api/ingest — request gates", () => {
   it("rejects malformed JSON without touching the pipeline", async () => {
     const response = await POST(makeRequest("{not json"));
     expect(response.status).toBe(400);
-    expect(ingestArticleMock).not.toHaveBeenCalled();
+    expect(ingestPageMock).not.toHaveBeenCalled();
   });
 
-  it("rejects a body with no kind or url", async () => {
-    const response = await POST(makeRequest({ url: ARTICLE_URL }));
+  it("rejects a body with no url without touching the pipeline", async () => {
+    const response = await POST(makeRequest({ notAUrl: true }));
     expect(response.status).toBe(400);
-    expect(await response.json()).toMatchObject({ isOk: false });
-    expect(ingestArticleMock).not.toHaveBeenCalled();
-  });
-
-  it("rejects an unknown kind", async () => {
-    const response = await POST(makeRequest({ kind: "recipe", url: ARTICLE_URL }));
-    expect(response.status).toBe(400);
-    expect(ingestArticleMock).not.toHaveBeenCalled();
+    expect(ingestPageMock).not.toHaveBeenCalled();
   });
 });
 
-describe("POST /api/ingest — article mode", () => {
-  it("returns the extracted article on success", async () => {
-    ingestArticleMock.mockResolvedValue({
-      isOk: true,
-      article: { title: "City to build solar canopy", canonicalUrl: ARTICLE_URL },
-    });
-
-    const response = await POST(makeRequest({ kind: "article", url: ARTICLE_URL }));
-
+describe("POST /api/ingest — the one mode", () => {
+  it("reads a page and returns what was on it", async () => {
+    ingestPageMock.mockResolvedValue(READ_PAGE);
+    const response = await POST(makeRequest({ url: PAGE_URL }));
     expect(response.status).toBe(200);
-    expect(await response.json()).toMatchObject({
+    await expect(response.json()).resolves.toMatchObject({
       isOk: true,
-      kind: "article",
-      article: { title: "City to build solar canopy" },
+      page: { title: "A solar canopy over the city" },
     });
+    expect(ingestPageMock).toHaveBeenCalledTimes(1);
+    expect(ingestPageMock.mock.calls[0][0].url).toBe(PAGE_URL);
   });
 
-  it("passes the caller's session through so a stored image is filed correctly", async () => {
-    ingestArticleMock.mockResolvedValue({ isOk: true, article: {} });
-
-    await POST(
-      makeRequest(
-        { kind: "article", url: ARTICLE_URL },
-        { cookie: "flock_session_id=session_42" },
-      ),
-    );
-
-    expect(ingestArticleMock).toHaveBeenCalledWith({
-      url: ARTICLE_URL,
-      sessionId: "session_42",
-    });
-  });
-
-  it("answers 422 with the refusal message when the page could not be read", async () => {
-    ingestArticleMock.mockResolvedValue({
-      isOk: false,
-      reason: "blocked_by_robots",
-      message: "That site's robots.txt asks automated readers to stay off that page.",
-    });
-
-    const response = await POST(makeRequest({ kind: "article", url: ARTICLE_URL }));
-
-    expect(response.status).toBe(422);
-    const body = await response.json();
-    expect(body).toMatchObject({ isOk: false, kind: "article", reason: "blocked_by_robots" });
-    expect(body.message).toContain("robots.txt");
-    // The refusal carries NO content fields to mistake for an article.
-    expect(body.article).toBeUndefined();
+  it("passes the session from the cookie so a rehosted image is filed", async () => {
+    ingestPageMock.mockResolvedValue(READ_PAGE);
+    await POST(makeRequest({ url: PAGE_URL }, { cookie: "flock_session_id=sess_abc123" }));
+    expect(ingestPageMock.mock.calls[0][0].sessionId).toBe("sess_abc123");
   });
 });
 
-describe("POST /api/ingest — person mode", () => {
-  const PROFILE_URL = "https://riverside.example.edu/people/amara-osei";
-
-  it("returns the attributed person payload on success", async () => {
-    ingestPersonMock.mockResolvedValue({
-      isOk: true,
-      person: { name: "Amara Osei", searchStatus: "unavailable" },
-    });
-
-    const response = await POST(makeRequest({ kind: "person", url: PROFILE_URL }));
-
+describe("POST /api/ingest — the compatibility promise", () => {
+  /*
+    `kind` used to be a required discriminator choosing between an article
+    pipeline and a person pipeline. Both are gone. Rejecting the field would
+    turn its removal into a hard failure for every existing caller, so it is
+    accepted and ignored for one release — a caller still sending it gets a
+    page read, not a 400.
+  */
+  it.each(["article", "person"])("still reads the page when kind is %s", async (kind) => {
+    ingestPageMock.mockResolvedValue(READ_PAGE);
+    const response = await POST(makeRequest({ kind, url: PAGE_URL }));
     expect(response.status).toBe(200);
-    expect(await response.json()).toMatchObject({
-      isOk: true,
-      kind: "person",
-      person: { name: "Amara Osei" },
-    });
+    expect(ingestPageMock).toHaveBeenCalledTimes(1);
   });
 
-  it("forwards the person's name and the mock-run flag", async () => {
-    ingestPersonMock.mockResolvedValue({ isOk: true, person: {} });
-
-    await POST(
-      makeRequest(
-        { kind: "person", url: PROFILE_URL, personName: "Amara Osei" },
-        { "x-flock-mock": "1" },
-      ),
-    );
-
-    expect(ingestPersonMock).toHaveBeenCalledWith({
-      url: PROFILE_URL,
-      sessionId: null,
-      isMockRun: true,
-      personName: "Amara Osei",
-    });
+  it("ignores personName rather than rejecting it", async () => {
+    ingestPageMock.mockResolvedValue(READ_PAGE);
+    const response = await POST(makeRequest({ url: PAGE_URL, personName: "Someone" }));
+    expect(response.status).toBe(200);
+    expect(ingestPageMock.mock.calls[0][0]).not.toHaveProperty("personName");
   });
+});
 
-  it("answers 422 when the profile could not be read", async () => {
-    ingestPersonMock.mockResolvedValue({
-      isOk: false,
-      reason: "blocked_by_site",
-      message: "That site wouldn't let the profile be read.",
-    });
-
-    const response = await POST(makeRequest({ kind: "person", url: PROFILE_URL }));
-
+describe("POST /api/ingest — a refusal is not invented content", () => {
+  it.each([
+    ["blocked_by_robots", "That site's robots.txt asks automated readers to stay off that page."],
+    ["paywalled", "That page is behind a paywall or sign-in."],
+    ["no_main_content", "There wasn't enough readable content on that page to work from."],
+  ])("returns 422 with a relayable message for %s", async (reason, message) => {
+    ingestPageMock.mockResolvedValue({ isOk: false, reason, message });
+    const response = await POST(makeRequest({ url: PAGE_URL }));
     expect(response.status).toBe(422);
     const body = await response.json();
-    expect(body).toMatchObject({ isOk: false, reason: "blocked_by_site" });
-    expect(body.person).toBeUndefined();
+    expect(body).toMatchObject({ isOk: false, reason, message });
+    /* Nothing was invented to fill the gap. */
+    expect(body).not.toHaveProperty("page");
   });
 });

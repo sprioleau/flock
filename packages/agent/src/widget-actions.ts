@@ -15,7 +15,7 @@ import { z } from "zod";
  * Generative-UI widget actions — the tools whose results render as
  * INTERACTIVE WIDGETS in the chat transcript instead of plain chips/prose.
  *
- * The split of responsibilities (mirrors fetchWebContent):
+ * The split of responsibilities (mirrors readWebPage):
  * - THIS module owns the model-facing contract (names, schemas, descriptions)
  *   and the PURE per-request computation (`run`) where one exists —
  *   materializing section variations from the catalog, dry-run-validating

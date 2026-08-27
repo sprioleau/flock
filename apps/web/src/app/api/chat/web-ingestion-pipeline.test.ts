@@ -48,6 +48,7 @@ const STORED_HERO_URL = "https://storage.convex.cloud/stored-hero.jpg";
 interface RecordedChunk {
   type: string;
   toolName?: string;
+  toolCallId?: string;
   input?: unknown;
   output?: unknown;
   delta?: string;
@@ -105,6 +106,26 @@ function firstToolInput(chunks: RecordedChunk[], toolName: string): unknown {
   )?.input;
 }
 
+/**
+ * The page payload readWebPage handed back, as the model would receive it.
+ *
+ * Matched by toolCallId rather than by name: a `tool-output-available` chunk
+ * carries the id, not the tool's name, so filtering on name silently finds
+ * nothing.
+ */
+function readPagePayload(chunks: RecordedChunk[]): Record<string, unknown> {
+  const toolCallId = chunks.find(
+    (chunk) => chunk.type === "tool-input-available" && chunk.toolName === "readWebPage",
+  )?.toolCallId;
+  const output = chunks.find(
+    (chunk) => chunk.type === "tool-output-available" && chunk.toolCallId === toolCallId,
+  )?.output as { data?: { isOk?: boolean; page?: Record<string, unknown> } } | undefined;
+  if (output?.data?.isOk !== true || output.data.page === undefined) {
+    throw new Error("expected readWebPage to have returned a page");
+  }
+  return output.data.page;
+}
+
 function streamedText(chunks: RecordedChunk[]): string {
   return chunks
     .filter((chunk) => chunk.type === "text-delta")
@@ -128,8 +149,8 @@ describe('"add a new section based on my new article at <url>"', () => {
   it("fetches the page FIRST, then composes one section from it", async () => {
     const chunks = await runTurn(`Add a new section based on my new article at ${ARTICLE_URL}`);
 
-    expect(toolCallSequence(chunks)).toEqual(["fetchWebContent", "addSection"]);
-    expect(firstToolInput(chunks, "fetchWebContent")).toEqual({ url: ARTICLE_URL });
+    expect(toolCallSequence(chunks)).toEqual(["readWebPage", "addSection"]);
+    expect(firstToolInput(chunks, "readWebPage")).toEqual({ url: ARTICLE_URL });
   });
 
   it("really fetched the page through the guarded primitive", async () => {
@@ -150,7 +171,21 @@ describe('"add a new section based on my new article at <url>"', () => {
     expect(serialized).toContain("City to build solar canopy over downtown parking");
     expect(serialized).toContain("voted 8-1 on Tuesday");
     expect(serialized).toContain("The Daily Meridian");
-    expect(serialized).toContain("Dana Reeve");
+  });
+
+  it("keeps the byline available to the model, in the page's own structured data", async () => {
+    /*
+      The old article payload had a dedicated `byline` field. The generic
+      scrape has no such field, because a byline is an article-shaped idea and
+      this reader is not article-shaped — but the fact is not lost: the page
+      declared it, and every JSON-LD node now comes through unfiltered.
+
+      The mock composer here does not render the byline; what matters is that a
+      model composing from this payload COULD, from the publisher's own
+      declaration rather than from a pattern guessing at one.
+    */
+    const chunks = await runTurn(`Add a new section based on my new article at ${ARTICLE_URL}`);
+    expect(JSON.stringify(readPagePayload(chunks).structuredData)).toContain("Dana Reeve");
   });
 
   it("attributes the source: the button links to the article's canonical URL", async () => {
@@ -161,7 +196,7 @@ describe('"add a new section based on my new article at <url>"', () => {
 
     const button = operation.children.find((block) => block.type === "button");
     expect(button?.properties.href).toBe(ARTICLE_URL);
-    expect(button?.properties.label).toBe("Read the full story");
+    expect(button?.properties.label).toBe("View the original");
   });
 
   it("serves the hero image from our storage, filed under the caller's session", async () => {
@@ -186,7 +221,14 @@ describe('"add a new section based on my new article at <url>"', () => {
   });
 });
 
-describe('"add a spotlight of <person> from <profile url>" (case b)', () => {
+/*
+  This block used to prove a profile link ROUTED to a second, person-specific
+  tool. There is no second tool, so it now proves the opposite and more
+  valuable thing: a page about a person goes through the SAME reader as a news
+  article, and what the page is gets decided from what was read rather than
+  from the link or the wording.
+*/
+describe("a page about a person goes through the same one reader", () => {
   const PROFILE_URL = "https://riverside.example.edu/people/amara-osei";
 
   beforeEach(() => {
@@ -199,11 +241,11 @@ describe('"add a spotlight of <person> from <profile url>" (case b)', () => {
     rehostImageToStorageMock.mockResolvedValue("https://storage.convex.cloud/portrait.jpg");
   });
 
-  it("routes a profile link to the person tool, then composes a spotlight", async () => {
+  it("reads it with readWebPage, exactly as it reads an article", async () => {
     const chunks = await runTurn(`Add a spotlight section for this person: ${PROFILE_URL}`);
 
-    expect(toolCallSequence(chunks)).toEqual(["fetchPersonHighlight", "addSection"]);
-    expect(firstToolInput(chunks, "fetchPersonHighlight")).toEqual({ url: PROFILE_URL });
+    expect(toolCallSequence(chunks)).toEqual(["readWebPage", "addSection"]);
+    expect(firstToolInput(chunks, "readWebPage")).toEqual({ url: PROFILE_URL });
   });
 
   it("writes only what the profile says, and links back to it", async () => {
@@ -214,17 +256,35 @@ describe('"add a spotlight of <person> from <profile url>" (case b)', () => {
     const serialized = JSON.stringify(operation);
 
     expect(serialized).toContain("Amara Osei");
-    expect(serialized).toContain("Professor of Environmental Engineering");
     expect(serialized).toContain("Riverside University");
     const button = operation.children.find((block) => block.type === "button");
     expect(button?.properties.href).toBe(PROFILE_URL);
   });
 
-  it("never runs a live public-web search on the mock tier", async () => {
-    // Nothing to assert on a spy here — the guarantee is structural: the mock
-    // run flag reaches searchPublicWeb, which returns "unavailable" before any
-    // provider call. What we CAN pin is that the spotlight still composed, so
-    // the absence of search never blocks the flagship flow.
+  it("still surfaces the role, now from the page rather than a job-title regex", async () => {
+    /*
+      The deleted person extractor found a role with ROLE_LINE_PATTERN — a
+      regex alternation of job titles (professor|lecturer|…), which by
+      construction failed on every title nobody had thought to list.
+
+      It is gone, and the role is still here, because the page declares it and
+      the scrape passes every structured-data node through untouched. Strictly
+      wider coverage than the pattern had, and no list to maintain.
+    */
+    const chunks = await runTurn(`Add a spotlight section for this person: ${PROFILE_URL}`);
+    expect(JSON.stringify(readPagePayload(chunks).structuredData)).toContain(
+      "Professor of Environmental Engineering",
+    );
+  });
+
+  it("composes from the page alone, with no public-web search anywhere", async () => {
+    /*
+      The old person pipeline fanned out to a public-web search. This one does
+      not search at all: the reader reads the page it was given. The guarantee
+      is structural rather than spied — searchPublicWeb has no call site in the
+      page pipeline — so what is pinned here is that the section still composes
+      without it.
+    */
     const chunks = await runTurn(`Add a spotlight section for this person: ${PROFILE_URL}`);
     expect(toolCallSequence(chunks)).toContain("addSection");
   });
@@ -251,7 +311,7 @@ describe("a page that cannot be read produces NO edits", () => {
 
     const chunks = await runTurn(`Add a new section based on my new article at ${ARTICLE_URL}`);
 
-    expect(toolCallSequence(chunks)).toEqual(["fetchWebContent"]);
+    expect(toolCallSequence(chunks)).toEqual(["readWebPage"]);
     expect(fetchPageMock).not.toHaveBeenCalled();
     expect(streamedText(chunks)).toContain("robots.txt");
     // The load-bearing assertion: nothing was written into the document.
@@ -270,7 +330,7 @@ describe("a page that cannot be read produces NO edits", () => {
       "Add a new section based on my new article at https://harborbusinessjournal.com/ports/merger-talks",
     );
 
-    expect(toolCallSequence(chunks)).toEqual(["fetchWebContent"]);
+    expect(toolCallSequence(chunks)).toEqual(["readWebPage"]);
     expect(streamedText(chunks)).toContain("paywall");
     expect(JSON.stringify(chunks)).not.toContain('"addSection"');
   });
