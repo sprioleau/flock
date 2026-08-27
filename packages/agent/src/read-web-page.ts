@@ -1,0 +1,146 @@
+import { defineEmailAction, type AnalysisEmailAction } from "@flock/email-sdk";
+import { z } from "zod";
+
+/**
+ * `readWebPage` — the ONE model-facing contract for reading a public web page.
+ *
+ * It replaces `fetchWebContent` and `fetchPersonHighlight`, which were two
+ * tools split by WHAT THE PAGE IS ABOUT. That split asked the model to
+ * classify a page before anyone had fetched it, so the only evidence it could
+ * possibly use was the user's phrasing — and the guidance layer duly grew
+ * literal strings like "from my portfolio" and "about me", with a matching
+ * keyword regex in the mock so the mock would agree. Pointing it at a
+ * portfolio ran a personal homepage through an article extractor.
+ *
+ * One tool means there is nothing left to route, so the routing rule, the
+ * keyword regex, and every mutual-exclusion sentence in the two old
+ * descriptions all disappear as a consequence of the shape rather than as a
+ * cleanup somebody has to remember to do.
+ *
+ * Note what this description does NOT do: it never says what kind of page to
+ * use it on, because there is no other tool to send the model to instead. A
+ * description that names page kinds is the fork trying to grow back inside a
+ * string.
+ *
+ * The agent package owns the model-facing surface (name, description, input
+ * schema, payload shape) so the prompt layers and this contract cannot drift.
+ * The fetch and extraction implementation lives in the web app, which owns the
+ * SSRF-guarded `fetchPage` primitive, and is INJECTED — only the host app can
+ * perform network I/O.
+ */
+
+// ---------------------------------------------------------------------------
+// Input (what the model sends)
+// ---------------------------------------------------------------------------
+
+export const readWebPageInputSchema = z
+  .strictObject({
+    url: z
+      .string()
+      .min(1)
+      .max(2048)
+      .describe("The full http(s) URL of the page to read, exactly as the user gave it."),
+  })
+  .describe("Input for readWebPage: the one public web page to fetch and read.");
+
+export type ReadWebPageInput = z.infer<typeof readWebPageInputSchema>;
+
+// ---------------------------------------------------------------------------
+// Result payload (what the model gets back)
+// ---------------------------------------------------------------------------
+
+/** One block of prose the page wrote, in document order. */
+export interface ReadWebPageBlock {
+  kind: "heading" | "paragraph";
+  text: string;
+}
+
+/**
+ * A list the page wrote.
+ *
+ * This channel exists because the shared prose collector kept a list item only
+ * when it ran past 60 characters with almost no link text — a rule tuned for
+ * news articles, where it correctly firewalls menus. A skills list is
+ * "TypeScript", "React", "Design systems", so that rule discarded it before
+ * the model ever saw it. Judging the LIST by its link density rather than the
+ * ITEM by its length keeps the content and still drops the navigation.
+ */
+export interface ReadWebPageList {
+  headingBefore?: string;
+  items: string[];
+}
+
+/** The page's content, as read. */
+export interface ReadWebPagePayload {
+  /** The page's title (og:title / JSON-LD headline / <title>). */
+  title: string;
+  /** Human-readable site name (og:site_name, or the hostname). */
+  sourceName: string;
+  /** The canonical URL — USE THIS for any attribution link. */
+  canonicalUrl: string;
+  /** The page's own summary (meta description), when it has one. */
+  description?: string;
+  /** Prose in reading order. Order is evidence; do not reorder it casually. */
+  blocks: ReadWebPageBlock[];
+  /** Lists the page wrote as lists, rather than as prose. */
+  lists: ReadWebPageList[];
+  /**
+   * Every JSON-LD node the page's publisher declared about itself, `@graph`
+   * members flattened and NO type filter applied. When this disagrees with the
+   * prose, prefer it for names, titles, prices, and dates.
+   */
+  structuredData: Record<string, unknown>[];
+  /**
+   * The page's lead image, already copied into Flock's own storage. Absent
+   * when the page has none or when the copy failed — an image that cannot be
+   * stored is DROPPED, never hot-linked from the original site.
+   */
+  leadImageUrl?: string;
+  /** True when the page was long enough that trailing content was cut. */
+  isTruncated: boolean;
+}
+
+/**
+ * Success carries what was on the page; refusal carries a machine `reason`
+ * plus a user-relayable `message`.
+ *
+ * A REFUSAL IS NOT AN ERROR. A page that is disallowed by robots.txt,
+ * paywalled, or carries no readable content comes back as a SUCCESSFUL tool
+ * output with `isOk: false` and something to say, because that is information
+ * the model must relay before stopping. Throwing would put it on the error
+ * path, where the model is invited to retry — exactly the wrong instinct for a
+ * page that cannot be read.
+ */
+export type ReadWebPageResult =
+  | { isOk: true; page: ReadWebPagePayload }
+  | { isOk: false; reason: string; message: string };
+
+/** The injected implementation: SSRF-guarded fetch, then generic extraction. */
+export type ReadWebPageFn = (input: { url: string }) => Promise<ReadWebPageResult>;
+
+// ---------------------------------------------------------------------------
+// Action definition (executor injected by the host app)
+// ---------------------------------------------------------------------------
+
+/**
+ * Define the `readWebPage` analysis action around a host-provided
+ * fetch/extract implementation. Read-only by construction: it never touches
+ * the document (the `doc` argument is ignored).
+ */
+export function defineReadWebPageAction({
+  readWebPage,
+}: {
+  readWebPage: ReadWebPageFn;
+}): AnalysisEmailAction<typeof readWebPageInputSchema, Promise<ReadWebPageResult>> {
+  return defineEmailAction({
+    name: "readWebPage",
+    description:
+      "Fetch ONE public web page server-side and return what is ACTUALLY on it: its title, the site's name, the canonical URL, the page's own description, its prose in reading order, the lists it wrote, the structured data its publisher declared about itself, and its lead image copied into Flock's storage. Navigation, ads, and comments are stripped, and a long page is truncated. Read-only; the document is unchanged. Call it BEFORE building anything from a page the user pointed at, and write only from what comes back — do not add a fact, a number, a date, or a name that is not in the payload. If the result has isOk: false the page could not be read: relay the message to the user, make no edits, and never guess at what the page says.",
+    kind: "analysis",
+    schema: readWebPageInputSchema,
+    readOnly: true,
+    parallelSafe: true,
+    needsApproval: false,
+    run: (_doc, input): Promise<ReadWebPageResult> => readWebPage({ url: input.url }),
+  });
+}

@@ -11,7 +11,7 @@ import {
   selectContentScope,
   toAbsoluteHttpUrl,
   toPlainText,
-} from "./extract-article";
+} from "./extract-page";
 
 /**
  * Person-profile extraction (Phase 7.4b) — pure HTML → who the page says this

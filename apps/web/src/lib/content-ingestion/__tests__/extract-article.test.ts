@@ -76,7 +76,7 @@ describe("extractArticle — honest refusals", () => {
     });
     expect(result).toMatchObject({ isOk: false, reason: "no_main_content" });
     if (result.isOk) return;
-    expect(result.message).toContain("No readable article");
+    expect(result.message).toContain("wasn't enough readable content");
   });
 
   it("refuses a paywall stub instead of dressing up the teaser", () => {

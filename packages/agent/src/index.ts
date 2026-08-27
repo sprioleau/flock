@@ -56,6 +56,17 @@ export type {
   ValidatedEditSuggestion,
 } from "./widget-actions";
 
+// --- Page reading contract (ONE tool — executor injected by the host) ------------
+export { defineReadWebPageAction, readWebPageInputSchema } from "./read-web-page";
+export type {
+  ReadWebPageBlock,
+  ReadWebPageFn,
+  ReadWebPageInput,
+  ReadWebPageList,
+  ReadWebPagePayload,
+  ReadWebPageResult,
+} from "./read-web-page";
+
 // --- Web content ingestion contract (§7.4a — executor injected by the host) ------
 export { defineFetchWebContentAction, fetchWebContentInputSchema } from "./fetch-web-content";
 export type {
