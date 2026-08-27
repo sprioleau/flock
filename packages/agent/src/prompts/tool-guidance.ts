@@ -55,6 +55,15 @@ export function buildToolGuidance(registry: EmailActionRegistry): string {
   // injected the fetchPersonHighlight executor.
   const hasPersonHighlightTool = registry.actionsByName.has("fetchPersonHighlight");
   const personHighlightWorkflow = hasPersonHighlightTool ? `\n\n${PERSON_HIGHLIGHT_WORKFLOW}` : "";
+  /*
+    Slice 1 routing rule: which of the two page readers to call. It can only
+    be stated when BOTH are registered — naming a tool the registry does not
+    have is how a model gets told to call something that does not exist.
+    Placed BEFORE the two workflows so the choice is read before either
+    workflow's "call this FIRST" line. Constant text — cache-stable.
+  */
+  const hasBothPageReaders = hasFetchWebContentTool && hasPersonHighlightTool;
+  const sourcePageRouting = hasBothPageReaders ? `\n\n${SOURCE_PAGE_ROUTING}` : "";
   // Agent-parity capability summary: gated on openPanel (the UI-action set
   // ships together), so a registry without the parity actions never
   // advertises capabilities it lacks. Constant text — cache-stable.
@@ -66,8 +75,36 @@ export function buildToolGuidance(registry: EmailActionRegistry): string {
   // createDraft is registered. Constant text — cache-stable.
   const hasCreateDraftTool = registry.actionsByName.has("createDraft");
   const draftCompositionWorkflow = hasCreateDraftTool ? `\n\n${DRAFT_COMPOSITION_WORKFLOW}` : "";
-  return `## Available tools\n\n${catalogHint}${lines.join("\n")}${sectionCatalogListing}${webContentWorkflow}${personHighlightWorkflow}${draftCompositionWorkflow}${capabilitySummary}${widgetGuidance}`;
+  return `## Available tools\n\n${catalogHint}${lines.join("\n")}${sectionCatalogListing}${sourcePageRouting}${webContentWorkflow}${personHighlightWorkflow}${draftCompositionWorkflow}${capabilitySummary}${widgetGuidance}`;
 }
+
+/*
+  Which page reader to call. The defect this exists to prevent, in the owner's
+  own words: "create a new draft based on my portfolio website: sprioleau.dev.
+  Pull in the images and details about me." That ran through fetchWebContent —
+  an article extractor — and produced the stock starter email, because nothing
+  in the prompt divided the space the request lands in and both descriptions
+  split on what the USER CALLED the page rather than what the page is about.
+
+  Two rules do the work here: subject decides, and when a page is both a
+  person and their work, the person wins. A portfolio is nearly always both,
+  so a rule that merely "prefers" one would leave the ambiguous case exactly
+  where it was.
+
+  Constant text so the cached prefix stays byte-identical. Appended only when
+  BOTH page readers are registered (see buildToolGuidance).
+*/
+const SOURCE_PAGE_ROUTING = `## Which page reader to call (fetchWebContent or fetchPersonHighlight)
+
+Both tools read ONE public URL. Choose by WHAT THE PAGE IS ABOUT, never by the word the user used for it.
+
+- A page about ONE PERSON — a personal site or portfolio, an about page, a profile, a bio, a staff or faculty page — is fetchPersonHighlight.
+- A page about A TOPIC OR AN EVENT — a news article, a blog post, release notes, docs, an announcement — is fetchWebContent.
+- "Make an email from my site", "from my portfolio", "based on my personal website", "about me", "details about me", "who I am", or a bare personal domain with no path (janedoe.com, jane.dev) is the FIRST case. Call fetchPersonHighlight. These are ordinary phrasings, not article requests, and reading them as article requests is the specific mistake this rule exists to stop.
+- A personal site is usually BOTH: a bio AND write-ups of the person's work. When both descriptions fit, THE PERSON WINS — call fetchPersonHighlight. fetchWebContent is for a page that would still be the same page if someone else had written it: one specific post or article, linked directly, that the user asked you to turn into an email about ITS subject.
+- The user's words break the tie in one direction only. An ask about the person ("about me", "introduce them", "who they are") makes it a person page whatever the URL looks like. An ask about a subject the page happens to cover does NOT turn a personal homepage into an article.
+- If the payload that comes back is plainly not what the user asked about — prose with no name in it when they asked for an email about themselves — say so and call the other tool once. Never build the email from a payload that is not about what they asked for.
+- fetchPersonHighlight returns one portrait, a name, a role, an organization, a bio, and attributed facts. It does not return a skills list, project cards, or company logos. Build from what it returned and tell the user plainly what their page did not give you — do not invent the rest.`;
 
 /**
  * The §10.2 new-draft rules. The failure this exists to prevent: asked for a

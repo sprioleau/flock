@@ -61,6 +61,42 @@ describe("definePersonHighlightAction", () => {
     expect(action.description).toContain("never guess");
   });
 
+  /*
+    The description is the only thing a model sees when it decides between the
+    two page readers, so these pin the two edits Slice 1 made to it. Steering
+    is probabilistic and no test can make a model obey — what this catches is
+    the text being silently dropped, which is exactly how the tool went unused.
+  */
+  it("claims every kind of page that is about one person, not just 'profile'", () => {
+    expect(action.description).toContain("ABOUT ONE PERSON");
+    for (const pageKind of ["personal site or portfolio", "about page", "profile", "bio", "staff"]) {
+      expect(action.description).toContain(pageKind);
+    }
+    /* The owner's own phrasings, which previously matched the article tool. */
+    expect(action.description).toContain("my portfolio");
+    expect(action.description).toContain("bare personal domain");
+  });
+
+  it("promises only what the payload actually carries", () => {
+    /* What it does return. */
+    expect(action.description).toContain("ONE portrait image");
+    /* What it does NOT — Slices 2-4, and overselling them is its own defect. */
+    expect(action.description).toMatch(
+      /never a parsed list of skills, projects, or company logos/,
+    );
+    expect(action.description).toContain("one portrait, never a gallery");
+  });
+
+  /*
+    Descriptions are advertised per-registry. This one must stand alone: a
+    registry can register fetchPersonHighlight without fetchWebContent, and
+    pointing a model at an unregistered tool is a failure of its own. The
+    cross-reference lives in the routing section, which is gated on both.
+  */
+  it("does not name the sibling tool, which may not be registered", () => {
+    expect(action.description).not.toContain("fetchWebContent");
+  });
+
   it("delegates run to the injected executor", async () => {
     const input = action.schema.parse({ url: "https://riverside.example.edu/people/amara-osei" });
     await expect(
@@ -126,6 +162,35 @@ describe("buildAgentActionRegistry with an injected fetchPersonHighlight", () =>
     expect(guidance).toMatch(/- fetchPersonHighlight \(analysis, read-only, parallel-safe\)/);
   });
 
+  /*
+    Slice 1's routing rule. Same limit as every other prompt assertion here:
+    it pins that the instruction is in the bytes the model receives, in the
+    right place, with the tie-break the ambiguous case needs. It proves
+    nothing about which tool a real model then picks.
+  */
+  it("states the page-reader routing rule when both readers are registered", () => {
+    const guidance = buildToolGuidance(registry);
+    expect(guidance).toContain("## Which page reader to call");
+    expect(guidance).toContain("Choose by WHAT THE PAGE IS ABOUT");
+    /* The tie-break, without which a portfolio (bio AND work) stays ambiguous. */
+    expect(guidance).toContain("THE PERSON WINS");
+    /* The phrasings the owner actually typed. */
+    expect(guidance).toContain('"from my portfolio"');
+    expect(guidance).toContain("bare personal domain with no path");
+    /* And the honest ceiling on what the person payload can deliver. */
+    expect(guidance).toContain("It does not return a skills list, project cards, or company logos");
+  });
+
+  it("puts the routing rule before both page-reader workflows", () => {
+    const guidance = buildToolGuidance(registry);
+    const routingIndex = guidance.indexOf("## Which page reader to call");
+    const webWorkflowIndex = guidance.indexOf("## Building from a web page");
+    const personWorkflowIndex = guidance.indexOf("## Spotlighting a person");
+    expect(routingIndex).toBeGreaterThanOrEqual(0);
+    expect(webWorkflowIndex).toBeGreaterThan(routingIndex);
+    expect(personWorkflowIndex).toBeGreaterThan(routingIndex);
+  });
+
   it("keeps the person guidance out when the executor is not injected", () => {
     const guidanceWithout = buildToolGuidance(
       buildAgentActionRegistry({
@@ -134,6 +199,8 @@ describe("buildAgentActionRegistry with an injected fetchPersonHighlight", () =>
     );
     expect(guidanceWithout).not.toContain("fetchPersonHighlight");
     expect(guidanceWithout).not.toContain("Spotlighting a person");
+    /* No routing rule either: there is nothing to route between. */
+    expect(guidanceWithout).not.toContain("## Which page reader to call");
   });
 });
 

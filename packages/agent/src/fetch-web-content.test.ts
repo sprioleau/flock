@@ -50,6 +50,24 @@ describe("defineFetchWebContentAction", () => {
     expect(action.description).toContain("never guess");
   });
 
+  /*
+    Slice 1 re-split the two page readers by SUBJECT. This tool's half of that
+    split has to say both what it is for and what it is not for: "a URL the
+    user shared" was the old trigger, and it swallowed personal sites whole.
+    A text assertion, not a routing one — no test can make a model obey.
+  */
+  it("claims topic pages and disclaims pages about one person", () => {
+    expect(action.description).toContain("ABOUT A TOPIC OR AN EVENT");
+    expect(action.description).toContain("Do NOT use it for a page that is about ONE PERSON");
+    expect(action.description).toContain("portfolio");
+    /*
+      The sibling tool is NOT named: a registry may register fetchWebContent
+      alone, and naming a tool that is not registered invites a call to
+      nothing. The cross-reference lives in the routing section instead.
+    */
+    expect(action.description).not.toContain("fetchPersonHighlight");
+  });
+
   it("delegates run to the injected executor with just the url", async () => {
     const input = action.schema.parse({ url: "https://example.com/story" });
     await expect(

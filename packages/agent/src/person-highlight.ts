@@ -35,7 +35,7 @@ export const personHighlightInputSchema = z
       .min(1)
       .max(2048)
       .describe(
-        "The full http(s) URL of the person's profile page (staff/faculty page, personal site, team bio), exactly as the user gave it.",
+        "The full http(s) URL of the page about the person (personal site or portfolio, about page, profile, bio, staff/faculty page), exactly as the user gave it.",
       ),
     personName: z
       .string()
@@ -46,7 +46,7 @@ export const personHighlightInputSchema = z
         "The person's name, if the user said it. Helps confirm the right profile was read and sharpens the public-info search.",
       ),
   })
-  .describe("Input for fetchPersonHighlight: one public profile page for one person.");
+  .describe("Input for fetchPersonHighlight: one public page about one person.");
 
 export type PersonHighlightInput = z.infer<typeof personHighlightInputSchema>;
 
@@ -133,8 +133,25 @@ export function definePersonHighlightAction({
 }): AnalysisEmailAction<typeof personHighlightInputSchema, Promise<PersonHighlightResult>> {
   return defineEmailAction({
     name: "fetchPersonHighlight",
+    /*
+      Two things this sentence has to do at once.
+
+      (1) Claim the whole space of "a page about one person". The old wording
+      said "the profile page the user linked", and a personal site does not
+      announce itself as a profile — so "my portfolio website" matched the
+      article tool instead and the owner got a stock email back.
+
+      (2) Not oversell the payload. What comes back is one portrait, a name, a
+      role, an organization, a bio, and the page's own sentences as attributed
+      facts. Skills lists, per-role logos, and project galleries are NOT in
+      this payload (they are later slices of the proposal). Promising them
+      here would just trade a wrong-tool failure for a wrong-expectation one.
+
+      The sibling tool is deliberately not named — see the matching note in
+      fetch-web-content.ts.
+    */
     description:
-      "Research ONE person from the profile page the user linked: fetch the page server-side, extract who they are (name, role, organization, bio, photo), and gather public information about them. Returns attributable facts — every one carrying the source it came from — plus the list of pages consulted. Read-only; the document is unchanged. Call it BEFORE writing anything about a person the user linked. If the result has isOk: false the profile could not be read: tell the user why, make no edits, and never guess at who they are.",
+      "Read ONE public web page that is ABOUT ONE PERSON — a personal site or portfolio, an about page, a profile, a bio, a staff or faculty page — server-side, and return who that page says they are: name, role, organization, the page's own bio, ONE portrait image already stored on our servers, and attributable facts, every one carrying the source it came from, plus the list of pages consulted. This is the tool for \"build an email from my site / my portfolio / about me\" and for a bare personal domain. It returns that and no more: one portrait, never a gallery, and the page's own sentences as facts, never a parsed list of skills, projects, or company logos — so compose from the facts you actually get, and say what the page did not give you rather than filling the gap. Read-only; the document is unchanged. Call it BEFORE writing anything about a person. If the result has isOk: false the page could not be read: tell the user why, make no edits, and never guess at who they are.",
     kind: "analysis",
     schema: personHighlightInputSchema,
     readOnly: true,

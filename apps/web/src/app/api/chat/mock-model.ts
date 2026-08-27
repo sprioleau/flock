@@ -204,12 +204,24 @@ function buildMockDraftPlans({
   });
 }
 
-/**
- * Person-spotlight vocabulary (Phase 7.4b). Only consulted when the message
- * also carries a URL — "spotlight" alone is not a profile link.
- */
-const PERSON_INTENT_REGEX =
-  /\b(spotlight|profile|bio|biography|introduce|introduction|highlight)\b/i;
+/*
+  Person-spotlight vocabulary (Phase 7.4b). Only consulted when the message
+  also carries a URL — "spotlight" alone is not a profile link.
+
+  The second alternation is the ordinary way people ask, and it is here because
+  its absence actively misled: the vocabulary above is all words someone uses
+  when they already think in terms of profiles, and none of them appear in
+  "create a new draft based on my portfolio website, pull in the details about
+  me". That request routed to the article reader, which is the exact defect the
+  routing guidance in tool-guidance.ts now exists to prevent — so a mock run
+  reproduced the bug after the fix, and anyone retesting without an API key (or
+  on /demo, which forces the mock server-side) would have concluded the fix did
+  not work.
+
+  A mock that contradicts the rule it stands in for is worse than no mock.
+*/
+export const PERSON_INTENT_REGEX =
+  /\b(spotlight|profile|bio|biography|introduce|introduction|highlight|portfolio|about me|about myself|personal site|personal website|my site|my website|who i am)\b/i;
 
 /** Catalog templateIds the mock recognizes by keyword in the user message. */
 const MOCK_SCAFFOLD_TEMPLATE_IDS = [

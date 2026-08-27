@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { GENERATION_REQUEST_DATA_PART_TYPE, type FlockChatMessage } from "@/lib/chat-contract";
-import { MOCK_COMPOSE_EMAIL_TEMPLATE_IDS, readMockIntentText } from "./mock-model";
+import {
+  MOCK_COMPOSE_EMAIL_TEMPLATE_IDS,
+  PERSON_INTENT_REGEX,
+  readMockIntentText,
+} from "./mock-model";
 
 /**
  * The mock's intent seam. It matters because the drafts-menu AI actions now
@@ -57,5 +61,35 @@ describe("readMockIntentText", () => {
 
   it("returns empty text for a history with no user message at all", () => {
     expect(readMockIntentText([])).toBe("");
+  });
+});
+
+describe("PERSON_INTENT_REGEX", () => {
+  /*
+    The mock decides which page reader a no-key run calls, and /demo forces the
+    mock server-side -- so this vocabulary is what those runs exercise instead
+    of the routing guidance in tool-guidance.ts. When the two disagree, a mock
+    run reproduces a bug the real path no longer has.
+  */
+  it("matches the way someone actually asks for an email about themselves", () => {
+    const asked = [
+      "create a new draft based on my portfolio website: sprioleau.dev. Pull in the images and details about me.",
+      "make an email from my site: sprioleau.dev",
+      "build a draft from my personal website",
+      "turn my portfolio into an email",
+    ];
+    for (const message of asked) {
+      expect(PERSON_INTENT_REGEX.test(message)).toBe(true);
+    }
+  });
+
+  it("still leaves a topic page to the article reader", () => {
+    const asked = [
+      "turn this into an email: https://example.com/blog/shipping-faster",
+      "summarize these release notes for a newsletter",
+    ];
+    for (const message of asked) {
+      expect(PERSON_INTENT_REGEX.test(message)).toBe(false);
+    }
   });
 });

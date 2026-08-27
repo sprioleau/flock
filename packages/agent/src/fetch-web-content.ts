@@ -29,7 +29,7 @@ export const fetchWebContentInputSchema = z
       .min(1)
       .max(2048)
       .describe(
-        "The full http(s) URL of the article or page to read, exactly as the user gave it.",
+        "The full http(s) URL of the topic page to read (article, post, release notes, docs), exactly as the user gave it.",
       ),
   })
   .describe("Input for fetchWebContent: the one public web page to fetch and read.");
@@ -100,8 +100,21 @@ export function defineFetchWebContentAction({
 }): AnalysisEmailAction<typeof fetchWebContentInputSchema, Promise<FetchWebContentResult>> {
   return defineEmailAction({
     name: "fetchWebContent",
+    /*
+      The split against fetchPersonHighlight is by WHAT THE PAGE IS ABOUT, not
+      by the word the user used for it. "A URL the user shared" used to be the
+      trigger here, which swallowed "make an email from my portfolio site" and
+      ran a personal homepage through an article extractor.
+
+      It names the excluded case WITHOUT naming the sibling tool on purpose:
+      this description is advertised whenever fetchWebContent is registered,
+      including registries where fetchPersonHighlight is not, and pointing the
+      model at a tool that does not exist is its own failure. The tool-name
+      cross-reference lives in the routing section of the prompt guidance,
+      which is gated on both tools being present.
+    */
     description:
-      "Fetch ONE public web page (news article, blog post) server-side and return its ACTUAL main content — title, byline, date, source name, canonical URL, lead image, and the article text with navigation, ads, and comments stripped (long articles are truncated). Read-only; the document is unchanged. Call it BEFORE building anything from a URL the user shared. If the result has isOk: false the page could not be read: tell the user why (relay the message), make no edits, and never guess at what the page says.",
+      "Fetch ONE public web page that is ABOUT A TOPIC OR AN EVENT — a news article, a blog post, release notes, a documentation page, an announcement — server-side and return its ACTUAL main content: title, byline, date, source name, canonical URL, the lead image, and the page text with navigation, ads, and comments stripped (long pages are truncated). Do NOT use it for a page that is about ONE PERSON (a personal site, portfolio, about page, profile, bio, or staff page): it reads every page as an article, so it hands back prose and a single image and cannot tell you whose page it is. Read-only; the document is unchanged. Call it BEFORE building anything from a topic page the user shared. If the result has isOk: false the page could not be read: tell the user why (relay the message), make no edits, and never guess at what the page says.",
     kind: "analysis",
     schema: fetchWebContentInputSchema,
     readOnly: true,
