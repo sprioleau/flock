@@ -72,12 +72,21 @@ import { runnerOutputSchema, truncateFindingProse, type RunnerOutputFinding } fr
  */
 
 /**
- * Model for the batched persona analysis call. Deliberately NOT the chat
- * pipeline's DEFAULT_GEMINI_MODEL_ID ("gemini-3.6-flash"): Gemini free-tier
- * daily quotas are per-model, and the reactive runner must never starve the
- * user-initiated chat agent (the brand-kit pipeline set this precedent —
- * see generate-brand-kit.ts). 3.5-flash-lite is plenty for a one-shot
+ * Model for the batched persona analysis call. Plenty for a one-shot
  * structured findings pass over a ~1K-token outline.
+ *
+ * This id was once chosen to be DIFFERENT from the chat pipeline's, because
+ * Gemini free-tier quotas are per-model and a reactive runner must not starve
+ * the user-initiated chat agent. That isolation is GONE and its loss was
+ * deliberate: on 2026-08-04 constants.ts moved DEFAULT_GEMINI_MODEL_ID to
+ * this same id, so every caller now shares one bucket.
+ *
+ * Do not "restore" the isolation by moving this back to gemini-3.6-flash.
+ * The numbers in constants.ts are why: flash-lite is 15 RPM / 500 per day
+ * against 5 RPM / 20 per day for every alternative. A private 20-per-day
+ * bucket is worse for this runner than a fifth of a 500-per-day one, and it
+ * would cap the whole deployment at 20 chat turns to buy that. Shared and
+ * large beats isolated and tiny.
  */
 const PERSONA_MODEL_ID = "gemini-3.5-flash-lite";
 

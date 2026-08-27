@@ -57,14 +57,21 @@ const MIN_VARIATIONS = 3;
 const GENERATION_TIMEOUT_MS = 60_000; // flash-lite has been observed near 45s on color-heavy sites
 
 /**
- * Model for the one structured brand-kit call. Deliberately NOT the chat
- * pipeline's DEFAULT_GEMINI_MODEL_ID ("gemini-3.6-flash"): Gemini free-tier
- * daily quotas are per-model, and sharing the chat model's tiny bucket means
- * a busy chat session starves brand-kit generation (observed live —
- * 20 req/day per model). Chosen empirically on 2026-07-30: 3.5-flash was
- * 503-ing ("high demand") and 2.5-flash is retired for new API users;
- * 3.5-flash-lite is available and plenty for a one-shot structured
- * palette-assignment task.
+ * Model for the one structured brand-kit call. Chosen empirically on
+ * 2026-07-30: 3.5-flash was 503-ing ("high demand") and 2.5-flash is retired
+ * for new API users; 3.5-flash-lite is available and plenty for a one-shot
+ * structured palette-assignment task.
+ *
+ * It was ALSO chosen to be different from the chat pipeline's model, because
+ * Gemini free-tier quotas are per-model and a busy chat session was observed
+ * starving brand-kit generation out of a 20-req/day bucket. That isolation no
+ * longer exists: on 2026-08-04 constants.ts moved DEFAULT_GEMINI_MODEL_ID to
+ * this same id for the request headroom, and every caller now shares it.
+ *
+ * Losing it is the right trade and it should stay lost — see constants.ts for
+ * the measured numbers. The only ids that would buy separation back are 5 RPM
+ * / 20 per day; this one is 15 RPM / 500. There is no arrangement of two tiny
+ * buckets that beats sharing the large one.
  */
 const BRAND_KIT_MODEL_ID = "gemini-3.5-flash-lite";
 
