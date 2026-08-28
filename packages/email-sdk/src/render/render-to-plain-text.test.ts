@@ -77,4 +77,51 @@ describe("renderToPlainText", () => {
     expect(text.trim().length).toBeGreaterThan(40);
     expect(text).toMatchSnapshot();
   });
+
+  /*
+    Code a reader copies out of the text alternative has to RUN. react-email's
+    <CodeBlock> separates every Prism token with an invisible pair, which is
+    harmless in HTML and arrives intact in the text, so a copied snippet used
+    to carry hidden characters between every token and fail on paste.
+  */
+  it("gives back code a reader can paste and run", async () => {
+    const text = await renderToPlainText(createMixedFixture());
+
+    const codeLine = text.split("\n").find((line) => line.includes("@react-email/render"));
+    expect(codeLine).toBeDefined();
+    expect(codeLine).toContain('import { render } from "@react-email/render";');
+  });
+
+  /*
+    The strip is the exact ZWJ+ZWSP pair and NOT zero-width characters in
+    general, because U+200D is load-bearing: family and profession emoji are
+    ZWJ-joined sequences. Blanket-stripping would quietly break any of those
+    in the email's own prose, so this pins the emoji surviving the same render
+    that cleans the code. U+200D followed by U+200B does not occur in a valid
+    emoji sequence, which is what makes the pair safe to target.
+  */
+  it("leaves a ZWJ emoji in the prose alone while cleaning the code", async () => {
+    const familyEmoji = "👨‍👩‍👧";
+    const document = createMixedFixture();
+    const textBlockId = Object.keys(document).find((id) => document[id]!.type === "text");
+    expect(textBlockId).toBeDefined();
+    const textBlock = document[textBlockId!]!;
+    document[textBlockId!] = {
+      ...textBlock,
+      properties: {
+        ...textBlock.properties,
+        text: {
+          type: "doc",
+          content: [
+            { type: "paragraph", content: [{ type: "text", text: `Our family ${familyEmoji} sends` }] },
+          ],
+        },
+      },
+    } as (typeof document)[string];
+
+    const text = await renderToPlainText(document);
+
+    expect(text).toContain(familyEmoji);
+    expect(text).not.toContain("‍​");
+  });
 });

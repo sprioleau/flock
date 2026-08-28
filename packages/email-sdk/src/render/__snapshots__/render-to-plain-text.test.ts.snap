@@ -17,12 +17,12 @@ Get started https://example.com/start
 
 FOR DEVELOPERS
 
-npm ‍​install ‍​@flock/email-sdk
+npm install @flock/email-sdk
 
-import ‍​{ ‍​renderToHTML ‍​} ‍​from ‍​"@flock/email-sdk";
+import { renderToHTML } from "@flock/email-sdk";
 
 
- 
+ 
 
 Read the changelog https://example.com/changelog"
 `;

@@ -43,13 +43,23 @@ import {
  *
  * So the route now resolves the caller's identity server-side, from the signed
  * session token Convex verifies, and refuses (401) when there is none. That is
- * deliberately the lowest possible bar: every browser that loads Flock is
- * signed in ANONYMOUSLY on arrival, so a visitor who has never typed an email
+ * deliberately the lowest possible bar: a browser sitting in an EDITOR is
+ * signed in anonymously already, so a visitor who has never typed an email
  * address — including one who wandered in through /demo — passes it without
  * noticing. A bare curl with no session does not. The point is not to decide
  * who deserves to send; it is to make every send attributable to a session
  * this server minted, which is what a rate limit or a per-identity send meter
  * would later have to hang off.
+ *
+ * "In an editor" and not "on any page", which this comment used to claim.
+ * Anonymous sign-in is scoped, on purpose, to EDITOR_ENTRY_PATHS (/studio and
+ * /demo) plus links carrying a `doc`/`canvas` capability id — see
+ * lib/auth/FlockAuthProvider.tsx, where the reasoning is that it must never
+ * reach `/`: "Continue without an account" is an explicit choice on the login
+ * page, and a silent sign-in on load would make that choice meaningless.
+ * Nothing about this route's behaviour changes, because every path that can
+ * reach a send is an editor. The old phrasing merely promised a guarantee the
+ * app deliberately does not make.
  *
  * HOW MANY — the other half, and the reason the gate above was not enough.
  *
