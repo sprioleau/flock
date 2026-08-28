@@ -3,6 +3,7 @@
 import { useMemo } from "react";
 import {
   createEmptyDocument,
+  getPreviewParams,
   getSectionTemplate,
   ROOT_BLOCK_ID,
   type EmailDocument,
@@ -35,8 +36,17 @@ export function buildSectionTemplatePreviewDoc(args: {
   if (template === undefined) {
     return null;
   }
-  // parse({}) yields the template's complete demo content (catalog contract).
-  const built = template.build({ params: template.paramsSchema.parse({}) });
+  /*
+    The gallery is the one caller that builds from sample values rather than
+    from content someone supplied — a thumbnail is never sent, and a hero with
+    no button or a footer with no address line would misrepresent the template
+    to whoever is browsing for one. `getPreviewParams` fills exactly the params
+    the schema deliberately leaves undefaulted, so the miniature still shows
+    the button and the address that a real draft only gets when asked for.
+  */
+  const built = template.build({
+    params: template.paramsSchema.parse(getPreviewParams(template)),
+  });
   const doc = createEmptyDocument();
   const emptyRoot = doc[ROOT_BLOCK_ID];
   if (emptyRoot === undefined || emptyRoot.type !== "root") {

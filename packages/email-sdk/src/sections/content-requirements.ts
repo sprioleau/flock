@@ -46,6 +46,14 @@ export interface SectionContentRequirements {
    * postal address, a nav bar, a code fence's language, or a button label on
    * a section whose substance is its prose are furniture the sender is
    * expected to configure, not claims invented about a subject.
+   *
+   * Absent from HERE is not the same as unguarded. Requiring the chrome would
+   * drop nearly every hero and every footer, and a dropped footer takes the
+   * unsubscribe link with it — so the chrome that names a PLACE (a
+   * destination, a postal address) is guarded the other way instead: it
+   * carries no `.default()` at all, and `build` leaves the element out when
+   * the caller named nothing. See `previewParams` in `sections/types` for how
+   * the catalog gallery still shows a hero's button and a footer's address.
    */
   copyParams: readonly string[];
   /** List-shaped params and the fewest entries each needs. */

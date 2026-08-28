@@ -256,6 +256,67 @@ describe("defineSectionTemplate guards the declaration", () => {
     ).toThrow(/subheadline/);
   });
 
+  /*
+    `previewParams` is the gallery's half of the fix: the params that name a
+    place carry no default, so the thumbnail needs somewhere to get a button
+    and an address line from. That makes it the one place sample values still
+    live, and it stays honest only while it can neither name a param that does
+    not exist nor quietly restate one the schema already answers.
+  */
+  it("rejects previewParams naming a param the schema does not have", () => {
+    expect(() =>
+      defineSectionTemplate({
+        id: "bad-preview-param",
+        name: "Bad preview",
+        category: "content",
+        useWhen: "Never used; this template exists only to be rejected at definition time.",
+        paramsSchema: trivialParamsSchema,
+        contentRequirements: { copyParams: ["headline"], listParams: [], imageCount: 0 },
+        previewParams: { subheadline: "Sample subheadline" },
+        build: () => {
+          throw new Error("unreachable");
+        },
+      }),
+    ).toThrow(/subheadline/);
+  });
+
+  it("rejects previewParams restating a param the schema already defaults", () => {
+    expect(() =>
+      defineSectionTemplate({
+        id: "overriding-preview-param",
+        name: "Overriding preview",
+        category: "content",
+        useWhen: "Never used; this template exists only to be rejected at definition time.",
+        paramsSchema: trivialParamsSchema,
+        contentRequirements: { copyParams: ["headline"], listParams: [], imageCount: 0 },
+        previewParams: { headline: "A second, divergent headline" },
+        build: () => {
+          throw new Error("unreachable");
+        },
+      }),
+    ).toThrow(/already defaults/);
+  });
+
+  it("rejects previewParams the template's own schema would not accept", () => {
+    expect(() =>
+      defineSectionTemplate({
+        id: "invalid-preview-param",
+        name: "Invalid preview",
+        category: "content",
+        useWhen: "Never used; this template exists only to be rejected at definition time.",
+        paramsSchema: z.strictObject({
+          headline: z.string().min(1).default("Sample headline").describe("Headline."),
+          ctaHref: z.string().min(1).optional().describe("Destination."),
+        }),
+        contentRequirements: { copyParams: ["headline"], listParams: [], imageCount: 0 },
+        previewParams: { ctaHref: "" },
+        build: () => {
+          throw new Error("unreachable");
+        },
+      }),
+    ).toThrow(/previewParams its own paramsSchema rejects/);
+  });
+
   it("rejects a template that asks for nothing, since its defaults would always stand in", () => {
     expect(() =>
       defineSectionTemplate({

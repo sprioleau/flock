@@ -30,16 +30,17 @@ export const footerParamsSchema = z
     address: z
       .string()
       .min(1)
-      .default("123 Market Street, Suite 400, San Francisco, CA")
-      .describe("The sender's postal address (required by anti-spam law in most regions)."),
+      .optional()
+      .describe(
+        "The sender's postal address (required by anti-spam law in most regions). There is no default: an address is a legal claim about where the sender is, so an unsupplied one is left OUT of the footer rather than invented, and the sender fills it in.",
+      ),
     links: z
       .array(footerLinkSchema)
       .max(5)
-      .default([
-        { label: "Privacy", href: "https://example.com/privacy" },
-        { label: "Terms", href: "https://example.com/terms" },
-      ])
-      .describe("Up to 5 secondary links (privacy, terms, help …). Pass [] for none."),
+      .optional()
+      .describe(
+        "Up to 5 secondary links (privacy, terms, help …), each with a real destination. Omit for none — there is no default, so links you do not name are not invented.",
+      ),
     unsubscribeHref: z
       .string()
       .min(1)
@@ -56,19 +57,31 @@ export const footerTemplate = defineSectionTemplate({
     "Close the email with legal footing: company name and address, secondary links, and an unsubscribe link over a divider.",
   paramsSchema: footerParamsSchema,
   /*
-    The footer names the sender. The postal address and the unsubscribe merge tag are sending boilerplate the owner configures, not claims invented about a subject.
+    The footer names the sender. The unsubscribe merge tag is sending
+    boilerplate the owner configures. The postal address and the secondary
+    links are NOT required — requiring either would drop the footer, and a
+    dropped footer takes the unsubscribe link with it — so they carry no
+    default instead, and are simply absent when nobody supplied them.
   */
   contentRequirements: {
     copyParams: ["companyName"],
     listParams: [],
     imageCount: 0,
   },
+  /* The gallery shows a complete legal footing; a real one says only what it was told. */
+  previewParams: {
+    address: "123 Market Street, Suite 400, San Francisco, CA",
+    links: [
+      { label: "Privacy", href: "https://example.com/privacy" },
+      { label: "Terms", href: "https://example.com/terms" },
+    ],
+  },
   build: ({ params, random }) => {
     const composer = createSectionComposer(random);
     composer.addLeaf({ kind: "divider" });
 
     const paragraphs = [];
-    if (params.links.length > 0) {
+    if (params.links !== undefined && params.links.length > 0) {
       paragraphs.push(
         paragraphNode(
           params.links.flatMap((link, index) => [
@@ -81,10 +94,17 @@ export const footerTemplate = defineSectionTemplate({
         ),
       );
     }
+    /*
+      The company line names whoever the sender said they are, and adds the
+      address only when there is one. No address is a footer the sender still
+      has to complete; a made-up address is a false statement of where they are.
+    */
+    const companyLine =
+      params.address === undefined
+        ? params.companyName
+        : `${params.companyName} · ${params.address}`;
     paragraphs.push(
-      paragraphNode([
-        textRun(`${params.companyName} · ${params.address}`, [FOOTER_FONT_SIZE_MARK]),
-      ]),
+      paragraphNode([textRun(companyLine, [FOOTER_FONT_SIZE_MARK])]),
       paragraphNode([
         textRun("Unsubscribe", [
           { type: "link", attrs: { href: params.unsubscribeHref } },

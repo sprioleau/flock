@@ -6,6 +6,7 @@ import {
   paragraphNode,
   resolveImageSrc,
   textDocOf,
+  type LeafSpec,
 } from "../build-helpers";
 import { defineSectionTemplate } from "../types";
 
@@ -38,13 +39,17 @@ export const heroSplitParamsSchema = z
     ctaLabel: z
       .string()
       .min(1)
-      .default("Get started")
-      .describe("The call-to-action button's visible label (plain text)."),
+      .optional()
+      .describe(
+        "The call-to-action button's visible label (plain text). Omit, with ctaHref, for a hero with no button.",
+      ),
     ctaHref: z
       .string()
       .min(1)
-      .default("https://example.com")
-      .describe("The call-to-action button's destination: an absolute URL, mailto:, or merge tag."),
+      .optional()
+      .describe(
+        "The call-to-action button's destination: an absolute URL, mailto:, or merge tag. Give a real one or omit it — there is no default, so a hero you leave without a destination simply has no button.",
+      ),
   })
   .describe("Split-hero content: headline, supporting copy, image alt text, and one CTA.");
 
@@ -63,6 +68,8 @@ export const heroSplitTemplate = defineSectionTemplate({
     listParams: [],
     imageCount: 1,
   },
+  /* As `hero`: the gallery shows the button, a real draft earns it. */
+  previewParams: { ctaLabel: "Get started", ctaHref: "https://example.com" },
   /*
     imageSrc is for programmatic callers only (a rehosted image URL from the
     content-ingestion pipeline) — never for the model.
@@ -70,6 +77,14 @@ export const heroSplitTemplate = defineSectionTemplate({
   modelFacingParamsSchema: heroSplitParamsSchema.omit({ imageSrc: true }),
   build: ({ params, random }) => {
     const composer = createSectionComposer(random);
+    /*
+      No button rather than an invented one: a label with nowhere to go, or a
+      destination with nothing to click, is a dead button in a sent email.
+    */
+    const ctaLeaves: LeafSpec[] =
+      params.ctaLabel !== undefined && params.ctaHref !== undefined
+        ? [{ kind: "button", label: params.ctaLabel, href: params.ctaHref, align: "left" }]
+        : [];
     composer.addColumns([
       {
         widthPercent: 55,
@@ -82,7 +97,7 @@ export const heroSplitTemplate = defineSectionTemplate({
               paragraphNode(params.body),
             ]),
           },
-          { kind: "button", label: params.ctaLabel, href: params.ctaHref, align: "left" },
+          ...ctaLeaves,
         ],
       },
       {

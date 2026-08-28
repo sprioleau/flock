@@ -6,6 +6,7 @@ import {
   paragraphNode,
   resolveImageSrc,
   textDocOf,
+  type LeafSpec,
   textRun,
 } from "../build-helpers";
 import { defineSectionTemplate } from "../types";
@@ -42,13 +43,17 @@ export const productParamsSchema = z
     ctaLabel: z
       .string()
       .min(1)
-      .default("Shop now")
-      .describe("The buy button's visible label (plain text)."),
+      .optional()
+      .describe(
+        "The buy button's visible label (plain text). Omit, with ctaHref, for a card with no button.",
+      ),
     ctaHref: z
       .string()
       .min(1)
-      .default("https://example.com/shop")
-      .describe("The buy button's destination: an absolute URL to the product page."),
+      .optional()
+      .describe(
+        "The buy button's destination: an absolute URL to the product page. Give a real one or omit it — there is no default, so a card you leave without a destination simply has no button.",
+      ),
   })
   .describe("Product content: name, description, display price, photo alt text, and the buy button.");
 
@@ -67,6 +72,8 @@ export const productTemplate = defineSectionTemplate({
     listParams: [],
     imageCount: 1,
   },
+  /* The gallery shows the buy button; a real card only gets one you can buy from. */
+  previewParams: { ctaLabel: "Shop now", ctaHref: "https://example.com/shop" },
   /*
     imageSrc is for programmatic callers only (a rehosted image URL from the
     content-ingestion pipeline) — never for the model.
@@ -74,6 +81,11 @@ export const productTemplate = defineSectionTemplate({
   modelFacingParamsSchema: productParamsSchema.omit({ imageSrc: true }),
   build: ({ params, random }) => {
     const composer = createSectionComposer(random);
+    /* A buy button nobody can buy from is worse than no buy button. */
+    const ctaLeaves: LeafSpec[] =
+      params.ctaLabel !== undefined && params.ctaHref !== undefined
+        ? [{ kind: "button", label: params.ctaLabel, href: params.ctaHref, align: "left" }]
+        : [];
     composer.addColumns([
       {
         widthPercent: 45,
@@ -98,7 +110,7 @@ export const productTemplate = defineSectionTemplate({
               paragraphNode([textRun(params.price, [{ type: "bold" }])]),
             ]),
           },
-          { kind: "button", label: params.ctaLabel, href: params.ctaHref, align: "left" },
+          ...ctaLeaves,
         ],
       },
     ]);

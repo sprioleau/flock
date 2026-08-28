@@ -19,8 +19,11 @@ import {
  *   template; it is surfaced verbatim in the prompt's compact catalog listing.
  * - `paramsSchema` is CONTENT ONLY (headlines, body copy, CTA label/href,
  *   image alt text, stat values …) — never colors, fonts, or padding. Every
- *   field carries a `.describe()` and a sensible default, so `parse({})`
- *   yields a complete, demo-ready section.
+ *   field carries a `.describe()`, and `parse({})` succeeds. Copy fields
+ *   default to sample text (guarded by `contentRequirements`); fields that
+ *   name a PLACE carry no default at all, so a section the caller gave no
+ *   destination or address renders without that element rather than with an
+ *   invented one — see `previewParams` for how the gallery still shows both.
  * - Builders emit blocks with minimal/no style overrides so every scaffolded
  *   section inherits `root.properties.globals` and is theme-native: the same
  *   section reads correctly under a light theme and a dark theme alike.
@@ -65,16 +68,18 @@ export interface SectionTemplate<TSchema extends z.ZodType = z.ZodType> {
   category: SectionCategory;
   /** ONE sentence of LLM selection guidance — the axis the model reasons over. */
   useWhen: string;
-  /** CONTENT-ONLY params: every field `.describe()`d and defaulted; `parse({})` succeeds. */
+  /** CONTENT-ONLY params: every field `.describe()`d; `parse({})` succeeds. */
   paramsSchema: TSchema;
   /*
     What this template needs before it may build a section of a REAL draft:
     which copy params, which lists and how long, how many images. Read against
     the params the CALLER supplied, so the `.default()` values above take no
-    part — which is exactly why they can go on serving the gallery and
-    `scaffoldSection` while never standing in as content. Keys on content
-    shape only; never on `pageType`. Always read it through
-    `getContentRequirements`, and test fit through `sections/content-fit`.
+    part — which is exactly why sample COPY can go on serving the gallery
+    while never standing in as content. The params that name a PLACE are
+    guarded differently, because requiring them here would drop the sections
+    that carry them: see `previewParams`. Keys on content shape only; never on
+    `pageType`. Always read it through `getContentRequirements`, and test fit
+    through `sections/content-fit`.
   */
   contentRequirements: SectionContentRequirements;
   /*
@@ -93,6 +98,25 @@ export interface SectionTemplate<TSchema extends z.ZodType = z.ZodType> {
     model untouched. Always read it through `getModelFacingParamsSchema`.
   */
   modelFacingParamsSchema?: z.ZodType;
+  /*
+    Sample values for the params that carry NO default, shown in the CATALOG
+    GALLERY and nowhere else.
+
+    A param that names a PLACE — a button's destination, a nav bar's links, a
+    postal address — cannot carry a default, because `contentRequirements`
+    cannot require it either: requiring an address would drop every footer,
+    and a dropped footer takes the legally required unsubscribe link with it.
+    So those params are `.optional()` and `build` simply leaves the element out
+    when the caller named nothing. That is the right answer for a real draft
+    and the wrong one for a thumbnail: the gallery exists to show what a
+    template LOOKS like, and a hero with no button misrepresents the hero.
+
+    These values close that one gap. They are never merged into params on any
+    path that writes to a document — `scaffoldSection` and `createDraft` both
+    build from what the caller supplied — so unlike a `.default()` they cannot
+    reach a real email. Always read them through `getPreviewParams`.
+  */
+  previewParams?: Record<string, unknown>;
   /** Pure builder: validated params (+ optional RandomFn) → one addSection payload. */
   build(input: SectionBuildInput<z.output<TSchema>>): SectionBuildResult;
 }
@@ -114,6 +138,16 @@ export function getModelFacingParamsSchema(template: SectionTemplate): z.ZodType
 */
 export function getContentRequirements(template: SectionTemplate): SectionContentRequirements {
   return template.contentRequirements;
+}
+
+/*
+  The gallery's sample values — the third audience-specific view of a
+  template's params, beside the model's schema and the content requirements.
+  A template with no undefaulted params has nothing to fill in and returns the
+  empty object, which parses to exactly what it always did.
+*/
+export function getPreviewParams(template: SectionTemplate): Record<string, unknown> {
+  return template.previewParams ?? {};
 }
 
 /** The param names one template's schema accepts, or null when it is not an object schema. */
@@ -160,7 +194,47 @@ export function defineSectionTemplate<TSchema extends z.ZodType>(
     );
   }
   assertContentRequirements(template);
+  assertPreviewParams(template);
   return Object.freeze({ ...template });
+}
+
+/*
+  Preview values may only FILL GAPS, never restate or override what the schema
+  already says. Held here so `previewParams` cannot quietly become a second
+  copy layer drifting away from the schema beside it — the gallery must keep
+  showing the same template everyone else builds.
+*/
+function assertPreviewParams(template: SectionTemplate<z.ZodType>): void {
+  const previewParams = getPreviewParams(template);
+  const previewKeys = Object.keys(previewParams);
+  if (previewKeys.length === 0) {
+    return;
+  }
+  const paramKeys = getTemplateParamKeys(template.paramsSchema);
+  if (paramKeys !== null) {
+    const unknownParams = previewKeys.filter((param) => !paramKeys.has(param));
+    if (unknownParams.length > 0) {
+      throw new Error(
+        `defineSectionTemplate: template "${template.id}" declares previewParams for ${unknownParams.map((param) => `"${param}"`).join(", ")}, which its paramsSchema does not accept.`,
+      );
+    }
+  }
+  const defaulted = z
+    .record(z.string(), z.unknown())
+    .safeParse(template.paramsSchema.safeParse({}).data);
+  if (defaulted.success) {
+    const alreadyDefaulted = previewKeys.filter((param) => defaulted.data[param] !== undefined);
+    if (alreadyDefaulted.length > 0) {
+      throw new Error(
+        `defineSectionTemplate: template "${template.id}" declares previewParams for ${alreadyDefaulted.map((param) => `"${param}"`).join(", ")}, which its paramsSchema already defaults — preview values fill the gaps the schema deliberately leaves, they never restate or override it.`,
+      );
+    }
+  }
+  if (!template.paramsSchema.safeParse(previewParams).success) {
+    throw new Error(
+      `defineSectionTemplate: template "${template.id}" has previewParams its own paramsSchema rejects — the gallery builds through that schema like everyone else.`,
+    );
+  }
 }
 
 /*

@@ -256,10 +256,13 @@ function toTemplateParams({
     use an address that is on the page; when it gives none, the page's own
     address stands in.
 
-    Leaving it out is NOT an option: every template with a button defaults
-    ctaHref to "https://example.com", so an unfilled button ships a link to
-    example.com inside the user's email. Falling back to the page they pointed
-    at is both honest and always right.
+    Leaving it out is no longer a broken button — a template whose ctaHref
+    nobody supplied now renders no button at all rather than one pointing at
+    example.com. It is still the worse answer here: this pipeline is reading a
+    real page, so it always has one honest destination to offer, and a hero
+    with a label and nowhere to go would be dropped to no button over a detail
+    we know. Falling back to the page they pointed at keeps the button and
+    keeps it true.
   */
   const ctaHref = copy.ctaHref ?? pageUrl;
 

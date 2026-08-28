@@ -39,13 +39,17 @@ export const heroParamsSchema = z
     ctaLabel: z
       .string()
       .min(1)
-      .default("Get started")
-      .describe("The call-to-action button's visible label (plain text)."),
+      .optional()
+      .describe(
+        "The call-to-action button's visible label (plain text). Omit, with ctaHref, for a hero with no button.",
+      ),
     ctaHref: z
       .string()
       .min(1)
-      .default("https://example.com")
-      .describe("The call-to-action button's destination: an absolute URL, mailto:, or merge tag."),
+      .optional()
+      .describe(
+        "The call-to-action button's destination: an absolute URL, mailto:, or merge tag. Give a real one or omit it — there is no default, so a hero you leave without a destination simply has no button.",
+      ),
   })
   .describe("Hero content: headline, supporting copy, image alt text, and one CTA.");
 
@@ -64,6 +68,11 @@ export const heroTemplate = defineSectionTemplate({
     listParams: [],
     imageCount: 1,
   },
+  /*
+    The gallery shows the button this template is partly about; a real hero
+    only gets one when the caller names where it goes.
+  */
+  previewParams: { ctaLabel: "Get started", ctaHref: "https://example.com" },
   /*
     imageSrc is for programmatic callers only (a rehosted image URL from the
     content-ingestion pipeline) — never for the model.
@@ -84,12 +93,18 @@ export const heroTemplate = defineSectionTemplate({
       ]),
       textAlign: "center",
     });
-    composer.addLeaf({
-      kind: "button",
-      label: params.ctaLabel,
-      href: params.ctaHref,
-      align: "center",
-    });
+    /*
+      No button rather than an invented one: a label with nowhere to go, or a
+      destination with nothing to click, is a dead button in a sent email.
+    */
+    if (params.ctaLabel !== undefined && params.ctaHref !== undefined) {
+      composer.addLeaf({
+        kind: "button",
+        label: params.ctaLabel,
+        href: params.ctaHref,
+        align: "center",
+      });
+    }
     return composer.finish();
   },
 });

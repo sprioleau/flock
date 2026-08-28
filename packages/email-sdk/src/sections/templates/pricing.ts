@@ -41,13 +41,17 @@ export const pricingParamsSchema = z
     ctaLabel: z
       .string()
       .min(1)
-      .default("Start free trial")
-      .describe("The signup button's visible label (plain text)."),
+      .optional()
+      .describe(
+        "The signup button's visible label (plain text). Omit, with ctaHref, for a card with no button.",
+      ),
     ctaHref: z
       .string()
       .min(1)
-      .default("https://example.com/pricing")
-      .describe("The signup button's destination: an absolute URL."),
+      .optional()
+      .describe(
+        "The signup button's destination: an absolute URL. Give a real one or omit it — there is no default, so a card you leave without a destination simply has no button.",
+      ),
   })
   .describe("Pricing content: plan name, display price and period, included features, and the signup button.");
 
@@ -66,6 +70,8 @@ export const pricingTemplate = defineSectionTemplate({
     listParams: [{ param: "features", minimumCount: 1 }],
     imageCount: 0,
   },
+  /* The gallery shows the signup button; a real card only gets one you can sign up through. */
+  previewParams: { ctaLabel: "Start free trial", ctaHref: "https://example.com/pricing" },
   build: ({ params, random }) => {
     const composer = createSectionComposer(random);
     composer.addLeaf({
@@ -85,8 +91,19 @@ export const pricingTemplate = defineSectionTemplate({
       ),
       textAlign: "center",
     });
-    composer.addLeaf({ kind: "spacer", height: 8 });
-    composer.addLeaf({ kind: "button", label: params.ctaLabel, href: params.ctaHref, align: "center" });
+    /*
+      A signup button with nowhere to sign up is a dead button; leave it out.
+      The spacer goes with it — it exists to give the button air.
+    */
+    if (params.ctaLabel !== undefined && params.ctaHref !== undefined) {
+      composer.addLeaf({ kind: "spacer", height: 8 });
+      composer.addLeaf({
+        kind: "button",
+        label: params.ctaLabel,
+        href: params.ctaHref,
+        align: "center",
+      });
+    }
     return composer.finish();
   },
 });

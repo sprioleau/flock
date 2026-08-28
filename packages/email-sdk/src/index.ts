@@ -440,6 +440,7 @@ export {
   defineSectionTemplate,
   getModelFacingParamsSchema,
   getContentRequirements,
+  getPreviewParams,
   getTemplateParamKeys,
 } from "./sections/types";
 export type {

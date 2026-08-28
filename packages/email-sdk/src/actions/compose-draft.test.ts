@@ -1233,3 +1233,92 @@ describe("substitution and drop", () => {
     ]);
   });
 });
+
+/*
+  THE SHIPPED INCIDENT, PINNED AT THE COMPOSER.
+
+  A draft built from `https://wesbos.com/about` went out carrying an invented
+  endorsement. `contentRequirements` closed that: a section the model left
+  empty is now substituted or dropped rather than rendered from sample copy.
+
+  Two values still got through, because requiring them would have dropped
+  nearly every hero and every footer — and a dropped footer takes the
+  unsubscribe link with it. A KEPT section still rendered its own
+  `.default()`: a postal address on a street the sender does not occupy (a
+  CAN-SPAM field, so inventing one is worse than omitting it) and a button
+  pointing at example.com.
+
+  This is the whole fix stated as one behaviour: a kept section renders the
+  element only when the caller supplied it, and stays a real section either way.
+*/
+describe("a kept section renders no place the caller did not name", () => {
+  const PAGE_HEADLINE = "Hi, I'm Wes Bos";
+  const PAGE_BODY = "A full stack developer and teacher from Hamilton, Ontario.";
+
+  function composeFromPage(): ComposedDraft {
+    const [composed] = buildComposedDrafts({
+      sourceDoc: createEmptyDocument(),
+      shouldCarryOverSourceCopy: false,
+      command: {
+        type: "createDraft",
+        count: 1,
+        shouldInheritTheme: false,
+        drafts: [
+          {
+            sections: [
+              { templateId: "header", params: { brandName: "Wes Bos" } },
+              { templateId: "hero", params: { headline: PAGE_HEADLINE, body: PAGE_BODY } },
+              { templateId: "footer", params: { companyName: "Wes Bos" } },
+            ],
+          },
+        ],
+      },
+      random: createSeededRandom(11),
+    });
+    if (composed === undefined) throw new Error("nothing composed");
+    return composed;
+  }
+
+  it("keeps all three sections — nothing here is dropped or swapped out", () => {
+    const composed = composeFromPage();
+    expect(composed.composition.droppedSectionCount).toBe(0);
+    expect(composed.composition.substitutedSectionCount).toBe(0);
+    expect(composed.ops.filter((op) => op.name === "addSection")).toHaveLength(3);
+  });
+
+  it("ships no fabricated postal address and no button pointing at a domain nobody owns", () => {
+    const composed = composeFromPage();
+    const result = applyOperations(createEmptyDocument(), composed.ops);
+    expect(result.isOk).toBe(true);
+    if (!result.isOk) throw new Error("compose failed");
+    expect(JSON.stringify(result.doc)).not.toContain("123 Market Street");
+    /* The hero's dead "Get started" button is gone with it. */
+    expect(Object.values(result.doc).some((block) => block.type === "button")).toBe(false);
+
+    /*
+      Section by section rather than document-wide, because ONE sample
+      destination is knowingly still standing: the header's nav bar. Taking its
+      default away made `header` and `header-centered` render identically, and
+      createDraft's "several drafts really differ" guarantee collapsed with it —
+      so the nav bar waits for diversification to gain another axis to vary.
+      The hero and the footer, which is what this incident was about, name
+      nothing the caller did not.
+    */
+    const builtSections = composed.ops.filter((op) => op.name === "addSection");
+    expect(builtSections).toHaveLength(3);
+    const [, hero, footer] = builtSections;
+    expect(JSON.stringify(hero)).not.toContain("example.com");
+    expect(JSON.stringify(footer)).not.toContain("example.com");
+  });
+
+  it("still says the page's own words, and the footer still carries its unsubscribe link", () => {
+    const result = applyOperations(createEmptyDocument(), composeFromPage().ops);
+    expect(result.isOk).toBe(true);
+    if (!result.isOk) throw new Error("compose failed");
+    const text = getAllText(result.doc);
+    expect(text).toContain(PAGE_HEADLINE);
+    expect(text).toContain(PAGE_BODY);
+    expect(text).toContain("Wes Bos");
+    expect(JSON.stringify(result.doc)).toContain("*|UNSUB|*");
+  });
+});

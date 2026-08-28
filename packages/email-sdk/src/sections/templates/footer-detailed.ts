@@ -34,8 +34,10 @@ export const footerDetailedParamsSchema = z
     address: z
       .string()
       .min(1)
-      .default("123 Market Street, Suite 400, San Francisco, CA")
-      .describe("The sender's postal address (required by anti-spam law in most regions)."),
+      .optional()
+      .describe(
+        "The sender's postal address (required by anti-spam law in most regions). There is no default: an address is a legal claim about where the sender is, so an unsupplied one is left OUT of the footer rather than invented, and the sender fills it in.",
+      ),
     links: z
       .array(footerLinkSchema)
       .min(1)
@@ -77,6 +79,8 @@ export const footerDetailedTemplate = defineSectionTemplate({
     listParams: [{ param: "links", minimumCount: 1 }],
     imageCount: 0,
   },
+  /* As `footer`: the gallery shows the address line, a real footer states only a real one. */
+  previewParams: { address: "123 Market Street, Suite 400, San Francisco, CA" },
   build: ({ params, random }) => {
     const composer = createSectionComposer(random);
     composer.addLeaf({ kind: "divider" });
@@ -93,7 +97,10 @@ export const footerDetailedTemplate = defineSectionTemplate({
               ...(params.tagline !== undefined
                 ? [paragraphNode([textRun(params.tagline, [FOOTER_FONT_SIZE_MARK])])]
                 : []),
-              paragraphNode([textRun(params.address, [FOOTER_FONT_SIZE_MARK])]),
+              /* No address line at all rather than a street the sender is not on. */
+              ...(params.address !== undefined
+                ? [paragraphNode([textRun(params.address, [FOOTER_FONT_SIZE_MARK])])]
+                : []),
             ]),
           },
         ],

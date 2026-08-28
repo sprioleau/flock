@@ -42,13 +42,17 @@ export const codeSampleParamsSchema = z
     docsLabel: z
       .string()
       .min(1)
-      .default("Read the docs")
-      .describe("The docs link's visible text, shown under the snippet."),
+      .optional()
+      .describe(
+        "The docs link's visible text, shown under the snippet. Omit, with docsHref, for a snippet with no link under it.",
+      ),
     docsHref: z
       .string()
       .min(1)
-      .default("https://example.com/docs")
-      .describe("The docs link's destination: an absolute URL."),
+      .optional()
+      .describe(
+        "The docs link's destination: an absolute URL. Give a real one or omit it — there is no default, so a section you leave without a destination simply has no docs link.",
+      ),
   })
   .describe("Code-sample content: heading, lead-in, the snippet and its language, and a docs link.");
 
@@ -67,6 +71,8 @@ export const codeSampleTemplate = defineSectionTemplate({
     listParams: [],
     imageCount: 0,
   },
+  /* The gallery shows the docs link; a real section only gets one that leads somewhere. */
+  previewParams: { docsLabel: "Read the docs", docsHref: "https://example.com/docs" },
   build: ({ params, random }) => {
     const composer = createSectionComposer(random);
     composer.addLeaf({
@@ -77,7 +83,10 @@ export const codeSampleTemplate = defineSectionTemplate({
       ]),
     });
     composer.addLeaf({ kind: "code", code: params.code, language: params.language });
-    composer.addLeaf({ kind: "link", text: params.docsLabel, href: params.docsHref });
+    /* A "Read the docs" link to docs that do not exist is worse than none. */
+    if (params.docsLabel !== undefined && params.docsHref !== undefined) {
+      composer.addLeaf({ kind: "link", text: params.docsLabel, href: params.docsHref });
+    }
     return composer.finish();
   },
 });
