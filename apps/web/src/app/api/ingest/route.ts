@@ -1,3 +1,5 @@
+import { MOCK_MODEL_HEADER } from "@/lib/chat-contract";
+import { createPageClassifier } from "@/lib/content-ingestion/classify-page-model";
 import { ingestPage } from "@/lib/content-ingestion/ingest-page";
 import { getSessionIdFromCookieHeader } from "@/lib/session-cookie";
 import { ingestRequestBodySchema } from "./contract";
@@ -54,7 +56,12 @@ export async function POST(request: Request) {
   const { url } = parsedBody.data;
   const sessionId = getSessionIdFromCookieHeader(request.headers.get("cookie"));
 
-  const result = await ingestPage({ url, sessionId });
+  const isMockRun = request.headers.get(MOCK_MODEL_HEADER) === "1";
+  const result = await ingestPage({
+    url,
+    sessionId,
+    classify: createPageClassifier({ isMockRun }),
+  });
   return result.isOk
     ? Response.json({ isOk: true, page: result.page })
     : Response.json(

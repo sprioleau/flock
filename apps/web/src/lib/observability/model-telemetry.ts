@@ -41,6 +41,7 @@ export type ModelOperation =
   | "savedSections.enrich"
   | "brandKit.extract"
   | "ingest.webSearch"
+  | "ingest.classifyPage"
   | "image.generate";
 
 export interface ModelTelemetryContext {

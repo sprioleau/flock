@@ -9,6 +9,12 @@ vi.mock("../robots", () => ({ isFetchAllowedByRobots: isFetchAllowedByRobotsMock
 vi.mock("../rehost-image", () => ({ rehostImageToStorage: rehostImageToStorageMock }));
 
 import { ingestPage } from "../ingest-page";
+import type { ClassifyFn } from "../classify-page";
+
+/** A reader that returns exactly what a test wants, spending no quota. */
+function cannedReader(reading: Record<string, unknown>): ClassifyFn {
+  return async () => reading;
+}
 
 /**
  * The staged pipeline's own guarantees, at the seam rather than end to end.
@@ -39,6 +45,7 @@ const PAGE_HTML = `<!doctype html>
   <img src="/media/atlas.png" alt="Atlas scheduling board" width="1200" height="800">
   <img src="/media/ward.png" alt="Ward handover screen" width="1200" height="800">
   <img src="/media/rota.png" alt="Rota planner" width="1200" height="800">
+  <img src="/media/rowan.jpg" alt="Rowan Ellis" width="400" height="400">
 </main></body></html>`;
 
 beforeEach(() => {
@@ -97,23 +104,94 @@ describe("ingestPage — a refusal is a successful call", () => {
   });
 });
 
-describe("ingestPage — the lead image", () => {
-  it("copies exactly one image, however many the page offers", async () => {
+describe("ingestPage — the images", () => {
+  it("copies only one when nothing read the page", async () => {
     /*
-      The fixture offers four candidates. Copying is a fetch, a storage write,
-      and an Asset Library row apiece, and the composer can place one lead — so
-      the count is the guarantee, and the fixture has to be able to break it.
+      With no reader, the deterministic floor nominates the publisher's own
+      image and nothing else. The fixture offers four candidates, so this can
+      genuinely break.
     */
     const probe = await ingestPage({ url: PAGE_URL });
     expect(probe.isOk).toBe(true);
     expect(rehostImageToStorageMock).toHaveBeenCalledTimes(1);
-  });
-
-  it("prefers the publisher's own nominated image over an inline one", async () => {
-    await ingestPage({ url: PAGE_URL });
     expect(rehostImageToStorageMock).toHaveBeenCalledWith(
       expect.objectContaining({ imageUrl: "https://studio.example/social/card.png" }),
     );
+  });
+
+  it("copies at most four, however many roles the reader assigns", async () => {
+    /*
+      Each copy is a fetch, a storage write, and an Asset Library row. The cap
+      is a real cost bound, so the fixture assigns more than it.
+    */
+    const result = await ingestPage({
+      url: PAGE_URL,
+      classify: cannedReader({
+        pageType: "portfolio",
+        confidence: "high",
+        sourceSummary: "A studio page.",
+        isPlanUsable: true,
+        images: [
+          { candidateId: "img_1", role: "lead" },
+          { candidateId: "img_2", role: "supporting" },
+          { candidateId: "img_3", role: "supporting" },
+          { candidateId: "img_4", role: "supporting" },
+          { candidateId: "img_5", role: "supporting" },
+        ],
+      }),
+    });
+    expect(result.isOk).toBe(true);
+    if (!result.isOk) return;
+    expect(result.page.images).toHaveLength(4);
+    expect(rehostImageToStorageMock).toHaveBeenCalledTimes(4);
+  });
+
+  it("spends the budget by ROLE, not by where the image sat on the page", async () => {
+    /*
+      The whole reason for a priority order. A portrait assigned to the LAST
+      candidate must still be copied ahead of three supporting images that came
+      first — on a page about a person, their face is what the email most
+      needs, and document order would have spent the budget before reaching it.
+    */
+    const result = await ingestPage({
+      url: PAGE_URL,
+      classify: cannedReader({
+        pageType: "person_profile",
+        confidence: "high",
+        sourceSummary: "A studio page.",
+        isPlanUsable: true,
+        images: [
+          { candidateId: "img_2", role: "supporting" },
+          { candidateId: "img_3", role: "supporting" },
+          { candidateId: "img_4", role: "supporting" },
+          { candidateId: "img_5", role: "portrait", subject: "Rowan Ellis" },
+        ],
+      }),
+    });
+    expect(result.isOk).toBe(true);
+    if (!result.isOk) return;
+    expect(result.page.images[0]).toMatchObject({ role: "portrait", subject: "Rowan Ellis" });
+  });
+
+  it("drops one image that will not store without dropping the rest", async () => {
+    rehostImageToStorageMock.mockResolvedValueOnce(null);
+    rehostImageToStorageMock.mockResolvedValue("https://storage.convex.cloud/ok.png");
+    const result = await ingestPage({
+      url: PAGE_URL,
+      classify: cannedReader({
+        pageType: "portfolio",
+        confidence: "high",
+        sourceSummary: "A studio page.",
+        isPlanUsable: true,
+        images: [
+          { candidateId: "img_1", role: "lead" },
+          { candidateId: "img_2", role: "supporting" },
+        ],
+      }),
+    });
+    expect(result.isOk).toBe(true);
+    if (!result.isOk) return;
+    expect(result.page.images).toHaveLength(1);
   });
 
   it("drops an image that cannot be stored, and still returns the page", async () => {
@@ -127,7 +205,7 @@ describe("ingestPage — the lead image", () => {
     const result = await ingestPage({ url: PAGE_URL });
     expect(result.isOk).toBe(true);
     if (!result.isOk) return;
-    expect(result.page.leadImageUrl).toBeUndefined();
+    expect(result.page.images).toEqual([]);
     expect(JSON.stringify(result.page)).not.toContain("social/card.png");
   });
 
@@ -136,6 +214,55 @@ describe("ingestPage — the lead image", () => {
     expect(rehostImageToStorageMock).toHaveBeenCalledWith(
       expect.objectContaining({ sessionId: "sess_xyz" }),
     );
+  });
+});
+
+describe("ingestPage — the reading reaches the model", () => {
+  it("carries what the page turned out to be, and how sure that was", async () => {
+    const result = await ingestPage({
+      url: PAGE_URL,
+      classify: cannedReader({
+        pageType: "portfolio",
+        confidence: "medium",
+        uncertaintyNote: "Could equally be read as a studio's own page.",
+        sourceSummary: "Rowan Ellis's portfolio.",
+        isPlanUsable: true,
+        images: [],
+      }),
+    });
+    expect(result.isOk).toBe(true);
+    if (!result.isOk) return;
+    expect(result.page).toMatchObject({
+      pageType: "portfolio",
+      confidence: "medium",
+      uncertaintyNote: "Could equally be read as a studio's own page.",
+      isPlanUsable: true,
+    });
+  });
+
+  it("still returns the page when the reader fails, marked unusable", async () => {
+    /*
+      The house rule at the reading layer. The page WAS fetched, so the caller
+      gets a successful result carrying everything the scrape knows — it simply
+      declines to claim what it could not work out.
+    */
+    const result = await ingestPage({
+      url: PAGE_URL,
+      classify: async () => {
+        throw new Error("quota exhausted");
+      },
+    });
+    expect(result.isOk).toBe(true);
+    if (!result.isOk) return;
+    expect(result.page.isPlanUsable).toBe(false);
+    expect(result.page.title).toBe("Rowan Ellis");
+    expect(result.page.lists.length).toBeGreaterThan(0);
+  });
+
+  it("spends no reading call at all when there is no reader", async () => {
+    const classify = vi.fn();
+    await ingestPage({ url: PAGE_URL, classify: null });
+    expect(classify).not.toHaveBeenCalled();
   });
 });
 

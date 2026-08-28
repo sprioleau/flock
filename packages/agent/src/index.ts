@@ -60,11 +60,14 @@ export type {
 export { defineReadWebPageAction, readWebPageInputSchema } from "./read-web-page";
 export type {
   ReadWebPageBlock,
+  ReadWebPageConfidence,
   ReadWebPageFn,
+  ReadWebPageImage,
   ReadWebPageInput,
   ReadWebPageList,
   ReadWebPagePayload,
   ReadWebPageResult,
+  ReadWebPageType,
 } from "./read-web-page";
 
 

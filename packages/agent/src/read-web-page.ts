@@ -70,6 +70,31 @@ export interface ReadWebPageList {
   items: string[];
 }
 
+/** What kind of page the reader decided this was. An OUTPUT, never a branch. */
+export type ReadWebPageType =
+  | "person_profile"
+  | "portfolio"
+  | "article"
+  | "product"
+  | "organization"
+  | "event"
+  | "collection"
+  | "reference"
+  | "other";
+
+/** How much the reading of this page can be trusted. */
+export type ReadWebPageConfidence = "high" | "medium" | "low";
+
+/** One image the pipeline kept, already stored on our own servers. */
+export interface ReadWebPageImage {
+  /** Absolute URL in Flock's storage. Never the original site's address. */
+  url: string;
+  role: "portrait" | "logo" | "lead" | "supporting";
+  alt?: string;
+  /** Who or what it shows, when the reader could say. */
+  subject?: string;
+}
+
 /** The page's content, as read. */
 export interface ReadWebPagePayload {
   /** The page's title (og:title / JSON-LD headline / <title>). */
@@ -91,13 +116,38 @@ export interface ReadWebPagePayload {
    */
   structuredData: Record<string, unknown>[];
   /**
-   * The page's lead image, already copied into Flock's own storage. Absent
-   * when the page has none or when the copy failed — an image that cannot be
-   * stored is DROPPED, never hot-linked from the original site.
+   * Up to four images, already copied into Flock's own storage and each given
+   * a role. An image that could not be stored is DROPPED, never hot-linked
+   * from the original site.
    */
-  leadImageUrl?: string;
+  images: ReadWebPageImage[];
   /** True when the page was long enough that trailing content was cut. */
   isTruncated: boolean;
+
+  /*
+    What the reader made of the page. These are OUTPUTS of reading it, and
+    nothing downstream may switch on `pageType` — it is here so you can say
+    what you read, not so anything can branch on it.
+  */
+  pageType: ReadWebPageType;
+  /** Present when pageType is "other": what the page actually is. */
+  pageTypeNote?: string;
+  /**
+   * How much to trust this reading.
+   *
+   * "high"   — build, and name what you read.
+   * "medium" — build, AND relay uncertaintyNote and invite a correction.
+   * "low"    — do NOT build. isPlanUsable is false; relay `message` and stop.
+   */
+  confidence: ReadWebPageConfidence;
+  /** Present at "medium": the one thing that is unclear. Relay it. */
+  uncertaintyNote?: string;
+  /** The reader's own account of the page, up to 400 characters. */
+  sourceSummary: string;
+  /** False when there was not enough on the page to build an honest email. */
+  isPlanUsable: boolean;
+  /** What to tell the user when isPlanUsable is false. */
+  message?: string;
 }
 
 /**

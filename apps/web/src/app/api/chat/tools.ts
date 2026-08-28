@@ -26,6 +26,7 @@ import {
   type ProposeSectionVariationsToolOutput,
   type FlockChatMessage,
 } from "@/lib/chat-contract";
+import { createPageClassifier } from "@/lib/content-ingestion/classify-page-model";
 import { ingestPage } from "@/lib/content-ingestion/ingest-page";
 import { generateAndStoreImage } from "../generate-image/generation";
 import { createPersonaForSession } from "./create-persona";
@@ -272,6 +273,7 @@ interface BuildIngestionToolInput {
   description: string;
   modelInputSchema: ReturnType<typeof toModelInputSchema>;
   sessionId: string | null;
+  isUsingMockModel: boolean;
 }
 
 /**
@@ -296,6 +298,7 @@ function buildIngestionTool({
   description,
   modelInputSchema,
   sessionId,
+  isUsingMockModel,
 }: BuildIngestionToolInput): Tool | null {
   if (name !== "readWebPage") {
     return null;
@@ -311,12 +314,20 @@ function buildIngestionTool({
         );
       }
       /*
-        The lead image is rehosted on every tier, mock included. The old
-        pipeline's isMockRun flag gated a live public-web SEARCH, not the image
-        copy, and conflating the two would silently drop the stored image from
-        every /demo run.
+        Images are rehosted on every tier, mock included — the old pipeline's
+        isMockRun flag gated a live public-web SEARCH, not the image copy, and
+        conflating the two would silently drop stored images from every /demo
+        run.
+
+        The READING is what a mock run skips. createPageClassifier returns null
+        there, and the classifier falls to its deterministic floor: no quota
+        spent, and nothing invented about a page nobody read.
       */
-      const result = await ingestPage({ url: parsedInput.data.url, sessionId });
+      const result = await ingestPage({
+        url: parsedInput.data.url,
+        sessionId,
+        classify: createPageClassifier({ isMockRun: isUsingMockModel }),
+      });
       return { isFound: true, data: result };
     },
   });
@@ -328,6 +339,7 @@ export function buildChatTools({
   actionContext,
   doc,
   sessionId,
+  isUsingMockModel,
 }: BuildChatToolsInput): BuiltChatTools {
   const tools: ToolSet = {};
   const schemaOnlyTools: ToolSet = {};
@@ -367,6 +379,7 @@ export function buildChatTools({
       description: definition.description,
       modelInputSchema,
       sessionId,
+      isUsingMockModel,
     });
     if (definition.name === "askForClarification") {
       tools[definition.name] = schemaOnlyTool;

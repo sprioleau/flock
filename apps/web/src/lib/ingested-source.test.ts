@@ -43,7 +43,12 @@ function assistantWithArticle({
                   blocks: [{ kind: "paragraph", text: "Projects: Flock, Dobble Go, teeny.fun." }],
                   lists: [],
                   structuredData: [],
+                  images: [],
                   isTruncated: false,
+                  pageType: "portfolio" as const,
+                  confidence: "high" as const,
+                  sourceSummary: "A portfolio listing three projects.",
+                  isPlanUsable: true,
                 },
               },
             }

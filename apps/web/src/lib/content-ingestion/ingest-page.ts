@@ -1,13 +1,21 @@
 import type {
   ReadWebPageBlock,
+  ReadWebPageImage,
   ReadWebPageList,
   ReadWebPagePayload,
   ReadWebPageResult,
 } from "@flock/agent";
+import {
+  classifyPage,
+  type ImageRole,
+  type PageClassification,
+  type ClassifyFn,
+} from "./classify-page";
 import { fetchPage, type FetchFailureReason } from "../brand-kit-extraction/fetch-page";
 import { extractPage } from "./extract-page";
-import type { ImageCandidate, PageScrape } from "./page-scrape";
+import type { PageScrape } from "./page-scrape";
 import { rehostImageToStorage } from "./rehost-image";
+import { createPageClassifier } from "./classify-page-model";
 import { isFetchAllowedByRobots } from "./robots";
 
 /**
@@ -73,59 +81,90 @@ export const PAGE_ROBOTS_REFUSAL: ReadWebPageResult = {
 };
 
 /**
- * Image origins that may serve as the page's lead image, best first.
+ * How many images are worth spending bytes on, and in what order.
  *
- * This is a preference over EVIDENCE (where the page put the image), not over
- * subject matter. `og-image` is the picture the publisher itself nominated for
- * a link preview, which is the closest thing to a declared lead image any page
- * offers; structured data is the same claim in another vocabulary; an inline
- * image is the page's first real picture. `link-icon` is deliberately absent —
- * a favicon is never a lead image, and rehosting one wastes the single copy.
+ * Each copy is a fetch, a storage write, and an Asset Library row, so the cap
+ * is real rather than defensive. The ORDER is what makes the cap safe: on a
+ * page with a person on it, their portrait is the image the email most needs,
+ * and taking images in document order would spend the budget on whatever
+ * happened to appear first — usually a logo or a social card.
  */
-const LEAD_IMAGE_ORIGIN_PREFERENCE = ["og-image", "structured-data", "inline"] as const;
+const MAX_REHOSTED_IMAGES = 4;
+
+const IMAGE_ROLE_PRIORITY: readonly ImageRole[] = ["portrait", "logo", "lead", "supporting"];
 
 /**
- * Hints that disqualify a candidate from standing in as the lead, at ANY
- * origin — a page that nominates a 32×32 glyph as its og:image has not
- * nominated a lead image, it has nominated a favicon by another route.
+ * Copy the images the reader gave a role to, best roles first, up to the cap.
+ *
+ * CLASSIFICATION RUNS BEFORE ANY COPY, which is the payoff of deferring the
+ * decision and is a cost win as well as a correctness one: the old pipeline
+ * copied a hero unconditionally, before anyone knew whether the email would
+ * use it. Here, bytes are only spent on images something actually asked for.
+ *
+ * Fail-soft per image: one that will not fetch becomes an absent image, never
+ * a hot-link to the original site and never a substitute.
  */
-const NON_LEAD_HINTS = ["icon-ish", "small"];
+async function rehostAssignedImages({
+  classification,
+  scrape,
+  sessionId,
+}: {
+  classification: PageClassification;
+  scrape: PageScrape;
+  sessionId: string | null;
+}): Promise<ReadWebPageImage[]> {
+  const candidatesById = new Map(
+    scrape.imageCandidates.map((candidate) => [candidate.id, candidate]),
+  );
+  const ordered = [...classification.images].sort(
+    (left, right) =>
+      IMAGE_ROLE_PRIORITY.indexOf(left.role) - IMAGE_ROLE_PRIORITY.indexOf(right.role),
+  );
 
-/**
- * The one image worth copying: the og:image candidate, else the structured-data
- * one, else the page's first inline picture — skipping chrome icons at every
- * tier.
- */
-export function selectLeadImageCandidate(
-  candidates: ImageCandidate[],
-): ImageCandidate | undefined {
-  for (const origin of LEAD_IMAGE_ORIGIN_PREFERENCE) {
-    const found = candidates.find(
-      (candidate) =>
-        candidate.origin === origin &&
-        !candidate.hints.some((hint) => NON_LEAD_HINTS.includes(hint)),
-    );
-    if (found !== undefined) {
-      return found;
+  const images: ReadWebPageImage[] = [];
+  for (const assignment of ordered) {
+    if (images.length >= MAX_REHOSTED_IMAGES) {
+      break;
     }
+    const candidate = candidatesById.get(assignment.candidateId);
+    if (candidate === undefined) {
+      continue;
+    }
+    const url = await rehostImageToStorage({
+      imageUrl: candidate.sourceUrl,
+      sessionId,
+      name: assignment.subject ?? candidate.alt ?? scrape.title,
+      sourceUrl: scrape.canonicalUrl,
+    });
+    if (url === null) {
+      continue;
+    }
+    images.push({
+      url,
+      role: assignment.role,
+      ...(candidate.alt === undefined ? {} : { alt: candidate.alt }),
+      ...(assignment.subject === undefined ? {} : { subject: assignment.subject }),
+    });
   }
-  return undefined;
+  return images;
 }
 
 /**
- * `PageScrape` → `ReadWebPagePayload`, field by field.
+ * `PageScrape` + the reading → `ReadWebPagePayload`, field by field.
  *
- * Written out rather than spread, because the difference between the two types
- * is the point: `linkDensity` is INTERNAL EVIDENCE for admitting a list, not
+ * Written out rather than spread, because the difference between the types is
+ * the point: `linkDensity` is INTERNAL EVIDENCE for admitting a list, not
  * something the model needs, so it is dropped here. A `...list` spread would
- * silently leak it back in the first time either type gains a field.
+ * silently leak it back the first time either type gained a field.
  */
 function toPayload({
   scrape,
-  leadImageUrl,
+  classification,
+  images,
 }: {
   scrape: PageScrape;
-  leadImageUrl: string | null;
+  classification: PageClassification;
+  images: ReadWebPageImage[];
 }): ReadWebPagePayload {
   const blocks: ReadWebPageBlock[] = scrape.blocks.map((block) => ({
     kind: block.kind,
@@ -143,8 +182,19 @@ function toPayload({
     blocks,
     lists,
     structuredData: scrape.structuredData,
-    ...(leadImageUrl === null ? {} : { leadImageUrl }),
+    images,
     isTruncated: scrape.isTruncated,
+    pageType: classification.pageType,
+    ...(classification.pageTypeNote === undefined
+      ? {}
+      : { pageTypeNote: classification.pageTypeNote }),
+    confidence: classification.confidence,
+    ...(classification.uncertaintyNote === undefined
+      ? {}
+      : { uncertaintyNote: classification.uncertaintyNote }),
+    sourceSummary: classification.sourceSummary,
+    isPlanUsable: classification.isPlanUsable,
+    ...(classification.message === undefined ? {} : { message: classification.message }),
   };
 }
 
@@ -152,26 +202,33 @@ export interface IngestPageInput {
   /** The page to read, exactly as the user gave it. */
   url: string;
   /**
-   * Session that should own the rehosted lead image (it joins that session's
-   * Asset Library). Null still rehosts — the file is just unowned.
+   * Session that should own the rehosted images (they join that session's
+   * Asset Library). Null still rehosts — the files are just unowned.
    */
   sessionId?: string | null;
   /**
-   * False skips the lead-image rehost and drops the image entirely. Used by
-   * unit tests and by callers with no storage configured.
+   * The reading step. Null means don't read — a mock run, or no API key — and
+   * the classifier falls to its deterministic floor, which is an honest answer
+   * rather than an error.
    */
-  shouldRehostLeadImage?: boolean;
+  classify?: ClassifyFn | null;
 }
 
 /**
- * Fetch one public page and read what is on it — or refuse honestly. This is
- * the `readWebPage` action's executor and the POST /api/ingest path; both share
- * this exact behavior.
+ * Fetch one public page, read what is on it, and work out what it is — or
+ * refuse honestly. This is the `readWebPage` action's executor and the
+ * POST /api/ingest path; both share this exact behavior.
+ *
+ * The ORDER of the last two stages is the design. The page is fetched and
+ * scraped generically, and only then does anything decide what kind of page it
+ * was. Nothing above this line knows, and nothing below it branches on the
+ * answer — the classification is carried out to the model as a fact about the
+ * page, not consumed as a switch.
  */
 export async function ingestPage({
   url,
   sessionId = null,
-  shouldRehostLeadImage = true,
+  classify = null,
 }: IngestPageInput): Promise<ReadWebPageResult> {
   if (!(await isFetchAllowedByRobots(url))) {
     return PAGE_ROBOTS_REFUSAL;
@@ -190,25 +247,10 @@ export async function ingestPage({
   }
   const { scrape } = extracted;
 
-  const leadCandidate = shouldRehostLeadImage
-    ? selectLeadImageCandidate(scrape.imageCandidates)
-    : undefined;
-  /*
-    EXACTLY ONE rehost per ingest. Copying more would spend a network round trip
-    and a stored file per image on a page that offers a dozen candidates, to
-    serve a composer that can only place one lead.
-  */
-  const leadImageUrl =
-    leadCandidate === undefined
-      ? null
-      : await rehostImageToStorage({
-          imageUrl: leadCandidate.sourceUrl,
-          sessionId,
-          name: scrape.title,
-          sourceUrl: scrape.canonicalUrl,
-        });
+  const classification = await classifyPage({ scrape, classify });
+  const images = await rehostAssignedImages({ classification, scrape, sessionId });
 
-  return { isOk: true, page: toPayload({ scrape, leadImageUrl }) };
+  return { isOk: true, page: toPayload({ scrape, classification, images }) };
 }
 
 /**
@@ -218,5 +260,5 @@ export async function ingestPage({
  * app/api/chat/tools.ts.
  */
 export async function readWebPage({ url }: { url: string }): Promise<ReadWebPageResult> {
-  return ingestPage({ url });
+  return ingestPage({ url, classify: createPageClassifier({ isMockRun: false }) });
 }

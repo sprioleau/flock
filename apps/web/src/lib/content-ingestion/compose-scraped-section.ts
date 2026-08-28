@@ -155,8 +155,15 @@ export function composeScrapedSection({
   section.addText([
     { type: "heading", attrs: { level: 2 }, content: [{ type: "text", text: page.title }] },
   ]);
-  if (page.leadImageUrl !== undefined) {
-    section.addImage({ src: page.leadImageUrl, alt: page.title });
+  /*
+    The best image the reader kept, by role rather than by position. A portrait
+    outranks a logo outranks the page's own lead — on a page about a person,
+    their face is what the email most needs, and taking images in document
+    order usually lands on a logo or a social card instead.
+  */
+  const [headlineImage] = page.images;
+  if (headlineImage !== undefined) {
+    section.addImage({ src: headlineImage.url, alt: headlineImage.alt ?? page.title });
   }
 
   /*
