@@ -54,7 +54,28 @@ export type BrandKitGenerationResult =
   | { isOk: false; message: string; statusCode: number };
 
 const MIN_VARIATIONS = 3;
-const GENERATION_TIMEOUT_MS = 60_000; // flash-lite has been observed near 45s on color-heavy sites
+/*
+  Sized for TWO attempts, not one. AbortSignal.timeout() is created once and
+  handed to generateObject, so it budgets the WHOLE operation including the
+  retry rather than each try — the same defect measured on the classifier in
+  55dbcb8. flash-lite has been observed near 45s on color-heavy sites, so at
+  60s a slow first attempt left the retry about fifteen seconds, which is not
+  a retry.
+
+  It matters more here than it did there. The classifier can overrun safely
+  because its deterministic floor still returns a real answer from the scrape;
+  this call has NO fallback — the catch below abandons generation and the user
+  gets a 502. So the one retry that exists to absorb a transient 503 has to
+  actually get a full attempt's worth of time.
+
+  This is a mitigation and not a cure: the budget is still shared, so a first
+  attempt that runs long still eats into the second. The real fix is a fresh
+  signal per attempt, which means owning the retry loop instead of letting the
+  SDK own it — and that also means reproducing its error classification, since
+  maxRetries retries a 503 but deliberately does NOT retry a schema failure.
+  Not worth that trade for a path whose worst case is one slow kit.
+*/
+const GENERATION_TIMEOUT_MS = 120_000;
 
 /**
  * Model for the one structured brand-kit call. Chosen empirically on
