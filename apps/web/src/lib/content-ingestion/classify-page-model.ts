@@ -26,11 +26,21 @@ import { pageClassificationSchema, type ClassifyFn } from "./classify-page";
 const CLASSIFICATION_MODEL_ID = "gemini-3.5-flash-lite";
 
 /*
-  Matched to brand-kit's measured budget. Reading a page is not a reasoning
-  task, and default thinking pushed flash-lite past the latency budget there.
-  (thinkingBudget: 0 is rejected by the 3.x models — use levels.)
+  MEASURED, not guessed. Ten real pages through this exact call: most answered
+  in 1–3 seconds, one took 11, and a small synthetic page took 21. Free-tier
+  latency is wildly variable and not driven by prompt size — the page that
+  failed twice at 30s and 60s answered in 5.1s on a third attempt.
+
+  The budget has to cover a retry, and that is the part worth writing down:
+  `AbortSignal.timeout()` is created ONCE and shared by both attempts, so it is
+  a budget for the whole operation rather than per try. At 30s, a first attempt
+  that takes 25 seconds leaves the retry five, which is not a retry. 60s leaves
+  room for one slow attempt and a second go.
+
+  Overrunning even this is not a failure: the caller's deterministic floor
+  returns a real answer built from what the scrape already knows.
 */
-const CLASSIFICATION_TIMEOUT_MS = 30_000;
+const CLASSIFICATION_TIMEOUT_MS = 60_000;
 
 /**
  * A classifier, or null when there should not be one.
