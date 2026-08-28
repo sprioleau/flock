@@ -15,33 +15,33 @@ import { renderToReactEmail } from "./render-to-react-email";
  * Throws DocumentIntegrityError when the document fails the integrity check.
  */
 /*
-  react-email's <CodeBlock> separates every Prism token with a ZERO WIDTH
-  JOINER followed by a ZERO WIDTH SPACE. In the HTML that pair is invisible
-  and useful — it gives long code lines somewhere to wrap — but html-to-text
-  carries it straight through, so code copied out of the text alternative
-  arrived with hidden characters between every token and failed on paste.
-  Measured on the mixed render fixture: ten pairs in a two-line snippet, and
-  the same ten in the HTML render, which is why only the text side is cleaned.
+  Undo react-email's code-token spacing, for the TEXT SIDE ONLY.
 
-  Removed as the exact PAIR, never as zero-width characters in general. U+200D
-  is load-bearing on its own: family and profession emoji are ZWJ-joined
-  sequences, and a blanket strip would quietly break any of those in the
-  email's prose. U+200D followed by U+200B cannot occur in a valid emoji
-  sequence, so the pair identifies react-email's separator unambiguously.
-*/
-const CODE_TOKEN_SEPARATOR = /‍​/gu;
+  <CodeBlock> rewrites every space inside a Prism token as three characters —
+  `token.replaceAll(" ", "\xA0‍​")` in
+  react-email/dist/components/code-block/code-block.mjs. That is a deliberate
+  and correct email hack, not an accident: the NO-BREAK SPACE stops clients
+  collapsing the whitespace that code indentation depends on, and the
+  zero-width characters after it hand the now-unbreakable line somewhere legal
+  to wrap. It is left completely intact in the HTML, which is where it does its
+  work.
 
-/*
-  The other half of the same defect. Under the pair, react-email spaces tokens
-  with U+00A0 NO-BREAK SPACE, and after removing the pair it is the only
-  non-ASCII character left on a code line. A no-break space breaks a paste into
-  a shell or a compiler exactly like an invisible one does, and a text/plain
-  part has nothing to gain from it — text-only clients rewrap at will, so the
-  "non-breaking" property buys nothing and costs correctness.
+  A `text/plain` part has neither of those problems to solve. Nothing collapses
+  its whitespace and nothing reflows its line boxes, so all three characters
+  buy nothing there — and they cost real correctness, because code copied out
+  of a text-only client carries them into a shell or a compiler and fails.
+  Measured on the mixed render fixture: ten occurrences in a two-line snippet.
+
+  Matched as react-email's EXACT three-character sequence, which makes this
+  provably the inverse of the transform above and leaves every other character
+  in the email alone. Deliberately not a general strip of zero-width
+  characters or of NO-BREAK SPACE: U+200D is load-bearing on its own — family
+  and profession emoji are ZWJ-joined — and a blanket strip would quietly
+  corrupt any of those in the email's prose. A test pins that.
 */
-const NO_BREAK_SPACE = / /gu;
+const CODE_TOKEN_SPACE = / ‍​/gu;
 
 export async function renderToPlainText(document: EmailDocument): Promise<string> {
   const text = await render(renderToReactEmail(document), { plainText: true });
-  return text.replace(CODE_TOKEN_SEPARATOR, "").replace(NO_BREAK_SPACE, " ");
+  return text.replace(CODE_TOKEN_SPACE, " ");
 }

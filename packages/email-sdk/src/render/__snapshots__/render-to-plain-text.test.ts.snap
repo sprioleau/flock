@@ -22,7 +22,7 @@ npm install @flock/email-sdk
 import { renderToHTML } from "@flock/email-sdk";
 
 
- 
+ 
 
 Read the changelog https://example.com/changelog"
 `;
