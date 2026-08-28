@@ -61,8 +61,21 @@ export interface ScrapedList {
   linkDensity: number;
 }
 
-/** Where an image candidate was found. Evidence, not a decision. */
-export type ImageOrigin = "og-image" | "structured-data" | "inline" | "link-icon";
+/**
+ * Where an image candidate was found. Evidence, not a decision.
+ *
+ * `css-background` is a picture the page paints rather than marks up: an
+ * inline `style="background-image:url(…)"` on some enclosing element. It is a
+ * separate origin because it is separate EVIDENCE — a background carries no
+ * `alt` and no intrinsic size, and what it is doing on the page has to be read
+ * from the element it sits on rather than from the tag itself.
+ */
+export type ImageOrigin =
+  | "og-image"
+  | "structured-data"
+  | "inline"
+  | "link-icon"
+  | "css-background";
 
 /**
  * One image the page offers, with enough context around it for a later step to

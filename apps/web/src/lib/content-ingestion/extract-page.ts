@@ -773,6 +773,12 @@ interface RawImageCandidate {
   height?: number;
   hintSource: string;
   hasContext: boolean;
+  /**
+   * What the element carrying this picture calls itself. Set only where a
+   * picture HAS a carrying element — a background — and it displaces the
+   * document-order heading rather than supplementing it.
+   */
+  carrierLabel?: string;
 }
 
 function toPositiveInteger(value: string | undefined): number | undefined {
@@ -810,6 +816,123 @@ function readLargestSrcsetUrl(srcset: string): string | undefined {
     }
   }
   return bestUrl;
+}
+
+/**
+ * An open tag that carries a quoted `style` attribute. A pre-filter, so the
+ * attribute reader runs on the handful of tags that could hold a background
+ * rather than on every tag in the document.
+ */
+const TAG_WITH_STYLE_ATTRIBUTE_PATTERN =
+  /<[a-z][a-z0-9-]*\b[^>]*\sstyle\s*=\s*(?:"[^"]*"|'[^']*')[^>]*>/gi;
+
+/*
+  `background` and `background-image` only, so `mask-image`, `list-style-image`
+  and `border-image` are left alone. The value is consumed as either a plain
+  character or a WHOLE parenthesised group, which is what stops a `data:` URI's
+  own semicolons from ending the declaration early and hiding a real layer
+  declared after it.
+*/
+const CSS_BACKGROUND_DECLARATION_PATTERN =
+  /(?:^|;)\s*background(?:-image)?\s*:((?:[^;(]|\([^)]*\))*)/gi;
+
+/** One `url(…)` token: double-quoted, single-quoted, or bare. */
+const CSS_URL_PATTERN = /url\(\s*(?:"([^"]*)"|'([^']*)'|([^)'"\s]+))\s*\)/gi;
+
+/**
+ * Every image a `style` attribute's background declarations point at, in the
+ * order they were written. A layer that is a gradient contributes nothing, and
+ * a `data:` URI is left to the URL resolver, which refuses any scheme that is
+ * not http(s) — so it is dropped by the same rule that drops a `mailto:`.
+ */
+function readCssBackgroundUrls(style: string): string[] {
+  const urls: string[] = [];
+  for (const declaration of style.matchAll(CSS_BACKGROUND_DECLARATION_PATTERN)) {
+    for (const urlMatch of declaration[1].matchAll(CSS_URL_PATTERN)) {
+      const url = (urlMatch[1] ?? urlMatch[2] ?? urlMatch[3] ?? "").trim();
+      if (url.length > 0) urls.push(url);
+    }
+  }
+  return urls;
+}
+
+/**
+ * How far past a background-carrying tag the end of that element is looked
+ * for. An element's own heading sits near the top of it; one whose closing tag
+ * is further away than this is a container so large that no single heading
+ * describes it, and the search is abandoned rather than guessed at.
+ */
+const MAX_CARRIER_SCAN_CHARS = 20_000;
+
+/**
+ * How long an element's own text may be and still read as a NAME for the
+ * picture it carries rather than a sentence about it.
+ */
+const MAX_CARRIER_LABEL_CHARS = 80;
+
+/** The same bound `findHeadingBefore` puts on a heading it is willing to use. */
+const MAX_CARRIER_HEADING_CHARS = 200;
+
+const FIRST_HEADING_PATTERN = /<(h[1-6])\b[^>]*>([\s\S]*?)<\/\1>/i;
+
+/**
+ * What the element carrying a background image calls itself, if anything.
+ *
+ * A background belongs to the element it is painted on, so that element
+ * describes it better than whatever heading last appeared in the document. The
+ * difference is not academic: when a card puts its picture above its own title
+ * — which is the ordinary way to build a card — the heading BEFORE the picture
+ * is the PREVIOUS card's name, and `nearestHeading` is the only context that
+ * travels to a later step. A confidently wrong name is worse than none.
+ *
+ * So: a heading inside the element wins, then the element's own text when it is
+ * short enough to be a label, and otherwise nothing at all — leaving the caller
+ * with the document-order heading it would have used anyway.
+ */
+function readCarrierLabel({
+  html,
+  openTag,
+  openTagIndex,
+}: {
+  html: string;
+  openTag: string;
+  openTagIndex: number;
+}): string | undefined {
+  const tagNameMatch = openTag.match(/^<([a-z][a-z0-9-]*)/i);
+  if (tagNameMatch === null || openTag.endsWith("/>")) {
+    return undefined;
+  }
+  const innerStart = openTagIndex + openTag.length;
+  const scanWindow = html.slice(innerStart, innerStart + MAX_CARRIER_SCAN_CHARS);
+  /*
+    Depth counting starts at zero because the window begins AFTER the open tag,
+    so the first closing tag that is not matched by a nested open one is this
+    element's. A void element (an <img> or an <hr> with a background) never has
+    one, and falls out of here with nothing, which is correct.
+  */
+  let depth = 0;
+  let innerHtml: string | undefined;
+  for (const token of tokenizeTag(tagNameMatch[1], scanWindow)) {
+    if (!token.isClosing) {
+      if (!token.isSelfClosing) depth += 1;
+      continue;
+    }
+    if (depth === 0) {
+      innerHtml = scanWindow.slice(0, token.index);
+      break;
+    }
+    depth -= 1;
+  }
+  if (innerHtml === undefined) {
+    return undefined;
+  }
+  const headingMatch = innerHtml.match(FIRST_HEADING_PATTERN);
+  const heading = headingMatch === null ? "" : toPlainText(headingMatch[2]);
+  if (heading.length > 0 && heading.length <= MAX_CARRIER_HEADING_CHARS) {
+    return heading;
+  }
+  const label = toPlainText(innerHtml);
+  return label.length > 0 && label.length <= MAX_CARRIER_LABEL_CHARS ? label : undefined;
 }
 
 function collectImageUrls({ value, into }: { value: unknown; into: string[] }): void {
@@ -958,6 +1081,44 @@ function collectRawImageCandidates(maskedHtml: string, html: string): RawImageCa
     });
   }
 
+  /*
+    Pictures the page paints instead of marking up. Read from the same masked
+    whole document as `<img>`, so a `<style>` block's rules and a framework's
+    serialised props inside a `<script>` are both already gone: what is left is
+    an inline `style=` attribute, which is the only CSS that arrived with the
+    HTML we fetched. An external stylesheet would need a second fetch and is
+    deliberately not attempted here.
+  */
+  for (const tagMatch of maskedHtml.matchAll(TAG_WITH_STYLE_ATTRIBUTE_PATTERN)) {
+    const tag = tagMatch[0];
+    const style = getAttribute({ tag, name: "style" });
+    if (style === undefined) continue;
+    const href = getAttribute({ tag, name: "href" });
+    const carrierLabel = readCarrierLabel({
+      html: maskedHtml,
+      openTag: tag,
+      openTagIndex: tagMatch.index,
+    });
+    for (const rawUrl of readCssBackgroundUrls(style)) {
+      raw.push({
+        sourceIndex: tagMatch.index,
+        tagLength: tag.length,
+        rawUrl,
+        origin: "css-background",
+        ...(carrierLabel === undefined ? {} : { carrierLabel }),
+        /*
+          A background has no `alt` and no `width`/`height` to read, so the
+          element it sits on is the whole of what the page said about it — its
+          class, its id, and where it links to.
+        */
+        hintSource: `${getAttribute({ tag, name: "class" }) ?? ""} ${
+          getAttribute({ tag, name: "id" }) ?? ""
+        } ${href ?? ""} ${rawUrl}`,
+        hasContext: true,
+      });
+    }
+  }
+
   return raw;
 }
 
@@ -1035,7 +1196,14 @@ function collectImageCandidates({
     const sourceUrl = toAbsoluteHttpUrl({ candidate: entry.rawUrl, baseUrl: finalUrl });
     if (sourceUrl === undefined) continue;
 
-    const nearestHeading = findHeadingBefore({ html: maskedHtml, index: entry.sourceIndex });
+    /*
+      A picture painted ON an element is described by that element. Everything
+      else — an <img>, an og:image, a JSON-LD url — has no carrying element to
+      ask, so it keeps the heading that precedes it in the document.
+    */
+    const nearestHeading =
+      entry.carrierLabel ??
+      findHeadingBefore({ html: maskedHtml, index: entry.sourceIndex });
     const surroundingText = entry.hasContext
       ? readSurroundingText({
           html: maskedHtml,

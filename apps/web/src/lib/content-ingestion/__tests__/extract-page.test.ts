@@ -3,6 +3,7 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { extractPage } from "../extract-page";
+import type { ImageCandidate } from "../page-scrape";
 
 /**
  * The generic scrape is held to one rule above all others: it must not know
@@ -303,6 +304,223 @@ describe("extractPage — image candidates", () => {
     */
     expect(headshot?.origin).toBe("inline");
     expect(headshot?.documentOrder).toBe(3);
+  });
+});
+
+/*
+  Verbatim markup from https://www.sprioleau.dev/ — the first two of the five
+  entries in its "Selected Work" list, with only the inline <svg> icons
+  dropped. The five project screenshots on that page are not <img> tags at all:
+  each is a CSS background painted by an inline style= on the anchor that links
+  to the project. An <img>-only collector recovers none of them, which on that
+  page is every picture the page has of its own work.
+*/
+const CSS_BACKGROUND_PAGE_URL = "https://www.sprioleau.dev/";
+
+const CSS_BACKGROUND_PAGE_HTML = `<!doctype html>
+<html><head><title>San&#x27;Quan Prioleau</title></head><body><main>
+<h1>San&#x27;Quan Prioleau</h1>
+<p>A staff software engineer who builds collaborative tools for the web, and writes about the
+   parts of that work which turn out to generalise beyond the product they were built for.</p>
+<section class="section work"><div id="work" class="marker"></div><div class="container"><header class="section-header"><h2 class="section-header__title">Selected Work</h2><div class="section-header__accent-line"></div></header><div class="work__main-content"><div class="selected-work"><ul class="selected-work__works"><li class="selected-work__work"><div class="selected-work__image"><a href="https://flockto.email" class="button selected-work__link" target="_blank" rel="noreferrer" style="background-image:url(https://cdn.sanity.io/images/76u9ka0u/production/fb02babb8db5bb14dff885594eb0ef43df8737f2-1200x630.png?rect=40,0,1120,630&amp;w=800&amp;h=450&amp;fm=webp);background-size:cover"><span>Flock</span></a></div><div class="selected-work__details"><h3 class="selected-work__title">Flock</h3><p class="selected-work__description"><span>A collaborative email editor for humans and AI agents with presence sensing, live cursors, next edit suggestions and customizable agents improving the content as co-capable partners.</span></p><div class="selected-work__meta"><ul class="selected-work__tags"><li class="selected-work__tag"><p>Next.js</p></li><li class="selected-work__tag"><p>Resend</p></li><li class="selected-work__tag"><p>React Email</p></li><li class="selected-work__tag"><p>Vercel AI SDK</p></li></ul></div></div></li><li class="selected-work__work"><div class="selected-work__image"><a href="https://dobblego.sprioleau.dev" class="button selected-work__link" target="_blank" rel="noreferrer" style="background-image:url(https://cdn.sanity.io/images/76u9ka0u/production/9074a947b66e538c6a67290859fcb9e85f34d95b-1200x630.png?rect=40,0,1120,630&amp;w=800&amp;h=450&amp;fm=webp);background-size:cover"><span>Dobble Go</span></a></div><div class="selected-work__details"><h3 class="selected-work__title">Dobble Go</h3><p class="selected-work__description"><span>Dobble Go is a shape recognition game based on the popular game &quot;Dobble&quot; (aka &quot;Spot it&quot;). It features a playful design aesthetic and several ways to customize gameplay for kids.</span></p><div class="selected-work__meta"><ul class="selected-work__tags"><li class="selected-work__tag"><p>Next.js</p></li><li class="selected-work__tag"><p>React</p></li><li class="selected-work__tag"><p>TypeScript</p></li></ul></div></div></li></ul></div></div></div></section>
+</main></body></html>`;
+
+describe("extractPage — a picture the page paints with CSS", () => {
+  const result = extractPage({
+    html: CSS_BACKGROUND_PAGE_HTML,
+    finalUrl: CSS_BACKGROUND_PAGE_URL,
+  });
+
+  it("recovers a screenshot carried by an inline background-image", () => {
+    expect(result.isOk).toBe(true);
+    if (!result.isOk) return;
+    const backgrounds = result.scrape.imageCandidates.filter(
+      (candidate) => candidate.origin === "css-background",
+    );
+    expect(backgrounds.map((candidate) => candidate.sourceUrl)).toEqual([
+      "https://cdn.sanity.io/images/76u9ka0u/production/fb02babb8db5bb14dff885594eb0ef43df8737f2-1200x630.png?rect=40,0,1120,630&w=800&h=450&fm=webp",
+      "https://cdn.sanity.io/images/76u9ka0u/production/9074a947b66e538c6a67290859fcb9e85f34d95b-1200x630.png?rect=40,0,1120,630&w=800&h=450&fm=webp",
+    ]);
+  });
+
+  it("names each screenshot after its own project, not the one above it", () => {
+    if (!result.isOk) throw new Error("expected success");
+    const [flock, dobble] = result.scrape.imageCandidates.filter(
+      (candidate) => candidate.origin === "css-background",
+    );
+    /*
+      This page puts each picture ABOVE the title it belongs to, so the heading
+      that precedes a work item's image link is the PREVIOUS item's title. Read
+      that way, every screenshot after the first arrives labelled with the wrong
+      project — and `nearestHeading` is the only context that reaches the model,
+      so a wrong one is worse than none at all. The element carrying the
+      background is what the background belongs to, and it labels itself.
+    */
+    expect(flock.nearestHeading).toBe("Flock");
+    expect(dobble.nearestHeading).toBe("Dobble Go");
+    expect(flock.surroundingText).toContain("A collaborative email editor");
+    expect(dobble.surroundingText).toContain("shape recognition game");
+  });
+
+  /*
+    A background carries no `alt`, so the element it sits on is all there is to
+    read it by. `<img>` draws its hints from class, id, alt and the image URL;
+    here the anchor's destination joins them, because where a picture links to
+    is the nearest thing a link-shaped element has to a description of itself.
+    Still hints, still deciding nothing.
+  */
+  it.each([
+    ["a class on the element", `class="button selected-work__link avatar"`],
+    ["the destination it links to", `href="https://flockto.email/team/headshot"`],
+  ])("reads %s as a hint about the picture", (_label, replacement) => {
+    const portrait = extractPage({
+      html: CSS_BACKGROUND_PAGE_HTML.replace(
+        `href="https://flockto.email" class="button selected-work__link"`,
+        replacement,
+      ),
+      finalUrl: CSS_BACKGROUND_PAGE_URL,
+    });
+    if (!portrait.isOk) throw new Error("expected success");
+    const first = portrait.scrape.imageCandidates.find(
+      (candidate) => candidate.origin === "css-background",
+    );
+    expect(first?.hints).toContain("portrait-ish");
+  });
+});
+
+describe("collectImageCandidates — the shapes a CSS url() comes in", () => {
+  function readCssBackgrounds(markup: string): ImageCandidate[] {
+    const result = extractPage({
+      html: `<html><head><title>Styles</title></head><body><main>
+        ${markup}
+        <p>The first of four sentences that exist only so this fixture clears the readable-content
+           floor without having to be a realistically long page about anything.</p>
+        <p>The second of them says as little as the first, at about the same length, for the same
+           reason, and neither is what the test is looking at.</p>
+        <p>The third is here because the floor is three hundred characters and two sentences of
+           this width do not quite reach it on their own.</p>
+      </main></body></html>`,
+      finalUrl: "https://styles.example/gallery/index.html",
+    });
+    if (!result.isOk) throw new Error("expected success");
+    return result.scrape.imageCandidates.filter(
+      (candidate) => candidate.origin === "css-background",
+    );
+  }
+
+  it("accepts single quotes, double quotes, no quotes, and stray whitespace", () => {
+    const candidates = readCssBackgrounds(`
+      <div style="background-image: url('https://cdn.example/single.png')"></div>
+      <div style="background-image:url(&quot;https://cdn.example/double.png&quot;)"></div>
+      <div style="background-image:url(https://cdn.example/bare.png)"></div>
+      <div style="background-image : url(  https://cdn.example/spaced.png  ) "></div>
+    `);
+    expect(candidates.map((candidate) => candidate.sourceUrl)).toEqual([
+      "https://cdn.example/single.png",
+      "https://cdn.example/double.png",
+      "https://cdn.example/bare.png",
+      "https://cdn.example/spaced.png",
+    ]);
+  });
+
+  it("resolves a relative url against the page, exactly as an <img> src is", () => {
+    const candidates = readCssBackgrounds(
+      `<div style="background-image:url(../media/hero.jpg)"></div>
+       <div style="background-image:url(/media/root.jpg)"></div>`,
+    );
+    expect(candidates.map((candidate) => candidate.sourceUrl)).toEqual([
+      "https://styles.example/media/hero.jpg",
+      "https://styles.example/media/root.jpg",
+    ]);
+  });
+
+  it("reads every layer of a multi-layer declaration, and the shorthand too", () => {
+    const candidates = readCssBackgrounds(
+      `<div style="background-image:url(/a.png), url('/b.png')"></div>
+       <div style="background:#fff url(/c.png) no-repeat center / cover"></div>`,
+    );
+    expect(candidates.map((candidate) => candidate.sourceUrl)).toEqual([
+      "https://styles.example/a.png",
+      "https://styles.example/b.png",
+      "https://styles.example/c.png",
+    ]);
+  });
+
+  it("offers nothing for a data: URI, a gradient, or a property that is not a background", () => {
+    const candidates = readCssBackgrounds(`
+      <div style="background-image:url(data:image/svg+xml;base64,PHN2Zy8+)"></div>
+      <div style="background-image:linear-gradient(rgba(0,0,0,.6),rgba(0,0,0,.6))"></div>
+      <div style="background-color:#fff;background-size:cover"></div>
+      <div style="mask-image:url(/mask.png);list-style-image:url(/bullet.png)"></div>
+    `);
+    expect(candidates).toEqual([]);
+  });
+
+  it("keeps a data: layer from hiding the real picture beside it", () => {
+    const candidates = readCssBackgrounds(
+      `<div style="background-image:url(data:image/svg+xml;base64,PHN2Zy8+), url(/real.png)"></div>`,
+    );
+    expect(candidates.map((candidate) => candidate.sourceUrl)).toEqual([
+      "https://styles.example/real.png",
+    ]);
+  });
+
+  /*
+    A background belongs to the element that carries it, so that element
+    describes it better than whatever heading happened to precede it in the
+    document. These three cases are the whole rule, and none of them knows what
+    kind of page it is looking at.
+  */
+  it("prefers a heading the element itself contains over the one before it", () => {
+    const candidates = readCssBackgrounds(`
+      <h2>Reports and briefings</h2>
+      <section style="background-image:url(/hero.jpg)">
+        <h1>The tide gauge project</h1>
+        <p>Eleven years of paper records, and what came out of transcribing them.</p>
+      </section>
+    `);
+    expect(candidates.map((candidate) => candidate.nearestHeading)).toEqual([
+      "The tide gauge project",
+    ]);
+  });
+
+  it("falls back to the element's own label when it contains no heading", () => {
+    const candidates = readCssBackgrounds(`
+      <h2>Reports and briefings</h2>
+      <a href="/projects/atlas" style="background-image:url(/card.jpg)"><span>Atlas Scheduler</span></a>
+    `);
+    expect(candidates.map((candidate) => candidate.nearestHeading)).toEqual(["Atlas Scheduler"]);
+  });
+
+  it("falls back to the heading before it when the element labels itself with neither", () => {
+    const candidates = readCssBackgrounds(`
+      <h2>Reports and briefings</h2>
+      <div style="background-image:url(/texture.jpg)"></div>
+      <div style="background-image:url(/wall.jpg)"><p>A caption long enough that it is plainly a
+        sentence about the picture rather than a name for it, which is the line a label has to stay
+        on the short side of.</p></div>
+    `);
+    expect(candidates.map((candidate) => candidate.nearestHeading)).toEqual([
+      "Reports and briefings",
+      "Reports and briefings",
+    ]);
+  });
+
+  /*
+    Only what the page actually rendered. A stylesheet is out of scope because
+    resolving it needs a second fetch, and markup parked in a <script> was
+    never rendered at all — sprioleau.dev ships its whole work list a second
+    time that way, so reading scripts would double every candidate on it.
+  */
+  it("reads inline style attributes only — never a stylesheet or a script payload", () => {
+    const candidates = readCssBackgrounds(`
+      <style>.hero { background-image: url(/from-stylesheet.png); }</style>
+      <script type="text/template"><div style="background-image:url(/from-script.png)"></div></script>
+      <div style="background-image:url(/from-attribute.png)"></div>
+    `);
+    expect(candidates.map((candidate) => candidate.sourceUrl)).toEqual([
+      "https://styles.example/from-attribute.png",
+    ]);
   });
 });
 
