@@ -207,7 +207,7 @@ function harvestCustomPropertyColors(text: string): CustomPropertyColor[] {
 }
 
 /** Chroma at or above this marks a color as a potential signature accent. */
-const ACCENT_CHROMA_THRESHOLD = 0.35;
+export const ACCENT_CHROMA_THRESHOLD = 0.35;
 const MAX_ACCENT_CANDIDATES = 6;
 
 /**

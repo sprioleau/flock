@@ -13,7 +13,12 @@ import {
   type PageClassification,
   type ClassifyFn,
 } from "./classify-page";
-import { fetchPage, type FetchFailureReason } from "../brand-kit-extraction/fetch-page";
+import {
+  fetchPage,
+  fetchTextResource,
+  type FetchFailureReason,
+} from "../brand-kit-extraction/fetch-page";
+import { derivePageTheme, type PageTheme } from "../brand-kit-extraction/derive-page-theme";
 import { extractPage } from "./extract-page";
 import type { PageScrape } from "./page-scrape";
 import { rehostImageToStorage } from "./rehost-image";
@@ -40,6 +45,12 @@ import { searchPublicWeb } from "./search-web";
  *                    typed failure reasons.
  *   3. extractPage — pure HTML → `PageScrape`, including the paywall and
  *                    no-readable-content refusals.
+ *   3b. theme      — the page's own colours and fonts, derived DETERMINISTICALLY
+ *                    from the HTML stage 2 already fetched (plus its
+ *                    stylesheets), reusing the brand-kit harvester and its
+ *                    contrast-repairing expansion. No model call, and no
+ *                    second page fetch. Fail-soft: no theme is a normal
+ *                    answer, and the draft keeps the theme it had.
  *   4. lead image  — EXACTLY ONE image is copied into Convex storage, so a
  *                    composed email never hot-links a CDN that may refuse the
  *                    recipient's browser. Fail-soft: an image that cannot be
@@ -165,11 +176,13 @@ function toPayload({
   classification,
   images,
   searchClaims,
+  theme,
 }: {
   scrape: PageScrape;
   classification: PageClassification;
   images: ReadWebPageImage[];
   searchClaims?: ReadWebPageSearchClaim[];
+  theme: PageTheme | null;
 }): ReadWebPagePayload {
   const blocks: ReadWebPageBlock[] = scrape.blocks.map((block) => ({
     kind: block.kind,
@@ -189,6 +202,11 @@ function toPayload({
     structuredData: scrape.structuredData,
     images,
     isTruncated: scrape.isTruncated,
+    /*
+      An absent theme means the page gave nothing worth applying — never an
+      empty object, which would read as "we looked and the answer is nothing".
+    */
+    ...(theme === null ? {} : { theme }),
     pageType: classification.pageType,
     ...(classification.pageTypeNote === undefined
       ? {}
@@ -332,6 +350,34 @@ export async function ingestPage({
   }
   const { scrape } = extracted;
 
+  /*
+    STAGE 3b: the page's own colours and fonts.
+
+    Runs off `page.html` — the bytes stage 2 ALREADY fetched — so the page is
+    read once no matter how many things want something from it. The one extra
+    request this stage can make is for stylesheets, and that one is unavoidable
+    rather than lazy: measured on both judged pages, the HTML alone yields a
+    single colour (the theme-color meta tag) and ZERO font families, because a
+    modern site's palette lives in its CSS. It is bounded to three sheets, runs
+    in parallel through the same SSRF-guarded fetcher, and cost 120–190 ms on
+    those pages. The content pipeline still does not fetch CSS for CONTENT —
+    prose is not in a stylesheet — so nothing about that decision changes.
+
+    NO MODEL CALL, deliberately: see derive-page-theme.ts. That is what lets
+    this run identically on a mock/demo turn, and what keeps a URL draft off a
+    free tier already shared five ways with production.
+
+    Fail-safe by construction: derivePageTheme returns null rather than
+    throwing, and a null theme leaves the draft wearing the theme it had. A
+    theme is a bonus on top of the content, and a bonus must be able to go
+    missing without taking the draft with it.
+  */
+  const theme = await derivePageTheme({
+    html: page.html,
+    finalUrl: page.finalUrl,
+    fetchCss: (cssUrl) => fetchTextResource({ url: cssUrl }),
+  });
+
   const classification = await classifyPage({ scrape, classify });
 
   /*
@@ -366,6 +412,7 @@ export async function ingestPage({
       classification: { ...classification, sections },
       images,
       searchClaims,
+      theme,
     }),
   };
 }

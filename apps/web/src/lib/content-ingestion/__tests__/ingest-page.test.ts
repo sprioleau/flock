@@ -3,8 +3,12 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const fetchPageMock = vi.hoisted(() => vi.fn());
 const isFetchAllowedByRobotsMock = vi.hoisted(() => vi.fn());
 const rehostImageToStorageMock = vi.hoisted(() => vi.fn());
+const fetchTextResourceMock = vi.hoisted(() => vi.fn());
 
-vi.mock("@/lib/brand-kit-extraction/fetch-page", () => ({ fetchPage: fetchPageMock }));
+vi.mock("@/lib/brand-kit-extraction/fetch-page", () => ({
+  fetchPage: fetchPageMock,
+  fetchTextResource: fetchTextResourceMock,
+}));
 vi.mock("../robots", () => ({ isFetchAllowedByRobots: isFetchAllowedByRobotsMock }));
 vi.mock("../rehost-image", () => ({ rehostImageToStorage: rehostImageToStorageMock }));
 
@@ -71,6 +75,8 @@ beforeEach(() => {
   fetchPageMock.mockReset();
   isFetchAllowedByRobotsMock.mockReset();
   rehostImageToStorageMock.mockReset();
+  fetchTextResourceMock.mockReset();
+  fetchTextResourceMock.mockResolvedValue(null);
   isFetchAllowedByRobotsMock.mockResolvedValue(true);
   fetchPageMock.mockResolvedValue({ isOk: true, html: PAGE_HTML, finalUrl: PAGE_URL });
   rehostImageToStorageMock.mockResolvedValue("https://storage.convex.cloud/card.png");
@@ -504,5 +510,73 @@ describe("ingestPage — what reaches the model", () => {
     if (!result.isOk) return;
     const headings = result.page.blocks.filter((block) => block.kind === "heading");
     expect(headings.map((heading) => heading.text)).toContain("Rowan Ellis");
+  });
+});
+
+describe("ingestPage — the page's own theme", () => {
+  /*
+    A page's visual identity travels with its content or it does not travel at
+    all: a draft built from a URL used to keep whatever theme happened to be on
+    screen. These pin the seam, not the derivation — derive-page-theme.test.ts
+    owns which colour becomes what.
+  */
+  const THEMED_HTML = PAGE_HTML.replace(
+    "</head>",
+    `<meta name="theme-color" content="#16032c">
+     <style>:root{--brand-accent:#ffc400;--ui-text:#b0a7ba}
+       .cta{background:var(--brand-accent)} .copy{color:var(--ui-text)}
+       body{font-family:Quando}</style></head>`,
+  );
+
+  it("carries the page's colours and fonts into the payload", async () => {
+    fetchPageMock.mockResolvedValue({ isOk: true, html: THEMED_HTML, finalUrl: PAGE_URL });
+    const result = await ingestPage({ url: PAGE_URL });
+    expect(result.isOk).toBe(true);
+    if (!result.isOk) return;
+    expect(result.page.theme?.globals.buttonBackgroundColor).toBe("#ffc400");
+    expect(result.page.theme?.globals.contentBackgroundColor).toBe("#16032c");
+    expect(result.page.theme?.globals.heading1FontFamily).toBe("Georgia, 'Times New Roman', serif");
+    /* The theme says where it came from, so the agent can too. */
+    expect(result.page.theme?.source).toContain("#ffc400");
+  });
+
+  it("costs no model call — the theme is derived on a run with no reader", async () => {
+    /*
+      The /demo path and any deployment without a key run with `classify: null`
+      and must still get the page's theme: derivation reads harvested bytes,
+      never a model. If this ever needs a reader, it has started spending quota
+      on a free tier already shared five ways with production.
+    */
+    fetchPageMock.mockResolvedValue({ isOk: true, html: THEMED_HTML, finalUrl: PAGE_URL });
+    const result = await ingestPage({ url: PAGE_URL, classify: null });
+    expect(result.isOk).toBe(true);
+    if (!result.isOk) return;
+    expect(result.page.theme?.globals.buttonBackgroundColor).toBe("#ffc400");
+  });
+
+  it("carries NO theme for a page that gave no colours, so the draft keeps its own", async () => {
+    /* PAGE_HTML is unstyled — an absent field, never an invented palette. */
+    const result = await ingestPage({ url: PAGE_URL });
+    expect(result.isOk).toBe(true);
+    if (!result.isOk) return;
+    expect(result.page.theme).toBeUndefined();
+  });
+
+  it("still returns the page when theme derivation blows up", async () => {
+    /*
+      Failing to derive a theme must never fail the draft. The content is the
+      point; the theme is a bonus that has to be able to go missing.
+    */
+    fetchTextResourceMock.mockRejectedValue(new Error("socket hang up"));
+    fetchPageMock.mockResolvedValue({
+      isOk: true,
+      html: THEMED_HTML.replace("</head>", '<link rel="stylesheet" href="/boom.css"></head>'),
+      finalUrl: PAGE_URL,
+    });
+    const result = await ingestPage({ url: PAGE_URL });
+    expect(result.isOk).toBe(true);
+    if (!result.isOk) return;
+    expect(result.page.blocks.length).toBeGreaterThan(0);
+    expect(result.page.theme?.globals.buttonBackgroundColor).toBe("#ffc400");
   });
 });

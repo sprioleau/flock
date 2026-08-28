@@ -323,6 +323,14 @@ function buildIngestionTool({
         The READING is what a mock run skips. createPageClassifier returns null
         there, and the classifier falls to its deterministic floor: no quota
         spent, and nothing invented about a page nobody read.
+
+        The page's THEME is not gated either, for the opposite reason to the
+        images: it costs no quota on ANY tier. Deriving it reads colours and
+        font families the page declared and assigns their roles from the names
+        the page gave them — no model is involved, so there is nothing for a
+        mock run to skip and nothing for a free-tier bucket to pay for. See
+        lib/brand-kit-extraction/derive-page-theme.ts for why that is a choice
+        rather than an omission.
       */
       const result = await ingestPage({
         url: parsedInput.data.url,

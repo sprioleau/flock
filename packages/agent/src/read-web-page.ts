@@ -1,4 +1,4 @@
-import { defineEmailAction, type AnalysisEmailAction } from "@flock/email-sdk";
+import { defineEmailAction, type AnalysisEmailAction, type GlobalStyles } from "@flock/email-sdk";
 import { z } from "zod";
 
 /**
@@ -109,6 +109,34 @@ export interface ReadWebPageSection {
 }
 
 /**
+ * The page's own visual identity, ready to apply.
+ *
+ * DERIVED BY THE PIPELINE FROM THE PAGE'S OWN BYTES — its declared CSS
+ * variables, its `theme-color`, its font families — and never by a model. Its
+ * values are therefore facts about the page in exactly the way `images` are:
+ * pass `globals` to `applyTheme` EXACTLY as it arrives, and never write,
+ * adjust, or substitute a colour of your own. A colour you typed is a colour
+ * the page does not use.
+ *
+ * Absent means the page gave nothing worth applying. That is the normal
+ * outcome for an unstyled page, and it means the draft keeps the theme it
+ * already has — it is never an invitation to invent one.
+ */
+export interface ReadWebPageTheme {
+  /**
+   * The COMPLETE globals payload, contrast-checked. `applyTheme` replaces the
+   * document's globals wholesale, so this is its whole argument.
+   */
+  globals: Required<GlobalStyles>;
+  /**
+   * Which page signals produced it ("accent #ffc400 (--ui-accent-1), …").
+   * Say this, in your own words, when you tell the user you used their
+   * site's colours — it is what makes the claim checkable.
+   */
+  source: string;
+}
+
+/**
  * One claim found beyond the page, with the source that carried it.
  *
  * Every claim keeps its own address. That is what makes "never paraphrase into
@@ -149,6 +177,11 @@ export interface ReadWebPagePayload {
   images: ReadWebPageImage[];
   /** True when the page was long enough that trailing content was cut. */
   isTruncated: boolean;
+  /**
+   * The page's colours and fonts, when it declared enough of them to be worth
+   * applying. Apply it with `applyTheme`, passing `theme.globals` verbatim.
+   */
+  theme?: ReadWebPageTheme;
 
   /*
     What the reader made of the page. These are OUTPUTS of reading it, and
@@ -223,7 +256,7 @@ export function defineReadWebPageAction({
   return defineEmailAction({
     name: "readWebPage",
     description:
-      "Fetch ONE public web page server-side and return what is ACTUALLY on it: its title, the site's name, the canonical URL, the page's own description, its prose in reading order, the lists it wrote, the structured data its publisher declared about itself, and its lead image copied into Flock's storage. Navigation, ads, and comments are stripped, and a long page is truncated. Read-only; the document is unchanged. Call it BEFORE building anything from a page the user pointed at, and write only from what comes back — do not add a fact, a number, a date, or a name that is not in the payload. If the result has isOk: false the page could not be read: relay the message to the user, make no edits, and never guess at what the page says.",
+      "Fetch ONE public web page server-side and return what is ACTUALLY on it: its title, the site's name, the canonical URL, the page's own description, its prose in reading order, the lists it wrote, the structured data its publisher declared about itself, and its lead image copied into Flock's storage. Navigation, ads, and comments are stripped, and a long page is truncated. Read-only; the document is unchanged. Call it BEFORE building anything from a page the user pointed at, and write only from what comes back — do not add a fact, a number, a date, or a name that is not in the payload. When the payload carries a `theme`, the page's own colours and fonts were read off it: apply them with applyTheme, passing `theme.globals` EXACTLY as it arrives — never edit a value and never supply a colour of your own. If the result has isOk: false the page could not be read: relay the message to the user, make no edits, and never guess at what the page says.",
     kind: "analysis",
     schema: readWebPageInputSchema,
     readOnly: true,
