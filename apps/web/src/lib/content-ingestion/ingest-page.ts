@@ -8,6 +8,7 @@ import type {
 import {
   classifyPage,
   type ImageRole,
+  type MappedSection,
   type PageClassification,
   type ClassifyFn,
 } from "./classify-page";
@@ -192,10 +193,89 @@ function toPayload({
     ...(classification.uncertaintyNote === undefined
       ? {}
       : { uncertaintyNote: classification.uncertaintyNote }),
+    sections: classification.sections,
     sourceSummary: classification.sourceSummary,
     isPlanUsable: classification.isPlanUsable,
     ...(classification.message === undefined ? {} : { message: classification.message }),
   };
+}
+
+/*
+  Which template param carries an image address, per template. Only the seven
+  image-bearing templates appear; everything else gets no image.
+
+  The gallery is the odd one out: its images are an ARRAY, so its address lives
+  on each element rather than on the params object.
+*/
+const SINGLE_IMAGE_TEMPLATE_IDS = new Set([
+  "hero",
+  "hero-split",
+  "article",
+  "product",
+  "header",
+  "header-centered",
+]);
+
+/**
+ * Attach the rehosted images to the sections that can carry one.
+ *
+ * THE RULE THIS ENFORCES: the model never writes an image address; the
+ * pipeline does. The reader emits image IDS and section COPY, and the two are
+ * joined here, after validation, from URLs that are already in our own
+ * storage. Any `imageSrc` the reader somehow produced is stripped rather than
+ * trusted — the catalog listing does not offer the field, so a value in it
+ * could only have been invented.
+ *
+ * `article` is a deliberate special case: it gates its image on `imageAlt`
+ * rather than on the source, so passing a source without alt text renders no
+ * image at all. Both go, or neither.
+ */
+function attachImagesToSections({
+  sections,
+  images,
+}: {
+  sections: MappedSection[];
+  images: ReadWebPageImage[];
+}): MappedSection[] {
+  const ordered = [...images];
+  return sections.map((section) => {
+    const params = { ...(section.params as Record<string, unknown>) };
+    delete params.imageSrc;
+
+    if (section.templateId === "image-gallery") {
+      const galleryImages = Array.isArray(params.images) ? params.images : [];
+      return {
+        ...section,
+        params: {
+          ...params,
+          images: galleryImages.map((image, index) => {
+            const rest = { ...((image ?? {}) as Record<string, unknown>) };
+            delete rest.src;
+            const source = ordered[index];
+            return source === undefined ? rest : { ...rest, src: source.url };
+          }),
+        },
+      };
+    }
+
+    if (!SINGLE_IMAGE_TEMPLATE_IDS.has(section.templateId)) {
+      return { ...section, params };
+    }
+
+    const source = ordered.shift();
+    if (source === undefined) {
+      return { ...section, params };
+    }
+    const imageAlt = typeof params.imageAlt === "string" ? params.imageAlt : source.alt;
+    return {
+      ...section,
+      params: {
+        ...params,
+        imageSrc: source.url,
+        ...(imageAlt === undefined ? {} : { imageAlt }),
+      },
+    };
+  });
 }
 
 export interface IngestPageInput {
@@ -249,8 +329,12 @@ export async function ingestPage({
 
   const classification = await classifyPage({ scrape, classify });
   const images = await rehostAssignedImages({ classification, scrape, sessionId });
+  const sections = attachImagesToSections({ sections: classification.sections, images });
 
-  return { isOk: true, page: toPayload({ scrape, classification, images }) };
+  return {
+    isOk: true,
+    page: toPayload({ scrape, classification: { ...classification, sections }, images }),
+  };
 }
 
 /**

@@ -11,9 +11,25 @@ vi.mock("../rehost-image", () => ({ rehostImageToStorage: rehostImageToStorageMo
 import { ingestPage } from "../ingest-page";
 import type { ClassifyFn } from "../classify-page";
 
-/** A reader that returns exactly what a test wants, spending no quota. */
+/**
+ * A reader that returns exactly what a test wants, spending no quota.
+ *
+ * Supplies a minimal valid plan unless the test provides one, because a
+ * reading with no sections is deliberately treated as unusable — these tests
+ * are about images and payload plumbing, not about that rule.
+ */
 function cannedReader(reading: Record<string, unknown>): ClassifyFn {
-  return async () => reading;
+  return async () => ({
+    sections: [
+      {
+        templateId: "hero",
+        copy: { headline: "Rowan Ellis", body: "Nine years of clinical software.", imageAlt: "Rowan Ellis" },
+        sourceBlockIndices: [0],
+        rationale: "The page's own opening.",
+      },
+    ],
+    ...reading,
+  });
 }
 
 /**
@@ -263,6 +279,133 @@ describe("ingestPage — the reading reaches the model", () => {
     const classify = vi.fn();
     await ingestPage({ url: PAGE_URL, classify: null });
     expect(classify).not.toHaveBeenCalled();
+  });
+});
+
+describe("ingestPage — the pipeline writes image addresses, never the reader", () => {
+  const planWith = (sections: unknown[], images: unknown[]) =>
+    cannedReader({
+      pageType: "portfolio",
+      confidence: "high",
+      sourceSummary: "A studio page.",
+      isPlanUsable: true,
+      images,
+      sections,
+    });
+
+  it("fills a section's image from the rehosted URL", async () => {
+    const result = await ingestPage({
+      url: PAGE_URL,
+      classify: planWith(
+        [
+          {
+            templateId: "hero",
+            copy: { headline: "Rowan Ellis", body: "Nine years of clinical software.", imageAlt: "Rowan Ellis" },
+            sourceBlockIndices: [0],
+            rationale: "Her name.",
+          },
+        ],
+        [{ candidateId: "img_5", role: "portrait", subject: "Rowan Ellis" }],
+      ),
+    });
+    expect(result.isOk).toBe(true);
+    if (!result.isOk) return;
+    expect(result.page.sections[0].params.imageSrc).toBe("https://storage.convex.cloud/card.png");
+  });
+
+  it("ignores an image address the reader tried to smuggle in", async () => {
+    /*
+      Belt and braces. The copy vocabulary has no image-address field at all,
+      so a well-formed reading CANNOT carry one — but the pipeline strips the
+      key anyway before filling it, because the value of the guarantee is that
+      it holds regardless of what arrives.
+    */
+    const result = await ingestPage({
+      url: PAGE_URL,
+      classify: planWith(
+        [
+          {
+            templateId: "hero",
+            copy: { headline: "Rowan Ellis", body: "Nine years of clinical software.", imageAlt: "Rowan Ellis" },
+            /* Not part of the vocabulary; present as if smuggled. */
+            params: { imageSrc: "https://evil.example/tracker.gif" },
+            sourceBlockIndices: [0],
+            rationale: "Her name.",
+          },
+        ],
+        [{ candidateId: "img_5", role: "portrait" }],
+      ),
+    });
+    expect(result.isOk).toBe(true);
+    if (!result.isOk) return;
+    expect(JSON.stringify(result.page.sections)).not.toContain("evil.example");
+  });
+
+  it("gives a section no image address when there is no stored image", async () => {
+    const result = await ingestPage({
+      url: PAGE_URL,
+      classify: planWith(
+        [
+          {
+            templateId: "hero",
+            copy: { headline: "Rowan Ellis", body: "Nine years of clinical software." },
+            sourceBlockIndices: [0],
+            rationale: "Her name.",
+          },
+        ],
+        [],
+      ),
+    });
+    expect(result.isOk).toBe(true);
+    if (!result.isOk) return;
+    expect(result.page.sections[0].params.imageSrc).toBeUndefined();
+  });
+
+  it("gives a section with no image left nothing rather than reusing one", async () => {
+    const result = await ingestPage({
+      url: PAGE_URL,
+      classify: planWith(
+        [
+          {
+            templateId: "hero",
+            copy: { headline: "One", body: "First.", imageAlt: "One" },
+            sourceBlockIndices: [0],
+            rationale: "a",
+          },
+          {
+            templateId: "hero-split",
+            copy: { headline: "Two", body: "Second.", imageAlt: "Two" },
+            sourceBlockIndices: [1],
+            rationale: "b",
+          },
+        ],
+        [{ candidateId: "img_5", role: "portrait" }],
+      ),
+    });
+    expect(result.isOk).toBe(true);
+    if (!result.isOk) return;
+    expect(result.page.sections[0].params.imageSrc).toBeDefined();
+    expect(result.page.sections[1].params.imageSrc).toBeUndefined();
+  });
+
+  it("leaves a template that carries no image untouched", async () => {
+    const result = await ingestPage({
+      url: PAGE_URL,
+      classify: planWith(
+        [
+          {
+            templateId: "feature-list",
+            copy: { headline: "Skills", body: "What I work with.", items: [{ title: "TypeScript" }, { title: "React" }] },
+            sourceBlockIndices: [0],
+            rationale: "the list",
+          },
+        ],
+        [{ candidateId: "img_5", role: "portrait" }],
+      ),
+    });
+    expect(result.isOk).toBe(true);
+    if (!result.isOk) return;
+    expect(result.page.sections[0].params.imageSrc).toBeUndefined();
   });
 });
 

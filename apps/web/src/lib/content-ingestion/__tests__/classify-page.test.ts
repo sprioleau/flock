@@ -4,8 +4,11 @@ import {
   buildDeterministicFloor,
   classifyPage,
   validateClassification,
-  type PageClassification,
+  validateSections,
+  type PlannedSection,
+  type RawClassification,
 } from "../classify-page";
+import { SECTION_TEMPLATES } from "@flock/email-sdk";
 import type { PageScrape } from "../page-scrape";
 
 /**
@@ -53,13 +56,21 @@ function makeScrape(overrides: Partial<PageScrape> = {}): PageScrape {
   };
 }
 
-function makeClassification(overrides: Partial<PageClassification> = {}): PageClassification {
+function makeClassification(overrides: Partial<RawClassification> = {}): RawClassification {
   return {
     pageType: "portfolio",
     confidence: "high",
     sourceSummary: "A designer's portfolio.",
     isPlanUsable: true,
     images: [],
+    sections: [
+      {
+        templateId: "hero",
+        copy: { headline: "Rowan Ellis", body: "Nine years of clinical software." },
+        sourceBlockIndices: [0],
+        rationale: "The page's own opening.",
+      },
+    ],
     ...overrides,
   };
 }
@@ -274,12 +285,240 @@ describe("classifyPage — a page that was read always yields an answer", () => 
         sourceSummary: "A designer's own site.",
         isPlanUsable: true,
         images: [{ candidateId: "img_1", role: "portrait", subject: "Rowan Ellis" }],
+        sections: [
+          {
+            templateId: "hero-split",
+            copy: { headline: "Rowan Ellis", body: "Nine years of clinical software." },
+            sourceBlockIndices: [0],
+            rationale: "Her name.",
+          },
+        ],
       }),
     });
     expect(result.pageType).toBe("portfolio");
     expect(result.images).toEqual([
       { candidateId: "img_1", role: "portrait", subject: "Rowan Ellis" },
     ]);
+  });
+});
+
+describe("validateSections — coherence, and never the page kind", () => {
+  const scrape = makeScrape();
+
+  function planOf(...sections: PlannedSection[]) {
+    return validateSections({ sections, scrape });
+  }
+
+  it("drops a section naming a template that does not exist", () => {
+    const { sections } = planOf(
+      { templateId: "hero", copy: { headline: "Real", body: "Real body copy." }, sourceBlockIndices: [0], rationale: "ok" },
+      { templateId: "not-a-template", copy: { headline: "Real", body: "Real body copy." }, sourceBlockIndices: [0], rationale: "no" },
+    );
+    expect(sections.map((section) => section.templateId)).toEqual(["hero"]);
+  });
+
+  it("drops a section that cites nothing on the page", () => {
+    /*
+      The anti-imitation check. A section copied from a worked example has
+      nothing on THIS page to point at, which is the commonest way an
+      example-steered prompt goes wrong.
+    */
+    const { sections } = planOf({
+      templateId: "hero",
+      copy: { headline: "Real", body: "Real body copy." },
+      sourceBlockIndices: [],
+      rationale: "copied from an example",
+    });
+    expect(sections).toEqual([]);
+  });
+
+  it("drops a section citing a line the page does not have", () => {
+    const { sections } = planOf({
+      templateId: "hero",
+      copy: { headline: "Real", body: "Real body copy." },
+      sourceBlockIndices: [99],
+      rationale: "cites a line that is not there",
+    });
+    expect(sections).toEqual([]);
+  });
+
+  /*
+    The reader can no longer emit an arbitrary param name — the copy vocabulary
+    is closed, and the catalog's real names are produced by toTemplateParams.
+    So the risk moved: it is now the TRANSLATION that could emit a name the
+    catalog does not have, and that is what these two check.
+  */
+  it("only ever produces param names the catalog accepts, for every template", () => {
+    const everyField = {
+      headline: "H",
+      body: "B",
+      ctaLabel: "L",
+      ctaHref: "https://e.example",
+      imageAlt: "A",
+      items: [
+        { title: "T", body: "b" },
+        { title: "U", body: "c" },
+      ],
+      imageAlts: ["one", "two"],
+      name: "N",
+      description: "D",
+      price: "£1",
+      quote: "Q",
+      attribution: "Someone",
+      role: "Role",
+      code: "x = 1",
+      language: "python",
+    };
+    for (const template of SECTION_TEMPLATES) {
+      const { sections, droppedParamNames } = planOf({
+        templateId: template.id,
+        copy: everyField,
+        sourceBlockIndices: [0],
+        rationale: "sweep",
+      });
+      expect(droppedParamNames, `${template.id} produced an unknown param`).toEqual([]);
+      /* And whatever it produced must actually satisfy the template. */
+      if (sections.length > 0) {
+        const parsed = template.paramsSchema.safeParse(sections[0].params);
+        expect(parsed.success, `${template.id} produced params its schema rejects`).toBe(true);
+      }
+    }
+  });
+
+  it("drops a section whose params the catalog would reject", () => {
+    /*
+      Rather than letting it through to render the template's sample copy,
+      which is the original defect in a better disguise. feature-columns
+      requires at least two features; one is not a section.
+    */
+    const { sections, rejectedTemplateIds } = planOf({
+      templateId: "feature-columns",
+      copy: { headline: "What we do", body: "B", items: [{ title: "Only one", body: "x" }] },
+      sourceBlockIndices: [0],
+      rationale: "x",
+    });
+    expect(sections).toEqual([]);
+    expect(rejectedTemplateIds).toContain("feature-columns");
+  });
+
+  it("drops a section carrying no real copy, rather than rendering sample text", () => {
+    /*
+      Alt text alone is not copy. A section with only an image description
+      would render every other field from the template's sample text inside an
+      email the user believes came from their page.
+    */
+    const { sections } = planOf({
+      templateId: "hero",
+      copy: { headline: "", body: "", imageAlt: "A photograph" },
+      sourceBlockIndices: [0],
+      rationale: "x",
+    });
+    expect(sections).toEqual([]);
+  });
+
+  it("points a button at the page rather than at the template's example.com", () => {
+    /*
+      Every template with a button defaults ctaHref to "https://example.com".
+      An unfilled button therefore ships a link to example.com inside the
+      user's email, which is worse than having no button at all.
+    */
+    const { sections } = planOf({
+      templateId: "cta",
+      copy: { headline: "Get in touch", body: "Say hello." },
+      sourceBlockIndices: [0],
+      rationale: "x",
+    });
+    expect(sections[0].params.ctaHref).toBe(scrape.canonicalUrl);
+  });
+
+  it("renames repeated content to whatever each template calls it", () => {
+    /*
+      One vocabulary field, three different catalog shapes. This is the whole
+      job of the translation layer, and getting it wrong is silent: the section
+      would fall back to sample copy.
+    */
+    const items = [
+      { title: "99%", body: "uptime" },
+      { title: "12ms", body: "median latency" },
+    ];
+    const featureList = planOf({
+      templateId: "feature-list",
+      copy: { headline: "H", body: "B", items },
+      sourceBlockIndices: [0],
+      rationale: "x",
+    }).sections[0];
+    expect(featureList.params.features).toEqual([
+      { title: "99%", body: "uptime" },
+      { title: "12ms", body: "median latency" },
+    ]);
+
+    const stats = planOf({
+      templateId: "stats",
+      copy: { headline: "H", body: "B", items },
+      sourceBlockIndices: [0],
+      rationale: "x",
+    }).sections[0];
+    expect(stats.params.stats).toEqual([
+      { value: "99%", label: "uptime" },
+      { value: "12ms", label: "median latency" },
+    ]);
+
+    const pricing = planOf({
+      templateId: "pricing",
+      copy: { headline: "H", body: "B", items },
+      sourceBlockIndices: [0],
+      rationale: "x",
+    }).sections[0];
+    expect(pricing.params.features).toEqual(["99%", "12ms"]);
+  });
+
+  it("counts a list as a citable line, not just a prose block", () => {
+    /*
+      Blocks and lists are numbered as ONE sequence in the prompt, so a section
+      built from a page's skills list cites an index past the last block. If
+      that were rejected, every list-driven section would be silently dropped —
+      and list content is the thing this whole pipeline was rebuilt to recover.
+    */
+    const { sections } = planOf({
+      templateId: "feature-list",
+      copy: { headline: "Skills", body: "What I work with.", items: [{ title: "TypeScript" }, { title: "React" }] },
+      sourceBlockIndices: [scrape.blocks.length],
+      rationale: "the skills list",
+    });
+    expect(sections).toHaveLength(1);
+  });
+});
+
+describe("the catalog listing offered to the reader", () => {
+  it("names real templates and their real param names", () => {
+    const prompt = buildClassificationPrompt(makeScrape());
+    expect(prompt).toContain("hero —");
+    expect(prompt).toContain("headline");
+  });
+
+  it("never offers an image-source field", () => {
+    /*
+      The catalog is a SECOND model-facing surface, and the pipeline writes the
+      image address itself. A listing that advertised imageSrc would hand back
+      exactly the URL-writing ability the rest of this design removes.
+    */
+    const prompt = buildClassificationPrompt(makeScrape());
+    expect(prompt).not.toContain("imageSrc");
+  });
+});
+
+describe("a plan-less answer cannot claim certainty", () => {
+  it("stops when the reader is sure but produced no sections", () => {
+    const result = validateClassification({
+      classification: makeClassification({
+        confidence: "high",
+        isPlanUsable: true,
+        sections: [],
+      }),
+      scrape: makeScrape(),
+    });
+    expect(result.isPlanUsable).toBe(false);
+    expect(result.confidence).toBe("low");
   });
 });
 

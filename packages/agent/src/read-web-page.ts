@@ -95,6 +95,19 @@ export interface ReadWebPageImage {
   subject?: string;
 }
 
+/**
+ * One planned email section: a catalog template plus the copy this page's own
+ * content makes. Pass these to createDraft as they are.
+ */
+export interface ReadWebPageSection {
+  templateId: string;
+  params: Record<string, unknown>;
+  /** Which numbered content lines this section's copy came from. */
+  sourceBlockIndices: number[];
+  /** One line: what on the page this section is. */
+  rationale: string;
+}
+
 /** The page's content, as read. */
 export interface ReadWebPagePayload {
   /** The page's title (og:title / JSON-LD headline / <title>). */
@@ -142,6 +155,11 @@ export interface ReadWebPagePayload {
   confidence: ReadWebPageConfidence;
   /** Present at "medium": the one thing that is unclear. Relay it. */
   uncertaintyNote?: string;
+  /**
+   * The email this page's content would make, in reading order — ready to hand
+   * straight to createDraft. Image addresses are already filled in for you.
+   */
+  sections: ReadWebPageSection[];
   /** The reader's own account of the page, up to 400 characters. */
   sourceSummary: string;
   /** False when there was not enough on the page to build an honest email. */

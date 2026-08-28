@@ -44,6 +44,7 @@ function assistantWithArticle({
                   lists: [],
                   structuredData: [],
                   images: [],
+                  sections: [],
                   isTruncated: false,
                   pageType: "portfolio" as const,
                   confidence: "high" as const,
