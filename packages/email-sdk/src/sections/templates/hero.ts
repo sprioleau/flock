@@ -57,6 +57,14 @@ export const heroTemplate = defineSectionTemplate({
     "Lead the email with one big idea: a full-width image above a headline, a supporting line, and a single CTA button.",
   paramsSchema: heroParamsSchema,
   /*
+    The hero IS its headline and supporting line. The CTA is furniture and the image source is the pipeline's to supply.
+  */
+  contentRequirements: {
+    copyParams: ["headline", "body"],
+    listParams: [],
+    imageCount: 1,
+  },
+  /*
     imageSrc is for programmatic callers only (a rehosted image URL from the
     content-ingestion pipeline) — never for the model.
   */

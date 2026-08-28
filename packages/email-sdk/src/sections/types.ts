@@ -1,6 +1,10 @@
-import type { z } from "zod";
+import { z } from "zod";
 import type { Block, SectionBlock } from "../schema/blocks";
 import type { RandomFn } from "../schema/ids";
+import {
+  isContentRequirementSatisfied,
+  type SectionContentRequirements,
+} from "./content-requirements";
 
 /**
  * Section catalog types (Phase 7.2).
@@ -64,6 +68,16 @@ export interface SectionTemplate<TSchema extends z.ZodType = z.ZodType> {
   /** CONTENT-ONLY params: every field `.describe()`d and defaulted; `parse({})` succeeds. */
   paramsSchema: TSchema;
   /*
+    What this template needs before it may build a section of a REAL draft:
+    which copy params, which lists and how long, how many images. Read against
+    the params the CALLER supplied, so the `.default()` values above take no
+    part — which is exactly why they can go on serving the gallery and
+    `scaffoldSection` while never standing in as content. Keys on content
+    shape only; never on `pageType`. Always read it through
+    `getContentRequirements`, and test fit through `sections/content-fit`.
+  */
+  contentRequirements: SectionContentRequirements;
+  /*
     The NARROWED params schema the model is offered, for the templates whose
     `paramsSchema` carries a field the model must not be able to write.
 
@@ -90,6 +104,21 @@ export interface SectionTemplate<TSchema extends z.ZodType = z.ZodType> {
 */
 export function getModelFacingParamsSchema(template: SectionTemplate): z.ZodType {
   return template.modelFacingParamsSchema ?? template.paramsSchema;
+}
+
+/*
+  The content a template needs to say something true — the second
+  audience-specific view of its params, beside `getModelFacingParamsSchema`.
+  Named accessor for the same reason that one has one: callers should never
+  reach past it into the raw field.
+*/
+export function getContentRequirements(template: SectionTemplate): SectionContentRequirements {
+  return template.contentRequirements;
+}
+
+/** The param names one template's schema accepts, or null when it is not an object schema. */
+export function getTemplateParamKeys(paramsSchema: z.ZodType): ReadonlySet<string> | null {
+  return paramsSchema instanceof z.ZodObject ? new Set(Object.keys(paramsSchema.shape)) : null;
 }
 
 /** Lowercase start, then lowercase letters/digits/hyphens: `hero`, `feature-columns`. */
@@ -130,5 +159,44 @@ export function defineSectionTemplate<TSchema extends z.ZodType>(
       `defineSectionTemplate: template "${template.id}" has a modelFacingParamsSchema that rejects {} — the model-facing schema must still yield a complete demo section.`,
     );
   }
+  assertContentRequirements(template);
   return Object.freeze({ ...template });
+}
+
+/*
+  The declaration has to be true of the schema beside it, and it has to be
+  worth having. Both are checked here, at definition time, so a nineteenth
+  template cannot quietly reintroduce the fabrication: a requirement naming a
+  param that does not exist would never be checkable, and a requirement asking
+  for nothing would let the template's own sample copy satisfy it.
+*/
+function assertContentRequirements(template: SectionTemplate<z.ZodType>): void {
+  const { copyParams, listParams, imageCount } = template.contentRequirements;
+  const paramKeys = getTemplateParamKeys(template.paramsSchema);
+  if (paramKeys !== null) {
+    const declared = [...copyParams, ...listParams.map((listParam) => listParam.param)];
+    const unknownParams = declared.filter((param) => !paramKeys.has(param));
+    if (unknownParams.length > 0) {
+      throw new Error(
+        `defineSectionTemplate: template "${template.id}" declares contentRequirements for ${unknownParams.map((param) => `"${param}"`).join(", ")}, which its paramsSchema does not accept.`,
+      );
+    }
+  }
+  for (const listParam of listParams) {
+    if (!Number.isInteger(listParam.minimumCount) || listParam.minimumCount < 1) {
+      throw new Error(
+        `defineSectionTemplate: template "${template.id}" declares a minimumCount of ${listParam.minimumCount} for "${listParam.param}" — a list requirement asks for at least one entry.`,
+      );
+    }
+  }
+  if (!Number.isInteger(imageCount) || imageCount < 0) {
+    throw new Error(
+      `defineSectionTemplate: template "${template.id}" declares an imageCount of ${imageCount} — it must be a whole number of images, zero or more.`,
+    );
+  }
+  if (isContentRequirementSatisfied({ requirements: template.contentRequirements, params: {} })) {
+    throw new Error(
+      `defineSectionTemplate: template "${template.id}" has contentRequirements that an EMPTY params object already satisfies — every param here carries a sample default, so a template that requires nothing would render that sample copy as if it were the sender's own words.`,
+    );
+  }
 }

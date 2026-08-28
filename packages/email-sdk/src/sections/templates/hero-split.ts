@@ -56,6 +56,14 @@ export const heroSplitTemplate = defineSectionTemplate({
     "Lead with a side-by-side hero: headline, supporting line, and CTA button on the left, an image on the right.",
   paramsSchema: heroSplitParamsSchema,
   /*
+    Identical substance to `hero` — the two heroes take the same params, so a hero that cannot be filled has no substitute and is dropped.
+  */
+  contentRequirements: {
+    copyParams: ["headline", "body"],
+    listParams: [],
+    imageCount: 1,
+  },
+  /*
     imageSrc is for programmatic callers only (a rehosted image URL from the
     content-ingestion pipeline) — never for the model.
   */

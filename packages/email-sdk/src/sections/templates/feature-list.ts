@@ -43,6 +43,14 @@ export const featureListTemplate = defineSectionTemplate({
   useWhen:
     "Walk through 2–5 features one after another in a stacked, scannable list — each a title over a short description.",
   paramsSchema: featureListParamsSchema,
+  /*
+    Same substance as `feature-columns`: the list is the content.
+  */
+  contentRequirements: {
+    copyParams: [],
+    listParams: [{ param: "features", minimumCount: 2 }],
+    imageCount: 0,
+  },
   build: ({ params, random }) => {
     const composer = createSectionComposer(random);
     if (params.headline !== undefined) {

@@ -53,6 +53,14 @@ export const testimonialColumnsTemplate = defineSectionTemplate({
   category: "social-proof",
   useWhen: "Stack up social proof with two or three short customer quotes side by side.",
   paramsSchema: testimonialColumnsParamsSchema,
+  /*
+    Same harm as `testimonial`, multiplied — every column carries a name.
+  */
+  contentRequirements: {
+    copyParams: [],
+    listParams: [{ param: "testimonials", minimumCount: 2 }],
+    imageCount: 0,
+  },
   build: ({ params, random }) => {
     const composer = createSectionComposer(random);
     composer.addColumns(

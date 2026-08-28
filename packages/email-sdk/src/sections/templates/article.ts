@@ -48,6 +48,14 @@ export const articleTemplate = defineSectionTemplate({
     "Tell one story in editorial form: a heading and a rich paragraph, with an optional supporting image.",
   paramsSchema: articleParamsSchema,
   /*
+    Heading plus paragraph is the whole article. The supporting image is optional, so a default-params build shows none.
+  */
+  contentRequirements: {
+    copyParams: ["headline", "body"],
+    listParams: [],
+    imageCount: 0,
+  },
+  /*
     imageSrc is for programmatic callers only (a rehosted image URL from the
     content-ingestion pipeline) — never for the model.
   */

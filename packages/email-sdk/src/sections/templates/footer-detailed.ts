@@ -69,6 +69,14 @@ export const footerDetailedTemplate = defineSectionTemplate({
   useWhen:
     "Close the email with a fuller footer: company identity on the left, a stack of helpful links on the right, unsubscribe and preferences underneath.",
   paramsSchema: footerDetailedParamsSchema,
+  /*
+    As `footer`, plus the link column this variant exists for.
+  */
+  contentRequirements: {
+    copyParams: ["companyName"],
+    listParams: [{ param: "links", minimumCount: 1 }],
+    imageCount: 0,
+  },
   build: ({ params, random }) => {
     const composer = createSectionComposer(random);
     composer.addLeaf({ kind: "divider" });

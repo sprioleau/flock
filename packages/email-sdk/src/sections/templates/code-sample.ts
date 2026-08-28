@@ -59,6 +59,14 @@ export const codeSampleTemplate = defineSectionTemplate({
   useWhen:
     "Speak to developers with a short lead-in, a syntax-highlighted code snippet, and a docs link underneath.",
   paramsSchema: codeSampleParamsSchema,
+  /*
+    The snippet is the point, and sample code purporting to be the reader's is worse than none. `language` is a fence attribute, not copy.
+  */
+  contentRequirements: {
+    copyParams: ["headline", "body", "code"],
+    listParams: [],
+    imageCount: 0,
+  },
   build: ({ params, random }) => {
     const composer = createSectionComposer(random);
     composer.addLeaf({

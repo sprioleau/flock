@@ -1,6 +1,11 @@
 import { z } from "zod";
 import type { Operation } from "../operations/ops";
 import { getSectionTemplate, SECTION_TEMPLATES } from "../sections/catalog";
+import {
+  findContentFittingTemplate,
+  hasContentForTemplate,
+} from "../sections/content-fit";
+import { getTemplateParamKeys as readTemplateParamKeys } from "../sections/types";
 import type { SectionCategory } from "../sections/types";
 import { ROOT_BLOCK_ID, type RandomFn } from "../schema/ids";
 import type { GlobalStyles } from "../schema/globals";
@@ -80,7 +85,7 @@ const draftSectionPlanSchema = z
       .looseObject({})
       .optional()
       .describe(
-        "The template's CONTENT params (headline, body, ctaLabel, ctaHref, brandName, …), exactly as scaffoldSection takes them — pass the copy this draft should actually say. WRITE EVERY PARAM YOURSELF whenever you are building from something outside this draft (a page you fetched, a person you looked up, a brief the user typed): a param you leave out falls back to the section template's generic SAMPLE copy, which says nothing about your source. Leave params out only when you are making another version of the draft the user is already looking at — there, and only there, its own copy fills the gaps.",
+        "The template's CONTENT params (headline, body, ctaLabel, ctaHref, brandName, …), exactly as scaffoldSection takes them — pass the copy this draft should actually say. WRITE EVERY PARAM YOURSELF whenever you are building from something outside this draft (a page you fetched, a person you looked up, a brief the user typed): a section you leave empty is NOT filled with sample text, it is rebuilt as a different template or left out of the draft entirely. Leave params out only when you are making another version of the draft the user is already looking at — there, and only there, its own copy fills the gaps.",
       ),
   })
   .describe("One section of a new draft: which catalog template, and its copy.");
@@ -577,8 +582,30 @@ export interface ComposedDraftComposition {
   plannedSectionCount: number;
   /** Sections whose copy was filled in from the SOURCE draft (carry-over). */
   carriedOverSectionCount: number;
-  /** Sections left on the section template's own sample copy. */
+  /**
+   * Sections left on the section template's own sample copy.
+   *
+   * STRUCTURALLY ZERO for a composed draft since section eligibility landed:
+   * every template declares content it needs, that declaration is read against
+   * the params the CALLER supplied, and a section nothing satisfies is
+   * substituted or dropped rather than built. The field stays because it is
+   * the fact the surface reports to the model, and "zero sections are sample
+   * copy" is exactly the claim worth being able to make.
+   */
   templateDefaultSectionCount: number;
+  /**
+   * Sections built from a DIFFERENT template than the plan named, because the
+   * available content did not fit the planned one but did fit a sibling in the
+   * same category. The copy is the plan's; the shape is not.
+   */
+  substitutedSectionCount: number;
+  /**
+   * Sections the plan asked for that were not built at all, because no
+   * template in their category could be filled from the available content.
+   * The model needs this: a draft it planned four sections for and got two of
+   * is not the draft it is about to describe.
+   */
+  droppedSectionCount: number;
 }
 
 /** One composed draft: what to call it, the ops that build it, and its provenance. */
@@ -623,12 +650,8 @@ export interface BuildComposedDraftsInput {
 
 /** The param names a template accepts, or null when its schema is not an object. */
 function getTemplateParamKeys(templateId: string): ReadonlySet<string> | null {
-  const shape = (getSectionTemplate(templateId)?.paramsSchema as { shape?: unknown } | undefined)
-    ?.shape;
-  if (typeof shape !== "object" || shape === null) {
-    return null;
-  }
-  return new Set(Object.keys(shape));
+  const template = getSectionTemplate(templateId);
+  return template === undefined ? null : readTemplateParamKeys(template.paramsSchema);
 }
 
 /**
@@ -684,6 +707,72 @@ function applyContentClues({
   });
 }
 
+// ---------------------------------------------------------------------------
+// Eligibility: substitute what the content fits, drop what it does not
+// ---------------------------------------------------------------------------
+
+/**
+ * What became of one planned section once its content was measured against
+ * the template it named. One entry per planned section, in plan order, so a
+ * caller can still line the outcomes up with the plan it sent.
+ */
+export type SectionContentResolution =
+  | { outcome: "kept"; section: DraftSectionPlan }
+  | { outcome: "substituted"; section: DraftSectionPlan; plannedTemplateId: string }
+  | { outcome: "dropped"; plannedTemplateId: string };
+
+/**
+ * Decide, for each planned section, whether the content in hand can actually
+ * build it — and if not, what to do instead.
+ *
+ * 1. KEEP the planned template when the params satisfy what it declares it
+ *    needs and its own schema accepts them.
+ * 2. SUBSTITUTE the first template in the same category that the available
+ *    content does fit, handed only the params it accepts.
+ * 3. DROP the section when nothing in the category is satisfiable.
+ *
+ * There is deliberately no fourth branch. Falling back to the template's
+ * `.default()` values is what produced an invented testimonial from a page
+ * that contained no quotes, and it is the one outcome this function cannot
+ * reach. The defaults themselves are untouched: `parse({})` still yields a
+ * complete demo section for the gallery and for `scaffoldSection`, which is
+ * the invariant this path works around rather than removes.
+ *
+ * Pure and deterministic: substitution walks the catalog in its listed order.
+ */
+export function resolveSectionsToAvailableContent(
+  sections: DraftSectionPlan[],
+): SectionContentResolution[] {
+  return sections.map((section) => {
+    const template = getSectionTemplate(section.templateId);
+    if (template === undefined) {
+      return { outcome: "dropped", plannedTemplateId: section.templateId };
+    }
+    const params = section.params ?? {};
+    /*
+      The planned template's params are held to its own schema exactly — the
+      plan named it, and `strictObject` rejecting a stray key is the signal
+      that the plan and the template disagree about what this section is.
+    */
+    if (hasContentForTemplate({ template, params })) {
+      return { outcome: "kept", section };
+    }
+    const substitute = findContentFittingTemplate({
+      category: template.category,
+      excludedTemplateId: template.id,
+      params,
+    });
+    if (substitute === undefined) {
+      return { outcome: "dropped", plannedTemplateId: template.id };
+    }
+    return {
+      outcome: "substituted",
+      plannedTemplateId: template.id,
+      section: { templateId: substitute.template.id, params: substitute.params },
+    };
+  });
+}
+
 /** Rebuild attempts when generated ids collide within one draft (vanishingly rare). */
 const MAX_BUILD_ATTEMPTS = 5;
 
@@ -723,19 +812,45 @@ export function buildComposedDrafts({
       plannedSectionCount: 0,
       carriedOverSectionCount: 0,
       templateDefaultSectionCount: 0,
+      substitutedSectionCount: 0,
+      droppedSectionCount: 0,
     };
     // Ids must be unique across the WHOLE new document, not just per section.
     const usedIds = new Set<string>([ROOT_BLOCK_ID]);
-    sections.forEach((section, sectionIndex) => {
+    /*
+      One resolution per planned section, in plan order, so the model's own
+      params for section i are still `plannedSections[i]`. The document index
+      is counted separately: dropped sections leave no gap in the new email.
+    */
+    let documentIndex = 0;
+    resolveSectionsToAvailableContent(sections).forEach((resolution, sectionIndex) => {
+      if (resolution.outcome === "dropped") {
+        composition.droppedSectionCount += 1;
+        return;
+      }
+      const { section } = resolution;
       const template = getSectionTemplate(section.templateId);
       if (template === undefined) {
         return;
       }
+      /*
+        The parse only fills the params the template does NOT require — button
+        labels, merge tags, a code fence's language. Everything the template
+        declared it needs was already supplied.
+
+        The failure arm is UNREACHABLE by construction: eligibility validated
+        these exact params against this exact schema, so anything the schema
+        rejects was substituted or dropped before it got here. It is written as
+        a drop rather than an assertion because the one thing this line must
+        never do again is what it used to do — answer a rejected params object
+        with `paramsSchema.parse({})`, turning a validation slip into a
+        complete section of sample marketing copy.
+      */
       const parsedParams = template.paramsSchema.safeParse(section.params ?? {});
-      // Clue-filled params can still miss a template's expectations (an
-      // inherited href that isn't a URL, say) — fall back to the template's
-      // own defaults rather than dropping the section.
-      const params = parsedParams.success ? parsedParams.data : template.paramsSchema.parse({});
+      if (!parsedParams.success) {
+        return;
+      }
+      const params = parsedParams.data;
       for (let attempt = 0; attempt < MAX_BUILD_ATTEMPTS; attempt += 1) {
         const built = template.build({ params, random });
         const newIds = [built.section.id, ...built.children.map((block) => block.id)];
@@ -746,20 +861,21 @@ export function buildComposedDrafts({
           ops.push({
             name: "addSection",
             section: built.section,
-            index: sectionIndex,
+            index: documentIndex,
             children: built.children,
           });
+          documentIndex += 1;
+          if (resolution.outcome === "substituted") {
+            composition.substitutedSectionCount += 1;
+          }
           /*
-            Counted only for a section that actually reached the document, and
-            counted from the params the template ACCEPTED — a plan whose params
-            were rejected fell back to sample copy no matter how much of it the
-            model wrote, and reporting that as "the model's copy" would be the
-            same lie in a smaller place.
+            Counted only for a section that actually reached the document.
+            A substituted section still has an origin — the plan's copy or the
+            source draft's — so the two axes are reported independently.
           */
           const bucket = getSectionCopySource({
             plannedParams: plannedSections[sectionIndex]?.params,
-            filledParams: section.params,
-            isPlanAccepted: parsedParams.success,
+            builtParams: section.params,
           });
           composition[bucket] += 1;
           return;
@@ -770,27 +886,25 @@ export function buildComposedDrafts({
   });
 }
 
-/** Which {@link ComposedDraftComposition} bucket one built section belongs in. */
+/**
+ * Which {@link ComposedDraftComposition} bucket one built section belongs in.
+ *
+ * Two buckets, not three: a built section always has real content in it now,
+ * so the only open question is whose. It counts as the model's when any param
+ * it was actually built from is one the model wrote — a substitution can drop
+ * some of the plan's params on the way, and the surviving ones are what the
+ * section says. Otherwise the words came from the source draft's carry-over.
+ */
 function getSectionCopySource({
   plannedParams,
-  filledParams,
-  isPlanAccepted,
+  builtParams,
 }: {
   /** The model's own params for this section, before any carry-over. */
   plannedParams: Record<string, unknown> | undefined;
-  /** The params the section was built from, after carry-over. */
-  filledParams: Record<string, unknown> | undefined;
-  /** Whether the template's schema accepted those params at all. */
-  isPlanAccepted: boolean;
+  /** The params the section was really built from, after carry-over and substitution. */
+  builtParams: Record<string, unknown> | undefined;
 }): keyof ComposedDraftComposition {
-  if (!isPlanAccepted) {
-    return "templateDefaultSectionCount";
-  }
-  if (Object.keys(plannedParams ?? {}).length > 0) {
-    return "plannedSectionCount";
-  }
-  if (Object.keys(filledParams ?? {}).length > 0) {
-    return "carriedOverSectionCount";
-  }
-  return "templateDefaultSectionCount";
+  const builtKeys = new Set(Object.keys(builtParams ?? {}));
+  const isModelsOwn = Object.keys(plannedParams ?? {}).some((key) => builtKeys.has(key));
+  return isModelsOwn ? "plannedSectionCount" : "carriedOverSectionCount";
 }

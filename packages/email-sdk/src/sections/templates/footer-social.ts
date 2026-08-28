@@ -56,6 +56,14 @@ export const footerSocialTemplate = defineSectionTemplate({
   useWhen:
     "Close the email with a social-first footer: follow links for your profiles above the company line and an unsubscribe link.",
   paramsSchema: footerSocialParamsSchema,
+  /*
+    As `footer`, plus: a social link is an assertion that an account exists at that URL, so this variant needs at least one real one — otherwise the plain `footer` is its substitute.
+  */
+  contentRequirements: {
+    copyParams: ["companyName"],
+    listParams: [{ param: "socialLinks", minimumCount: 1 }],
+    imageCount: 0,
+  },
   build: ({ params, random }) => {
     const composer = createSectionComposer(random);
     composer.addLeaf({ kind: "divider" });

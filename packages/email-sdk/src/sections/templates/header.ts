@@ -51,6 +51,14 @@ export const headerTemplate = defineSectionTemplate({
     "Open the email with brand identity: a slim bar with the logo on the left and a few navigation links on the right.",
   paramsSchema: headerParamsSchema,
   /*
+    The brand bar names the sender; without a brand name it would announce whoever the sample copy names. Nav links are optional furniture and the header is legitimately logo-only.
+  */
+  contentRequirements: {
+    copyParams: ["brandName"],
+    listParams: [],
+    imageCount: 1,
+  },
+  /*
     imageSrc is for programmatic callers only (a rehosted image URL from the
     content-ingestion pipeline) — never for the model.
   */

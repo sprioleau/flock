@@ -18,6 +18,8 @@ const FULLY_PLANNED = {
   plannedSectionCount: 4,
   carriedOverSectionCount: 0,
   templateDefaultSectionCount: 0,
+  substitutedSectionCount: 0,
+  droppedSectionCount: 0,
 };
 
 function outcome(overrides: Partial<CreateDraftOutcome> = {}): CreateDraftOutcome {
@@ -75,6 +77,8 @@ describe("toCreateDraftToolOutput", () => {
             plannedSectionCount: 1,
             carriedOverSectionCount: 0,
             templateDefaultSectionCount: 3,
+            substitutedSectionCount: 0,
+            droppedSectionCount: 0,
           },
         ],
       }),
@@ -134,12 +138,16 @@ describe("toCreateDraftToolOutput", () => {
             plannedSectionCount: 1,
             carriedOverSectionCount: 0,
             templateDefaultSectionCount: 2,
+            substitutedSectionCount: 0,
+            droppedSectionCount: 0,
           },
           {
             name: "Borrowed",
             plannedSectionCount: 1,
             carriedOverSectionCount: 3,
             templateDefaultSectionCount: 0,
+            substitutedSectionCount: 0,
+            droppedSectionCount: 0,
           },
         ],
       }),
@@ -162,6 +170,8 @@ describe("toCreateDraftToolOutput", () => {
             plannedSectionCount: 1,
             carriedOverSectionCount: 2,
             templateDefaultSectionCount: 0,
+            substitutedSectionCount: 0,
+            droppedSectionCount: 0,
           },
         ],
       }),

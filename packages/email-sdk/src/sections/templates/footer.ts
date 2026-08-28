@@ -55,6 +55,14 @@ export const footerTemplate = defineSectionTemplate({
   useWhen:
     "Close the email with legal footing: company name and address, secondary links, and an unsubscribe link over a divider.",
   paramsSchema: footerParamsSchema,
+  /*
+    The footer names the sender. The postal address and the unsubscribe merge tag are sending boilerplate the owner configures, not claims invented about a subject.
+  */
+  contentRequirements: {
+    copyParams: ["companyName"],
+    listParams: [],
+    imageCount: 0,
+  },
   build: ({ params, random }) => {
     const composer = createSectionComposer(random);
     composer.addLeaf({ kind: "divider" });

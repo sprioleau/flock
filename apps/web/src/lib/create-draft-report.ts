@@ -116,6 +116,26 @@ function getCopyProvenanceNote(outcome: CreateDraftOutcome): string {
       `${carriedOverCount} section${carriedOverCount === 1 ? "" : "s"} had no copy in your plan and ${carriedOverCount === 1 ? "was" : "were"} filled from the draft the user is already looking at. That copy is theirs, not yours and not from any source you read — do not present it as new.`,
     );
   }
+  /*
+    The two sentences that replace the sample-copy one. Composition no longer
+    invents copy for a section the plan left empty — it rebuilds the section as
+    a template the copy does fit, or leaves it out. Both are silent changes to
+    what the model asked for, so both have to be said: without this the model
+    describes an article and a footer it planned and neither of which exists,
+    which is the same overclaim the sample-copy sentence was written to stop.
+  */
+  const substitutedCount = sumSections(createdDrafts, "substitutedSectionCount");
+  const droppedCount = sumSections(createdDrafts, "droppedSectionCount");
+  if (substitutedCount > 0) {
+    notes.push(
+      `${substitutedCount} section${substitutedCount === 1 ? "" : "s"} did not fit the template you asked for and ${substitutedCount === 1 ? "was" : "were"} rebuilt as a different one that fits the copy you gave. Describe what the draft actually contains, not the template you named.`,
+    );
+  }
+  if (droppedCount > 0) {
+    notes.push(
+      `${droppedCount} section${droppedCount === 1 ? "" : "s"} had no copy to render and nothing in ${droppedCount === 1 ? "its" : "their"} category fitted, so ${droppedCount === 1 ? "it is" : "they are"} NOT in the draft. Do not describe ${droppedCount === 1 ? "it" : "them"} to the user — say what is missing, and offer to write it.`,
+    );
+  }
   return notes.join(" ");
 }
 

@@ -439,6 +439,8 @@ export {
   SECTION_CATEGORIES,
   defineSectionTemplate,
   getModelFacingParamsSchema,
+  getContentRequirements,
+  getTemplateParamKeys,
 } from "./sections/types";
 export type {
   SectionCategory,
@@ -446,6 +448,19 @@ export type {
   SectionBuildInput,
   SectionBuildResult,
 } from "./sections/types";
+
+// --- Sections: content fit — does this content fit this template (sections/content-fit) ---------
+export {
+  isContentRequirementSatisfied,
+  hasContentForTemplate,
+  findContentFittingTemplate,
+  projectParamsOntoTemplate,
+} from "./sections/content-fit";
+export type {
+  SectionContentRequirements,
+  SectionListRequirement,
+  ContentFittingTemplate,
+} from "./sections/content-fit";
 export { buildColumns, computeEqualColumnWidths } from "./sections/build-columns";
 export type { BuildColumnsInput, BuildColumnsResult, ColumnSpec } from "./sections/build-columns";
 
@@ -474,9 +489,11 @@ export {
   deriveDraftContentClues,
   completeDraftSections,
   diversifyDraftSections,
+  resolveSectionsToAvailableContent,
   buildComposedDrafts,
 } from "./actions/compose-draft";
 export type {
+  SectionContentResolution,
   DraftPlan,
   DraftSectionPlan,
   DraftContentClues,

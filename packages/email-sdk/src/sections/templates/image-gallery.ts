@@ -87,6 +87,14 @@ export const imageGalleryTemplate = defineSectionTemplate({
   useWhen: "Show a set of 2–6 images in a tidy grid — product shots, lookbooks, event photos.",
   paramsSchema: imageGalleryParamsSchema,
   /*
+    Each image's alt text is the copy the caller must write; the grid needs at least two of them.
+  */
+  contentRequirements: {
+    copyParams: [],
+    listParams: [{ param: "images", minimumCount: 2 }],
+    imageCount: 2,
+  },
+  /*
     images[].src is for programmatic callers only (rehosted image URLs from
     the content-ingestion pipeline) — never for the model.
   */

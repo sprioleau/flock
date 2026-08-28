@@ -42,6 +42,14 @@ export const ctaTemplate = defineSectionTemplate({
   useWhen:
     "Drive one action anywhere in the email with a centered banner: a short headline, an optional supporting line, and a single button.",
   paramsSchema: ctaParamsSchema,
+  /*
+    Unlike a hero, this section is nothing BUT its ask — a banner whose button points at the sample URL drives the reader nowhere.
+  */
+  contentRequirements: {
+    copyParams: ["headline", "ctaLabel", "ctaHref"],
+    listParams: [],
+    imageCount: 0,
+  },
   build: ({ params, random }) => {
     const composer = createSectionComposer(random);
     composer.addLeaf({

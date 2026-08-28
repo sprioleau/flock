@@ -41,6 +41,14 @@ export const featureColumnsTemplate = defineSectionTemplate({
   category: "content",
   useWhen: "Present 2–4 short selling points side by side, each with a title and a one-liner.",
   paramsSchema: featureColumnsParamsSchema,
+  /*
+    The columns ARE the features; the intro heading is optional. Fewer than two is not a set of columns.
+  */
+  contentRequirements: {
+    copyParams: [],
+    listParams: [{ param: "features", minimumCount: 2 }],
+    imageCount: 0,
+  },
   build: ({ params, random }) => {
     const composer = createSectionComposer(random);
     if (params.headline !== undefined) {

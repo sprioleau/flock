@@ -117,6 +117,8 @@ function toCreatedDraftSummary({
       plannedSectionCount: 0,
       carriedOverSectionCount: 0,
       templateDefaultSectionCount: 0,
+      substitutedSectionCount: 0,
+      droppedSectionCount: 0,
     };
   }
   return { name, ...composed.composition };

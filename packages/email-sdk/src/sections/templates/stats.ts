@@ -43,6 +43,14 @@ export const statsTemplate = defineSectionTemplate({
   category: "social-proof",
   useWhen: "Make impact concrete with 2–4 headline numbers, each with a short label.",
   paramsSchema: statsParamsSchema,
+  /*
+    The numbers are the claim. An invented `98%` reads exactly as measured as a real one.
+  */
+  contentRequirements: {
+    copyParams: [],
+    listParams: [{ param: "stats", minimumCount: 2 }],
+    imageCount: 0,
+  },
   build: ({ params, random }) => {
     const composer = createSectionComposer(random);
     if (params.headline !== undefined) {

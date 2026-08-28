@@ -58,6 +58,14 @@ export const pricingTemplate = defineSectionTemplate({
   useWhen:
     "Present one pricing plan as a centered card: plan name, the price, what's included, and a signup button.",
   paramsSchema: pricingParamsSchema,
+  /*
+    A plan is its name, its price, its billing period, and at least one thing it includes.
+  */
+  contentRequirements: {
+    copyParams: ["planName", "price", "pricePeriod"],
+    listParams: [{ param: "features", minimumCount: 1 }],
+    imageCount: 0,
+  },
   build: ({ params, random }) => {
     const composer = createSectionComposer(random);
     composer.addLeaf({

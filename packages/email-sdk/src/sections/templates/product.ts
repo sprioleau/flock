@@ -60,6 +60,14 @@ export const productTemplate = defineSectionTemplate({
     "Feature one product for sale: its photo beside the name, a one-line description, the price, and a buy button.",
   paramsSchema: productParamsSchema,
   /*
+    A product's name, description and price are claims about a real thing for sale; inventing any of them is the same harm as inventing a quote.
+  */
+  contentRequirements: {
+    copyParams: ["name", "description", "price"],
+    listParams: [],
+    imageCount: 1,
+  },
+  /*
     imageSrc is for programmatic callers only (a rehosted image URL from the
     content-ingestion pipeline) — never for the model.
   */

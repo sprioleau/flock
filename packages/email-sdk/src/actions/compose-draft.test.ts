@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { applyOperations } from "../operations/apply";
-import { getSectionTemplate } from "../sections/catalog";
+import { SECTION_TEMPLATES, getSectionTemplate } from "../sections/catalog";
 import { ROOT_BLOCK_ID } from "../schema/ids";
 import {
   createEmptyDocument,
@@ -14,6 +14,8 @@ import {
   deriveDraftContentClues,
   diversifyDraftSections,
   resolveCreateDraftCommand,
+  resolveSectionsToAvailableContent,
+  type ComposedDraft,
   type CreateDraftCommand,
   type DraftSectionPlan,
 } from "./compose-draft";
@@ -50,6 +52,53 @@ function composeOne(command: CreateDraftCommand, sourceDoc: EmailDocument): Emai
     throw new Error("compose failed");
   }
   return result.doc;
+}
+
+/** One template's SAMPLE value for a named param — the copy that must never ship. */
+function readSampleCopy({ templateId, param }: { templateId: string; param: string }): string {
+  const template = getSectionTemplate(templateId);
+  if (template === undefined) {
+    throw new Error(`no catalog template "${templateId}"`);
+  }
+  const defaults: unknown = template.paramsSchema.parse({});
+  if (typeof defaults !== "object" || defaults === null) {
+    throw new Error(`template "${templateId}" did not parse to a params object`);
+  }
+  const value = Object.fromEntries(Object.entries(defaults))[param];
+  if (typeof value !== "string") {
+    throw new Error(`"${templateId}.${param}" is not sample text`);
+  }
+  return value;
+}
+
+/** The SAMPLE entries of a template's list param, read through one field of each. */
+function readSampleList({
+  templateId,
+  param,
+  field,
+}: {
+  templateId: string;
+  param: string;
+  field: string;
+}): string[] {
+  const template = getSectionTemplate(templateId);
+  if (template === undefined) {
+    throw new Error(`no catalog template "${templateId}"`);
+  }
+  const defaults: unknown = template.paramsSchema.parse({});
+  if (typeof defaults !== "object" || defaults === null) {
+    throw new Error(`template "${templateId}" did not parse to a params object`);
+  }
+  const entries = Object.fromEntries(Object.entries(defaults))[param];
+  if (!Array.isArray(entries)) {
+    throw new Error(`"${templateId}.${param}" is not a list`);
+  }
+  return entries.map((entry: unknown) => {
+    if (typeof entry !== "object" || entry === null) {
+      throw new Error(`"${templateId}.${param}" holds a non-object entry`);
+    }
+    return String(Object.fromEntries(Object.entries(entry))[field]);
+  });
 }
 
 function getSectionCategories(doc: EmailDocument): (string | undefined)[] {
@@ -673,18 +722,30 @@ describe("buildComposedDrafts", () => {
     }
   });
 
-  it("falls back to template defaults when a carried-over param fails validation", () => {
-    const source = createEmptyDocument();
-    const doc = composeOne(
-      {
+  /*
+    This used to read "falls back to template defaults when a carried-over
+    param fails validation" — and that fallback is exactly what let a
+    validation slip render as a complete section of sample marketing copy.
+    Carry-over still fills the headline and body from the source; the empty CTA
+    label the plan wrote is still invalid; the section is now dropped for it.
+  */
+  it("drops a section whose params fail validation instead of restating the sample copy", () => {
+    const [composed] = buildComposedDrafts({
+      sourceDoc: createStarterDocument(),
+      command: {
         type: "createDraft",
         count: 1,
         shouldInheritTheme: true,
         drafts: [{ sections: [{ templateId: "hero", params: { ctaLabel: "" } }] }],
       },
-      source,
-    );
-    expect(doc[ROOT_BLOCK_ID]!.childrenIds).toHaveLength(3);
+      random: createSeededRandom(7),
+    });
+    const result = applyOperations(createEmptyDocument(), composed!.ops);
+    expect(result.isOk).toBe(true);
+    if (!result.isOk) throw new Error("compose failed");
+    const sampleHeadline = readSampleCopy({ templateId: "hero", param: "headline" });
+    expect(getAllText(result.doc)).not.toContain(sampleHeadline);
+    expect(composed!.composition.droppedSectionCount).toBeGreaterThan(0);
   });
 });
 
@@ -717,7 +778,14 @@ describe("shouldCarryOverSourceCopy", () => {
     ]);
   }
 
-  /** An under-filled plan: one headline written, three sections left blank. */
+  /*
+    An under-filled plan: ONE section the model wrote in full, three left
+    blank. The hero carries a body as well as a headline because a hero with
+    nothing to say under its headline is no longer buildable at all — the
+    point of the fixture is the three BLANK sections, not a half-written one.
+  */
+  const MODEL_HEADLINE = "Hi, I am San'Quan";
+  const MODEL_BODY = "A line the model wrote itself, from the page it read.";
   const underFilledCommand: CreateDraftCommand = {
     type: "createDraft",
     count: 1,
@@ -727,7 +795,7 @@ describe("shouldCarryOverSourceCopy", () => {
         name: "Portfolio",
         sections: [
           { templateId: "header" },
-          { templateId: "hero", params: { headline: "Hi, I am San'Quan" } },
+          { templateId: "hero", params: { headline: MODEL_HEADLINE, body: MODEL_BODY } },
           { templateId: "article" },
           { templateId: "footer" },
         ],
@@ -754,14 +822,28 @@ describe("shouldCarryOverSourceCopy", () => {
     expect(text).toContain("Northwind");
   });
 
-  it("leaves the gaps on the template's own sample copy when switched off", () => {
+  /*
+    The switch used to leave the gaps on the template's own sample copy, which
+    was the lesser of the two lies and still a lie. With eligibility in place a
+    gap is simply a gap: nothing of the source's, and nothing of the catalog's
+    either. The three blank sections are gone; the one the model wrote stands.
+  */
+  it("leaves the gaps EMPTY when switched off — no source copy, and no sample copy", () => {
     const text = getAllText(composeUnderFilled(false));
     for (const sentinel of [SOURCE_HEADLINE, SOURCE_BODY, LATER_HEADLINE, LATER_BODY]) {
       expect(text).not.toContain(sentinel);
     }
     expect(text).not.toContain("Northwind");
+    for (const templateId of ["header", "article", "footer"]) {
+      const template = getSectionTemplate(templateId);
+      expect(template).toBeDefined();
+      for (const param of template?.contentRequirements.copyParams ?? []) {
+        expect(text).not.toContain(readSampleCopy({ templateId, param }));
+      }
+    }
     /* The model's own copy is untouched — the switch suppresses the backfill, not the plan. */
-    expect(text).toContain("Hi, I am San'Quan");
+    expect(text).toContain(MODEL_HEADLINE);
+    expect(text).toContain(MODEL_BODY);
   });
 
   it("still inherits the theme with the copy carry-over switched off", () => {
@@ -803,6 +885,8 @@ describe("shouldCarryOverSourceCopy", () => {
       plannedSectionCount: 1,
       carriedOverSectionCount: 3,
       templateDefaultSectionCount: 0,
+      substitutedSectionCount: 0,
+      droppedSectionCount: 0,
     });
 
     const [isolated] = buildComposedDrafts({
@@ -811,10 +895,17 @@ describe("shouldCarryOverSourceCopy", () => {
       shouldCarryOverSourceCopy: false,
       random: createSeededRandom(23),
     });
+    /*
+      With the carry-over off there is nothing to fill the three blank sections
+      from, so they are dropped rather than counted as sample copy. That the
+      middle bucket is now unreachable is the point of the whole change.
+    */
     expect(isolated!.composition).toEqual({
       plannedSectionCount: 1,
       carriedOverSectionCount: 0,
-      templateDefaultSectionCount: 3,
+      templateDefaultSectionCount: 0,
+      substitutedSectionCount: 0,
+      droppedSectionCount: 3,
     });
   });
 });
@@ -859,5 +950,286 @@ describe("a misplaced call option", () => {
     const message = parsed.error.issues.map((issue) => issue.message).join(" ");
     expect(message).toContain("is not a field");
     expect(message).not.toContain("up one level");
+  });
+});
+
+/*
+  THE MOTIVATING INCIDENT.
+
+  Asked to build a draft from https://wesbos.com/about, the composer produced
+  an email whose every section was catalog sample copy — including a
+  testimonial reading "Flock has completely changed how our team ships email."
+  attributed to Jordan Lee. An invented endorsement, from a person who does not
+  exist, in an email the owner might send.
+
+  Ingestion was not at fault: it returned a usable four-section plan in Wes
+  Bos's own words. The classifier separately emitted a `testimonial` section
+  for a page with no quotes anywhere in it, and every content param on all
+  eighteen templates carries a `.default()`, so a section arriving with no
+  params validated cleanly and rendered confident fiction.
+
+  These tests pin the mechanism shut from both ends: a template's sample copy
+  can never stand in as content when composing from a plan, and a planned
+  section whose category has nothing the available content fits is dropped.
+*/
+describe("composing from a plan never renders a template's sample copy", () => {
+  /** The ingested plan, section for section, as the live pipeline produced it. */
+  const WESBOS_HEADLINE = "About Wes Bos";
+  const WESBOS_BODY =
+    "Web developer, teacher and speaker from Hamilton, Ontario. Making websites for about 26 years.";
+  const WESBOS_ARTICLE_HEADLINE = "Teaching and Background";
+  const WESBOS_ARTICLE_BODY =
+    "He has taught hundreds of thousands of developers through his courses and the Syntax podcast.";
+
+  const wesbosCommand: CreateDraftCommand = {
+    type: "createDraft",
+    count: 1,
+    shouldInheritTheme: true,
+    drafts: [
+      {
+        name: "Syntax Podcast Spotlight",
+        sections: [
+          { templateId: "hero-split", params: { headline: WESBOS_HEADLINE, body: WESBOS_BODY } },
+          { templateId: "feature-list", params: { headline: "Focus & Tech" } },
+          {
+            templateId: "article",
+            params: { headline: WESBOS_ARTICLE_HEADLINE, body: WESBOS_ARTICLE_BODY },
+          },
+          { templateId: "testimonial" },
+        ],
+      },
+    ],
+  };
+
+  /** The ingestion path: the content came from a page, so the source draft fills nothing. */
+  function composeWesbos(): { doc: EmailDocument; composed: ComposedDraft } {
+    const [composed] = buildComposedDrafts({
+      sourceDoc: createStarterDocument(),
+      command: wesbosCommand,
+      shouldCarryOverSourceCopy: false,
+      random: createSeededRandom(11),
+    });
+    const result = applyOperations(createEmptyDocument(), composed!.ops);
+    expect(result.isOk).toBe(true);
+    if (!result.isOk) throw new Error("compose failed");
+    return { doc: result.doc, composed: composed! };
+  }
+
+  it("cannot produce the fabricated testimonial: no invented quote, no invented name", () => {
+    const { doc } = composeWesbos();
+    const text = getAllText(doc);
+    const quote = readSampleCopy({ templateId: "testimonial", param: "quote" });
+    const attribution = readSampleCopy({ templateId: "testimonial", param: "attribution" });
+    expect(attribution).toBe("Jordan Lee");
+    expect(text).not.toContain(attribution);
+    expect(text).not.toContain(quote);
+    expect(text).not.toContain("Jordan Lee");
+  });
+
+  it("keeps the page's own words and drops the section the page could not support", () => {
+    const { doc, composed } = composeWesbos();
+    const text = getAllText(doc);
+    expect(text).toContain(WESBOS_HEADLINE);
+    expect(text).toContain(WESBOS_ARTICLE_HEADLINE);
+    expect(composed.composition.droppedSectionCount).toBeGreaterThan(0);
+    expect(composed.composition.templateDefaultSectionCount).toBe(0);
+  });
+
+  /*
+    THE GENERAL FORM, so a nineteenth template cannot reintroduce the harm:
+    a plan naming every catalog template and writing copy for none of them
+    builds NOTHING. Every one of those sections would previously have rendered
+    a complete, confident section of sample marketing copy.
+  */
+  it("builds no section at all from a plan of every template with no copy in it", () => {
+    const sections = SECTION_TEMPLATES.map((template) => ({ templateId: template.id }));
+    const expectedSectionCount = completeDraftSections(sections).length;
+    expect(expectedSectionCount).toBeGreaterThan(10);
+    const [composed] = buildComposedDrafts({
+      sourceDoc: createStarterDocument(),
+      command: {
+        type: "createDraft",
+        count: 1,
+        shouldInheritTheme: false,
+        drafts: [{ sections }],
+      },
+      shouldCarryOverSourceCopy: false,
+      random: createSeededRandom(5),
+    });
+    expect(composed!.ops.filter((op) => op.name === "addSection")).toEqual([]);
+    expect(composed!.composition.droppedSectionCount).toBe(expectedSectionCount);
+  });
+
+  /*
+    STEP ONE ON ITS OWN. The composer used to answer a params object its
+    schema rejected with `paramsSchema.parse({})` — the single line that turned
+    a validation slip into a section of fiction. Requirements are met here and
+    the copy is real; only the empty CTA label is invalid.
+  */
+  it("drops a section whose params the schema rejects, rather than falling back to defaults", () => {
+    const sampleHeadline = readSampleCopy({ templateId: "hero", param: "headline" });
+    const [composed] = buildComposedDrafts({
+      sourceDoc: createEmptyDocument(),
+      command: {
+        type: "createDraft",
+        count: 1,
+        shouldInheritTheme: false,
+        drafts: [
+          {
+            sections: [
+              {
+                templateId: "hero",
+                params: {
+                  headline: "A headline the model really wrote",
+                  body: "A supporting line the model really wrote.",
+                  ctaLabel: "",
+                },
+              },
+            ],
+          },
+        ],
+      },
+      shouldCarryOverSourceCopy: false,
+      random: createSeededRandom(9),
+    });
+    const result = applyOperations(createEmptyDocument(), composed!.ops);
+    expect(result.isOk).toBe(true);
+    if (!result.isOk) throw new Error("compose failed");
+    expect(getAllText(result.doc)).not.toContain(sampleHeadline);
+    expect(composed!.composition.droppedSectionCount).toBeGreaterThan(0);
+  });
+});
+
+/*
+  SUBSTITUTE, THEN DROP. "Does this content fit this template" is mechanical
+  and belongs here; "which fitting section tells the better story" stays the
+  model's. A planned template the content does not fit is first swapped for one
+  in the same category that it does fit, and only dropped when the whole
+  category is unsatisfiable.
+*/
+describe("substitution and drop", () => {
+  function composePlan(sections: DraftSectionPlan[]): ComposedDraft {
+    const [composed] = buildComposedDrafts({
+      sourceDoc: createEmptyDocument(),
+      command: {
+        type: "createDraft",
+        count: 1,
+        shouldInheritTheme: false,
+        drafts: [{ sections }],
+      },
+      shouldCarryOverSourceCopy: false,
+      random: createSeededRandom(17),
+    });
+    return composed!;
+  }
+
+  it("swaps a social footer with no social links for the plain footer, keeping the copy", () => {
+    const composed = composePlan([
+      /* An empty social list is the case the plain footer exists to absorb — and
+         `socialLinks` is a param the plain footer does not take. */
+      { templateId: "footer-social", params: { companyName: "Wes Bos", socialLinks: [] } },
+    ]);
+    const result = applyOperations(createEmptyDocument(), composed.ops);
+    expect(result.isOk).toBe(true);
+    if (!result.isOk) throw new Error("compose failed");
+    const text = getAllText(result.doc);
+    expect(text).toContain("Wes Bos");
+    for (const label of readSampleList({
+      templateId: "footer-social",
+      param: "socialLinks",
+      field: "label",
+    })) {
+      expect(text).not.toContain(label);
+    }
+    expect(composed.composition.substitutedSectionCount).toBe(1);
+    /*
+      Structural repair adds a header and a body hero to a footer-only plan,
+      and there is no content for either — so the substitution and the drop
+      path are both exercised by the same one-section plan.
+    */
+    expect(composed.composition.droppedSectionCount).toBe(2);
+  });
+
+  it("swaps a feature list with no features for the article its prose does fit", () => {
+    const composed = composePlan([
+      {
+        templateId: "feature-list",
+        params: { headline: "Focus & Tech", body: "React, Node, and a great deal of teaching." },
+      },
+    ]);
+    const result = applyOperations(createEmptyDocument(), composed.ops);
+    expect(result.isOk).toBe(true);
+    if (!result.isOk) throw new Error("compose failed");
+    const text = getAllText(result.doc);
+    expect(text).toContain("Focus & Tech");
+    expect(text).toContain("React, Node, and a great deal of teaching.");
+    for (const title of readSampleList({
+      templateId: "feature-list",
+      param: "features",
+      field: "title",
+    })) {
+      expect(text).not.toContain(title);
+    }
+    expect(composed.composition.substitutedSectionCount).toBe(1);
+  });
+
+  /*
+    Substitution alone cannot save the wesbos page: `testimonial` needs a
+    quote, `testimonial-columns` needs several, `stats` needs numbers, and the
+    scrape had none of the three. So the drop path is not a fallback, it is
+    required.
+  */
+  it("drops a social-proof section outright when the whole category is unsatisfiable", () => {
+    const resolutions = resolveSectionsToAvailableContent([
+      { templateId: "testimonial", params: { role: "Host of Syntax" } },
+    ]);
+    expect(resolutions).toEqual([{ outcome: "dropped", plannedTemplateId: "testimonial" }]);
+  });
+
+  it("leaves a section the content already fits exactly where it was", () => {
+    const resolutions = resolveSectionsToAvailableContent([
+      { templateId: "hero", params: { headline: "About Wes Bos", body: "Twenty-six years of it." } },
+    ]);
+    expect(resolutions).toEqual([
+      {
+        outcome: "kept",
+        section: {
+          templateId: "hero",
+          params: { headline: "About Wes Bos", body: "Twenty-six years of it." },
+        },
+      },
+    ]);
+  });
+
+  /*
+    The fixture has to carry a param the SUBSTITUTE cannot take, or it proves
+    nothing: `article` is a strict schema, so an unprojected `features` array
+    would be rejected at build time and the section would vanish silently
+    instead of carrying the plan's prose across.
+  */
+  it("hands the substitute only the params it accepts, never the ones it does not", () => {
+    const resolutions = resolveSectionsToAvailableContent([
+      {
+        templateId: "feature-columns",
+        params: {
+          headline: "Focus & Tech",
+          body: "Prose the columns template cannot render.",
+          features: [{ title: "React", body: "One feature is not a set of columns." }],
+        },
+      },
+    ]);
+    expect(resolutions).toEqual([
+      {
+        outcome: "substituted",
+        plannedTemplateId: "feature-columns",
+        section: {
+          templateId: "article",
+          params: {
+            headline: "Focus & Tech",
+            body: "Prose the columns template cannot render.",
+          },
+        },
+      },
+    ]);
   });
 });

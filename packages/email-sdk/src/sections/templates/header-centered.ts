@@ -51,6 +51,14 @@ export const headerCenteredTemplate = defineSectionTemplate({
     "Open the email with a centered brand lockup: the logo on its own line with navigation links centered beneath it.",
   paramsSchema: headerCenteredParamsSchema,
   /*
+    Same substance as `header`: the sender's name, and nothing else is a claim.
+  */
+  contentRequirements: {
+    copyParams: ["brandName"],
+    listParams: [],
+    imageCount: 1,
+  },
+  /*
     imageSrc is for programmatic callers only (a rehosted image URL from the
     content-ingestion pipeline) — never for the model.
   */

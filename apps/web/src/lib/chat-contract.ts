@@ -416,8 +416,19 @@ export interface CreatedDraftReport {
   plannedSectionCount: number;
   /** Sections filled from the draft the user is looking at. */
   carriedOverSectionCount: number;
-  /** Sections left showing the section template's sample copy. */
+  /**
+   * Sections left showing the section template's sample copy.
+   *
+   * STRUCTURALLY ZERO since composition stopped letting a template's
+   * `.default()` stand in as content. Kept because the shape is the model's
+   * only account of what landed, and a count that silently disappeared would
+   * read as "this never happens" rather than "this can no longer happen".
+   */
   templateDefaultSectionCount: number;
+  /** Sections rebuilt as a different template because the planned one did not fit the copy. */
+  substitutedSectionCount: number;
+  /** Sections left out of the draft because nothing in their category fitted the copy. */
+  droppedSectionCount: number;
 }
 
 /** What a createDraft call actually did, written by the browser that did it. */

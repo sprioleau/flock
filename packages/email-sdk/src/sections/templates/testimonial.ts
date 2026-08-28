@@ -35,6 +35,14 @@ export const testimonialTemplate = defineSectionTemplate({
   category: "social-proof",
   useWhen: "Add social proof with one customer quote and its attribution.",
   paramsSchema: testimonialParamsSchema,
+  /*
+    THE MOTIVATING INCIDENT. A quote and a name are an endorsement by a specific person; defaulted, they are an endorsement by a person who does not exist.
+  */
+  contentRequirements: {
+    copyParams: ["quote", "attribution"],
+    listParams: [],
+    imageCount: 0,
+  },
   build: ({ params, random }) => {
     const composer = createSectionComposer(random);
     composer.addLeaf({

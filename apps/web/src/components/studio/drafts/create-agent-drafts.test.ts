@@ -88,6 +88,7 @@ const SOURCE_STRINGS = [SOURCE_HEADLINE, SOURCE_BODY, SOURCE_LATER_HEADLINE, SOU
 
 /** The model's own copy for the ONE section it bothered to fill in. */
 const PORTFOLIO_HEADLINE = "Hi, I'm San'Quan Prioleau";
+const PORTFOLIO_BODY = "Staff Software Engineer, writing about the web from Atlanta.";
 
 /** Deterministic ids so a composed document is byte-stable across runs. */
 function createSeededRandom(seed: number): () => number {
@@ -119,7 +120,13 @@ function buildSourceDoc(): EmailDocument {
               templateId: "article",
               params: { headline: SOURCE_LATER_HEADLINE, body: SOURCE_LATER_BODY },
             },
-            { templateId: "footer" },
+            /*
+              A real company name, because composition now DROPS a section
+              nothing fills. A paramless footer would leave this source three
+              sections long, which silently collapses the supporting-copy
+              window every carry-over assertion below depends on.
+            */
+            { templateId: "footer", params: { companyName: "Draft One Co" } },
           ],
         },
       ],
@@ -144,7 +151,13 @@ const UNDER_FILLED_PORTFOLIO_PLAN: CreateDraftInput = {
       name: "San'Quan Prioleau - Portfolio",
       sections: [
         { templateId: "header" },
-        { templateId: "hero", params: { headline: PORTFOLIO_HEADLINE } },
+        /*
+          The hero carries BOTH the params it requires, so it survives and the
+          model's own copy is still observable. The other three are left empty
+          on purpose: that is the under-filling this fixture exists to model,
+          and composition now drops them rather than inventing their copy.
+        */
+        { templateId: "hero", params: { headline: PORTFOLIO_HEADLINE, body: PORTFOLIO_BODY } },
         { templateId: "article" },
         { templateId: "footer" },
       ],
@@ -237,7 +250,16 @@ describe("a draft composed in a turn that ingested a source", () => {
     expect(text).toContain(PORTFOLIO_HEADLINE);
   });
 
-  it("reports the sections that fell back to sample copy instead of claiming them", async () => {
+  /*
+    This used to assert the sections were "showing SAMPLE text". That outcome
+    is now impossible: composition refuses to let a template's `.default()`
+    stand in as content. The GUARANTEE the test was written for is unchanged —
+    a partial outcome must be reported as partial, never claimed as whole — so
+    it now pins the shortfall that actually happens, which is that the sections
+    are not in the draft at all. Left claiming nothing, the model would happily
+    describe an article and a footer that do not exist.
+  */
+  it("reports the sections it left out instead of claiming them", async () => {
     const t = createBackend();
     const outcome = await runCreateDraft({ t, hasIngestedSource: true });
 
@@ -248,8 +270,10 @@ describe("a draft composed in a turn that ingested a source", () => {
       plannedSectionCount: 1,
       carriedOverSectionCount: 0,
     });
-    /* header, article and footer had no copy in the plan. */
-    expect(draft!.templateDefaultSectionCount).toBe(3);
+    /* header, article and footer had no copy in the plan, and none of them survived. */
+    expect(draft!.droppedSectionCount).toBe(3);
+    /* Nothing was invented to fill them — that is the whole point. */
+    expect(draft!.templateDefaultSectionCount).toBe(0);
 
     /*
       The sentence the model is entitled to say. A partial outcome rides the
@@ -261,7 +285,8 @@ describe("a draft composed in a turn that ingested a source", () => {
     expect(output.createdDrafts.map((created) => created.name)).toEqual([
       "San'Quan Prioleau - Portfolio",
     ]);
-    expect(output.note).toContain("SAMPLE text");
+    expect(output.note).toContain("NOT in the draft");
+    expect(output.note).not.toContain("SAMPLE text");
     expect(output.note).toContain("Do NOT call createDraft again");
   });
 });
