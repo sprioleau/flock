@@ -154,8 +154,16 @@ describe("emailActionRegistry", () => {
     would put the server back to reporting a history step it never took, which
     is exactly how the agent came to say "I've undone that change for you" over
     an unchanged draft.
+
+    The split is not a taxonomy of "UI-ish" actions — it is a question about
+    each action's OUTCOME: can the server observe it? showPreview and openPanel
+    are server-result because their command IS the whole outcome; there is no
+    fact about them the browser could contradict. undo, redo and createDraft
+    are client-result because their outcome is a fact the server cannot see —
+    whether a history step existed to take, and which drafts landed under which
+    (deduped) names with which sections carrying real copy.
   */
-  it("declares undo and redo as client-result actions and the rest as server", () => {
+  it("declares the actions whose outcome only the browser can see as client-result", () => {
     const resultSourceByName = Object.fromEntries(
       editorEmailActions.map((action) => [action.name, action.resultSource]),
     );
@@ -167,9 +175,46 @@ describe("emailActionRegistry", () => {
       undo: "client",
       redo: "client",
       goToVersion: "server",
-      createDraft: "server",
+      createDraft: "client",
       createPersona: "server",
     });
+  });
+
+  /*
+    The declaration and the RUN must agree, or the flip is cosmetic. A
+    client-result editor action's `run` may only produce an intent for the
+    browser to carry out — never a report of an outcome — because nothing has
+    happened yet at the moment it returns. createDraft's run resolves the
+    command; it says nothing about drafts, names, or sections.
+  */
+  it("gives client-result actions a run that states intent, not outcome", () => {
+    const clientResultActions = editorEmailActions.filter(
+      (action) => action.resultSource === "client",
+    );
+    expect(clientResultActions.map((action) => action.name)).toEqual([
+      "undo",
+      "redo",
+      "createDraft",
+    ]);
+    const dispatched = dispatchEditorAction({
+      registry: emailActionRegistry,
+      name: "createDraft",
+      input: {
+        drafts: [
+          { name: "Portfolio", sections: [{ templateId: "hero", params: { headline: "Hello" } }] },
+        ],
+      },
+      context: agentContext,
+    });
+    expect(dispatched.isOk).toBe(true);
+    if (!dispatched.isOk) return;
+    /* An intent the browser will carry out — no createdDrafts, no note. */
+    expect(Object.keys(dispatched.command).sort()).toEqual([
+      "count",
+      "drafts",
+      "shouldInheritTheme",
+      "type",
+    ]);
   });
 
   it("generates a tool definition for every action", () => {

@@ -413,28 +413,26 @@ export const createDraftAction = defineEmailAction({
   schema: createDraftInputSchema,
   readOnly: false, // adds drafts to the user's canvas
   /*
-    KNOWN GAP, and the remaining half of a fix: the drafts are built in the
-    BROWSER, so only the browser knows what landed -- how many drafts were
-    created, the names actually allocated (they are deduped, so often not the
-    ones asked for), and whether each section carried real copy or fell back to
-    its template's sample text. The compact model-facing note is still composed
-    server-side from the PLAN, so it can describe drafts it merely intended.
+    The drafts are built in the BROWSER, so only the browser knows what landed
+    -- how many drafts were created, the names actually allocated (they are
+    deduped, so often not the ones asked for), and whether each section carried
+    real copy or fell back to its template's sample text. `run` below returns
+    an INTENT, not an outcome; nothing has happened when it returns.
 
-    The client half is BUILT AND DORMANT: create-draft-report.ts composes the
-    honest note, createAgentDrafts returns real names plus per-draft
-    composition counts, and runClientResultEditorTool is ready to report it.
-    Flipping this one word to "client" activates all of it.
+    So the server is not entitled to answer this call. It streams the call and
+    stops: no execute, and therefore no `data-editor-command` verdict either.
+    The browser reports what it observed -- createAgentDrafts returns the real
+    names plus per-draft composition counts, create-draft-report.ts turns them
+    into the model-facing note, and runClientResultEditorTool sends it.
 
-    What stops the flip today is routing coverage, not the mechanism. Going
-    client-result makes tools.ts stop writing the editor-command data part, so
-    five create-draft-composition tests that assert that part -- the only
-    coverage proving a composed plan reaches the browser at all -- go silent,
-    and builtins.test.ts pins the exact server/client split. Those tests must
-    be re-pointed at the onToolCall route and proven to still catch a plan that
-    never lands, BEFORE the word changes. Re-pointing them to chase green would
-    delete the evidence that composition works.
+    This declaration is what routes the call (chat/tools.ts branches on it), so
+    the two paths can never both run. Declaring it "server" again would put the
+    old note back: one composed from the PLAN, accurate about what the model
+    MEANT to build and structurally incapable of being wrong about it -- which
+    is how the agent came to describe the section catalog's sample email as
+    "built directly from your website".
   */
-  resultSource: "server",
+  resultSource: "client",
   parallelSafe: false, // draft names are allocated sequentially
   needsApproval: false,
   run: (input): CreateDraftCommand => resolveCreateDraftCommand(input),

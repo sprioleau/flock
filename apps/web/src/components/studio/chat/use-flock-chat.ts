@@ -91,9 +91,10 @@ const CONTENT_TOOL_NAMES: ReadonlySet<string> = new Set(
 
 /*
   Editor actions the CLIENT is the result-source for (`resultSource: "client"`
-  in the SDK): undo and redo. They reach `onToolCall` like a content op, and
-  the browser — the only party that can ask Convex whether a history step
-  exists — writes the tool result.
+  in the SDK): undo, redo and createDraft. They reach `onToolCall` like a
+  content op, and the browser — the only party that can ask Convex whether a
+  history step exists, or which drafts landed under which names — writes the
+  tool result.
 
   Derived from the registry rather than listed here, for the same reason
   CONTENT_TOOL_NAMES is: the SDK stays the one place an action is declared,
@@ -420,19 +421,21 @@ function createFlockChatController(): FlockChatController {
         applyGeneratedImageCommand(command);
         return;
       }
-      // createPersona / createDraft are SESSION-level commands (personas and
-      // drafts belong to the browser session/canvas, not to one draft), so a
-      // mid-turn draft switch never drops them. createPersona was already
-      // executed server-side; the client's only job is to enable the new
-      // persona locally — exactly what the picker's create form does.
+      // createPersona is a SESSION-level command (personas belong to the
+      // browser session, not to one draft), so a mid-turn draft switch never
+      // drops it. It was already executed server-side; the client's only job
+      // is to enable the new persona locally — exactly what the picker's
+      // create form does.
+      //
+      // createDraft used to be handled here too, off a server-written command
+      // part. It is now client-result: no such part is written, and the call
+      // is answered in `runClientResultEditorTool` by the browser that built
+      // the drafts. A branch here would be a second route to the same work,
+      // and the whole point is that there is only one.
       if (command.type === "createPersona") {
         if (command.slug !== undefined) {
           setPersonaEnabled({ slug: command.slug, isEnabled: true });
         }
-        return;
-      }
-      if (command.type === "createDraft") {
-        void createDrafts(command);
         return;
       }
       /*
@@ -569,15 +572,14 @@ function createFlockChatController(): FlockChatController {
       per draft whether its copy came from the plan, from the draft the user
       is looking at, or from the template's sample text.
 
-      DORMANT UNTIL THE SDK DECLARES IT. `createDraft` is still
-      `resultSource: "server"` in packages/email-sdk/src/actions/builtins.ts,
-      so today it never reaches `onToolCall` — the server answers with its
-      dispatch echo and the browser executes the command from the data part in
-      `onData` below, reporting nothing. Flipping that one declaration to
-      "client" is the whole remaining change: the server then writes no data
-      part, the call arrives here instead, and this branch is the only thing
-      that answers for it. Both routes never run at once, because the same
-      declaration decides which one the call takes.
+      THIS BRANCH IS THE ONLY THING THAT ANSWERS FOR createDraft. It is
+      declared `resultSource: "client"` in the SDK's actions/builtins.ts, so
+      the server registers no execute and writes no `data-editor-command`
+      part: the call arrives here, and the composition plan reaches the drafts
+      machinery only through the `input` dispatched above. There is no second
+      route to fall back on — returning without reporting leaves the model
+      with an open tool call, which is the honest state, where the old server
+      route left it with a success nobody had verified.
     */
     if (dispatched.command.type === "createDraft") {
       const command = dispatched.command;

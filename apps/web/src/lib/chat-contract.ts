@@ -431,16 +431,14 @@ export interface CreateDraftReport {
 }
 
 /*
-  IN TRANSITION, deliberately visible. `createDraft` is still declared
-  `resultSource: "server"` in the SDK, so today the server's dispatch echo
-  ({@link EditorToolOutput}) is what reaches the model; the browser-written
-  {@link CreateDraftReport} takes over the moment that declaration flips to
-  "client", at which point the `EditorToolOutput` arm here is dead and should
-  be deleted with it. Both arms are listed rather than one being asserted,
-  because a contract that describes a wire nobody is putting that shape on is
-  not a contract.
+  The ONLY shape a createDraft call answers with. `createDraft` is declared
+  `resultSource: "client"` in the SDK, so the server writes no dispatch echo
+  for it at all — the browser that built the drafts composes this report and
+  is the sole author of the result. The former `EditorToolOutput` arm was the
+  server answering for work it could not see, and it is gone with the route
+  that produced it.
 */
-export type CreateDraftToolOutput = CreateDraftReport | EditorToolOutput;
+export type CreateDraftToolOutput = CreateDraftReport;
 
 /**
  * Tool output returned by ANALYSIS actions (kind: "analysis") — executed

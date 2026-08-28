@@ -10,8 +10,11 @@ import { runChatPipeline } from "./pipeline";
  * Agent-parity UI actions through the REAL pipeline (streamText → editor
  * dispatch → data-editor-command writes), driven by the scripted mock:
  *
- * - openPanel / undo / redo / createDraft execute server-side and write one
- *   typed `data-editor-command` part for the client dispatcher.
+ * - openPanel executes server-side and writes one typed `data-editor-command`
+ *   part for the client dispatcher.
+ * - undo / redo / createDraft are CLIENT-RESULT actions: the server streams
+ *   the call and answers for nothing, because only the browser can see the
+ *   outcome. No command part, and no tool output.
  * - goToVersion is approval-gated: the turn halts with a tool-approval
  *   request and NO command is written until the human approves.
  *
@@ -127,16 +130,27 @@ describe("agent-parity UI actions through the chat pipeline", () => {
     expect(result.streamedChunkTypes).toContain("tool-approval-request");
   });
 
-  it("createDraft resolves its count and streams the command", async () => {
+  /*
+    createDraft joined undo/redo as a CLIENT-RESULT action for the same
+    reason: the drafts are built in the browser, so only the browser knows
+    what landed — how many, under which names (they are deduped), and whether
+    each section carried real copy or fell back to its template's sample text.
+    The server streams the call and answers for nothing. Its resolved count
+    reaches the client in the call's INPUT, asserted end to end in
+    create-draft-composition.test.ts, rather than in a command part the server
+    wrote about drafts it never saw land.
+  */
+  it("never answers for a createDraft the server did not perform", async () => {
     const single = await runPipelineProbe("Create a new blank draft");
-    expect(getEditorCommands(single)).toEqual([
-      { type: "createDraft", count: 1, shouldInheritTheme: true },
-    ]);
+    expect(getEditorCommands(single)).toEqual([]);
+    expect(single.streamedChunkTypes).toContain("tool-input-available");
+    expect(single.streamedChunkTypes).not.toContain("tool-output-available");
+    /* Silence is not a hang: the turn still ends, awaiting the client's report. */
+    expect(single.streamedChunkTypes).toContain("finish");
 
     const several = await runPipelineProbe("Create 3 new blank drafts to compare");
-    expect(getEditorCommands(several)).toEqual([
-      { type: "createDraft", count: 3, shouldInheritTheme: true },
-    ]);
+    expect(getEditorCommands(several)).toEqual([]);
+    expect(several.streamedChunkTypes).not.toContain("tool-output-available");
   });
 
   it("createPersona without a Convex deployment fails the tool call, not the turn", async () => {

@@ -3,6 +3,8 @@ import {
   buildComposedDrafts,
   createEmptyDocument,
   createStarterDocument,
+  dispatchEditorAction,
+  emailActionRegistry,
   ROOT_BLOCK_ID,
   type CreateDraftCommand,
   type EmailDocument,
@@ -26,14 +28,28 @@ import { runChatPipeline } from "./pipeline";
  * way to produce content about X was to rewrite the draft on screen, which is
  * exactly what users saw happen to their work.
  *
- * These tests run the REAL pipeline (streamText → editor dispatch →
- * data-editor-command) and then the REAL client-side build (the SDK
- * translation the drafts executor runs), so what they assert is what lands in
- * the new draft.
+ * These tests run the REAL pipeline (streamText → the streamed tool call) and
+ * then the REAL client-side path (`dispatchEditorAction` on the call's input,
+ * then the SDK translation the drafts executor runs), so what they assert is
+ * what lands in the new draft.
+ *
+ * THE ROUTE THEY TAKE IS ITSELF LOAD-BEARING. `createDraft` is a CLIENT-RESULT
+ * editor action: the drafts are built in the browser, so the server streams
+ * the call and writes nothing else — no `data-editor-command` verdict and no
+ * tool output. The plan therefore reaches the drafts machinery only as the
+ * tool call's INPUT. Reading it from anywhere else would be reading something
+ * the browser never sees.
  */
+
+interface StreamedToolCall {
+  toolName: string;
+  input: unknown;
+}
 
 interface ProbeResult {
   writtenParts: { type: string; data?: unknown }[];
+  streamedChunkTypes: string[];
+  toolCalls: StreamedToolCall[];
   toolOutputs: unknown[];
 }
 
@@ -67,6 +83,8 @@ async function runPipelineProbe({
     writer,
   });
 
+  const streamedChunkTypes: string[] = [];
+  const toolCalls: StreamedToolCall[] = [];
   const toolOutputs: unknown[] = [];
   const reader = (mergedStream as unknown as ReadableStream<unknown>).getReader();
   for (;;) {
@@ -74,21 +92,49 @@ async function runPipelineProbe({
     if (done) {
       break;
     }
-    const chunk = value as { type: string; output?: unknown };
+    const chunk = value as { type: string; toolName?: string; input?: unknown; output?: unknown };
+    streamedChunkTypes.push(chunk.type);
+    if (chunk.type === "tool-input-available") {
+      toolCalls.push({ toolName: chunk.toolName ?? "", input: chunk.input });
+    }
     if (chunk.type === "tool-output-available") {
       toolOutputs.push(chunk.output);
     }
   }
-  return { writtenParts, toolOutputs };
+  return { writtenParts, streamedChunkTypes, toolCalls, toolOutputs };
 }
 
+/*
+  The command as the BROWSER derives it: the streamed call's input, put back
+  through the SDK dispatcher exactly as `runClientResultEditorTool` does — same
+  registry, same full-schema re-validation, same authorization gate. Anything
+  the server wrote instead would be a verdict on drafts it never built, so this
+  also pins that it wrote nothing.
+*/
 function getCreateDraftCommand(result: ProbeResult): CreateDraftCommand {
-  const commands = result.writtenParts
-    .filter((part) => part.type === "data-editor-command")
-    .map((part) => (part.data as { command: CreateDraftCommand }).command);
-  expect(commands).toHaveLength(1);
-  expect(commands[0]!.type).toBe("createDraft");
-  return commands[0]!;
+  expect(result.writtenParts.filter((part) => part.type === "data-editor-command")).toEqual([]);
+  const calls = result.toolCalls.filter((call) => call.toolName === "createDraft");
+  expect(calls).toHaveLength(1);
+  const dispatched = dispatchEditorAction({
+    registry: emailActionRegistry,
+    name: "createDraft",
+    input: calls[0]!.input,
+    context: {
+      caller: "tool",
+      author: "agent",
+      authorId: "chat-test",
+      batchId: "batch-test",
+      threadId: "chat-test",
+    },
+  });
+  if (!dispatched.isOk) {
+    throw new Error(`createDraft did not dispatch: ${JSON.stringify(dispatched.errors)}`);
+  }
+  const { command } = dispatched;
+  if (command.type !== "createDraft") {
+    throw new Error(`expected a createDraft command, got "${command.type}"`);
+  }
+  return command;
 }
 
 /** Build the new drafts exactly as the client executor does. */
@@ -273,19 +319,29 @@ describe("a new draft with content, through the chat pipeline", () => {
     expect(buildComposedDrafts({ sourceDoc, command })).toEqual([]);
   });
 
-  it("reports a compact result to the model instead of echoing the whole plan", async () => {
+  /*
+    THE HONESTY PROPERTY, at the seam where the lie was written.
+
+    The server used to answer this call itself, with a note composed from the
+    PLAN it had just received — accurate about what the model MEANT to build
+    and structurally incapable of being wrong about it. That is how the agent
+    came to say "built directly from your website, with your portrait image
+    and background included" over the section catalog's sample email.
+
+    So the server now produces NO verdict: it streams the call and stops. The
+    only thing that may answer is the browser that built the drafts, from what
+    it observed (see lib/create-draft-report.ts).
+  */
+  it("never answers for a draft the server did not create", async () => {
     const result = await runPipelineProbe({
       lastUserText: "Create a new draft about our spring sale",
       doc: createSourceDraft(),
     });
-    const output = result.toolOutputs.at(-1) as {
-      status: string;
-      command: CreateDraftCommand;
-      note?: string;
-    };
-    expect(output.status).toBe("dispatched");
-    expect(output.command.drafts).toBeUndefined();
-    expect(output.note).toContain("Created 1 new draft");
-    expect(output.note).toContain("current draft is untouched");
+    expect(result.streamedChunkTypes).toContain("tool-input-available");
+    expect(result.streamedChunkTypes).not.toContain("tool-output-available");
+    expect(result.writtenParts.filter((part) => part.type === "data-editor-command")).toEqual([]);
+    expect(result.toolOutputs).toEqual([]);
+    /* Silence is not a hang: the turn still ends, awaiting the browser's report. */
+    expect(result.streamedChunkTypes).toContain("finish");
   });
 });

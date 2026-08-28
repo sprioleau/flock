@@ -57,9 +57,10 @@ import { sendTestEmailWithResend } from "./send-test-email";
  *   output ({status:"dispatched"}) closes the tool-call loop so the model can
  *   confirm the result.
  *
- * - EDITOR actions with `resultSource: "client"` (undo, redo) get NO execute()
- *   here at all — see the branch below. The server cannot know whether a
- *   history step existed to take, so it must not answer for one.
+ * - EDITOR actions with `resultSource: "client"` (undo, redo, createDraft) get
+ *   NO execute() here at all — see the branch below. The server cannot know
+ *   whether a history step existed to take, or which drafts landed under which
+ *   names, so it must not answer for either.
  *
  * - ANALYSIS actions (getBlockDetails, §9.4 catalog-lookup) execute
  *   server-side against THIS REQUEST'S document and return their JSON result
@@ -389,16 +390,19 @@ export function buildChatTools({
       tools[definition.name] = ingestionTool;
     } else if (action.kind === "editor" && action.resultSource === "client") {
       /*
-        CLIENT-RESULT editor actions (undo, redo): schema-only, exactly like a
-        content op. The call streams to the browser, which performs the real
-        history mutation and writes the tool result with `addToolOutput`.
+        CLIENT-RESULT editor actions (undo, redo, createDraft): schema-only,
+        exactly like a content op. The call streams to the browser, which does
+        the real work — the history mutation, or building the drafts — and
+        writes the tool result with `addToolOutput`.
 
         The server is deliberately silent here — no execute, and therefore no
         `data-editor-command` part either. This is the whole fix: an editor
         `run` returns a command DESCRIBING what should happen, and streaming
         that back as the tool result told the model an undo had succeeded
         before the browser had attempted anything. The agent then said "I've
-        undone that change for you" over an unchanged draft. A result the
+        undone that change for you" over an unchanged draft, and — from a note
+        composed server-side out of the PLAN — described the section catalog's
+        sample email as "built directly from your website". A result the
         server cannot verify is not a result it may send.
       */
       tools[definition.name] = schemaOnlyTool;
@@ -494,21 +498,14 @@ export function buildChatTools({
             id: toolCallId,
             data: { toolCallId, command },
           });
-          // A composed createDraft's plan can run to several complete emails.
-          // The CLIENT needs all of it (above); the model does not — echoing
-          // it back would re-bill every section it just wrote, on every
-          // continuation round. It gets the count and the names instead.
-          if (command.type === "createDraft" && command.drafts !== undefined) {
-            const draftNames = command.drafts
-              .map((draft, index) => draft.name ?? `draft ${index + 1}`)
-              .join(", ");
-            const { drafts: _plan, ...compactCommand } = command;
-            return {
-              status: "dispatched",
-              command: compactCommand,
-              note: `Created ${command.count} new draft${command.count === 1 ? "" : "s"} (${draftNames}) in the drafts bar, each a complete email. The user's current draft is untouched. Tell them what each new draft is; do not re-create them.`,
-            };
-          }
+          /*
+            createDraft used to be special-cased here, returning a note composed
+            from the PLAN ("Created 2 new drafts (…), each a complete email").
+            It is client-result now and never reaches this branch: the note it
+            wrote was a claim about drafts the server never saw land, which is
+            the whole reason the action moved. The honest note is composed in
+            the browser — see lib/create-draft-report.ts.
+          */
           return {
             status: "dispatched",
             command,

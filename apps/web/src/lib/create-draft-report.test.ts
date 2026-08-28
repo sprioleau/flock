@@ -13,17 +13,17 @@ import {
   note composed from the plan cannot represent a shortfall at all.
 */
 
+/** A draft whose every section came from the model's own plan. */
+const FULLY_PLANNED = {
+  plannedSectionCount: 4,
+  carriedOverSectionCount: 0,
+  templateDefaultSectionCount: 0,
+};
+
 function outcome(overrides: Partial<CreateDraftOutcome> = {}): CreateDraftOutcome {
   return {
     requestedCount: 1,
-    createdDrafts: [
-      {
-        name: "Portfolio",
-        plannedSectionCount: 4,
-        carriedOverSectionCount: 0,
-        templateDefaultSectionCount: 0,
-      },
-    ],
+    createdDrafts: [{ name: "Portfolio", ...FULLY_PLANNED }],
     isComposed: true,
     isSourceCopyCarryOverAllowed: false,
     failureNotice: null,
@@ -82,6 +82,74 @@ describe("toCreateDraftToolOutput", () => {
     expect(thin.note).toContain("3 sections");
     expect(thin.note).toContain("SAMPLE text");
     expect(thin.note).not.toContain("built from the copy you passed");
+  });
+
+  /*
+    THE SENTENCE THAT SENT THE USER LOOKING FOR A DRAFT THAT WAS NOT THERE.
+    Draft names are deduped per canvas as they are ALLOCATED, so the name the
+    model asked for and the name in the drafts bar are routinely different
+    strings. The note may therefore only quote names that came back from the
+    browser, and must say out loud that they can differ from the ones asked
+    for — otherwise the agent confidently names a draft nobody can find.
+  */
+  it("quotes the names the drafts bar actually allocated, not the ones asked for", () => {
+    const output = toCreateDraftToolOutput(
+      outcome({
+        requestedCount: 3,
+        createdDrafts: [
+          { name: "Portfolio 2", ...FULLY_PLANNED },
+          { name: "Portfolio 3", ...FULLY_PLANNED },
+          { name: "Bold launch", ...FULLY_PLANNED },
+        ],
+      }),
+    );
+    expect(output.note).toContain('"Portfolio 2", "Portfolio 3" and "Bold launch"');
+    expect(output.note).toContain("may not be the names you asked for");
+    expect(output.createdDrafts.map((created) => created.name)).toEqual([
+      "Portfolio 2",
+      "Portfolio 3",
+      "Bold launch",
+    ]);
+    /* Three asked for, three landed — no shortfall language. */
+    expect(output.note).toContain("Created 3 new drafts");
+    expect(output.note).toContain("current draft is untouched");
+    expect(output.note).not.toContain("Only 3 of the");
+  });
+
+  /*
+    Provenance is a fact about the WHOLE call, not about its first draft. A
+    report that looked only at `createdDrafts[0]` would describe this call as
+    fully written by the model, which is exactly the claim the user caught
+    being false.
+  */
+  it("counts sample copy and carried-over copy across every draft in the call", () => {
+    const output = toCreateDraftToolOutput(
+      outcome({
+        requestedCount: 3,
+        isSourceCopyCarryOverAllowed: true,
+        createdDrafts: [
+          { name: "Written", ...FULLY_PLANNED },
+          {
+            name: "Thin",
+            plannedSectionCount: 1,
+            carriedOverSectionCount: 0,
+            templateDefaultSectionCount: 2,
+          },
+          {
+            name: "Borrowed",
+            plannedSectionCount: 1,
+            carriedOverSectionCount: 3,
+            templateDefaultSectionCount: 0,
+          },
+        ],
+      }),
+    );
+    expect(output.note).toContain("2 sections");
+    expect(output.note).toContain("SAMPLE text");
+    expect(output.note).toContain("3 sections");
+    expect(output.note).toContain("filled from the draft the user is already looking at");
+    /* And the call as a whole may NOT be described as fully written. */
+    expect(output.note).not.toContain("Every section was built from the copy you passed");
   });
 
   it("names carried-over copy as the user's own, not as new writing", () => {
