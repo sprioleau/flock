@@ -8,7 +8,7 @@ import {
   buildVariationBrief,
   countSourceSections,
   expandGenerationBriefPart,
-  hasSourceThemeApplied,
+  resolveVariationThemeState,
   VARIATION_MAX_TEXT_CHARS,
 } from "./generation-brief";
 
@@ -167,7 +167,7 @@ describe("buildVariationBrief", () => {
   });
 });
 
-describe("hasSourceThemeApplied", () => {
+describe("resolveVariationThemeState", () => {
   /** The blank draft the variation streams into, wearing `globals`. */
   function createTargetDocument(globals: Record<string, string>): EmailDocument {
     const doc = createEmptyDocument();
@@ -181,31 +181,59 @@ describe("hasSourceThemeApplied", () => {
   it("reports the seeded theme as applied", () => {
     // What DraftSelector's applyTheme op produces when it lands.
     expect(
-      hasSourceThemeApplied({
+      resolveVariationThemeState({
         sourceDoc: createPersonalSourceDocument(),
         targetDoc: createTargetDocument({ emailBackgroundColor: "#1b1035" }),
       }),
-    ).toBe(true);
+    ).toBe("source-theme");
   });
 
   it("reports a FAILED seed, so the model is told to match the look itself", () => {
     // The whole reason this is derived server-side: the client could only
     // report what it intended, this reports what is actually on the draft.
     expect(
-      hasSourceThemeApplied({
+      resolveVariationThemeState({
         sourceDoc: createPersonalSourceDocument(),
         targetDoc: createEmptyDocument(),
       }),
-    ).toBe(false);
+    ).toBe("unthemed");
   });
 
   it("counts a source on the shared defaults as a match with nothing to copy", () => {
     expect(
-      hasSourceThemeApplied({
+      resolveVariationThemeState({
         sourceDoc: createStarterDocument(),
         targetDoc: createEmptyDocument(),
       }),
-    ).toBe(true);
+    ).toBe("source-theme");
+  });
+
+  it("tells a DELIBERATELY varied theme apart from a failed seed", () => {
+    /*
+      Both leave the target wearing something other than the source's theme,
+      and the model must be told opposite things about them: keep the recolour
+      in one, undo it in the other. Distinguishing them is the whole reason
+      this returns three states instead of a boolean.
+    */
+    expect(
+      resolveVariationThemeState({
+        sourceDoc: createPersonalSourceDocument(),
+        targetDoc: createTargetDocument({ emailBackgroundColor: "#f1e8da" }),
+      }),
+    ).toBe("varied-theme");
+  });
+
+  it("counts a themed draft built from an UNTHEMED source as varied", () => {
+    /*
+      Varying works against the shared defaults too — the picker offers kit
+      themes to a source that has none, and "nothing to copy" would be wrong.
+    */
+    expect(
+      resolveVariationThemeState({
+        sourceDoc: createStarterDocument(),
+        targetDoc: createTargetDocument({ emailBackgroundColor: "#0b1120" }),
+      }),
+    ).toBe("varied-theme");
   });
 });
 
@@ -358,7 +386,7 @@ describe("buildDesignVariationPrompt", () => {
     sourceDraftName: "Launch email",
     sourceBrief: buildVariationBrief(createPersonalSourceDocument()),
     sourceSectionCount: 6,
-    hasSourceTheme: true,
+    themeState: "source-theme" as const,
     direction: "",
   };
 
@@ -377,8 +405,28 @@ describe("buildDesignVariationPrompt", () => {
     expect(prompt).not.toMatch(/different theme or visual feel/i);
   });
 
+  it("never tells the agent to restore the source's colours over a VARIED theme", () => {
+    /*
+      The failure this pins is a prompt that fights its own seed: the draft has
+      deliberately been given another of the kit's themes, so both of the older
+      sentences — "the theme from X is already applied, keep it" and "match the
+      look and feel of X" — would read as an instruction to put the source's
+      colours back, undoing the variation the person asked for.
+    */
+    const prompt = buildDesignVariationPrompt({ ...themedInput, themeState: "varied-theme" });
+    expect(prompt).not.toMatch(/theme from "Launch email"/i);
+    expect(prompt).not.toMatch(/Match the look and feel/i);
+    expect(prompt).toMatch(/DIFFERENT theme/);
+    expect(prompt).toMatch(/part of the variation/i);
+    /*
+      Still KEEP: the seeded theme is a real kit variation this draft is now an
+      instance of, and re-picking colours would detach it.
+    */
+    expect(prompt).toMatch(/Keep it exactly as it is/);
+  });
+
   it("asks the agent to match the source's look when the theme could not be seeded", () => {
-    const prompt = buildDesignVariationPrompt({ ...themedInput, hasSourceTheme: false });
+    const prompt = buildDesignVariationPrompt({ ...themedInput, themeState: "unthemed" });
     expect(prompt).toMatch(/Match the look and feel/i);
     expect(prompt).not.toMatch(/already applied/i);
   });

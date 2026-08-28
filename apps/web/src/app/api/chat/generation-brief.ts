@@ -203,30 +203,53 @@ function readThemeGlobals(doc: EmailDocument): GlobalStyles {
 }
 
 /**
- * Whether the variation's draft is ALREADY wearing the source's theme.
+ * Which of three ways the variation's blank draft has already been themed.
+ *
+ * - `source-theme` — it wears the source's own theme (or both drafts sit on
+ *   the shared defaults, which renders identically with nothing to copy).
+ * - `varied-theme` — it wears a DIFFERENT theme on purpose: one of the brand
+ *   kit's other variations, picked by `pickVariationTheme` so a "design
+ *   variation" varies the design rather than only the boxes.
+ * - `unthemed` — nothing landed. The seed failed, and the model is asked to
+ *   match the source's look itself.
+ */
+export type VariationThemeState = "source-theme" | "varied-theme" | "unthemed";
+
+/**
+ * How the variation's draft is themed RIGHT NOW.
  *
  * Derived here rather than trusted from the client, because the server holds
  * both documents and the client only held an intention: DraftSelector writes
- * the source globals into the new draft as one `applyTheme` op before the send,
- * and this compares the RESULT. A source on the shared defaults counts as a
- * match with nothing to copy — both drafts already render identically.
+ * one `applyTheme` op into the new draft before the send, and this compares the
+ * RESULT. That is also why the varied case has to be detected rather than
+ * flagged — a seed that silently failed must not be described to the model as
+ * a deliberate recolour.
  */
-export function hasSourceThemeApplied({
+export function resolveVariationThemeState({
   sourceDoc,
   targetDoc,
 }: {
   sourceDoc: EmailDocument;
   targetDoc: EmailDocument;
-}): boolean {
+}): VariationThemeState {
   const sourceGlobals = readThemeGlobals(sourceDoc);
-  const sourceKeys = Object.keys(sourceGlobals);
-  if (sourceKeys.length === 0) {
-    return true;
+  const targetEntries = new Map<string, unknown>(Object.entries(readThemeGlobals(targetDoc)));
+  const sourceEntries = Object.entries(sourceGlobals);
+  if (sourceEntries.length === 0) {
+    /*
+      The source is on the shared defaults. A themed target is then a varied
+      theme (the picker offers kit variations against an unthemed source too);
+      an unthemed target is the "nothing to copy" match.
+    */
+    return targetEntries.size === 0 ? "source-theme" : "varied-theme";
   }
-  const targetGlobals = readThemeGlobals(targetDoc) as Record<string, unknown>;
-  return sourceKeys.every(
-    (key) => targetGlobals[key] === (sourceGlobals as Record<string, unknown>)[key],
+  if (targetEntries.size === 0) {
+    return "unthemed";
+  }
+  const isWearingSourceTheme = sourceEntries.every(
+    ([key, value]) => targetEntries.get(key) === value,
   );
+  return isWearingSourceTheme ? "source-theme" : "varied-theme";
 }
 
 // ---------------------------------------------------------------------------
@@ -394,11 +417,11 @@ export interface DesignVariationPromptInput {
   /** {@link countSourceSections} of the source draft. 0 when it is empty. */
   sourceSectionCount: number;
   /**
-   * Whether the source draft's theme is already in place on the new draft
-   * ({@link hasSourceThemeApplied} of the two documents). False only when the
-   * seeding failed — then the model is asked to match the source's look itself.
+   * How the new draft is already themed ({@link resolveVariationThemeState} of
+   * the two documents) — the source's theme, a deliberately varied one from
+   * the brand kit, or nothing at all because the seed failed.
    */
-  hasSourceTheme: boolean;
+  themeState: VariationThemeState;
   /**
    * What the person typed in the "Anything to change?" field, verbatim and
    * unparsed. This is the ONLY channel through which "make it lighter" can
@@ -407,6 +430,30 @@ export interface DesignVariationPromptInput {
    */
   direction: string;
 }
+
+/*
+  The one sentence that tells the model what has ALREADY been done to this
+  draft's theme, per {@link VariationThemeState}.
+
+  `varied-theme` is the sentence this whole feature turned on. The variation's
+  draft is now seeded with a DIFFERENT theme from the brand kit — the owner's
+  point being that "it is a design variation after all" — and the old copy
+  ("keep the theme from X", or worse, "match the look and feel of X") would have
+  read as an instruction to undo the recolour that was the point. It still says
+  KEEP, because the theme is a real kit variation the draft is now an instance
+  of and re-picking colours would detach it; what changes is that it never
+  claims the colours came from the source.
+*/
+const VARIATION_THEME_LINES: Readonly<
+  Record<VariationThemeState, (input: { sourceDraftName: string }) => string>
+> = {
+  "source-theme": ({ sourceDraftName }) =>
+    `The theme from "${sourceDraftName}" is already applied to this draft. Keep it — same colours, same fonts, same spacing — unless the person's direction below asks for something different.`,
+  "varied-theme": () =>
+    `A DIFFERENT theme from this brand kit is already applied to this draft, and that change of colours is part of the variation — it is deliberate, not a mistake to correct. Keep it exactly as it is — same colours, same fonts, same spacing — and design the layout to suit it, unless the person's direction below asks for something different.`,
+  unthemed: ({ sourceDraftName }) =>
+    `Match the look and feel of "${sourceDraftName}" — this is a layout variation, not a recolour.`,
+};
 
 /**
  * "Add design variation": the SAME email, redesigned.
@@ -441,15 +488,13 @@ export function buildDesignVariationPrompt({
   sourceDraftName,
   sourceBrief,
   sourceSectionCount,
-  hasSourceTheme,
+  themeState,
   direction,
 }: DesignVariationPromptInput): string {
   const trimmedDirection = direction.trim();
   const sections: string[] = [
     `Design a complete email in this blank draft: a new take on "${sourceDraftName}", using that draft's own content.`,
-    hasSourceTheme
-      ? `The theme from "${sourceDraftName}" is already applied to this draft. Keep it — same colours, same fonts, same spacing — unless the person's direction below asks for something different.`
-      : `Match the look and feel of "${sourceDraftName}" — this is a layout variation, not a recolour.`,
+    VARIATION_THEME_LINES[themeState]({ sourceDraftName }),
   ];
   if (sourceBrief.length > 0) {
     sections.push(
@@ -600,7 +645,7 @@ export async function resolveGenerationBrief({
           sourceDraftName: sourceDraft.name,
           sourceBrief: buildVariationBrief(sourceDraft.doc),
           sourceSectionCount,
-          hasSourceTheme: hasSourceThemeApplied({ sourceDoc: sourceDraft.doc, targetDoc }),
+          themeState: resolveVariationThemeState({ sourceDoc: sourceDraft.doc, targetDoc }),
           direction,
         });
 

@@ -1,4 +1,10 @@
 import type { EmailDocument, GlobalStyles } from "@flock/email-sdk";
+import {
+  areGlobalsEqual,
+  getLiveThemeVariations,
+  type BrandKit,
+  type ThemeVariation,
+} from "@/lib/brand-kit";
 
 /**
  * The USER-FACING half of the drafts menu's AI generation actions ("Ideate with
@@ -113,4 +119,87 @@ export function readSourceThemeGlobals(doc: EmailDocument): GlobalStyles | null 
   }
   const globals = root.properties.globals ?? {};
   return Object.keys(globals).length > 0 ? globals : null;
+}
+
+// ---------------------------------------------------------------------------
+// Theme VARIATION
+// ---------------------------------------------------------------------------
+
+/**
+ * The theme a design variation opens wearing, or the honest admission that
+ * this kit has nothing to vary to.
+ */
+export type VariationThemePick =
+  | { isVaried: true; variation: ThemeVariation }
+  | { isVaried: false; reason: "no-alternative-theme" };
+
+/*
+  A design variation varies the THEME, not only the layout.
+
+  WHY THIS EXISTS AT ALL. Until now the variation was seeded with
+  {@link readSourceThemeGlobals} — the source's own globals, verbatim — so two
+  drafts sat side by side in the same colours with different boxes. The owner's
+  objection is the feature's name: "it is a design variation after all", and a
+  design that never changes colour is a layout variation wearing the wrong
+  label. The ORDINARY new-draft path is untouched by this: inheritance is still
+  the default everywhere else, and only this one action diverges.
+
+  WHERE THE NEW THEME COMES FROM, AND WHAT IT DELIBERATELY IS NOT. It is an
+  EXISTING variation of the canvas's brand kit — never a generated one. Three
+  reasons, in order of how much they cost to get wrong:
+
+  1. Applying a kit variation makes the new draft an INSTANCE of that theme:
+     `findMatchingVariation` matches it, the brand pointer records it, and the
+     draft reads "current" rather than detached. A theme invented for one draft
+     would belong to no kit, match nothing, and be exactly the stranded state
+     soft deletion was built to avoid.
+  2. It appends nothing. The kit's 8-variation cap and its append-only history
+     are untouched, because nothing is created — a variation READS the kit.
+  3. It costs no model call. Generating a theme per variation would spend the
+     shared Gemini free tier on a decision four hand-tuned themes already
+     answer.
+
+  FILTER BEFORE OFFERING, the rule this codebase already holds for themes
+  (brand-theme-builder.ts): the eligible set is computed FIRST, so nothing
+  unofferable is ever a possible outcome. Two filters make it up —
+  `getLiveThemeVariations` (a soft-deleted theme has no parent to link to, and
+  offering one would manufacture the detached draft §14.5b exists to prevent)
+  and equality against what the source is already wearing (offering that is
+  the defect). `pickNextThemeCandidate` is the same shape one layer down; it
+  picks among GENERATED role sets for the builder form rather than among stored
+  variations, so the shared thing here is the rule, not the function.
+
+  INJECTED RANDOMNESS for the same reason the section composers take it: a
+  shuffle whose stops cannot be pinned cannot be tested. The caller passes
+  `Math.random()`; the tests sweep the range.
+*/
+export function pickVariationTheme({
+  brandKit,
+  sourceGlobals,
+  randomValue,
+}: {
+  brandKit: BrandKit;
+  /** {@link readSourceThemeGlobals} of the source draft — null on the shared defaults. */
+  sourceGlobals: GlobalStyles | null;
+  /** 0 ≤ value < 1, though a 1 is clamped rather than trusted. */
+  randomValue: number;
+}): VariationThemePick {
+  const alternatives = getLiveThemeVariations(brandKit.variations).filter(
+    (variation) =>
+      !areGlobalsEqual({ a: variation.globals, b: sourceGlobals ?? undefined }),
+  );
+  const index = Math.min(
+    alternatives.length - 1,
+    Math.max(0, Math.floor(randomValue * alternatives.length)),
+  );
+  const variation = alternatives[index];
+  /*
+    A kit whose only live theme is the one already on screen. Reported rather
+    than papered over: the caller seeds the source theme (today's behaviour,
+    so the layout variation still happens) and SAYS so, because a design
+    variation that silently produces an identical theme is a lie to the user.
+  */
+  return variation === undefined
+    ? { isVaried: false, reason: "no-alternative-theme" }
+    : { isVaried: true, variation };
 }

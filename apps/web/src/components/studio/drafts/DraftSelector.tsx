@@ -48,6 +48,7 @@ import {
 import { useEditorStore } from "@/lib/editor-store";
 import { getOrCreateSessionId } from "@/lib/session";
 import { cn } from "@/lib/utils";
+import { useActiveBrandKit } from "../brand-kit/useActiveBrandKit";
 import { publishGenerationTargetDocument, useIsAgentBusy } from "../chat/agent-status";
 import { sendPromptThroughComposer } from "../chat/composer-handoff";
 import {
@@ -58,6 +59,7 @@ import {
   buildIdeatePromptText,
   buildVariationPromptText,
   MAX_GENERATION_DIRECTION_INPUT_LENGTH,
+  pickVariationTheme,
   readSourceThemeGlobals,
 } from "./draft-generation";
 import { computeNextDraftName, computeVariationDraftName } from "./draft-naming";
@@ -111,6 +113,12 @@ export function DraftSelector({
 }) {
   const convexClient = useConvex();
   const { drafts, activeDocumentId, activeIndex } = useCanvasDrafts();
+  /*
+    Read for ONE reason: a design variation varies the theme, and the themes it
+    may vary to are the canvas's bound kit's own (pickVariationTheme). Nothing
+    else in this component styles anything.
+  */
+  const { brandKit, isBoundToCanvas } = useActiveBrandKit();
   const [isRenaming, setIsRenaming] = useState(false);
   const [nameInput, setNameInput] = useState("");
   const [isCreatePending, setIsCreatePending] = useState(false);
@@ -343,17 +351,33 @@ export function DraftSelector({
    * "ideate" asks for a fresh concept from a deliberately lossy outline, and
    * leaves the theme to the agent.
    *
-   * A design variation is the opposite contract: same email, new shape. Its
-   * theme is NOT left to the agent — the source draft's globals are written
-   * into the new draft as one `applyTheme` op BEFORE it is activated, so the
-   * variation opens already wearing the theme the person was looking at
-   * instead of hoping the model reapplies it. (Routing this through the SDK's
-   * composed `createDraft` path was the alternative; it needs a complete
-   * section plan up front, which only the model can produce, and it would
-   * cost the per-section streaming the drafts menu deliberately shows. Seeding
-   * the theme keeps the streaming and makes the guarantee deterministic.)
-   * The person's own words are the only thing that can release the theme
-   * again — they ride verbatim into the prompt for the model to weigh.
+   * A design variation is the opposite contract: same email, new shape, AND A
+   * NEW THEME. Its theme is not left to the agent either way — exactly one
+   * `applyTheme` op is written into the new draft BEFORE it is activated, so
+   * the variation opens already wearing its theme instead of hoping the model
+   * picks one. (Routing this through the SDK's composed `createDraft` path was
+   * the alternative; it needs a complete section plan up front, which only the
+   * model can produce, and it would cost the per-section streaming the drafts
+   * menu deliberately shows. Seeding the theme keeps the streaming and makes
+   * the guarantee deterministic.)
+   *
+   * WHICH theme is the part that changed. It used to be the source's own, and
+   * a "design variation" that never changed colour was a layout variation
+   * wearing the wrong name. It is now one of the BOUND KIT's OTHER live themes
+   * (`pickVariationTheme` — filtered before offering, never the one already on
+   * screen, never a soft-deleted one, never a generated one, so the new draft
+   * is a real instance of a real theme and no model call is spent). Applying
+   * it records the same advisory brand pointer the theme menu records, which
+   * is what keeps the draft reading "current" rather than never-applied.
+   *
+   * THE HONEST FALLBACK. A kit whose only live theme is the one on screen has
+   * nothing to vary to. Rather than silently reusing it and calling the result
+   * a design variation, the source theme is carried as before AND a notice
+   * says why — the layout variation is still worth having; pretending is not.
+   *
+   * Only THIS action diverges. The plain "New draft" below is untouched, and
+   * the person's own words still outrank whatever theme was seeded — they ride
+   * verbatim into the prompt for the model to weigh.
    */
   const startAiGeneration = ({
     mode,
@@ -389,14 +413,30 @@ export function DraftSelector({
       if (mode === "ideate") {
         prompt = buildIdeatePromptText({ sourceDraftName: activeDraft.name, direction });
       } else {
-        // A null here means the source is on the shared defaults, which the
-        // blank draft already wears — the themes match with nothing to copy.
-        // Whether the seed LANDED is not reported on the wire: the server holds
-        // both documents and compares them itself (generation-brief.ts).
-        if (sourceGlobals !== null) {
+        const themePick = pickVariationTheme({
+          brandKit,
+          sourceGlobals,
+          randomValue: Math.random(),
+        });
+        if (!themePick.isVaried) {
+          useEditorStore
+            .getState()
+            .showNotice(
+              `"${brandKit.name}" has only one theme, so this variation keeps it — add another theme to vary the colours too.`,
+            );
+        }
+        /*
+          A null on the FALLBACK path means the source is on the shared
+          defaults, which the blank draft already wears — the themes match with
+          nothing to copy. Whether the seed LANDED is not reported on the wire:
+          the server holds both documents and compares them itself
+          (generation-brief.ts's resolveVariationThemeState).
+        */
+        const seededGlobals = themePick.isVaried ? themePick.variation.globals : sourceGlobals;
+        if (seededGlobals !== null) {
           const themeResult = await convexClient.mutation(api.documents.applyOperations, {
             documentId,
-            ops: [{ name: "applyTheme", globals: sourceGlobals }],
+            ops: [{ name: "applyTheme", globals: seededGlobals }],
             context: {
               authorId: sessionId,
               author: "user",
@@ -406,6 +446,28 @@ export function DraftSelector({
           });
           if (!themeResult.isOk) {
             console.error("applyOperations (variation theme) rejected", themeResult.errors);
+          } else if (themePick.isVaried && isBoundToCanvas) {
+            /*
+              The same advisory pointer ThemeMenu writes when a person picks a
+              theme by hand (§4.3): it is what makes this draft an INSTANCE of
+              the variation, so preserve-variation propagation can carry it
+              into the kit's next revision, and the brand pill reads "current"
+              rather than never-applied.
+
+              AWAITED, where ThemeMenu fires and forgets: the model starts
+              writing ops the moment this draft is activated a few lines below,
+              and the pointer records `baselineGlobals` from the theme as
+              seeded. Recording it first is what keeps the override diff empty
+              at the moment of seeding. Still only UX metadata — the applyTheme
+              op above is what actually restyled the draft — so a failure here
+              is swallowed rather than allowed to sink the generation.
+            */
+            await convexClient
+              .mutation(api.brandKits.recordDocumentBrandPointer, {
+                documentId,
+                variationId: themePick.variation.id,
+              })
+              .catch(() => undefined);
           }
         }
         prompt = buildVariationPromptText({ sourceDraftName: activeDraft.name, direction });
