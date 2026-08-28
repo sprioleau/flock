@@ -1,6 +1,7 @@
 import type {
   ReadWebPageBlock,
   ReadWebPageImage,
+  ReadWebPageSearchClaim,
   ReadWebPageList,
   ReadWebPagePayload,
   ReadWebPageResult,
@@ -18,6 +19,7 @@ import type { PageScrape } from "./page-scrape";
 import { rehostImageToStorage } from "./rehost-image";
 import { createPageClassifier } from "./classify-page-model";
 import { isFetchAllowedByRobots } from "./robots";
+import { searchPublicWeb } from "./search-web";
 
 /**
  * The generic page pipeline: ONE public URL in, what the page ACTUALLY says
@@ -162,10 +164,12 @@ function toPayload({
   scrape,
   classification,
   images,
+  searchClaims,
 }: {
   scrape: PageScrape;
   classification: PageClassification;
   images: ReadWebPageImage[];
+  searchClaims?: ReadWebPageSearchClaim[];
 }): ReadWebPagePayload {
   const blocks: ReadWebPageBlock[] = scrape.blocks.map((block) => ({
     kind: block.kind,
@@ -197,6 +201,7 @@ function toPayload({
     sourceSummary: classification.sourceSummary,
     isPlanUsable: classification.isPlanUsable,
     ...(classification.message === undefined ? {} : { message: classification.message }),
+    ...(searchClaims === undefined || searchClaims.length === 0 ? {} : { searchClaims }),
   };
 }
 
@@ -328,12 +333,40 @@ export async function ingestPage({
   const { scrape } = extracted;
 
   const classification = await classifyPage({ scrape, classify });
+
+  /*
+    Search runs on the reader's own optional `searchSubject`, and on nothing
+    else. The old person pipeline searched UNCONDITIONALLY, building its query
+    by concatenating name, role and organization — which meant a live call on
+    every profile whether or not anything beyond the page would help.
+
+    Now there is one field and no type branch: the reader states, in its own
+    words, that a subject's public record would add something. Absent is the
+    normal case. searchPublicWeb still returns "unavailable" unless
+    FLOCK_ENABLE_WEB_SEARCH=1 and a key are both present, and a mock run never
+    searches at all, so this stays off by default.
+  */
+  const searchOutcome =
+    classification.searchSubject === undefined
+      ? null
+      : await searchPublicWeb({
+          query: classification.searchSubject,
+          isMockRun: classify === null,
+        });
   const images = await rehostAssignedImages({ classification, scrape, sessionId });
   const sections = attachImagesToSections({ sections: classification.sections, images });
 
+  const searchClaims =
+    searchOutcome !== null && searchOutcome.status === "searched" ? searchOutcome.claims : undefined;
+
   return {
     isOk: true,
-    page: toPayload({ scrape, classification: { ...classification, sections }, images }),
+    page: toPayload({
+      scrape,
+      classification: { ...classification, sections },
+      images,
+      searchClaims,
+    }),
   };
 }
 

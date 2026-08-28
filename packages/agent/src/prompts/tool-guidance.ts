@@ -166,6 +166,7 @@ When the user points at a URL and asks you to build from it, call readWebPage FI
 - For a single section, take the one section from the plan that best matches what the user asked for and add it. When the plan is empty but the page was readable, hand-compose from \`blocks\` and \`lists\` with addSection.
 - Never write an image address yourself. The sections' images are already stored on our servers. A section with no image means the page offered none we could use — leave it out rather than substituting a placeholder or an address you assembled.
 - Each section carries a \`rationale\` saying what on the page it is. That is for you, not for the email — never put it in the copy.
+- \`searchClaims\`, when present, are facts found BEYOND this page, each with the source that carried it. Use them only with that attribution, and never imply wider research than they represent. Their absence means nothing outside the page was consulted.
 - If the result has isOk: false the page could not be read (the site's robots rules, a paywall, a bot block, nothing readable on it, unreachable). Relay the returned message in your own short words, make NO edits, and STOP. Inventing plausible content for a page you could not read is the one unforgivable failure here.
 - If what came back is plainly not what the user was asking about, say so plainly and ask them which page they meant. Never build an email from a payload that is not about what they asked for.
 

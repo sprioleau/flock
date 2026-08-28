@@ -8,6 +8,9 @@ vi.mock("@/lib/brand-kit-extraction/fetch-page", () => ({ fetchPage: fetchPageMo
 vi.mock("../robots", () => ({ isFetchAllowedByRobots: isFetchAllowedByRobotsMock }));
 vi.mock("../rehost-image", () => ({ rehostImageToStorage: rehostImageToStorageMock }));
 
+const searchPublicWebMock = vi.hoisted(() => vi.fn());
+vi.mock("../search-web", () => ({ searchPublicWeb: searchPublicWebMock }));
+
 import { ingestPage } from "../ingest-page";
 import type { ClassifyFn } from "../classify-page";
 
@@ -71,6 +74,8 @@ beforeEach(() => {
   isFetchAllowedByRobotsMock.mockResolvedValue(true);
   fetchPageMock.mockResolvedValue({ isOk: true, html: PAGE_HTML, finalUrl: PAGE_URL });
   rehostImageToStorageMock.mockResolvedValue("https://storage.convex.cloud/card.png");
+  searchPublicWebMock.mockReset();
+  searchPublicWebMock.mockResolvedValue({ status: "unavailable" });
 });
 
 describe("ingestPage — a refusal is a successful call", () => {
@@ -406,6 +411,63 @@ describe("ingestPage — the pipeline writes image addresses, never the reader",
     expect(result.isOk).toBe(true);
     if (!result.isOk) return;
     expect(result.page.sections[0].params.imageSrc).toBeUndefined();
+  });
+});
+
+describe("ingestPage — searching beyond the page", () => {
+  const readingWith = (extra: Record<string, unknown>) =>
+    cannedReader({
+      pageType: "person_profile",
+      confidence: "high",
+      sourceSummary: "A profile.",
+      isPlanUsable: true,
+      images: [],
+      ...extra,
+    });
+
+  it("does not search when the reader named no subject", async () => {
+    /*
+      The old person pipeline searched on EVERY profile, building its query by
+      concatenating name, role and organization. One optional field replaces
+      that: no subject, no call.
+    */
+    await ingestPage({ url: PAGE_URL, classify: readingWith({}) });
+    expect(searchPublicWebMock).not.toHaveBeenCalled();
+  });
+
+  it("searches for the subject the reader named, in its own words", async () => {
+    searchPublicWebMock.mockResolvedValue({
+      status: "searched",
+      claims: [{ text: "Wrote a book.", sourceUrl: "https://s.example/a", sourceTitle: "S" }],
+      sources: [],
+    });
+    const result = await ingestPage({
+      url: PAGE_URL,
+      classify: readingWith({ searchSubject: "Rowan Ellis, clinical software designer" }),
+    });
+    expect(searchPublicWebMock).toHaveBeenCalledWith(
+      expect.objectContaining({ query: "Rowan Ellis, clinical software designer" }),
+    );
+    expect(result.isOk).toBe(true);
+    if (!result.isOk) return;
+    expect(result.page.searchClaims).toHaveLength(1);
+  });
+
+  it("carries nothing when the search is switched off", async () => {
+    searchPublicWebMock.mockResolvedValue({ status: "unavailable" });
+    const result = await ingestPage({
+      url: PAGE_URL,
+      classify: readingWith({ searchSubject: "Rowan Ellis" }),
+    });
+    expect(result.isOk).toBe(true);
+    if (!result.isOk) return;
+    /* Absence must mean "nothing was consulted", never an empty-looking result. */
+    expect(result.page.searchClaims).toBeUndefined();
+  });
+
+  it("never searches on a run with no reader", async () => {
+    await ingestPage({ url: PAGE_URL, classify: null });
+    expect(searchPublicWebMock).not.toHaveBeenCalled();
   });
 });
 

@@ -108,6 +108,19 @@ export interface ReadWebPageSection {
   rationale: string;
 }
 
+/**
+ * One claim found beyond the page, with the source that carried it.
+ *
+ * Every claim keeps its own address. That is what makes "never paraphrase into
+ * fabrication" checkable rather than aspirational for anything sourced from
+ * outside the page the user actually pointed at.
+ */
+export interface ReadWebPageSearchClaim {
+  text: string;
+  sourceUrl: string;
+  sourceTitle: string;
+}
+
 /** The page's content, as read. */
 export interface ReadWebPagePayload {
   /** The page's title (og:title / JSON-LD headline / <title>). */
@@ -166,6 +179,13 @@ export interface ReadWebPagePayload {
   isPlanUsable: boolean;
   /** What to tell the user when isPlanUsable is false. */
   message?: string;
+  /**
+   * Claims found beyond this page, present ONLY when the reader named a
+   * subject worth looking up AND public-web search is switched on. Absent is
+   * the normal case, and absence means nothing was consulted — never imply
+   * wider research than this carries.
+   */
+  searchClaims?: ReadWebPageSearchClaim[];
 }
 
 /**

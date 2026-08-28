@@ -67,6 +67,7 @@ export type {
   ReadWebPageList,
   ReadWebPagePayload,
   ReadWebPageResult,
+  ReadWebPageSearchClaim,
   ReadWebPageSection,
   ReadWebPageType,
 } from "./read-web-page";
