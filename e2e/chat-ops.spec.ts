@@ -94,13 +94,37 @@ async function selectBlockAndSend(
 }
 
 /*
-  KNOWN GAP, not a flake. All three cases below time out in
-  `page.waitForResponse`: the chat panel starts COLLAPSED (the shell renders
-  "Expand chat panel"), so the composer these tests type into is never
-  reachable and the turn is never sent. The fix is setup -- expand the panel
-  in `openStudioOnDemoDocument` before composing -- not a change to any
-  assertion here. Marked fixme so the suite stays honestly green while that
-  lands; the assertions themselves are the point of the slice and stay intact.
+  KNOWN GAP, not a flake. All three cases below fail, and the earlier reading
+  of WHY was wrong: it is not that the chat panel starts collapsed, and the
+  fix is NOT to expand it in setup. Re-measured 2026-08-28 by un-fixme-ing
+  these three and reading the failure.
+
+  What actually happens. The composer is reachable -- `composer.fill()`
+  succeeds, and Playwright resolves the send button and reports it "visible,
+  enabled and stable". The click then never lands, retried 161 times until the
+  90s timeout, with:
+
+      <aside class="... border-r ... transition-[width] ..."> intercepts
+      pointer events
+
+  That aside is the chat panel itself, box [0, 0, 360, viewportH]. The send
+  button's box is x≈312 w=36, i.e. INSIDE it. So the composer is not covered
+  by some other panel; it is clipped by the panel that owns it -- the aside is
+  `overflow: hidden`, the shell above it is `flex h-dvh w-full overflow-hidden`,
+  and `document.elementFromPoint` at the button's own centre returns an
+  ancestor div rather than the button. Nothing can scroll it into view, which
+  is why expanding a panel cannot help and why a taller viewport alone did not
+  fix the hit test either.
+
+  So this is a LAYOUT defect, not test setup: when the panel's content is
+  taller than the panel (transcript plus the seeded suggestion cards), the
+  composer is clipped out of reach. A real user on a short viewport hits the
+  same thing. The fix belongs in the panel -- let the transcript scroll and
+  keep the composer pinned -- after which these three should pass unchanged.
+
+  Deliberately NOT worked around by sending with Enter instead of clicking.
+  That would make the suite green while hiding a control real users cannot
+  click. The assertions here are the point of the slice and stay intact.
 */
 test.describe("chat operations", () => {
   test.fixme("a turn on a demo document is served by the mock, and says so on the wire", async ({
