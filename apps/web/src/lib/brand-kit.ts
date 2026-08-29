@@ -1,4 +1,5 @@
 import { DEFAULT_GLOBAL_STYLES, type GlobalStyles } from "@flock/email-sdk";
+import { getRelativeLuminance, parseHexColor } from "./brand-kit-extraction/color-utils";
 import type { BrandSocialLink } from "./social-links";
 
 /**
@@ -297,34 +298,15 @@ export interface BrandKit {
 // Contrast (WCAG 2.x)
 // ---------------------------------------------------------------------------
 
-/** Parse "#rgb" or "#rrggbb" into [r, g, b] (0–255). Returns null otherwise. */
-function parseHexColor(color: string): [number, number, number] | null {
-  const hex = color.trim().replace(/^#/, "");
-  const isShort = /^[0-9a-f]{3}$/i.test(hex);
-  const isLong = /^[0-9a-f]{6}$/i.test(hex);
-  if (!isShort && !isLong) {
-    return null;
-  }
-  const full = isShort ? [...hex].map((c) => c + c).join("") : hex;
-  return [
-    Number.parseInt(full.slice(0, 2), 16),
-    Number.parseInt(full.slice(2, 4), 16),
-    Number.parseInt(full.slice(4, 6), 16),
-  ];
-}
-
-/** WCAG relative luminance of a hex color. */
-function getRelativeLuminance(color: string): number | null {
-  const rgb = parseHexColor(color);
-  if (rgb === null) {
-    return null;
-  }
-  const [r, g, b] = rgb.map((channel) => {
-    const c = channel / 255;
-    return c <= 0.03928 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
-  }) as [number, number, number];
-  return 0.2126 * r + 0.7152 * g + 0.0722 * b;
-}
+/**
+ * The primitives this section is built on — {@link parseHexColor} and
+ * {@link getRelativeLuminance} — live in brand-kit-extraction/color-utils.ts
+ * and are imported, not re-implemented. They used to exist twice, and contrast
+ * now has three independent consumers (this file's kit validation, the theme
+ * repair pass in brand-kit-extraction/expand-variations.ts, and the
+ * `low-contrast-edit` critique in suggestions/contrast.ts), so a second copy
+ * would let a formula or threshold change reach one of them and not the others.
+ */
 
 /**
  * WCAG contrast ratio between two hex colors (1–21). Returns null when either

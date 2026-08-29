@@ -5,11 +5,13 @@
  */
 
 /**
- * Parse "#rgb" / "#rrggbb" into [r, g, b] (0–255), or null.
+ * Parse "#rgb" / "#rrggbb" into [r, g, b] (0–255), or null. Leading "#" is
+ * optional and surrounding whitespace is trimmed; anything else (named colors,
+ * `rgb()`, `oklch()`) is null — callers that need those go through
+ * {@link normalizeCssColor} first.
  *
- * DUPLICATED from src/lib/brand-kit.ts (`parseHexColor` there is
- * module-private and that file is owned by the theme-panel workstream —
- * import-only for us). Keep the two byte-compatible.
+ * THE ONLY hex parser in the app. src/lib/brand-kit.ts imports it rather than
+ * keeping the second copy it used to have.
  */
 export function parseHexColor(color: string): [number, number, number] | null {
   const hex = color.trim().replace(/^#/, "");
@@ -29,8 +31,13 @@ export function parseHexColor(color: string): [number, number, number] | null {
 /**
  * WCAG relative luminance (0–1) of a hex color, or null when unparseable.
  *
- * DUPLICATED from src/lib/brand-kit.ts (`getRelativeLuminance` there is
- * module-private). Same formula — keep in sync.
+ * THE SINGLE SOURCE OF TRUTH for the WCAG formula. `getContrastRatio` in
+ * src/lib/brand-kit.ts is built on this, which puts all three contrast
+ * consumers — brand kit validation, the theme contrast repair pass, and the
+ * `low-contrast-edit` critique — on one implementation. It was duplicated
+ * once; changing the coefficients or the 0.03928 knee in a copy moved some
+ * consumers and silently left the rest behind, so there is deliberately no
+ * second copy to keep in sync.
  */
 export function getRelativeLuminance(color: string): number | null {
   const rgb = parseHexColor(color);
