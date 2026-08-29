@@ -6,6 +6,11 @@ import {
   type Operation,
 } from "@flock/email-sdk";
 import { getAncestorIds } from "@/lib/get-ancestor-ids";
+import {
+  getContrastFixColor,
+  getContrastSubject,
+  getIsContrastCritiqueProperty,
+} from "./contrast";
 import { deriveAccentTheme } from "./derive-accent-theme";
 import type {
   RecentPropertyEdit,
@@ -28,6 +33,12 @@ import type {
  *    ≥ 2 same-type siblings in the same section keep a different value →
  *    offer to match them. The ≥ 2 floor keeps it from nagging on every edit;
  *    no re-theme rung (that escalation is earned by repetition, not one edit).
+ * 3. low-contrast-edit (§10 row 7) — the CRITIQUE, and the reason the list is
+ *    no longer homogeneous. Rules 1 and 2 detect a pattern and offer to do
+ *    MORE of it; this one detects a DEFECT in the edit that just landed and
+ *    offers to undo the harm. See its own section below for why it is
+ *    evaluated FIRST, why it judges agent-authored edits too, and why it
+ *    dismisses per BLOCK rather than per pattern.
  *
  * Generation is mechanical — ops and copy are composed from the pattern, no
  * model call (see types.ts for the LLM-upgrade seam).
@@ -264,6 +275,15 @@ const repeatedPropertyEditRule: SuggestionRule = {
   detect: (context: SuggestionRuleContext): Suggestion | null => {
     const { doc, recentEdits, anchorEdit, isPatternDismissed } = context;
     const { blockId, blockType, propertyKey, value } = anchorEdit;
+    /*
+      Patterns are the USER's habits. An agent batch is already deliberate and
+      already whole-document in scope, so "you did this twice, want the rest?"
+      would be the agent talking itself into more work. (The critique below
+      makes the opposite call, for the opposite reason.)
+    */
+    if (anchorEdit.author !== "user") {
+      return null;
+    }
     const patternKey = getPatternKey({ blockType, propertyKey });
     if (isPatternDismissed(patternKey)) {
       return null;
@@ -275,6 +295,7 @@ const repeatedPropertyEditRule: SuggestionRule = {
     const matchingBlockIds = new Set<BlockId>();
     for (const edit of recentEdits) {
       const isSameEdit =
+        edit.author === "user" &&
         edit.blockType === blockType &&
         edit.propertyKey === propertyKey &&
         arePropertyValuesEqual({ a: edit.value, b: value });
@@ -334,6 +355,10 @@ const siblingAsymmetryRule: SuggestionRule = {
   detect: (context: SuggestionRuleContext): Suggestion | null => {
     const { doc, anchorEdit, isPatternDismissed } = context;
     const { blockId, blockType, propertyKey, value } = anchorEdit;
+    /* A pattern is the user's habit — see rule 1. */
+    if (anchorEdit.author !== "user") {
+      return null;
+    }
     const patternKey = getPatternKey({ blockType, propertyKey });
     if (isPatternDismissed(patternKey)) {
       return null;
@@ -391,11 +416,161 @@ const siblingAsymmetryRule: SuggestionRule = {
 };
 
 // ---------------------------------------------------------------------------
+// Rule 3 — low-contrast-edit (the critique)
+// ---------------------------------------------------------------------------
+
+/*
+  THE CRITIQUE'S DISMISSAL GRAIN IS THE BLOCK, NOT THE PATTERN.
+
+  The style rules key dismissal on `${blockType}|${propertyKey}` because what
+  the user is turning down is a KIND of offer. A critique is not an offer, it
+  is a claim about one specific block, and the honest thing to turn down is
+  that claim: "this ghost button is deliberate, leave it". Keying on the
+  pattern would mean one deliberate low-contrast button silences the critique
+  for every other button in the document, including the next genuine mistake.
+
+  The `critique:` prefix keeps the key space disjoint from the style rules'
+  (the same trick persona findings use). Dismissing "stop matching my button
+  colors" and dismissing "this button is fine as it is" are different
+  sentences, and neither should be able to say the other.
+*/
+export function getContrastCritiqueKey(blockId: BlockId): string {
+  return `critique:contrast|${blockId}`;
+}
+
+interface CritiqueCopy {
+  title: string;
+  /** How the description opens — "Its label", "It". */
+  subjectPhrase: string;
+  /** What the failing pair sits on, in the reader's words. */
+  againstPhrase: string;
+  rungLabel: string;
+}
+
+const CRITIQUE_COPY: Partial<Record<Block["type"], CritiqueCopy>> = {
+  button: {
+    title: "That label is hard to read",
+    subjectPhrase: "Its label",
+    againstPhrase: "this fill",
+    rungLabel: "Use a readable label color",
+  },
+  link: {
+    title: "That link is hard to read",
+    subjectPhrase: "It",
+    againstPhrase: "the background behind it",
+    rungLabel: "Use a readable link color",
+  },
+};
+
+/** "4" / "4.5" / "2.8" — one decimal, and never a bare ".0". */
+function formatRatio(ratio: number): string {
+  return String(Math.round(ratio * 10) / 10);
+}
+
+const lowContrastEditRule: SuggestionRule = {
+  id: "low-contrast-edit",
+  detect: (context: SuggestionRuleContext): Suggestion | null => {
+    const { doc, anchorEdit, isPatternDismissed } = context;
+    const { blockId, propertyKey } = anchorEdit;
+    /*
+      Deliberately NOT windowed over recentEdits. A pattern needs history to
+      exist; a defect exists the instant the edit lands, and pointing at an
+      edit the user made ninety seconds and six changes ago would read as
+      nagging rather than as an observation about what they just did.
+
+      Deliberately NOT filtered by author either. The op log carries
+      authorship, and an agent that recolors a button into illegibility is the
+      case MOST worth catching — the user did not choose that color and has no
+      reason to have checked it.
+    */
+    const block = doc[blockId];
+    if (block === undefined) {
+      return null;
+    }
+    /*
+      The block as it stands NOW is the subject, not the edit's payload — but
+      the edit still has to be capable of having caused this. Without that
+      gate, adjusting a button's padding would resurface a contrast failure
+      the user did not just make, every time they touched it.
+    */
+    if (!getIsContrastCritiqueProperty({ blockType: block.type, propertyKey })) {
+      return null;
+    }
+    const patternKey = getContrastCritiqueKey(blockId);
+    if (isPatternDismissed(patternKey)) {
+      return null;
+    }
+    const subject = getContrastSubject({ doc, block });
+    if (subject === null || !subject.isFailing) {
+      return null;
+    }
+    /*
+      No specific corrected color, no critique. "Pick something else" is not a
+      one-click fix, and a card that only complains is worse than silence.
+    */
+    const fixColor = getContrastFixColor(subject);
+    const copy = CRITIQUE_COPY[block.type];
+    if (fixColor === null || copy === undefined) {
+      return null;
+    }
+
+    return {
+      id: crypto.randomUUID(),
+      ruleId: "low-contrast-edit",
+      source: "rule",
+      patternKey,
+      title: copy.title,
+      description:
+        `${copy.subjectPhrase} sits at ${formatRatio(subject.ratio)}:1 against ` +
+        `${copy.againstPhrase} — under the ${formatRatio(subject.minRatio)}:1 that ` +
+        "counts as readable.",
+      /* One rung, and no ladder: see the "fix" note in types.ts. */
+      rungs: [
+        {
+          id: "fix",
+          label: copy.rungLabel,
+          ops: [
+            {
+              name: "updateBlockProperties",
+              blockId,
+              properties: { textColor: fixColor },
+            },
+          ],
+        },
+      ],
+      anchorBlockId: blockId,
+      /*
+        Exactly what the verdict was computed from: the block, the root (its
+        globals supply any color the block does not override), and — for a
+        link, whose background comes from whatever container paints one — the
+        ancestor chain. A change to any of them can flip the verdict, so any
+        change to any of them must retire the card.
+      */
+      targetBlockIds: [
+        blockId,
+        ROOT_BLOCK_ID,
+        ...(block.type === "link" ? getAncestorIds({ doc, blockId }) : []),
+      ],
+    };
+  },
+};
+
+// ---------------------------------------------------------------------------
 // Registry
 // ---------------------------------------------------------------------------
 
-/** Ordered registry — first match wins, so at most one suggestion surfaces. */
+/*
+  Ordered registry — first match wins, so at most one suggestion surfaces.
+
+  THE CRITIQUE GOES FIRST, and the ordering is the design rather than an
+  accident of appending. When a user recolors two buttons to a fill their
+  labels cannot be read on, both rule 1 and rule 3 match. Rule 1 would offer
+  to paint the REMAINING buttons the same unreadable color; rule 3 offers to
+  make the one they just touched legible. Spreading a defect is never the more
+  useful of the two things to say.
+*/
 export const SUGGESTION_RULES: readonly SuggestionRule[] = [
+  lowContrastEditRule,
   repeatedPropertyEditRule,
   siblingAsymmetryRule,
 ];

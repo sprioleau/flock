@@ -28,11 +28,15 @@ import type { RecentPropertyEdit, Suggestion, SuggestionRungId } from "./types";
  *
  * WATCH — a reactive Convex watch on `documents.getOperations` over the
  * recent tail of the op log (the same query the history panel pages). The
- * store's gesture coalescing means one log entry per SETTLED user gesture,
- * which is exactly the "quiet moment" trigger. Only a user-authored
- * `updateBlockProperties` edit is a qualifying gesture — agent ops (including
- * our own suggestion applies), undo/redo entries, and structural edits never
- * generate.
+ * store's gesture coalescing means one log entry per SETTLED gesture, which is
+ * exactly the "quiet moment" trigger. A qualifying gesture is a settled
+ * `updateBlockProperties` edit; undo/redo entries, structural edits, and THIS
+ * HOOK'S OWN applies (matched by batch id) never generate.
+ *
+ * Agent-authored edits qualify as well, but only as the ANCHOR — the pattern
+ * window stays the user's own recent edits, so the style rules keep following
+ * the user's habits while the critique rule is free to judge the agent's work.
+ * resolveAnchorEdit below is where that split lives.
  *
  * GENERATE — run the deterministic rule registry over the recent user edits
  * against the CURRENT rendered doc, then dry-run every rung's ops with the
@@ -108,7 +112,61 @@ function traceEvaluation(event: Record<string, unknown>): void {
   }
 }
 
-/** Extract suggestible user property edits from the op-log tail (oldest → newest). */
+/** Op-log batchId prefix of this hook's OWN applies (the self-trigger guard). */
+const SUGGESTION_BATCH_ID_PREFIX = "suggestion:";
+
+/** Every suggestible property edit carried by ONE op-log entry. */
+function extractPropertyEdits({
+  entry,
+  doc,
+}: {
+  entry: OperationEntry;
+  doc: EmailDocument;
+}): RecentPropertyEdit[] {
+  const parsed = updateBlockPropertiesOperationSchema.safeParse(entry.op);
+  if (!parsed.success) {
+    return [];
+  }
+  const block = doc[parsed.data.blockId];
+  if (block === undefined) {
+    return []; // target since deleted — not a live signal
+  }
+  const edits: RecentPropertyEdit[] = [];
+  for (const [propertyKey, value] of Object.entries(parsed.data.properties)) {
+    if (isSuggestiblePropertyEdit({ propertyKey, value })) {
+      edits.push({
+        blockId: parsed.data.blockId,
+        blockType: block.type,
+        propertyKey,
+        value,
+        /*
+          Carried from the entry rather than hardcoded. The PATTERN window
+          below stays user-only, but the anchor path admits agent-authored
+          gestures, and the rules tell the two apart by this field alone.
+        */
+        author: entry.author,
+        version: entry.version,
+        createdAtMs: entry.createdAtMs,
+      });
+    }
+  }
+  return edits;
+}
+
+/*
+  THE PATTERN WINDOW IS THE USER'S OWN RECENT EDITS, AND STAYS THAT WAY.
+
+  It was tempting to widen this filter so the critique rule could see agent
+  work, and it would have been wrong twice over. `repeated-property-edit` and
+  `sibling-asymmetry` read this window to decide "you did this twice, want the
+  rest?" — fed agent ops they would start offering to finish patterns the agent
+  itself had just made, which nobody asked for. And the window is a fixed
+  MAX_RECENT_USER_OPS slice, so a chat turn that writes eight blocks would
+  evict the user's own edits from their own pattern history.
+
+  Agent authorship reaches the rules through the ANCHOR instead (see below):
+  one gesture, judged on its merits, with the window left alone.
+*/
 function collectRecentPropertyEdits({
   entries,
   doc,
@@ -125,30 +183,45 @@ function collectRecentPropertyEdits({
     .slice(-MAX_RECENT_USER_OPS)
     .filter((entry) => nowMs - entry.createdAtMs <= RECENT_EDIT_WINDOW_MS);
 
-  const edits: RecentPropertyEdit[] = [];
-  for (const entry of windowedEntries) {
-    const parsed = updateBlockPropertiesOperationSchema.safeParse(entry.op);
-    if (!parsed.success) {
-      continue;
-    }
-    const block = doc[parsed.data.blockId];
-    if (block === undefined) {
-      continue; // target since deleted — not a live pattern signal
-    }
-    for (const [propertyKey, value] of Object.entries(parsed.data.properties)) {
-      if (isSuggestiblePropertyEdit({ propertyKey, value })) {
-        edits.push({
-          blockId: parsed.data.blockId,
-          blockType: block.type,
-          propertyKey,
-          value,
-          version: entry.version,
-          createdAtMs: entry.createdAtMs,
-        });
-      }
-    }
+  return windowedEntries.flatMap((entry) => extractPropertyEdits({ entry, doc }));
+}
+
+/*
+  The gesture the rules are asked about: the edit that just settled.
+
+  A USER gesture anchors on the last edit in the pattern window, which must be
+  the triggering op itself — a label or content change never resurfaces an
+  older pattern. An AGENT gesture is not in that window at all, so it is read
+  straight off the entry: the critique rule (rules.ts) judges it, and both
+  pattern rules decline it on `author`.
+
+  OUR OWN APPLIES ARE EXCLUDED BY BATCH ID. Clicking a critique's fix writes an
+  agent-authored `updateBlockProperties`, which without this guard would come
+  straight back through the watcher as a fresh gesture to evaluate. The repaired
+  color passes contrast, so the loop would terminate on its own — but relying on
+  that is relying on the rule staying correct, and a watcher that re-triggers on
+  its own writes is a bug waiting for the next rule.
+*/
+function resolveAnchorEdit({
+  newest,
+  recentEdits,
+  doc,
+}: {
+  newest: OperationEntry;
+  recentEdits: RecentPropertyEdit[];
+  doc: EmailDocument;
+}): RecentPropertyEdit | undefined {
+  if (newest.kind !== "edit" || newest.isUndone === true) {
+    return undefined;
   }
-  return edits;
+  if (newest.batchId?.startsWith(SUGGESTION_BATCH_ID_PREFIX) === true) {
+    return undefined;
+  }
+  if (newest.author === "user") {
+    const anchorEdit = recentEdits[recentEdits.length - 1];
+    return anchorEdit?.version === newest.version ? anchorEdit : undefined;
+  }
+  return extractPropertyEdits({ entry: newest, doc })[0];
 }
 
 /** Drop rungs whose ops fail a dry-run; null unless a non-gated rung survives. */
@@ -297,10 +370,12 @@ export function useSuggestions(): SuggestionsController {
       }
       evaluationRef.current.lastEvaluatedVersion = newest.version;
 
-      // Only a settled USER edit is a qualifying gesture — agent-authored ops
-      // (including our own suggestion applies) and undo/redo never generate.
-      if (newest.author !== "user" || newest.kind !== "edit") {
-        traceEvaluation({ step: "skip-not-user-edit", author: newest.author, kind: newest.kind });
+      // A settled edit is the qualifying gesture; undo/redo entries never
+      // generate. Agent-authored edits DO qualify now — the critique rule is
+      // the one thing that should judge them, and resolveAnchorEdit keeps them
+      // out of the pattern window while letting the anchor through.
+      if (newest.kind !== "edit") {
+        traceEvaluation({ step: "skip-not-edit", author: newest.author, kind: newest.kind });
         return;
       }
 
@@ -310,14 +385,12 @@ export function useSuggestions(): SuggestionsController {
         doc: currentDoc,
         nowMs: Date.now(),
       });
-      const anchorEdit = recentEdits[recentEdits.length - 1];
-      // The triggering op itself must have produced a suggestible edit — a
-      // label/text/content change never resurfaces an older pattern.
-      if (anchorEdit === undefined || anchorEdit.version !== newest.version) {
+      const anchorEdit = resolveAnchorEdit({ newest, recentEdits, doc: currentDoc });
+      if (anchorEdit === undefined) {
         traceEvaluation({
           step: "skip-no-anchor",
+          author: newest.author,
           recentEditCount: recentEdits.length,
-          anchorVersion: anchorEdit?.version,
           newestVersion: newest.version,
         });
         return;
@@ -439,7 +512,7 @@ export function useSuggestions(): SuggestionsController {
       setPhase({ name: "hidden" });
       return;
     }
-    const batchId = `suggestion:${phase.suggestion.ruleId}:${crypto.randomUUID()}`;
+    const batchId = `${SUGGESTION_BATCH_ID_PREFIX}${phase.suggestion.ruleId}:${crypto.randomUUID()}`;
     const suggestionAuthorId = `suggestions:${store.authorId ?? "local"}`;
     for (const op of rung.ops) {
       const result = store.dispatch(op, {

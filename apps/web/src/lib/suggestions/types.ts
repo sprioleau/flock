@@ -25,13 +25,21 @@ import type { Block, BlockId, EmailDocument, Operation } from "@flock/email-sdk"
 export type SuggestionSource = "rule" | "analysis";
 
 /** Ids of the v1 deterministic rules (the extensible registry in rules.ts). */
-export type SuggestionRuleId = "repeated-property-edit" | "sibling-asymmetry";
+export type SuggestionRuleId =
+  | "repeated-property-edit"
+  | "sibling-asymmetry"
+  | "low-contrast-edit";
 
 /**
  * The escalation-ladder scopes, smallest to largest. "retheme" is the
  * whole-email rung and always gates behind an explicit confirm.
+ *
+ * "fix" is not a ladder scope at all — it is the single corrective batch a
+ * CRITIQUE attaches (§10 row 7). A critique is about one block that is
+ * objectively wrong, so there is nothing to escalate: offering to spread the
+ * same treatment across the email would be offering to spread a defect.
  */
-export type SuggestionRungId = "section" | "email" | "retheme";
+export type SuggestionRungId = "section" | "email" | "retheme" | "fix";
 
 /** One rung of the escalation ladder: a label and its ready-to-dispatch ops. */
 export interface SuggestionRung {
@@ -128,6 +136,13 @@ export interface RecentPropertyEdit {
   blockType: Block["type"];
   propertyKey: string;
   value: unknown;
+  /**
+   * Who made it. Pattern rules only ever look at the user's own habits, but a
+   * CRITIQUE happily judges an agent-authored edit — a model that recolors a
+   * button into illegibility is exactly the case worth catching, and the agent
+   * has no feelings to spare (see rules.ts, low-contrast-edit).
+   */
+  author: "user" | "agent";
   /** The op-log version of the entry this edit came from. */
   version: number;
   createdAtMs: number;
@@ -138,7 +153,12 @@ export interface SuggestionRuleContext {
   doc: EmailDocument;
   /** Suggestible user edits within the recency window, oldest → newest. */
   recentEdits: RecentPropertyEdit[];
-  /** The edit whose settling triggered this evaluation (last of recentEdits). */
+  /**
+   * The edit whose settling triggered this evaluation. Normally the last of
+   * `recentEdits`; for an AGENT-authored gesture it is parsed straight off the
+   * triggering op instead, because `recentEdits` stays deliberately user-only
+   * (agent ops must never crowd the pattern window — see use-suggestions.ts).
+   */
   anchorEdit: RecentPropertyEdit;
   isPatternDismissed: (patternKey: string) => boolean;
 }
