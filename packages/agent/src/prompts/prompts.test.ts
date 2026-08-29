@@ -167,12 +167,62 @@ describe("buildToolGuidance (layer b — cacheable per registry)", () => {
     );
     expect(guidance).toMatch(/header, one or more body sections[\s\S]*and a footer/);
     expect(guidance).toContain("keep the theme the user already applied");
-    expect(guidance).toContain("carried over from the draft the user is on");
     // Real variation for open-ended "explore ideas" asks.
     expect(guidance).toMatch(
       /make them genuinely different from each other[\s\S]*a plain hero in one, a split hero in another/,
     );
     expect(guidance).toContain("Never name the tool.");
+  });
+
+  /*
+    THE TWO PROMISES THAT WERE FALSE ON THE TURN THAT BROKE.
+
+    Composition no longer invents copy for a section the plan left empty. A
+    section the model names but does not write is rebuilt as a template its
+    copy does fit, or dropped; and an omitted header/body/footer that
+    `completeDraftSections` inserts arrives with NO params at all, so on a turn
+    that read an external source — where carry-over is switched off — it is
+    inserted and then dropped.
+
+    Both bullets below told the model the opposite, and it planned around
+    them: it left fields out on purpose, then described the email it had
+    planned rather than the one that exists. Honest guidance about the gaps
+    has to start with guidance that does not promise they will be filled.
+  */
+  it("no longer promises that a section left empty is filled in for you", () => {
+    expect(guidance).not.toContain("A missing header, body, or footer is filled in for you");
+    expect(guidance).not.toContain(
+      "Anything you leave out is carried over from the draft the user is on",
+    );
+    expect(guidance).toContain(
+      "a section you name but leave empty is not filled in for you",
+    );
+    expect(guidance).toMatch(
+      /rebuilt as a different template that fits whatever copy it does have, or left out of the draft altogether/,
+    );
+  });
+
+  it("tells the model carry-over is off when the turn read an outside source", () => {
+    expect(guidance).toMatch(
+      /When this turn read something outside the email[\s\S]*write EVERY section from that source/,
+    );
+    expect(guidance).toContain("a field left empty is a section that disappears");
+    // The other half of the rule survives: with no outside source, gaps still carry over.
+    expect(guidance).toContain("lets the current wording carry over");
+  });
+
+  it("points the after-the-call narration at the report, not at the plan", () => {
+    /*
+      The sentence this replaced — "tell the user in plain language what each
+      one is" — asks a question only the PLAN answers, and the model answered
+      it from the plan. The report is the only account of what landed.
+    */
+    expect(guidance).not.toContain("tell the user in plain language what each one is");
+    expect(guidance).toContain("Describe THAT report, never the plan you sent");
+    expect(guidance).toMatch(
+      /rebuilt as a different template or left out for want of copy/,
+    );
+    expect(guidance).toContain("offer to write the missing copy");
   });
 
   it("omits the new-draft workflow for a registry without createDraft", () => {

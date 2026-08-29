@@ -77,28 +77,45 @@ export function buildToolGuidance(registry: EmailActionRegistry): string {
 
 
 
-/**
- * The §10.2 new-draft rules. The failure this exists to prevent: asked for a
- * new draft, the model reaches for the tools that can carry content
- * (addSection / updateText / removeBlock), which all act on the draft ON
- * SCREEN — so the user's work is cleared and rebuilt in place instead of a new
- * draft appearing beside it. createDraft now carries content, so the routing
- * rule below is expressible; this text is what makes the model take it.
- *
- * Constant text so the cached prefix stays byte-identical. Appended only when
- * createDraft is registered (see buildToolGuidance).
- */
+/*
+  The §10.2 new-draft rules. The failure this exists to prevent: asked for a
+  new draft, the model reaches for the tools that can carry content
+  (addSection / updateText / removeBlock), which all act on the draft ON
+  SCREEN — so the user's work is cleared and rebuilt in place instead of a new
+  draft appearing beside it. createDraft now carries content, so the routing
+  rule below is expressible; this text is what makes the model take it.
+
+  Constant text so the cached prefix stays byte-identical. Appended only when
+  createDraft is registered (see buildToolGuidance).
+
+  TWO SENTENCES HERE USED TO BE FALSE, and the model planned around them.
+
+  "A missing header, body, or footer is filled in for you" and "anything you
+  leave out is carried over from the draft the user is on" were both written
+  when composition backfilled a gap with the section template's sample copy.
+  It no longer does: `resolveSectionsToAvailableContent` rebuilds a section as
+  a template its copy does fit, or DROPS it, and there is deliberately no
+  fallback to `.default()`. An omitted header that `completeDraftSections`
+  inserts carries no params at all, so on a turn that read an outside source —
+  where carry-over is switched off (`shouldCarryOverSourceCopy`) — it is
+  inserted and then dropped.
+
+  So the guidance invited the model to leave fields out, and the fields it
+  left out became sections that do not exist. It then described the email it
+  had planned. Telling it to report the gaps honestly starts with not
+  promising the gaps will be filled.
+*/
 const DRAFT_COMPOSITION_WORKFLOW = `## Making a new draft (createDraft)
 
 The drafts bar can hold several drafts of the same email side by side. A new draft is created with createDraft — every other tool you have edits the ONE draft currently on the canvas.
 
 - When the user asks for a new draft, another version, a different take, options to compare, or ideas to explore, call createDraft with a \`drafts\` plan. NEVER clear, delete, or rewrite the draft on screen to make a new idea fit — their existing content stays exactly as it is unless they explicitly asked you to replace it.
-- Each entry in \`drafts\` is one complete email: give it a short user-facing name and its sections in reading order — a header, one or more body sections (hero, feature columns, article, call to action, testimonial, gallery, stats…), and a footer. A missing header, body, or footer is filled in for you, but plan the whole email deliberately.
-- Write real copy in the section params, drawn from what the current draft is about: its subject, its audience, its product, its offer, its calls to action. Anything you leave out is carried over from the draft the user is on — so leave a field out when the current wording should carry over, and set it when this draft should say something new.
+- Each entry in \`drafts\` is one complete email: give it a short user-facing name and its sections in reading order — a header, one or more body sections (hero, feature columns, article, call to action, testimonial, gallery, stats…), and a footer. Plan all of them deliberately AND write copy for every one: a section you name but leave empty is not filled in for you — it is rebuilt as a different template that fits whatever copy it does have, or left out of the draft altogether.
+- Write real copy in the section params. When this turn read something outside the email — a page you fetched, a source the user pointed you at — write EVERY section from that source: nothing carries over on those turns, so a field left empty is a section that disappears. Otherwise draw on what the current draft is about (its subject, its audience, its product, its offer, its calls to action), where leaving a field out lets the current wording carry over and setting it makes this draft say something new.
 - The new drafts keep the theme the user already applied. Only pass shouldInheritTheme: false if they asked for a clean, unstyled start; to change the theme itself, ask them or open the theme picker.
 - Asked for several ideas at once, put them all in ONE createDraft call and make them genuinely different from each other — different section order, different templates (a plain hero in one, a split hero in another), different copy and imagery — while keeping the essence of the email the same. Do not send the same layout N times.
 - Use the bare \`count\` form ONLY when the user explicitly asked for blank drafts to fill in themselves.
-- After creating drafts, tell the user in plain language what each one is and that they can open it from the drafts bar. Never name the tool.`;
+- createDraft answers with a report of what the browser actually built: how many drafts landed, the exact names the drafts bar gave them, and which of your planned sections were rebuilt as a different template or left out for want of copy. Describe THAT report, never the plan you sent. Quote its names, say what each draft actually contains, name the sections it says are missing, offer to write the missing copy, and tell the user they can open the drafts from the drafts bar. Never name the tool.`;
 
 /**
  * One cache-stable paragraph summarizing the agent's capability CATEGORIES,
