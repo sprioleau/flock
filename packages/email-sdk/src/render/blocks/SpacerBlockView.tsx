@@ -1,10 +1,17 @@
 import { Column, Row } from "react-email";
 import type { SpacerBlock } from "../../schema/blocks";
 import type { ResolvedSpacerStyles } from "../styles";
+import type { BlockAnnotation } from "./shared";
 
 export interface SpacerBlockViewProps {
   block: SpacerBlock;
   resolvedStyles: ResolvedSpacerStyles;
+  /**
+   * Analysis-only stamp carrying this block's id onto the outermost element.
+   * Empty (and therefore absent from the HTML) on every ordinary render —
+   * see BLOCK_ANNOTATION_ATTRIBUTE in ./shared.
+   */
+  annotation?: BlockAnnotation;
 }
 
 /**
@@ -14,10 +21,10 @@ export interface SpacerBlockViewProps {
  * keeps clients that drop empty cells from removing the row. Transparent —
  * the container background shows through.
  */
-export function SpacerBlockView({ resolvedStyles }: SpacerBlockViewProps) {
+export function SpacerBlockView({ resolvedStyles, annotation = {} }: SpacerBlockViewProps) {
   const { height } = resolvedStyles;
   return (
-    <Row>
+    <Row {...annotation}>
       <Column
         style={{
           height: `${height}px`,

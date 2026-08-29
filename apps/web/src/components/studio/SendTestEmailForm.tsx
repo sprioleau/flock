@@ -5,6 +5,7 @@ import { CheckIcon, LoaderCircleIcon, SendIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { PreSendReviewNotice } from "./PreSendReviewNotice";
 import { validateRecipient } from "./send-test-email-client";
 import type { SendTestEmailControl } from "./use-send-test-email";
 
@@ -90,6 +91,11 @@ export function SendTestEmailForm({ control }: { control: SendTestEmailControl }
           Sent to {sendState.recipient}.
         </p>
       ) : null}
+
+      {/* The pre-send review. It sits ABOVE the button so it is read before
+          the click rather than after it, and it gates nothing — the button
+          below never consults it. */}
+      <PreSendReviewNotice />
 
       <div className="flex justify-end">
         <Button

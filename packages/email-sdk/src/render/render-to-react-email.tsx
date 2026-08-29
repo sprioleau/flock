@@ -6,6 +6,7 @@ import { inflate, type EmailTreeNode } from "../store/tree";
 import type { GlobalStyles } from "../schema/globals";
 import { DocumentIntegrityError } from "./errors";
 import { resolveBlockStyles } from "./styles";
+import { buildBlockAnnotation } from "./blocks/shared";
 import { SectionBlockView } from "./blocks/SectionBlockView";
 import { RowBlockView } from "./blocks/RowBlockView";
 import { ColumnBlockView } from "./blocks/ColumnBlockView";
@@ -22,15 +23,32 @@ import { SpacerBlockView } from "./blocks/SpacerBlockView";
  * its wrapper view with styles resolved from
  * DEFAULT_GLOBAL_STYLES → root.properties.globals → block overrides.
  */
-function renderTreeNode(node: EmailTreeNode, globals: GlobalStyles | undefined): ReactElement {
+interface RenderTreeNodeOptions {
+  node: EmailTreeNode;
+  globals: GlobalStyles | undefined;
+  /* Stamp each block's outermost element with its id — analysis renders only. */
+  isBlockAnnotated: boolean;
+}
+
+function renderTreeNode({ node, globals, isBlockAnnotated }: RenderTreeNodeOptions): ReactElement {
   const { block } = node;
-  const children = node.children.map((child) => renderTreeNode(child, globals));
+  const children = node.children.map((child) =>
+    renderTreeNode({ node: child, globals, isBlockAnnotated }),
+  );
+  /*
+    Off by default, so the email a subscriber receives is unchanged. On, this
+    stamps every block's outermost element with its id — the correspondence
+    the pre-send compatibility check needs to turn an HTML-level finding into
+    a block-level one. See BLOCK_ANNOTATION_ATTRIBUTE in ./blocks/shared.
+  */
+  const annotation = buildBlockAnnotation(isBlockAnnotated ? block.id : undefined);
 
   switch (block.type) {
     case "section":
       return (
         <SectionBlockView
           key={block.id}
+          annotation={annotation}
           block={block}
           resolvedStyles={resolveBlockStyles(globals, block)}
         >
@@ -41,6 +59,7 @@ function renderTreeNode(node: EmailTreeNode, globals: GlobalStyles | undefined):
       return (
         <RowBlockView
           key={block.id}
+          annotation={annotation}
           block={block}
           resolvedStyles={resolveBlockStyles(globals, block)}
         >
@@ -51,6 +70,7 @@ function renderTreeNode(node: EmailTreeNode, globals: GlobalStyles | undefined):
       return (
         <ColumnBlockView
           key={block.id}
+          annotation={annotation}
           block={block}
           resolvedStyles={resolveBlockStyles(globals, block)}
         >
@@ -59,31 +79,31 @@ function renderTreeNode(node: EmailTreeNode, globals: GlobalStyles | undefined):
       );
     case "text":
       return (
-        <TextBlockView key={block.id} block={block} resolvedStyles={resolveBlockStyles(globals, block)} />
+        <TextBlockView key={block.id} annotation={annotation} block={block} resolvedStyles={resolveBlockStyles(globals, block)} />
       );
     case "button":
       return (
-        <ButtonBlockView key={block.id} block={block} resolvedStyles={resolveBlockStyles(globals, block)} />
+        <ButtonBlockView key={block.id} annotation={annotation} block={block} resolvedStyles={resolveBlockStyles(globals, block)} />
       );
     case "image":
       return (
-        <ImageBlockView key={block.id} block={block} resolvedStyles={resolveBlockStyles(globals, block)} />
+        <ImageBlockView key={block.id} annotation={annotation} block={block} resolvedStyles={resolveBlockStyles(globals, block)} />
       );
     case "divider":
       return (
-        <DividerBlockView key={block.id} block={block} resolvedStyles={resolveBlockStyles(globals, block)} />
+        <DividerBlockView key={block.id} annotation={annotation} block={block} resolvedStyles={resolveBlockStyles(globals, block)} />
       );
     case "link":
       return (
-        <LinkBlockView key={block.id} block={block} resolvedStyles={resolveBlockStyles(globals, block)} />
+        <LinkBlockView key={block.id} annotation={annotation} block={block} resolvedStyles={resolveBlockStyles(globals, block)} />
       );
     case "code":
       return (
-        <CodeBlockView key={block.id} block={block} resolvedStyles={resolveBlockStyles(globals, block)} />
+        <CodeBlockView key={block.id} annotation={annotation} block={block} resolvedStyles={resolveBlockStyles(globals, block)} />
       );
     case "spacer":
       return (
-        <SpacerBlockView key={block.id} block={block} resolvedStyles={resolveBlockStyles(globals, block)} />
+        <SpacerBlockView key={block.id} annotation={annotation} block={block} resolvedStyles={resolveBlockStyles(globals, block)} />
       );
     case "root":
       throw new Error(
@@ -100,7 +120,22 @@ function renderTreeNode(node: EmailTreeNode, globals: GlobalStyles | undefined):
  * root → Html/Head/Body (emailBackgroundColor) → per-section full-width band
  * + centered Container (contentWidth) → rows/columns/leaves.
  */
-export function renderToReactEmail(document: EmailDocument): ReactElement {
+export interface RenderToReactEmailOptions {
+  /**
+   * Stamp every block's outermost element with `data-flock-block-id`.
+   *
+   * ANALYSIS ONLY. The pre-send compatibility check renders a second,
+   * throwaway copy of the email with this on so it can trace a finding about
+   * a `<td>` back to the block that produced it; the render that becomes the
+   * message never sets it, and so never carries the attribute. Default false.
+   */
+  isBlockAnnotated?: boolean;
+}
+
+export function renderToReactEmail(
+  document: EmailDocument,
+  options: RenderToReactEmailOptions = {},
+): ReactElement {
   const integrity = checkDocumentIntegrity(document);
   if (!integrity.isValid) {
     throw new DocumentIntegrityError(integrity.errors);
@@ -114,7 +149,13 @@ export function renderToReactEmail(document: EmailDocument): ReactElement {
     <Html lang="en">
       <Head />
       <Body style={{ backgroundColor: rootStyles.emailBackgroundColor, margin: 0, padding: 0 }}>
-        {tree.children.map((child) => renderTreeNode(child, globals))}
+        {tree.children.map((child) =>
+          renderTreeNode({
+            node: child,
+            globals,
+            isBlockAnnotated: options.isBlockAnnotated ?? false,
+          }),
+        )}
       </Body>
     </Html>
   );

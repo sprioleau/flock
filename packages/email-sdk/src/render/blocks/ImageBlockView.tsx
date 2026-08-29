@@ -2,11 +2,17 @@ import type { CSSProperties } from "react";
 import { Column, Img, Link, Row } from "react-email";
 import type { ImageBlock } from "../../schema/blocks";
 import type { ResolvedImageStyles } from "../styles";
-import { blockPaddingStyle } from "./shared";
+import { blockPaddingStyle, type BlockAnnotation } from "./shared";
 
 export interface ImageBlockViewProps {
   block: ImageBlock;
   resolvedStyles: ResolvedImageStyles;
+  /**
+   * Analysis-only stamp carrying this block's id onto the outermost element.
+   * Empty (and therefore absent from the HTML) on every ordinary render —
+   * see BLOCK_ANNOTATION_ATTRIBUTE in ./shared.
+   */
+  annotation?: BlockAnnotation;
 }
 
 /** React Email's <Img> is display:block, so alignment is margin-based. */
@@ -31,7 +37,7 @@ const ALIGN_MARGINS: Record<ResolvedImageStyles["align"], CSSProperties> = {
  * Both are skipped entirely at their zero/none defaults so an unstyled image
  * renders exactly the markup it always has.
  */
-export function ImageBlockView({ block, resolvedStyles }: ImageBlockViewProps) {
+export function ImageBlockView({ block, resolvedStyles, annotation = {} }: ImageBlockViewProps) {
   const { src, alt, width, href } = block.properties;
   const hasBorder = resolvedStyles.borderWidth > 0 && resolvedStyles.borderStyle !== "none";
   const image = (
@@ -57,7 +63,7 @@ export function ImageBlockView({ block, resolvedStyles }: ImageBlockViewProps) {
     />
   );
   return (
-    <Row>
+    <Row {...annotation}>
       <Column
         style={{
           ...(resolvedStyles.backgroundColor !== undefined

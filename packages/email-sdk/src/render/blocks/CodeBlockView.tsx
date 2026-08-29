@@ -1,11 +1,17 @@
 import { CodeBlock as ReactEmailCodeBlock, Column, oneDark, oneLight, Row } from "react-email";
 import type { CodeBlock } from "../../schema/blocks";
 import type { ResolvedCodeStyles } from "../styles";
-import { blockPaddingStyle } from "./shared";
+import { blockPaddingStyle, type BlockAnnotation } from "./shared";
 
 export interface CodeBlockViewProps {
   block: CodeBlock;
   resolvedStyles: ResolvedCodeStyles;
+  /**
+   * Analysis-only stamp carrying this block's id onto the outermost element.
+   * Empty (and therefore absent from the HTML) on every ordinary render —
+   * see BLOCK_ANNOTATION_ATTRIBUTE in ./shared.
+   */
+  annotation?: BlockAnnotation;
 }
 
 /**
@@ -21,9 +27,9 @@ const PRISM_THEMES_BY_NAME = { light: oneLight, dark: oneDark } as const;
  * The theme's own base padding/background stay as designed; outer spacing
  * comes from block padding like every other leaf.
  */
-export function CodeBlockView({ block, resolvedStyles }: CodeBlockViewProps) {
+export function CodeBlockView({ block, resolvedStyles, annotation = {} }: CodeBlockViewProps) {
   return (
-    <Row>
+    <Row {...annotation}>
       <Column style={blockPaddingStyle(resolvedStyles)}>
         <ReactEmailCodeBlock
           code={block.properties.code}

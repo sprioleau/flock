@@ -4,11 +4,17 @@ import type { TextBlock } from "../../schema/blocks";
 import type { TextAlign } from "../../schema/globals";
 import type { InlineNode, TextMark, TextNode } from "../../schema/text";
 import type { ResolvedTextNodeStyles, ResolvedTextStyles } from "../styles";
-import { blockPaddingStyle, HEADING_FONT_SIZES } from "./shared";
+import { blockPaddingStyle, HEADING_FONT_SIZES, type BlockAnnotation } from "./shared";
 
 export interface TextBlockViewProps {
   block: TextBlock;
   resolvedStyles: ResolvedTextStyles;
+  /**
+   * Analysis-only stamp carrying this block's id onto the outermost element.
+   * Empty (and therefore absent from the HTML) on every ordinary render —
+   * see BLOCK_ANNOTATION_ATTRIBUTE in ./shared.
+   */
+  annotation?: BlockAnnotation;
 }
 
 /**
@@ -81,7 +87,7 @@ function renderInlineNodes(
  * vertical rhythm comes from block padding (text-block-model doctrine:
  * spacing is block-level, the doc is content-only).
  */
-export function TextBlockView({ block, resolvedStyles }: TextBlockViewProps) {
+export function TextBlockView({ block, resolvedStyles, annotation = {} }: TextBlockViewProps) {
   // Per-node alignment: a node's own attrs.textAlign (the only node-level
   // style attribute) beats the resolved block/global alignment.
   const nodeStyle = (styles: ResolvedTextNodeStyles, nodeTextAlign?: TextAlign) => ({
@@ -97,7 +103,7 @@ export function TextBlockView({ block, resolvedStyles }: TextBlockViewProps) {
   });
 
   return (
-    <Row>
+    <Row {...annotation}>
       {/* The block background rides the wrapping <Column> (a td — the same
           email-safe surface the column and image blocks paint), so it fills
           the block's bounds, padding included: the callout treatment. */}

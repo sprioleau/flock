@@ -5,6 +5,13 @@ import { renderToReactEmail } from "./render-to-react-email";
 export interface RenderToHTMLOptions {
   /** Pretty-print the HTML (useful for snapshots/debugging). Default: false. */
   isPretty?: boolean;
+  /**
+   * Stamp every block's outermost element with `data-flock-block-id`.
+   *
+   * ANALYSIS ONLY — see {@link RenderToReactEmailOptions.isBlockAnnotated}.
+   * A sent email is always rendered without it.
+   */
+  isBlockAnnotated?: boolean;
 }
 
 /**
@@ -16,5 +23,8 @@ export async function renderToHTML(
   document: EmailDocument,
   options: RenderToHTMLOptions = {},
 ): Promise<string> {
-  return render(renderToReactEmail(document), { pretty: options.isPretty ?? false });
+  return render(
+    renderToReactEmail(document, { isBlockAnnotated: options.isBlockAnnotated ?? false }),
+    { pretty: options.isPretty ?? false },
+  );
 }
