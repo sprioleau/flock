@@ -41,11 +41,15 @@ function createSeededRandom(seed: number): () => number {
   };
 }
 
-function composeOne(
-  command: CreateDraftCommand,
-  sourceDoc: EmailDocument,
-  themeGlobals?: GlobalStyles,
-): EmailDocument {
+function composeOne({
+  command,
+  sourceDoc,
+  themeGlobals,
+}: {
+  command: CreateDraftCommand;
+  sourceDoc: EmailDocument;
+  themeGlobals?: GlobalStyles | undefined;
+}): EmailDocument {
   const [composed] = buildComposedDrafts({
     sourceDoc,
     command,
@@ -512,7 +516,10 @@ describe("buildComposedDrafts", () => {
         globals: { emailBackgroundColor: "#101014", paragraphTextColor: "#f5f5f5" },
       },
     } as EmailDocument[string];
-    const doc = composeOne(planCommand(), themed);
+    const doc = composeOne({
+      command: planCommand(),
+      sourceDoc: themed,
+    });
     const root = doc[ROOT_BLOCK_ID]!;
     expect(root.type === "root" && root.properties.globals).toEqual({
       emailBackgroundColor: "#101014",
@@ -526,7 +533,10 @@ describe("buildComposedDrafts", () => {
       ...themed[ROOT_BLOCK_ID]!,
       properties: { globals: { emailBackgroundColor: "#101014" } },
     } as EmailDocument[string];
-    const doc = composeOne(planCommand({ shouldInheritTheme: false }), themed);
+    const doc = composeOne({
+      command: planCommand({ shouldInheritTheme: false }),
+      sourceDoc: themed,
+    });
     const root = doc[ROOT_BLOCK_ID]!;
     expect(root.type === "root" && root.properties.globals).toEqual({});
   });
@@ -558,11 +568,11 @@ describe("buildComposedDrafts", () => {
       ...themed[ROOT_BLOCK_ID]!,
       properties: { globals: { emailBackgroundColor: "#101014" } },
     } as EmailDocument[string];
-    const doc = composeOne(
-      planCommand(),
-      themed,
-      { emailBackgroundColor: "#ffffff", buttonBackgroundColor: "#ffc600" },
-    );
+    const doc = composeOne({
+      command: planCommand(),
+      sourceDoc: themed,
+      themeGlobals: { emailBackgroundColor: "#ffffff", buttonBackgroundColor: "#ffc600" },
+    });
     const root = doc[ROOT_BLOCK_ID]!;
     expect(root.type === "root" && root.properties.globals).toEqual({
       emailBackgroundColor: "#ffffff",
@@ -581,11 +591,11 @@ describe("buildComposedDrafts", () => {
       ...themed[ROOT_BLOCK_ID]!,
       properties: { globals: { emailBackgroundColor: "#101014" } },
     } as EmailDocument[string];
-    const doc = composeOne(
-      planCommand({ shouldInheritTheme: false }),
-      themed,
-      { emailBackgroundColor: "#ffffff" },
-    );
+    const doc = composeOne({
+      command: planCommand({ shouldInheritTheme: false }),
+      sourceDoc: themed,
+      themeGlobals: { emailBackgroundColor: "#ffffff" },
+    });
     const root = doc[ROOT_BLOCK_ID]!;
     expect(root.type === "root" && root.properties.globals).toEqual({
       emailBackgroundColor: "#ffffff",
@@ -598,7 +608,11 @@ describe("buildComposedDrafts", () => {
       ...themed[ROOT_BLOCK_ID]!,
       properties: { globals: { emailBackgroundColor: "#101014" } },
     } as EmailDocument[string];
-    const doc = composeOne(planCommand(), themed, undefined);
+    const doc = composeOne({
+      command: planCommand(),
+      sourceDoc: themed,
+      themeGlobals: undefined,
+    });
     const root = doc[ROOT_BLOCK_ID]!;
     expect(root.type === "root" && root.properties.globals).toEqual({
       emailBackgroundColor: "#101014",
@@ -606,15 +620,15 @@ describe("buildComposedDrafts", () => {
   });
 
   it("produces a complete, sendable email even from a one-section plan", () => {
-    const doc = composeOne(
-      {
+    const doc = composeOne({
+      command: {
         type: "createDraft",
         count: 1,
         shouldInheritTheme: true,
         drafts: [{ sections: [{ templateId: "hero", params: { headline: "Just this" } }] }],
       },
-      createStarterDocument(),
-    );
+      sourceDoc: createStarterDocument(),
+    });
     // Header, body, footer — three top-level sections, never a bare hero.
     expect(doc[ROOT_BLOCK_ID]!.childrenIds).toHaveLength(3);
     expect(getSectionCategories(doc)).toEqual(["section", "section", "section"]);
@@ -637,8 +651,8 @@ describe("buildComposedDrafts", () => {
         href: "https://petal.example/spring",
       },
     } as EmailDocument[string];
-    const doc = composeOne(
-      {
+    const doc = composeOne({
+      command: {
         type: "createDraft",
         count: 1,
         shouldInheritTheme: true,
@@ -652,8 +666,8 @@ describe("buildComposedDrafts", () => {
           },
         ],
       },
-      source,
-    );
+      sourceDoc: source,
+    });
     const text = getAllText(doc);
     // The SOURCE draft's brand and CTA — not the templates' placeholder copy.
     expect(text).toContain("Petal Studio logo");
@@ -665,8 +679,8 @@ describe("buildComposedDrafts", () => {
   });
 
   it("does not repeat the carried-over headline in every section", () => {
-    const doc = composeOne(
-      {
+    const doc = composeOne({
+      command: {
         type: "createDraft",
         count: 1,
         shouldInheritTheme: true,
@@ -681,8 +695,8 @@ describe("buildComposedDrafts", () => {
           },
         ],
       },
-      createStarterDocument(),
-    );
+      sourceDoc: createStarterDocument(),
+    });
     const occurrences = getAllText(doc).split("Welcome to Flock.").length - 1;
     expect(occurrences).toBe(1);
   });
@@ -691,8 +705,8 @@ describe("buildComposedDrafts", () => {
     // The reported failure in miniature: a section the model left unspecified
     // silently rendered the template's own marketing defaults. Every headline
     // below is a Zod `.default()` in the catalog templates.
-    const doc = composeOne(
-      {
+    const doc = composeOne({
+      command: {
         type: "createDraft",
         count: 1,
         shouldInheritTheme: true,
@@ -707,7 +721,7 @@ describe("buildComposedDrafts", () => {
           },
         ],
       },
-      buildSourceEmail([
+      sourceDoc: buildSourceEmail([
         [logoImage("Petal Studio logo"), photoImage("A workbench at first light")],
         [copyText({ headline: "Spring is here", body: "Everything new, in one place." })],
         [
@@ -718,7 +732,7 @@ describe("buildComposedDrafts", () => {
         ],
         [copyText({ body: "Petal Studio · Unsubscribe" })],
       ]),
-    );
+    });
     const text = getAllText(doc);
     expect(text).toContain("Spring is here");
     expect(text).toContain("What shipped in March");
