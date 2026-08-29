@@ -7,6 +7,7 @@ import {
   ImageIcon,
   MailIcon,
   MonitorIcon,
+  PaletteIcon,
   PanelRightOpenIcon,
   RedoIcon,
   SmartphoneIcon,
@@ -84,6 +85,17 @@ function toChipContent(command: EditorCommandDataPart["command"]): {
       return {
         icon: <BotIcon className="size-3" />,
         label: `Created persona “${command.name}”`,
+      };
+    /*
+      Unreachable in practice, and present so the switch stays exhaustive:
+      applyThemeToDraft is `resultSource: "client"`, so the server writes no
+      command part for it at all — the browser answers it directly and the
+      ordinary tool chip renders. Same standing as createDraft above.
+    */
+    case "applyThemeToDraft":
+      return {
+        icon: <PaletteIcon className="size-3" />,
+        label: `Applied the “${command.theme}” theme`,
       };
   }
 }

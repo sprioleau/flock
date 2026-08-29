@@ -1,6 +1,7 @@
 import { z } from "zod";
 import { imageBlockIdSchema } from "../schema/ids";
 import { createDraftCommandSchema } from "./compose-draft";
+import { applyThemeToDraftCommandSchema } from "./theme-target";
 
 /**
  * Editor commands — the typed client-command channel (plan §3.4).
@@ -232,6 +233,25 @@ export {
 } from "./compose-draft";
 export type { CreateDraftInput, CreateDraftCommand } from "./compose-draft";
 
+// --- applyThemeToDraft ---------------------------------------------------------
+
+/*
+  Re-exported from ./theme-target, where the reference vocabulary lives.
+
+  THE ACTION THAT WAS MISSING. `applyTheme` is a content OPERATION: a pure
+  document transform, replayed into one document's op log, with no notion of
+  which document — correctly so, since the log it lands in IS the document.
+  What did not exist was an action ABOVE it that says which draft, so the only
+  draft the agent could ever re-theme was the one its turn was pinned to. Ask
+  it to theme a draft it had just created and it would have painted the user's
+  current one instead.
+*/
+export {
+  applyThemeToDraftInputSchema,
+  applyThemeToDraftCommandSchema,
+} from "./theme-target";
+export type { ApplyThemeToDraftInput, ApplyThemeToDraftCommand } from "./theme-target";
+
 // --- createPersona -------------------------------------------------------------
 
 export const PERSONA_NAME_MAX_LENGTH = 60;
@@ -302,6 +322,7 @@ export const editorCommandSchema = z
     goToVersionCommandSchema,
     createDraftCommandSchema,
     createPersonaCommandSchema,
+    applyThemeToDraftCommandSchema,
   ])
   .describe("Any editor UI command, discriminated by its type field.");
 

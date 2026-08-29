@@ -83,6 +83,16 @@ const ACTIVITY_PHRASES: Readonly<Record<string, ActivityEntry>> = {
       ? { present: "Starting new drafts", past: "Started new drafts" }
       : { present: "Starting a new draft", past: "Started a new draft" },
   createPersona: { present: "Creating a persona", past: "Created a persona" },
+  /*
+    Named in the chip when the call names a draft, because this is the one
+    action that can change a draft the user is NOT looking at — a neutral
+    "Applying the theme" over an off-screen draft is a change with no visible
+    cause.
+  */
+  applyThemeToDraft: (input) =>
+    typeof input.draft === "string" && input.draft.length > 0
+      ? { present: `Theming “${input.draft}”`, past: `Themed “${input.draft}”` }
+      : { present: "Applying the theme", past: "Applied the theme" },
   // Widget tools: the chip shows only while the call streams in / when no
   // widget part was written — the widget itself supersedes it otherwise.
   askForClarification: { present: "Thinking of a question", past: "Asked a question" },

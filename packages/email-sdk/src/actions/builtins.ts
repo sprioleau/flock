@@ -21,6 +21,7 @@ import { resolveCreateDraftCommand } from "./compose-draft";
 import { defineEmailAction, type ContentEmailAction } from "./define";
 import { inspectRenderedEmailAction } from "./inspect-rendered-email";
 import {
+  applyThemeToDraftInputSchema,
   createDraftInputSchema,
   createPersonaInputSchema,
   generateImageInputSchema,
@@ -30,6 +31,7 @@ import {
   sendTestEmailInputSchema,
   showPreviewInputSchema,
   undoInputSchema,
+  type ApplyThemeToDraftCommand,
   type CreateDraftCommand,
   type CreatePersonaCommand,
   type GenerateImageCommand,
@@ -463,6 +465,46 @@ export const createPersonaAction = defineEmailAction({
   }),
 });
 
+/**
+ * Re-theme ONE draft — including a draft the user is not looking at.
+ *
+ * TWO THINGS THE OLD WIRING COULD NOT DO, and this is the one action that
+ * answers both.
+ *
+ * 1. IT NAMES A THEME INSTEAD OF CARRYING ONE. The only way to theme anything
+ *    used to be `applyTheme`, whose argument is a complete GlobalStyles
+ *    object, so re-using a page's colours meant the model transcribing a dozen
+ *    hex values out of one tool result into the next tool call. Every one of
+ *    them is a value it could mistype or quietly improve. Here it passes
+ *    "page", or the theme's name; the browser resolves it from the ingestion
+ *    payload or the canvas's live kit. A colour never touches the wire.
+ * 2. IT SAYS WHICH DRAFT. `applyTheme` targets whatever document the turn is
+ *    pinned to, which is the user's current draft — so "theme the draft you
+ *    just made" would have repainted the one they are looking at.
+ *
+ * CLIENT-RESULT for the same reason createDraft is: the browser holds the
+ * canvas's draft list, the kit, the transcript, and the per-document store
+ * registry, and it is the only party that can say whether the theme landed,
+ * on which draft, and whether that draft's globals actually changed. `run`
+ * returns an INTENT; nothing has happened when it returns.
+ */
+export const applyThemeToDraftAction = defineEmailAction({
+  name: "applyThemeToDraft",
+  description:
+    "Apply an EXISTING theme to one draft — the colours and fonts read off a page you fetched this turn (theme: \"page\"), one of this canvas's saved themes by name, or the theme already on the user's draft (\"current\"). Name the draft with `draft` (its name in the drafts bar, exactly as createDraft reported it) to re-theme a draft the user is NOT looking at; omit it for their current one. NEVER pass a colour, a hex value, or a styles object — you name a theme that already exists, you do not author one. To give a BRAND-NEW draft a theme, pass `theme` to createDraft instead: a draft is born themed rather than themed afterwards.",
+  kind: "editor",
+  schema: applyThemeToDraftInputSchema,
+  readOnly: false, // rewrites one draft's globals
+  resultSource: "client",
+  parallelSafe: false, // contends on one document's root globals
+  needsApproval: false,
+  run: (input): ApplyThemeToDraftCommand => ({
+    type: "applyThemeToDraft",
+    theme: input.theme,
+    ...(input.draft === undefined ? {} : { draft: input.draft }),
+  }),
+});
+
 /** Every built-in editor action. */
 export const editorEmailActions = [
   showPreviewAction,
@@ -474,6 +516,7 @@ export const editorEmailActions = [
   goToVersionAction,
   createDraftAction,
   createPersonaAction,
+  applyThemeToDraftAction,
 ] as const;
 
 // --- Analysis actions (read-only reads of the rendered email) --------------------

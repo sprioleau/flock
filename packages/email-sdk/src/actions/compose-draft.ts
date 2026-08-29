@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { PAGE_THEME_REFERENCE, themeReferenceSchema } from "./theme-target";
 import type { Operation } from "../operations/ops";
 import { getSectionTemplate, SECTION_TEMPLATES } from "../sections/catalog";
 import {
@@ -106,7 +107,7 @@ export type DraftSectionPlan = z.infer<typeof draftSectionPlanSchema>;
   Observed on a real turn: a complete five-section plan, every section valid,
   discarded because `shouldInheritTheme: true` sat one level too deep.
 */
-const CREATE_DRAFT_CALL_OPTION_KEYS = ["count", "shouldInheritTheme"] as const;
+const CREATE_DRAFT_CALL_OPTION_KEYS = ["count", "shouldInheritTheme", "theme"] as const;
 
 /*
   Say where a misplaced key belongs, and only then that it is unrecognised.
@@ -181,6 +182,18 @@ export const createDraftInputSchema = z
       .describe(
         "Whether the new drafts keep the theme currently applied to the user's draft (default true). Pass false only when the user explicitly asked for a clean, unthemed start.",
       ),
+    /*
+      A NAME, NEVER COLOURS. The whole point of the reference (see
+      actions/theme-target.ts): the model says which theme, the browser says
+      what it looks like, and a new draft is BORN wearing it — there is no
+      second call that could land the theme on the wrong draft, because the
+      only draft that exists when this resolves is the one being built.
+    */
+    theme: themeReferenceSchema
+      .optional()
+      .describe(
+        `Give the new drafts a DIFFERENT theme, by name: "${PAGE_THEME_REFERENCE}" for the colours and fonts read off the page you fetched this turn, or the name of one of this canvas's saved themes. Omit it to keep the theme the user is already on. Never pass a colour — you name a theme, you do not author one.`,
+      ),
   })
   .describe(
     "Creates one or more NEW drafts alongside the current one, each a complete email (header, body, footer). The user's current draft is never touched.",
@@ -211,6 +224,11 @@ export const createDraftCommandSchema = z
     shouldInheritTheme: z
       .boolean()
       .describe("Whether the new drafts adopt the source draft's theme."),
+    theme: themeReferenceSchema
+      .optional()
+      .describe(
+        "The theme reference to resolve for the new drafts (absent = inherit). Resolved in the browser, which is the only place the page read this turn and the canvas's live kit both exist.",
+      ),
   })
   .describe("Client command: add new drafts to the drafts bar, composed or empty.");
 
@@ -219,15 +237,17 @@ export type CreateDraftCommand = z.infer<typeof createDraftCommandSchema>;
 /** Resolve the model's input into the client command (count/plan reconciled). */
 export function resolveCreateDraftCommand(input: CreateDraftInput): CreateDraftCommand {
   const shouldInheritTheme = input.shouldInheritTheme ?? true;
+  const theme = input.theme === undefined ? {} : { theme: input.theme };
   if (input.drafts !== undefined && input.drafts.length > 0) {
     return {
       type: "createDraft",
       count: input.drafts.length,
       drafts: input.drafts,
       shouldInheritTheme,
+      ...theme,
     };
   }
-  return { type: "createDraft", count: input.count ?? 1, shouldInheritTheme };
+  return { type: "createDraft", count: input.count ?? 1, shouldInheritTheme, ...theme };
 }
 
 // ---------------------------------------------------------------------------
@@ -644,6 +664,26 @@ export interface BuildComposedDraftsInput {
    * and params the plan DID specify were always honoured either way.
    */
   shouldCarryOverSourceCopy?: boolean;
+  /**
+   * A theme the CALLER already resolved, applied instead of the source
+   * draft's own. Absent = inherit, which stays the default everywhere.
+   *
+   * WHY THE CALLER RESOLVES IT AND NOT THIS FUNCTION. The command carries a
+   * theme REFERENCE — a name like "page" or "Midnight" — because the model
+   * must never hold a colour value (actions/theme-target.ts). Turning that
+   * name into globals means reading the page this turn ingested and the
+   * canvas's live brand kit, and neither is a document or a plan. So the app
+   * resolves, and composition receives the answer.
+   *
+   * A DRAFT IS BORN THEMED OR IT IS NOT THEMED. This is the seam the reported
+   * failure needed and did not have: a turn read wesbos.com, derived its
+   * theme correctly, and created a draft with `globals: {}` — because the
+   * only theme composition could see was the source draft's, and the source
+   * draft was on the shared defaults. There is no second chance to fix it up
+   * afterwards that is not a race with the model against a draft nobody is
+   * looking at.
+   */
+  themeGlobals?: GlobalStyles;
   /** Randomness source for the new blocks' ids — injectable for tests. */
   random?: RandomFn;
 }
@@ -785,6 +825,7 @@ export function buildComposedDrafts({
   sourceDoc,
   command,
   shouldCarryOverSourceCopy = true,
+  themeGlobals,
   random = Math.random,
 }: BuildComposedDraftsInput): ComposedDraft[] {
   if (command.drafts === undefined || command.drafts.length === 0) {
@@ -792,11 +833,19 @@ export function buildComposedDrafts({
   }
   const clues = shouldCarryOverSourceCopy ? deriveDraftContentClues(sourceDoc) : {};
   const sourceRoot = sourceDoc[ROOT_BLOCK_ID];
-  const sourceGlobals: GlobalStyles | undefined =
+  const inheritedGlobals: GlobalStyles | undefined =
     command.shouldInheritTheme && sourceRoot !== undefined && sourceRoot.type === "root"
       ? sourceRoot.properties.globals
       : undefined;
-  const hasThemeToInherit = sourceGlobals !== undefined && Object.keys(sourceGlobals).length > 0;
+  /*
+    A RESOLVED THEME OUTRANKS INHERITANCE, including when inheritance was
+    switched off. `shouldInheritTheme: false` means "do not carry the draft
+    the user is on"; it does not mean "ignore the theme they just named", and
+    of the two instructions the named one is the more specific.
+  */
+  const newDraftGlobals = themeGlobals ?? inheritedGlobals;
+  const hasThemeToApply =
+    newDraftGlobals !== undefined && Object.keys(newDraftGlobals).length > 0;
 
   const diversified = diversifyDraftSections(
     command.drafts.map((plan) => completeDraftSections(plan.sections)),
@@ -805,8 +854,8 @@ export function buildComposedDrafts({
   return command.drafts.map((plan, draftIndex) => {
     const plannedSections = diversified[draftIndex]!;
     const sections = applyContentClues({ sections: plannedSections, clues });
-    const ops: Operation[] = hasThemeToInherit
-      ? [{ name: "applyTheme", globals: sourceGlobals }]
+    const ops: Operation[] = hasThemeToApply
+      ? [{ name: "applyTheme", globals: newDraftGlobals }]
       : [];
     const composition: ComposedDraftComposition = {
       plannedSectionCount: 0,

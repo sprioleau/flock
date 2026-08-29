@@ -14,11 +14,15 @@ import {
   emailActionRegistry,
   isSavedSectionTemplateId,
   SAVED_SECTION_TEMPLATE_ID_PREFIX,
+  ROOT_BLOCK_ID,
   type ActionContext,
   type ActionDispatchError,
   type ActionFailureKind,
+  type ApplyThemeToDraftCommand,
   type Block,
   type CreateDraftCommand,
+  type GlobalStyles,
+  type NamedTheme,
   type GenerateImageCommand,
   type ScaffoldSectionPosition,
 } from "@flock/email-sdk";
@@ -40,6 +44,7 @@ import {
   releaseEditorStore,
   useEditorStore,
   type DispatchableOp,
+  type EditorState,
   type EditorStoreApi,
 } from "@/lib/editor-store";
 import { setPersonaEnabled } from "@/lib/personas/enabled-personas";
@@ -54,6 +59,16 @@ import {
   type CreateDraftOutcome,
 } from "@/lib/create-draft-report";
 import { getHasIngestedSourceInTurn } from "@/lib/ingested-source";
+import { useActiveBrandKit } from "../brand-kit/useActiveBrandKit";
+import { applyThemeToDraft } from "../drafts/apply-theme-to-draft";
+import {
+  toApplyThemeToolOutput,
+  type ApplyThemeOutcome,
+} from "../drafts/apply-theme-report";
+import {
+  readCanvasThemeCandidates,
+  readTurnPageTheme,
+} from "../drafts/theme-candidates";
 import { getOrCreateSessionId } from "@/lib/session";
 import { requestUiSurfaceOpen } from "@/lib/ui-surfaces";
 import { getAppSettings } from "../demo/app-settings";
@@ -106,10 +121,57 @@ const CLIENT_RESULT_EDITOR_TOOL_NAMES: ReadonlySet<string> = new Set(
     .map((action) => action.name),
 );
 
+/**
+ * One draft's raw globals, or null when it carries none of its own.
+ *
+ * `{}` and null are the same fact — a draft on the shared renderer defaults —
+ * and collapsing them here is what lets `theme: "current"` refuse honestly
+ * instead of resolving to an empty payload that would strip the target draft.
+ */
+function readDraftGlobals(doc: EditorState["doc"]): GlobalStyles | null {
+  const root = doc[ROOT_BLOCK_ID];
+  if (root === undefined || root.type !== "root") {
+    return null;
+  }
+  const globals = root.properties.globals ?? {};
+  return Object.keys(globals).length > 0 ? globals : null;
+}
+
 /** The history direction a client-result editor tool name asks for. */
 function getHistoryStepDirection(toolName: string): HistoryStepDirection | null {
   if (toolName === "undo" || toolName === "redo") {
     return toolName;
+  }
+  return null;
+}
+
+/**
+ * WHICH BROWSER-SIDE EXECUTOR ANSWERS A CLIENT-RESULT COMMAND — the routing
+ * decision, lifted out of `runClientResultEditorTool` so it can be checked
+ * against the registry instead of being taken on trust.
+ *
+ * THE FAILURE THIS EXISTS TO CATCH is silent and total. A `resultSource:
+ * "client"` action gets no server execute and writes no command part, so this
+ * branch is the ONLY thing that ever answers it. Miss one — add a client-
+ * result action and forget the branch, or delete a branch during a refactor —
+ * and the call reaches the browser, does nothing, and is never reported: an
+ * open tool call the model waits on forever, with no error anywhere and every
+ * test still green. That is not a hypothetical; deleting the applyThemeToDraft
+ * branch outright left the whole suite passing and `tsc` clean, which is why
+ * the decision now lives somewhere a test can reach it.
+ *
+ * Null means "no executor claims this", which the test below turns into a
+ * build-time-ish failure by holding it against every client-result action the
+ * SDK declares.
+ */
+export function getClientResultExecutorKind(
+  commandType: string,
+): "history" | "createDraft" | "applyThemeToDraft" | null {
+  if (getHistoryStepDirection(commandType) !== null) {
+    return "history";
+  }
+  if (commandType === "createDraft" || commandType === "applyThemeToDraft") {
+    return commandType;
   }
   return null;
 }
@@ -186,6 +248,24 @@ interface FlockChatController {
   setCreateDrafts: (
     createDrafts: (command: CreateDraftCommand) => Promise<CreateDraftOutcome>,
   ) => void;
+  /**
+   * Inject the applyThemeToDraft executor, for the same reason createDraft's
+   * is injected: the hook owns the Convex client and the reactive brand kit,
+   * and the controller owns the turn.
+   *
+   * It RESOLVES WITH THE OUTCOME (never rejects) because that outcome is the
+   * only honest basis for the tool result — see drafts/apply-theme-report.ts.
+   */
+  setApplyTheme: (
+    applyTheme: (command: ApplyThemeToDraftCommand) => Promise<ApplyThemeOutcome>,
+  ) => void;
+  /**
+   * This turn's agent batch id. Read by executors that write to Convex
+   * DIRECTLY rather than through a store (re-theming an off-screen draft), so
+   * their ops still revert with the rest of the turn instead of standing
+   * alone in some other draft's history.
+   */
+  getTurnBatchId: () => string;
 }
 
 interface SavedSectionsRuntime {
@@ -232,6 +312,13 @@ function createFlockChatController(): FlockChatController {
   // Convex client). No-op until injected; the hook wires it on mount.
   let createDrafts: (command: CreateDraftCommand) => Promise<CreateDraftOutcome> = async () =>
     createEmptyDraftOutcome();
+
+  // The applyThemeToDraft executor (injected by the hook, same as above).
+  // No-op until injected; "unreachable" is the honest answer for a call that
+  // never got to look at anything.
+  let applyTheme: (command: ApplyThemeToDraftCommand) => Promise<ApplyThemeOutcome> = async () => ({
+    kind: "unreachable",
+  });
 
   /** Swap the chat's registry hold from the previous turn's doc to `documentId`. */
   const holdTurnDocument = (documentId: Id<"documents"> | null): void => {
@@ -581,13 +668,36 @@ function createFlockChatController(): FlockChatController {
       with an open tool call, which is the honest state, where the old server
       route left it with a success nobody had verified.
     */
-    if (dispatched.command.type === "createDraft") {
+    const executorKind = getClientResultExecutorKind(dispatched.command.type);
+    if (executorKind === "createDraft" && dispatched.command.type === "createDraft") {
       const command = dispatched.command;
       void createDrafts(command).then((outcome) => {
         void chat.addToolOutput({
           tool: "createDraft",
           toolCallId,
           output: toCreateDraftToolOutput(outcome),
+        });
+      });
+      return;
+    }
+    /*
+      applyThemeToDraft: resolve the theme NAME and the draft NAME against
+      lists the browser holds, write the one applyTheme op into whichever
+      draft that turned out to be, and report which draft and whether anything
+      changed.
+
+      Answered here for the same reason createDraft is: the server has no
+      canvas listing, no brand kit, and no way to know whether the target
+      draft was already wearing the theme — the three facts the result is made
+      of. It also never sees a colour on this path, which is the point.
+    */
+    if (executorKind === "applyThemeToDraft" && dispatched.command.type === "applyThemeToDraft") {
+      const command = dispatched.command;
+      void applyTheme(command).then((outcome) => {
+        void chat.addToolOutput({
+          tool: "applyThemeToDraft",
+          toolCallId,
+          output: toApplyThemeToolOutput(outcome),
         });
       });
       return;
@@ -832,6 +942,10 @@ function createFlockChatController(): FlockChatController {
     setCreateDrafts: (nextCreateDrafts) => {
       createDrafts = nextCreateDrafts;
     },
+    setApplyTheme: (nextApplyTheme) => {
+      applyTheme = nextApplyTheme;
+    },
+    getTurnBatchId: () => turnState.batchId,
   };
 }
 
@@ -916,6 +1030,14 @@ export function useFlockChat(): FlockChat {
   // drafts/create-agent-drafts — a composed command builds whole emails there,
   // a bare count still creates starter drafts.
   const convexClient = useConvex();
+  /*
+    The canvas's LIVE themes, reactive: binding a kit, saving one, or deleting
+    a theme changes what the agent may name on the very next call, with no
+    reload — the same subscription the theme menu renders from, so the agent
+    and the dropdown can never disagree about what this canvas has.
+  */
+  const { brandKit } = useActiveBrandKit();
+  const kitThemes: NamedTheme[] = readCanvasThemeCandidates(brandKit);
   useEffect(() => {
     controller.setCreateDrafts(async (command) => {
       const { canvasId, doc } = useEditorStore.getState();
@@ -932,6 +1054,16 @@ export function useFlockChat(): FlockChat {
         command,
         sourceDoc: doc,
         /*
+          The theme half of the same argument the carry-over flag makes: the
+          page this turn read exists ONLY in the transcript, and it is read at
+          COMPOSITION time because the ingestion result and the createDraft
+          call arrive in the same assistant message. Consulted only when the
+          command names it — reading a page never restyles a draft by itself.
+        */
+        pageTheme: readTurnPageTheme({ messages: controller.chat.messages }),
+        kitThemes,
+        sourceGlobals: readDraftGlobals(doc),
+        /*
           Read HERE, at composition time, not at send time: the ingestion tool
           result and this createDraft call arrive in the same assistant
           message, so the answer only becomes true partway through the turn.
@@ -947,7 +1079,35 @@ export function useFlockChat(): FlockChat {
       }
       return outcome;
     });
-  }, [controller, convexClient]);
+  }, [controller, convexClient, kitThemes]);
+
+  /*
+    The applyThemeToDraft executor. "Current" here means the draft the user is
+    LOOKING AT — the active store — rather than the draft the turn started in,
+    because the word is the user's and that is what they mean by it. Every
+    other draft is reached by name, through the canvas's own listing.
+  */
+  useEffect(() => {
+    controller.setApplyTheme(async (command) => {
+      const { canvasId, documentId, doc } = useEditorStore.getState();
+      if (canvasId === null) {
+        return { kind: "unreachable" };
+      }
+      const outcome = await applyThemeToDraft({
+        convexClient,
+        canvasId,
+        sessionId: getOrCreateSessionId(),
+        command,
+        currentDocumentId: documentId,
+        currentGlobals: readDraftGlobals(doc),
+        pageTheme: readTurnPageTheme({ messages: controller.chat.messages }),
+        kitThemes,
+        authorId: controller.chat.id,
+        batchId: controller.getTurnBatchId(),
+      });
+      return outcome;
+    });
+  }, [controller, convexClient, kitThemes]);
 
   const sendUserMessage = (text: string): void => {
     const trimmedText = text.trim();

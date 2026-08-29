@@ -326,6 +326,8 @@ export {
   PERSONA_BEHAVIOR_MAX_LENGTH,
   createPersonaInputSchema,
   createPersonaCommandSchema,
+  applyThemeToDraftInputSchema,
+  applyThemeToDraftCommandSchema,
   editorCommandSchema,
 } from "./actions/editor-commands";
 export type {
@@ -349,6 +351,8 @@ export type {
   CreateDraftCommand,
   CreatePersonaInput,
   CreatePersonaCommand,
+  ApplyThemeToDraftInput,
+  ApplyThemeToDraftCommand,
   EditorCommand,
 } from "./actions/editor-commands";
 
@@ -379,6 +383,7 @@ export {
   replaceBlockPropertiesAction,
   updateDocumentSettingsAction,
   applyThemeAction,
+  applyThemeToDraftAction,
   addBlockAction,
   addSectionAction,
   restoreBlocksAction,
@@ -503,6 +508,35 @@ export type {
   ComposedDraftComposition,
   BuildComposedDraftsInput,
 } from "./actions/compose-draft";
+
+// --- Actions: theme & draft REFERENCES — naming a theme instead of carrying one -----------------
+//
+// The model names a theme and a draft; the app resolves both against lists it
+// already holds (this canvas's drafts, this kit's LIVE themes, the page read
+// this turn). No colour value ever reaches the model, and no document id ever
+// leaves the browser. See actions/theme-target.ts for the full argument.
+export {
+  CURRENT_THEME_REFERENCE,
+  PAGE_THEME_REFERENCE,
+  CURRENT_DRAFT_TARGET,
+  MAX_REFERENCE_LENGTH,
+  themeReferenceSchema,
+  draftTargetSchema,
+  normalizeReferenceKey,
+  matchNamedCandidate,
+  resolveThemeReference,
+  resolveDraftTarget,
+} from "./actions/theme-target";
+export type {
+  NamedCandidateMatch,
+  NamedTheme,
+  PageTheme,
+  ResolvedThemeSource,
+  ThemeResolution,
+  ResolveThemeReferenceInput,
+  NamedDraft,
+  DraftTargetResolution,
+} from "./actions/theme-target";
 
 // --- Actions: inspectRenderedEmail — read the rendered email back (actions/inspect-rendered-email)
 export {

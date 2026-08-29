@@ -1,3 +1,4 @@
+import type { ThemeResolution } from "@flock/email-sdk";
 import type { CreateDraftReport, CreatedDraftReport } from "./chat-contract";
 
 /*
@@ -66,6 +67,17 @@ export interface CreateDraftOutcome {
   isSourceCopyCarryOverAllowed: boolean;
   /** A user-facing sentence when something went wrong, else null. */
   failureNotice: string | null;
+  /**
+   * What the call's `theme` reference resolved to, or null when it named no
+   * theme (the ordinary path: the new drafts inherit the current one).
+   *
+   * REPORTED SEPARATELY FROM THE DRAFTS because it can fail on its own. A
+   * theme name the canvas does not have must not take the draft down with it —
+   * the drafts are created regardless, wearing what they would have worn —
+   * but neither may it pass unmentioned, because the model asked for a look it
+   * did not get and would otherwise describe the draft as having it.
+   */
+  theme: ThemeResolution | null;
 }
 
 /** The outcome of a call that never reached the drafts machinery. */
@@ -76,7 +88,46 @@ export function createEmptyDraftOutcome(): CreateDraftOutcome {
     isComposed: false,
     isSourceCopyCarryOverAllowed: true,
     failureNotice: null,
+    theme: null,
   };
+}
+
+/*
+  The sentence about the new drafts' LOOK — empty on the ordinary path, where
+  nothing was asked for and inheritance quietly did its job.
+
+  A resolved theme is said because the model is about to describe the draft and
+  needs to know it may. An UNRESOLVED one is said louder: the drafts exist, so
+  a retry is forbidden, and without this the model would either claim the look
+  it asked for or fall silent about a request it did not fulfil. Both are worse
+  than naming the themes that do exist and letting the user choose.
+*/
+function getThemeNote(theme: ThemeResolution | null): string {
+  if (theme === null) {
+    return "";
+  }
+  if (theme.isResolved) {
+    if (theme.source === "page") {
+      return `The new drafts are wearing the colours and fonts read off ${theme.name}${theme.derivedFrom === undefined ? "" : ` (${theme.derivedFrom})`} — say so, and say which page, since that is what makes the claim checkable.`;
+    }
+    if (theme.source === "kit") {
+      return `The new drafts are wearing this canvas's saved "${theme.name}" theme.`;
+    }
+    return "The new drafts are wearing the same theme as the draft the user is on.";
+  }
+  const available =
+    theme.availableThemeNames.length === 0
+      ? "This canvas has no saved themes."
+      : `This canvas's saved themes are ${toNameList(theme.availableThemeNames)}.`;
+  const cause =
+    theme.reason === "no-page-theme"
+      ? "no page was read this turn, so there was no page theme to use"
+      : theme.reason === "no-current-theme"
+        ? "the user's current draft is on the default styling, so there was no theme to copy"
+        : theme.reason === "ambiguous-theme"
+          ? "that name matches more than one theme"
+          : "no theme by that name exists";
+  return `The theme you asked for was NOT applied: ${cause}. ${available} The drafts kept the theme they would otherwise have had — tell the user that, and offer one of the names above. Do NOT call createDraft again; use applyThemeToDraft on the draft by name.`;
 }
 
 /** `"a", "b" and "c"` — draft names as a person would read them aloud. */
@@ -163,7 +214,7 @@ export function toCreateDraftToolOutput(outcome: CreateDraftOutcome): CreateDraf
     return {
       isCreated: true,
       createdDrafts,
-      note: `Only ${createdCount} of the ${requestedCount} drafts were created, ${namedAs}. ${failureNotice ?? ""} Tell the user which drafts exist and that the rest did not get made; do NOT call createDraft again to make up the difference. ${getCopyProvenanceNote(outcome)}`.trim(),
+      note: `Only ${createdCount} of the ${requestedCount} drafts were created, ${namedAs}. ${failureNotice ?? ""} Tell the user which drafts exist and that the rest did not get made; do NOT call createDraft again to make up the difference. ${getCopyProvenanceNote(outcome)} ${getThemeNote(outcome.theme)}`.trim(),
     };
   }
 
@@ -171,7 +222,7 @@ export function toCreateDraftToolOutput(outcome: CreateDraftOutcome): CreateDraf
     return {
       isCreated: true,
       createdDrafts,
-      note: `Created ${createdCount} EMPTY starter draft${createdCount === 1 ? "" : "s"}, ${namedAs}. ${createdCount === 1 ? "It has" : "They have"} no content — the user fills ${createdCount === 1 ? "it" : "them"} in. The user's current draft is untouched. Do NOT call createDraft again.`,
+      note: `Created ${createdCount} EMPTY starter draft${createdCount === 1 ? "" : "s"}, ${namedAs}. ${createdCount === 1 ? "It has" : "They have"} no content — the user fills ${createdCount === 1 ? "it" : "them"} in. The user's current draft is untouched. Do NOT call createDraft again. ${getThemeNote(outcome.theme)}`.trim(),
     };
   }
 
@@ -179,6 +230,6 @@ export function toCreateDraftToolOutput(outcome: CreateDraftOutcome): CreateDraf
   return {
     isCreated: true,
     createdDrafts,
-    note: `Created ${createdCount} new draft${createdCount === 1 ? "" : "s"}, ${namedAs}. The user's current draft is untouched. ${provenanceNote === "" ? "Every section was built from the copy you passed. Tell the user what each new draft says." : `${provenanceNote} Then tell the user what each new draft actually says.`} Do NOT call createDraft again.`,
+    note: `Created ${createdCount} new draft${createdCount === 1 ? "" : "s"}, ${namedAs}. The user's current draft is untouched. ${provenanceNote === "" ? "Every section was built from the copy you passed. Tell the user what each new draft says." : `${provenanceNote} Then tell the user what each new draft actually says.`} ${getThemeNote(outcome.theme)} Do NOT call createDraft again.`.replace(/  +/g, " "),
   };
 }

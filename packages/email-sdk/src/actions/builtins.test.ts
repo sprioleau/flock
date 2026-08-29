@@ -4,6 +4,7 @@ import { OPERATION_NAMES } from "../operations/ops";
 import { createSampleDocument } from "../store/document";
 import {
   contentEmailActions,
+  applyThemeToDraftAction,
   createDraftAction,
   createPersonaAction,
   editorEmailActions,
@@ -90,6 +91,7 @@ describe("built-in editor actions", () => {
       "goToVersion",
       "createDraft",
       "createPersona",
+      "applyThemeToDraft",
     ]);
     for (const action of editorEmailActions) {
       expect(action.kind).toBe("editor");
@@ -116,6 +118,7 @@ describe("built-in editor actions", () => {
       goToVersionAction,
       createDraftAction,
       createPersonaAction,
+      applyThemeToDraftAction,
     ];
     for (const action of parityActions) {
       expect(action.parallelSafe).toBe(false);
@@ -125,10 +128,10 @@ describe("built-in editor actions", () => {
 });
 
 /**
- * 11 op-mirroring content + styleTextSpan + scaffoldSection + 9 editor actions
+ * 11 op-mirroring content + styleTextSpan + scaffoldSection + 10 editor actions
  * + 1 analysis action (inspectRenderedEmail).
  */
-const BUILTIN_ACTION_COUNT = 25;
+const BUILTIN_ACTION_COUNT = 26;
 
 describe("emailActionRegistry", () => {
   it(`registers all ${BUILTIN_ACTION_COUNT} built-ins and looks them up by name`, () => {
@@ -144,6 +147,7 @@ describe("emailActionRegistry", () => {
     expect(getAction(emailActionRegistry, "goToVersion")?.kind).toBe("editor");
     expect(getAction(emailActionRegistry, "createDraft")?.kind).toBe("editor");
     expect(getAction(emailActionRegistry, "createPersona")?.kind).toBe("editor");
+    expect(getAction(emailActionRegistry, "applyThemeToDraft")?.kind).toBe("editor");
     expect(getAction(emailActionRegistry, "inspectRenderedEmail")?.kind).toBe("analysis");
   });
 
@@ -177,6 +181,13 @@ describe("emailActionRegistry", () => {
       goToVersion: "server",
       createDraft: "client",
       createPersona: "server",
+      /*
+        The browser holds the canvas's draft list, the kit's live themes and
+        the page this turn read — so it is the only party that can say which
+        draft was reached, which theme resolved, and whether that draft's
+        globals actually changed. The server could only repeat the reference.
+      */
+      applyThemeToDraft: "client",
     });
   });
 
@@ -195,6 +206,7 @@ describe("emailActionRegistry", () => {
       "undo",
       "redo",
       "createDraft",
+      "applyThemeToDraft",
     ]);
     const dispatched = dispatchEditorAction({
       registry: emailActionRegistry,

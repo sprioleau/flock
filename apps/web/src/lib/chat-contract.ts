@@ -28,6 +28,7 @@ import {
   type AddSectionOperation,
   type ApplyThemeOperation,
   type BlockId,
+  type ApplyThemeToDraftInput,
   type CreateDraftInput,
   type CreatePersonaInput,
   type EditorCommand,
@@ -451,6 +452,26 @@ export interface CreateDraftReport {
 */
 export type CreateDraftToolOutput = CreateDraftReport;
 
+/*
+  The ONLY shape an applyThemeToDraft call answers with, for exactly the
+  reasons createDraft has one: the action is `resultSource: "client"`, so the
+  server writes nothing for it, and the browser that resolved the name, read
+  the draft's globals and made (or declined to make) the write is the sole
+  author of the result. Composed in components/studio/drafts/apply-theme-report.
+*/
+export interface ApplyThemeReport {
+  /** True ONLY when this call actually rewrote a draft's globals. */
+  isApplied: boolean;
+  /** The draft the write landed in, by its real name in the drafts bar. */
+  draftName?: string;
+  /** How to refer to the theme in prose ("Midnight", the page's URL). */
+  themeName?: string;
+  /** What the model may tell the user, in plain English. */
+  note: string;
+}
+
+export type ApplyThemeToDraftToolOutput = ApplyThemeReport;
+
 /**
  * Tool output returned by ANALYSIS actions (kind: "analysis") — executed
  * server-side against the request's document, returned to the model in-loop.
@@ -527,6 +548,10 @@ export type FlockChatTools = {
   goToVersion: { input: GoToVersionInput; output: EditorToolOutput };
   createDraft: { input: CreateDraftInput; output: CreateDraftToolOutput };
   createPersona: { input: CreatePersonaInput; output: EditorToolOutput };
+  applyThemeToDraft: {
+    input: ApplyThemeToDraftInput;
+    output: ApplyThemeToDraftToolOutput;
+  };
   getBlockDetails: { input: { blockId: BlockId }; output: GetBlockDetailsToolOutput };
   readWebPage: { input: { url: string }; output: ReadWebPageToolOutput };
   // Widget tools (generative UI). askForClarification never executes — the

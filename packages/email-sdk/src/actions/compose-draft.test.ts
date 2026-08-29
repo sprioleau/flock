@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import { applyOperations } from "../operations/apply";
 import { SECTION_TEMPLATES, getSectionTemplate } from "../sections/catalog";
 import { ROOT_BLOCK_ID } from "../schema/ids";
+import type { GlobalStyles } from "../schema/globals";
 import {
   createEmptyDocument,
   createStarterDocument,
@@ -40,10 +41,15 @@ function createSeededRandom(seed: number): () => number {
   };
 }
 
-function composeOne(command: CreateDraftCommand, sourceDoc: EmailDocument): EmailDocument {
+function composeOne(
+  command: CreateDraftCommand,
+  sourceDoc: EmailDocument,
+  themeGlobals?: GlobalStyles,
+): EmailDocument {
   const [composed] = buildComposedDrafts({
     sourceDoc,
     command,
+    ...(themeGlobals === undefined ? {} : { themeGlobals }),
     random: createSeededRandom(7),
   });
   const result = applyOperations(createEmptyDocument(), composed!.ops);
@@ -523,6 +529,80 @@ describe("buildComposedDrafts", () => {
     const doc = composeOne(planCommand({ shouldInheritTheme: false }), themed);
     const root = doc[ROOT_BLOCK_ID]!;
     expect(root.type === "root" && root.properties.globals).toEqual({});
+  });
+
+  /*
+    THE REPORTED FAILURE, as a test. A turn read wesbos.com, the pipeline
+    derived the page's theme correctly (accent #ffc600), and the draft it
+    created came back with `globals: {}`. The source draft was on the shared
+    defaults, so there was nothing to inherit — and no channel at all through
+    which the page's theme could reach composition. A draft is born themed or
+    it is not themed, because nothing downstream knows it exists yet.
+  */
+  it("births the draft wearing a resolved theme the source draft does not have", () => {
+    const [composed] = buildComposedDrafts({
+      sourceDoc: createStarterDocument(),
+      command: planCommand(),
+      themeGlobals: { emailBackgroundColor: "#ffffff", buttonBackgroundColor: "#ffc600" },
+      random: createSeededRandom(3),
+    });
+    expect(composed!.ops[0]).toEqual({
+      name: "applyTheme",
+      globals: { emailBackgroundColor: "#ffffff", buttonBackgroundColor: "#ffc600" },
+    });
+  });
+
+  it("prefers the resolved theme over the source draft's own", () => {
+    const themed = createStarterDocument();
+    themed[ROOT_BLOCK_ID] = {
+      ...themed[ROOT_BLOCK_ID]!,
+      properties: { globals: { emailBackgroundColor: "#101014" } },
+    } as EmailDocument[string];
+    const doc = composeOne(
+      planCommand(),
+      themed,
+      { emailBackgroundColor: "#ffffff", buttonBackgroundColor: "#ffc600" },
+    );
+    const root = doc[ROOT_BLOCK_ID]!;
+    expect(root.type === "root" && root.properties.globals).toEqual({
+      emailBackgroundColor: "#ffffff",
+      buttonBackgroundColor: "#ffc600",
+    });
+  });
+
+  /*
+    `shouldInheritTheme: false` says "do not carry the draft the user is on".
+    It does not say "ignore the theme the user just asked for by name" — an
+    explicit reference is the more specific instruction of the two.
+  */
+  it("applies a resolved theme even when inheritance is switched off", () => {
+    const themed = createStarterDocument();
+    themed[ROOT_BLOCK_ID] = {
+      ...themed[ROOT_BLOCK_ID]!,
+      properties: { globals: { emailBackgroundColor: "#101014" } },
+    } as EmailDocument[string];
+    const doc = composeOne(
+      planCommand({ shouldInheritTheme: false }),
+      themed,
+      { emailBackgroundColor: "#ffffff" },
+    );
+    const root = doc[ROOT_BLOCK_ID]!;
+    expect(root.type === "root" && root.properties.globals).toEqual({
+      emailBackgroundColor: "#ffffff",
+    });
+  });
+
+  it("falls back to inheritance when the theme could not be resolved", () => {
+    const themed = createStarterDocument();
+    themed[ROOT_BLOCK_ID] = {
+      ...themed[ROOT_BLOCK_ID]!,
+      properties: { globals: { emailBackgroundColor: "#101014" } },
+    } as EmailDocument[string];
+    const doc = composeOne(planCommand(), themed, undefined);
+    const root = doc[ROOT_BLOCK_ID]!;
+    expect(root.type === "root" && root.properties.globals).toEqual({
+      emailBackgroundColor: "#101014",
+    });
   });
 
   it("produces a complete, sendable email even from a one-section plan", () => {

@@ -29,9 +29,92 @@ function outcome(overrides: Partial<CreateDraftOutcome> = {}): CreateDraftOutcom
     isComposed: true,
     isSourceCopyCarryOverAllowed: false,
     failureNotice: null,
+    theme: null,
     ...overrides,
   };
 }
+
+/*
+  THE THEME THE CALL ASKED FOR, reported separately from the drafts because it
+  can fail on its own. Both directions matter: a resolved theme the model may
+  describe, and an unresolved one it must NOT describe — and in neither case
+  may createDraft be retried, because the drafts already exist.
+*/
+describe("the theme note", () => {
+  it("says which page's colours the drafts are wearing, and what produced them", () => {
+    const note = toCreateDraftToolOutput(
+      outcome({
+        theme: {
+          isResolved: true,
+          source: "page",
+          name: "https://wesbos.com/about",
+          globals: { buttonBackgroundColor: "#ffc600" },
+          derivedFrom: "accent #ffc600 (--ui-accent-1)",
+        },
+      }),
+    ).note;
+    expect(note).toContain("https://wesbos.com/about");
+    expect(note).toContain("accent #ffc600 (--ui-accent-1)");
+  });
+
+  it("names the saved kit theme the drafts are wearing", () => {
+    expect(
+      toCreateDraftToolOutput(
+        outcome({
+          theme: {
+            isResolved: true,
+            source: "kit",
+            name: "Midnight",
+            globals: {},
+            variationId: "midnight",
+          },
+        }),
+      ).note,
+    ).toContain('saved "Midnight" theme');
+  });
+
+  /*
+    The failure the model would otherwise paper over: it asked for a look, did
+    not get it, and is about to describe the draft. The note has to say the
+    theme did NOT land, list the ones that would have, and forbid the retry
+    that would produce a second draft.
+  */
+  it("says plainly when the named theme was NOT applied, and forbids a retry", () => {
+    const note = toCreateDraftToolOutput(
+      outcome({
+        theme: {
+          isResolved: false,
+          reason: "unknown-theme",
+          availableThemeNames: ["Midnight", "Warm Sand"],
+        },
+      }),
+    ).note;
+    expect(note).toContain("was NOT applied");
+    expect(note).toContain("no theme by that name exists");
+    expect(note).toContain('"Midnight" and "Warm Sand"');
+    expect(note).toContain("Do NOT call createDraft again");
+  });
+
+  it("distinguishes a page that was never read from a name that does not exist", () => {
+    expect(
+      toCreateDraftToolOutput(
+        outcome({
+          theme: { isResolved: false, reason: "no-page-theme", availableThemeNames: [] },
+        }),
+      ).note,
+    ).toContain("no page was read this turn");
+  });
+
+  /*
+    The ordinary path — no reference, nothing to say. A note that volunteered
+    "the drafts inherited the current theme" on every single call would train
+    the model to mention theming in replies where nobody asked about it.
+  */
+  it("says nothing about theming when the call named no theme", () => {
+    const note = toCreateDraftToolOutput(outcome()).note;
+    expect(note).not.toContain("theme");
+  });
+});
 
 describe("toCreateDraftToolOutput", () => {
   it("reports a total failure as a SUCCESSFUL result the model must not retry", () => {

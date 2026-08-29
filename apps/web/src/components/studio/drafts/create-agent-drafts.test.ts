@@ -8,6 +8,9 @@ import {
   resolveCreateDraftCommand,
   type CreateDraftInput,
   type EmailDocument,
+  type GlobalStyles,
+  type NamedTheme,
+  type PageTheme,
 } from "@flock/email-sdk";
 import { convexTest } from "convex-test";
 import { describe, expect, it } from "vitest";
@@ -205,14 +208,39 @@ async function seedCanvas(t: Backend): Promise<Id<"canvases">> {
   return canvasId;
 }
 
+/*
+  The page theme a turn would have read off wesbos.com — the payload the
+  ingestion pipeline derives WITHOUT a model call, carried here so the tests
+  can prove the draft is born wearing it rather than born on the defaults.
+*/
+const PAGE_THEME = {
+  globals: { emailBackgroundColor: "#ffffff", buttonBackgroundColor: "#ffc600" },
+  source: "accent #ffc600 (--ui-accent-1)",
+  url: "https://wesbos.com/about",
+};
+
+const KIT_THEMES = [
+  {
+    id: "midnight",
+    name: "Midnight",
+    globals: { emailBackgroundColor: "#101014", paragraphTextColor: "#f5f5f5" },
+  },
+];
+
 async function runCreateDraft({
   t,
   hasIngestedSource,
   input = UNDER_FILLED_PORTFOLIO_PLAN,
+  pageTheme = null,
+  kitThemes = KIT_THEMES,
+  sourceGlobals = null,
 }: {
   t: Backend;
   hasIngestedSource: boolean;
   input?: CreateDraftInput;
+  pageTheme?: PageTheme | null;
+  kitThemes?: NamedTheme[];
+  sourceGlobals?: GlobalStyles | null;
 }) {
   const convexClient: AgentDraftsConvexClient = t;
   const canvasId = await seedCanvas(t);
@@ -224,9 +252,129 @@ async function runCreateDraft({
     sourceDoc: buildSourceDoc(),
     hasIngestedSource,
     authorId: CHAT_ID,
+    pageTheme,
+    kitThemes,
+    sourceGlobals,
   });
   return outcome;
 }
+
+/** The globals a stored draft ended up wearing. */
+async function readStoredGlobals({
+  t,
+  documentId,
+}: {
+  t: Backend;
+  documentId: Id<"documents">;
+}): Promise<GlobalStyles> {
+  const payload = await t.query(api.documents.getDocument, { documentId });
+  expect(payload).not.toBeNull();
+  const doc = emailDocumentSchema.parse(payload!.doc);
+  const root = doc.root;
+  expect(root.type).toBe("root");
+  return root.type === "root" ? (root.properties.globals ?? {}) : {};
+}
+
+/*
+  THE SECOND CAPTURED FAILURE, and the one this whole theme change exists for.
+
+  A live turn read wesbos.com/about, the pipeline derived the page's theme
+  correctly (accent #ffc600, canvas left white) — and the draft it created came
+  back with `globals: {}`. The model called readWebPage and createDraft and
+  never applied the theme.
+
+  It was RIGHT not to, which is the part worth stating. The only theming tool
+  it had was `applyTheme`, a content op with no document target, so it applies
+  to the turn's own document — the draft the user was looking at. Applying the
+  page's theme would have repainted their draft while leaving the new one
+  bare. There was no expressible form of "theme the draft you are making", and
+  no amount of prompt insistence could have produced one.
+
+  These tests read the STORED document's globals, not the return value, for
+  the same reason the copy tests above read its words.
+*/
+describe("a new draft's theme", () => {
+  it("is born wearing the theme the call named, off a source draft that has none", async () => {
+    const t = createBackend();
+    const outcome = await runCreateDraft({
+      t,
+      hasIngestedSource: true,
+      input: { ...UNDER_FILLED_PORTFOLIO_PLAN, theme: "page" },
+      pageTheme: PAGE_THEME,
+    });
+
+    expect(outcome.failureNotice).toBeNull();
+    const globals = await readStoredGlobals({ t, documentId: outcome.createdDocumentIds[0]! });
+    expect(globals).toEqual(PAGE_THEME.globals);
+  });
+
+  /*
+    The regression in its exact captured shape: the same call WITHOUT the
+    theme reference still lands on `{}`. Pinned so the fix cannot be mistaken
+    for "drafts are themed now" — inheritance is unchanged, and an unthemed
+    source still yields an unthemed draft.
+  */
+  it("stays on the shared defaults when the call names no theme", async () => {
+    const t = createBackend();
+    const outcome = await runCreateDraft({ t, hasIngestedSource: true, pageTheme: PAGE_THEME });
+    const globals = await readStoredGlobals({ t, documentId: outcome.createdDocumentIds[0]! });
+    expect(globals).toEqual({});
+  });
+
+  it("wears a named kit theme, and its NAME resolves to that theme's own colours", async () => {
+    const t = createBackend();
+    const outcome = await runCreateDraft({
+      t,
+      hasIngestedSource: false,
+      input: { ...UNDER_FILLED_PORTFOLIO_PLAN, theme: "Midnight" },
+    });
+    const globals = await readStoredGlobals({ t, documentId: outcome.createdDocumentIds[0]! });
+    expect(globals).toEqual(KIT_THEMES[0]!.globals);
+  });
+
+  /*
+    A theme name that does not exist must NOT take the draft down with it: the
+    model may not retry createDraft (a retry makes a second draft), so a
+    failure here would leave the user with nothing over a typo. The draft is
+    created, wearing what it would have worn, and the report says the theme
+    was not applied and names the ones that are.
+  */
+  it("still creates the draft when the named theme does not exist, and says so", async () => {
+    const t = createBackend();
+    const outcome = await runCreateDraft({
+      t,
+      hasIngestedSource: false,
+      input: { ...UNDER_FILLED_PORTFOLIO_PLAN, theme: "Neon" },
+      sourceGlobals: { emailBackgroundColor: "#101014" },
+    });
+
+    expect(outcome.createdDocumentIds).toHaveLength(1);
+    const globals = await readStoredGlobals({ t, documentId: outcome.createdDocumentIds[0]! });
+    /* Inheritance stood, as it would have without the reference at all. */
+    expect(globals).toEqual({});
+    const note = toCreateDraftToolOutput(outcome).note;
+    expect(note).toContain("was NOT applied");
+    expect(note).toContain("Midnight");
+  });
+
+  /*
+    A page read three turns ago is not this turn's page. The resolver can only
+    answer with what the CALLER hands it, so a caller with no page theme makes
+    "page" unanswerable — reported, never substituted with something else.
+  */
+  it("cannot resolve the page theme when this turn read no page", async () => {
+    const t = createBackend();
+    const outcome = await runCreateDraft({
+      t,
+      hasIngestedSource: false,
+      input: { ...UNDER_FILLED_PORTFOLIO_PLAN, theme: "page" },
+      pageTheme: null,
+    });
+    const globals = await readStoredGlobals({ t, documentId: outcome.createdDocumentIds[0]! });
+    expect(globals).toEqual({});
+    expect(toCreateDraftToolOutput(outcome).note).toContain("no page was read this turn");
+  });
+});
 
 describe("a draft composed in a turn that ingested a source", () => {
   it("does not inherit the source draft's copy", async () => {
@@ -331,6 +479,9 @@ describe("what createDraft reports back", () => {
       sourceDoc: buildSourceDoc(),
       hasIngestedSource: true,
       authorId: CHAT_ID,
+      pageTheme: null,
+      kitThemes: KIT_THEMES,
+      sourceGlobals: null,
     });
 
     const [created] = outcome.createdDrafts;
@@ -352,6 +503,9 @@ describe("what createDraft reports back", () => {
       sourceDoc: buildSourceDoc(),
       hasIngestedSource: false,
       authorId: CHAT_ID,
+      pageTheme: null,
+      kitThemes: KIT_THEMES,
+      sourceGlobals: null,
     });
 
     expect(outcome.createdDrafts).toHaveLength(2);

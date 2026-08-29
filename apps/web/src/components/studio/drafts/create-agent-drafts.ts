@@ -1,8 +1,13 @@
 import {
   buildComposedDrafts,
+  resolveThemeReference,
   type ComposedDraft,
   type CreateDraftCommand,
   type EmailDocument,
+  type GlobalStyles,
+  type NamedTheme,
+  type PageTheme,
+  type ThemeResolution,
 } from "@flock/email-sdk";
 import type { FunctionArgs, FunctionReturnType } from "convex/server";
 import { api } from "@convex/_generated/api";
@@ -96,10 +101,63 @@ export interface CreateAgentDraftsInput {
   hasIngestedSource: boolean;
   /** Author id recorded on the composed ops (the chat thread). */
   authorId: string;
+  /**
+   * The page theme this turn read, or null. Only ever consulted when the
+   * command NAMES it — reading a page does not silently restyle a draft.
+   */
+  pageTheme: PageTheme | null;
+  /** This canvas's LIVE kit themes — soft-deleted variations must be absent. */
+  kitThemes: NamedTheme[];
+  /** The source draft's own globals, for a `theme: "current"` reference. */
+  sourceGlobals: GlobalStyles | null;
 }
 
 export interface CreateAgentDraftsResult extends CreateDraftOutcome {
   createdDocumentIds: Id<"documents">[];
+}
+
+/*
+  A DRAFT IS BORN THEMED, OR IT IS NOT THEMED.
+
+  The reported failure: a turn read wesbos.com, the pipeline derived the page's
+  theme correctly, and the draft it created came back with `globals: {}`. The
+  model called readWebPage and createDraft and never applied the theme — and it
+  was right not to, because the only theming tool it had (`applyTheme`) targets
+  the turn's OWN document, so applying it would have repainted the draft the
+  user was looking at instead. There was no expressible form of "theme the
+  draft you are making".
+
+  So the theme resolves HERE, before the first `createDocument` call, and rides
+  the composition as one more op in the same batch. There is no second round
+  trip that could land on the wrong draft, and no window in which the draft
+  exists unthemed. What the model supplies is a NAME.
+
+  A reference that resolves to nothing is NOT a failure of the call: the drafts
+  are still created, inheriting the theme they would have had, and the report
+  says the theme was not found and lists the ones that exist. Failing the whole
+  creation over a mistyped theme name would trade a wrong colour for a missing
+  draft, and the model may not retry createDraft — a retry makes a second one.
+*/
+function resolveNewDraftTheme({
+  command,
+  pageTheme,
+  kitThemes,
+  sourceGlobals,
+}: {
+  command: CreateDraftCommand;
+  pageTheme: PageTheme | null;
+  kitThemes: NamedTheme[];
+  sourceGlobals: GlobalStyles | null;
+}): ThemeResolution | null {
+  if (command.theme === undefined) {
+    return null;
+  }
+  return resolveThemeReference({
+    reference: command.theme,
+    pageTheme,
+    kitThemes,
+    currentGlobals: sourceGlobals,
+  });
 }
 
 /** One created draft's report line, from its name and its composition. */
@@ -137,6 +195,9 @@ export async function createAgentDrafts({
   sourceDoc,
   hasIngestedSource,
   authorId,
+  pageTheme,
+  kitThemes,
+  sourceGlobals,
 }: CreateAgentDraftsInput): Promise<CreateAgentDraftsResult> {
   /*
     THE FIX FOR THE REPORTED DEFECT, in one argument. The composer's carry-over
@@ -144,10 +205,12 @@ export async function createAgentDrafts({
     another version of this" and wrong — quietly, plausibly wrong — for "make
     one from my portfolio site". The turn already knows which of those it is.
   */
+  const theme = resolveNewDraftTheme({ command, pageTheme, kitThemes, sourceGlobals });
   const composedDrafts = buildComposedDrafts({
     sourceDoc,
     command,
     shouldCarryOverSourceCopy: !hasIngestedSource,
+    ...(theme !== null && theme.isResolved ? { themeGlobals: theme.globals } : {}),
   });
   const isComposed = composedDrafts.length > 0;
   const requestedCount = isComposed ? composedDrafts.length : command.count;
@@ -157,6 +220,7 @@ export async function createAgentDrafts({
     requestedCount,
     isComposed,
     isSourceCopyCarryOverAllowed: !hasIngestedSource,
+    theme,
   };
   try {
     const existingDrafts = await convexClient.query(api.documents.listDocumentsByCanvas, {
