@@ -4,6 +4,7 @@ import { checkDocumentIntegrity } from "../store/integrity";
 import { DocumentIntegrityError } from "./errors";
 import { renderToHTML } from "./render-to-html";
 import { renderToJSON } from "./render-to-json";
+import { renderToPlainText } from "./render-to-plain-text";
 import { renderToReactEmail } from "./render-to-react-email";
 import {
   createBlockOverridesOnlyFixture,
@@ -122,6 +123,74 @@ describe("renderToReactEmail integrity gate", () => {
     const broken = createSampleDocument();
     delete broken["root"];
     expect(() => renderToJSON(broken)).toThrow(DocumentIntegrityError);
+  });
+});
+
+describe("subject → <title> and previewText → <Preview>", () => {
+  it("renders <title>Welcome</title> in the head when subject is set", async () => {
+    const html = await renderToHTML(createSampleDocument(), { subject: "Welcome" });
+    expect(html).toContain("<title>Welcome</title>");
+  });
+
+  it("renders the hidden preheader when previewText is set", async () => {
+    const html = await renderToHTML(createSampleDocument(), {
+      previewText: "Sneak peek inside",
+    });
+    // react-email's <Preview> emits a hidden div carrying the text, tagged so
+    // the plain-text pass skips it.
+    expect(html).toContain('data-skip-in-text="true"');
+    expect(html).toContain("Sneak peek inside");
+  });
+
+  it("emits exactly one <title> when subject and previewText are both set", async () => {
+    // <Preview> defaults to useTitleTag=true and would stamp a second <title>;
+    // subject must remain the single source of the document title.
+    const html = await renderToHTML(createSampleDocument(), {
+      subject: "The Subject",
+      previewText: "The preheader",
+    });
+    expect((html.match(/<title>/g) ?? []).length).toBe(1);
+    expect(html).toContain("<title>The Subject</title>");
+    expect(html).toContain("The preheader");
+  });
+
+  it.each(["", "   ", "\n\t "])(
+    "renders no <title> when subject is empty/whitespace (%j)",
+    async (subject) => {
+      const html = await renderToHTML(createSampleDocument(), { subject });
+      expect(html).not.toContain("<title>");
+    },
+  );
+
+  it.each(["", "   ", "\n\t "])(
+    "renders no <Preview> when previewText is empty/whitespace (%j)",
+    async (previewText) => {
+      const html = await renderToHTML(createSampleDocument(), { previewText });
+      expect(html).not.toContain('data-skip-in-text="true"');
+    },
+  );
+
+  it("default render is byte-identical whether options are absent or {}", async () => {
+    const doc = createSampleDocument();
+    const noOptions = await renderToHTML(doc);
+    const emptyOptions = await renderToHTML(doc, {});
+    expect(emptyOptions).toBe(noOptions);
+    // Today's output carries neither a <title> nor a <Preview>.
+    expect(noOptions).not.toContain("<title>");
+    expect(noOptions).not.toContain('data-skip-in-text="true"');
+  });
+
+  it("subject and previewText do not affect the plain-text output", async () => {
+    // <title> lives in <head> (dropped by html-to-text) and <Preview> is
+    // marked data-skip-in-text, so the text/plain part is unchanged.
+    const doc = createSampleDocument();
+    const plain = await renderToPlainText(doc);
+    const plainWithBoth = await renderToPlainText(doc, {
+      subject: "The Subject",
+      previewText: "The preheader",
+    });
+    expect(plainWithBoth).toBe(plain);
+    expect(plainWithBoth).not.toContain("The preheader");
   });
 });
 

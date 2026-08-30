@@ -12,6 +12,16 @@ export interface RenderToHTMLOptions {
    * A sent email is always rendered without it.
    */
   isBlockAnnotated?: boolean;
+  /**
+   * Subject line, also emitted as the document `<title>`.
+   * See {@link RenderToReactEmailOptions.subject}.
+   */
+  subject?: string;
+  /**
+   * Preheader text rendered through React Email's `<Preview>`.
+   * See {@link RenderToReactEmailOptions.previewText}.
+   */
+  previewText?: string;
 }
 
 /**
@@ -24,7 +34,11 @@ export async function renderToHTML(
   options: RenderToHTMLOptions = {},
 ): Promise<string> {
   return render(
-    renderToReactEmail(document, { isBlockAnnotated: options.isBlockAnnotated ?? false }),
+    renderToReactEmail(document, {
+      isBlockAnnotated: options.isBlockAnnotated ?? false,
+      subject: options.subject,
+      previewText: options.previewText,
+    }),
     { pretty: options.isPretty ?? false },
   );
 }

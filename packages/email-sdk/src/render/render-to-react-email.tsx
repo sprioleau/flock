@@ -1,5 +1,5 @@
 import type { ReactElement } from "react";
-import { Body, Head, Html } from "react-email";
+import { Body, Head, Html, Preview } from "react-email";
 import type { EmailDocument } from "../store/document";
 import { checkDocumentIntegrity } from "../store/integrity";
 import { inflate, type EmailTreeNode } from "../store/tree";
@@ -130,6 +130,32 @@ export interface RenderToReactEmailOptions {
    * message never sets it, and so never carries the attribute. Default false.
    */
   isBlockAnnotated?: boolean;
+  /**
+   * The email's subject line, also emitted as the document `<title>` inside
+   * `<Head>` — a `<title>` is an accessibility requirement React Email leaves
+   * to the caller.
+   *
+   * Rendered only when present and non-empty after trimming; an absent, empty,
+   * or whitespace-only value leaves `<Head>` exactly as it is by default (the
+   * two React Email meta tags, no `<title>`), keeping the output byte-identical
+   * to a render that never knew about a subject.
+   */
+  subject?: string;
+  /**
+   * Preheader text — the preview a client shows next to the subject in the
+   * inbox list, rendered through React Email's `<Preview>`.
+   *
+   * Rendered only when present and non-empty after trimming. `<Preview>` is not
+   * free: it stamps a hidden preheader div plus a run of padding characters
+   * into the body, so an absent, empty, or whitespace-only value emits no
+   * `<Preview>` at all, leaving today's output byte-identical.
+   *
+   * `<Preview>` defaults to also emitting its own `<title>`; that is switched
+   * off here (`useTitleTag={false}`) so {@link subject} stays the single source
+   * of the document title and the two can be set together without producing a
+   * duplicate `<title>`.
+   */
+  previewText?: string;
 }
 
 export function renderToReactEmail(
@@ -145,9 +171,13 @@ export function renderToReactEmail(
   const globals = tree.block.properties.globals;
   const rootStyles = resolveBlockStyles(globals, tree.block);
 
+  const subject = options.subject?.trim();
+  const previewText = options.previewText?.trim();
+
   return (
     <Html lang="en">
-      <Head />
+      <Head>{subject ? <title>{subject}</title> : null}</Head>
+      {previewText ? <Preview useTitleTag={false}>{previewText}</Preview> : null}
       <Body style={{ backgroundColor: rootStyles.emailBackgroundColor, margin: 0, padding: 0 }}>
         {tree.children.map((child) =>
           renderTreeNode({

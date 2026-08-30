@@ -41,7 +41,36 @@ import { renderToReactEmail } from "./render-to-react-email";
 */
 const CODE_TOKEN_SPACE = / ‍​/gu;
 
-export async function renderToPlainText(document: EmailDocument): Promise<string> {
-  const text = await render(renderToReactEmail(document), { plainText: true });
+export interface RenderToPlainTextOptions {
+  /**
+   * Subject line, forwarded to {@link RenderToReactEmailOptions.subject}.
+   *
+   * INERT FOR THE TEXT OUTPUT — accepted only so a caller can hand the same
+   * options to both {@link renderToHTML} and this. The subject renders as a
+   * `<title>` inside `<head>`, which `html-to-text` drops, so the text/plain
+   * part is identical whether or not it is supplied.
+   */
+  subject?: string;
+  /**
+   * Preheader text, forwarded to {@link RenderToReactEmailOptions.previewText}.
+   *
+   * INERT FOR THE TEXT OUTPUT — React Email marks the `<Preview>` div
+   * `data-skip-in-text`, which `render`'s plain-text pass skips, so the
+   * text/plain part is identical whether or not it is supplied.
+   */
+  previewText?: string;
+}
+
+export async function renderToPlainText(
+  document: EmailDocument,
+  options: RenderToPlainTextOptions = {},
+): Promise<string> {
+  const text = await render(
+    renderToReactEmail(document, {
+      subject: options.subject,
+      previewText: options.previewText,
+    }),
+    { plainText: true },
+  );
   return text.replace(CODE_TOKEN_SPACE, " ");
 }
