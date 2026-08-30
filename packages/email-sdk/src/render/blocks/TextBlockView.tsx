@@ -9,23 +9,23 @@ import { blockPaddingStyle, HEADING_FONT_SIZES, type BlockAnnotation } from "./s
 export interface TextBlockViewProps {
   block: TextBlock;
   resolvedStyles: ResolvedTextStyles;
-  /**
-   * Analysis-only stamp carrying this block's id onto the outermost element.
-   * Empty (and therefore absent from the HTML) on every ordinary render —
-   * see BLOCK_ANNOTATION_ATTRIBUTE in ./shared.
-   */
+  /*
+    Analysis-only stamp carrying this block's id onto the outermost element.
+    Empty (and therefore absent from the HTML) on every ordinary render —
+    see BLOCK_ANNOTATION_ATTRIBUTE in ./shared.
+  */
   annotation?: BlockAnnotation;
 }
 
-/**
- * Wrap a text run in email-safe inline elements, innermost-first in mark
- * order: bold → <strong>, italic → <em>, underline/strike → styled <span>
- * (text-decoration inherits through nesting, so both can apply), link →
- * <Link> colored by globals.linkTextColor, textStyle → <span> carrying the
- * span-level typography (font-family / color / font-size) as plain inline
- * CSS, highlight → <span> with an inline background-color. Everything stays
- * on span/anchor elements with inline styles only — the email-safe subset.
- */
+/*
+  Wrap a text run in email-safe inline elements, innermost-first in mark
+  order: bold → <strong>, italic → <em>, underline/strike → styled <span>
+  (text-decoration inherits through nesting, so both can apply), link →
+  <Link> colored by globals.linkTextColor, textStyle → <span> carrying the
+  span-level typography (font-family / color / font-size) as plain inline
+  CSS, highlight → <span> with an inline background-color. Everything stays
+  on span/anchor elements with inline styles only — the email-safe subset.
+*/
 function applyMarks(node: TextNode, linkTextColor: string): ReactNode {
   return (node.marks ?? []).reduce<ReactNode>((content, mark: TextMark) => {
     switch (mark.type) {
@@ -79,34 +79,40 @@ function renderInlineNodes(
   );
 }
 
-/**
- * text → the block's TextDoc walked node by node: heading nodes →
- * <Heading as={h1|h2|h3}> styled from the level-matching heading globals,
- * paragraphs → <Text> styled from the paragraph globals; both overridden by
- * the block's own textColor/textAlign. Intra-block node margins are zeroed —
- * vertical rhythm comes from block padding (text-block-model doctrine:
- * spacing is block-level, the doc is content-only).
- */
+/*
+  text → the block's TextDoc walked node by node: heading nodes →
+  <Heading as={h1|h2|h3}> styled from the level-matching heading globals,
+  paragraphs → <Text> styled from the paragraph globals; both overridden by
+  the block's own textColor/textAlign. Intra-block node margins are zeroed —
+  vertical rhythm comes from block padding (text-block-model doctrine:
+  spacing is block-level, the doc is content-only).
+*/
 export function TextBlockView({ block, resolvedStyles, annotation = {} }: TextBlockViewProps) {
-  // Per-node alignment: a node's own attrs.textAlign (the only node-level
-  // style attribute) beats the resolved block/global alignment.
+  /*
+    Per-node alignment: a node's own attrs.textAlign (the only node-level
+    style attribute) beats the resolved block/global alignment.
+  */
   const nodeStyle = (styles: ResolvedTextNodeStyles, nodeTextAlign?: TextAlign) => ({
     fontFamily: styles.fontFamily,
     color: styles.textColor,
     textAlign: nodeTextAlign ?? styles.textAlign,
-    // Unbroken runs (long words, pasted tokens) must wrap inside the block
-    // instead of overflowing its edges. `wordWrap` is the email-safe classic
-    // (browsers alias it to overflow-wrap, so the canvas is covered too);
-    // `wordBreak` widens coverage across email clients.
+    /*
+      Unbroken runs (long words, pasted tokens) must wrap inside the block
+      instead of overflowing its edges. `wordWrap` is the email-safe classic
+      (browsers alias it to overflow-wrap, so the canvas is covered too);
+      `wordBreak` widens coverage across email clients.
+    */
     wordWrap: "break-word" as const,
     wordBreak: "break-word" as const,
   });
 
   return (
     <Row {...annotation}>
-      {/* The block background rides the wrapping <Column> (a td — the same
-          email-safe surface the column and image blocks paint), so it fills
-          the block's bounds, padding included: the callout treatment. */}
+      {/*
+        The block background rides the wrapping <Column> (a td — the same
+        email-safe surface the column and image blocks paint), so it fills
+        the block's bounds, padding included: the callout treatment.
+      */}
       <Column
         style={{
           ...(resolvedStyles.backgroundColor !== undefined

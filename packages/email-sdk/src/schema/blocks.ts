@@ -16,25 +16,25 @@ import {
 import { globalStylesSchema, textAlignSchema } from "./globals";
 import { textDocSchema } from "./text";
 
-/**
- * Block schemas — a Zod discriminated union on `type`.
- *
- * Base shape for every block: `{ id, type, parentId, childrenIds, properties }`.
- * The flat map owns structure and ALL block-level styling; rich text lives
- * only in `text.properties.text` (docs/decisions/text-block-model.md).
- *
- * Block vocabulary maps to React Email components:
- *   root → Container semantics · section → Section · row → Row ·
- *   column → Column · text → Heading/Text · button → Button ·
- *   image → Img · divider → Hr · link → Link · code → CodeBlock ·
- *   spacer → an email-safe fixed-height cell (no RE primitive)
- *
- * Nesting (also enforced structurally by the integrity checker):
- *   root > section > (row | leaf) · row > column > leaf
- *
- * Every property is an explicit named field with a `.describe()` — no loose
- * style objects. Descriptions are the LLM's documentation.
- */
+/*
+  Block schemas — a Zod discriminated union on `type`.
+
+  Base shape for every block: `{ id, type, parentId, childrenIds, properties }`.
+  The flat map owns structure and ALL block-level styling; rich text lives
+  only in `text.properties.text` (docs/decisions/text-block-model.md).
+
+  Block vocabulary maps to React Email components:
+    root → Container semantics · section → Section · row → Row ·
+    column → Column · text → Heading/Text · button → Button ·
+    image → Img · divider → Hr · link → Link · code → CodeBlock ·
+    spacer → an email-safe fixed-height cell (no RE primitive)
+
+  Nesting (also enforced structurally by the integrity checker):
+    root > section > (row | leaf) · row > column > leaf
+
+  Every property is an explicit named field with a `.describe()` — no loose
+  style objects. Descriptions are the LLM's documentation.
+*/
 
 const padding = (side: string, around: string) =>
   z
@@ -58,17 +58,17 @@ const emptyChildrenIds = (noun: string) =>
     .length(0)
     .describe(`Always empty — ${noun} blocks are leaves and cannot have children.`);
 
-/**
- * Border line styles blocks may use — the CSS keywords every mail client
- * renders the same way, plus "none" as an explicit off switch that keeps the
- * width/color values around.
- *
- * Deliberately excluded: `hidden` (a collapsed-table-only synonym for "none"),
- * and `groove` / `ridge` / `inset` / `outset` (faux-3D borders that need a
- * derived light/dark pair of the base color, which Word-engine Outlook does
- * not compute — they degrade to a flat solid line there, so offering them
- * would promise a look the medium cannot keep).
- */
+/*
+  Border line styles blocks may use — the CSS keywords every mail client
+  renders the same way, plus "none" as an explicit off switch that keeps the
+  width/color values around.
+
+  Deliberately excluded: `hidden` (a collapsed-table-only synonym for "none"),
+  and `groove` / `ridge` / `inset` / `outset` (faux-3D borders that need a
+  derived light/dark pair of the base color, which Word-engine Outlook does
+  not compute — they degrade to a flat solid line there, so offering them
+  would promise a look the medium cannot keep).
+*/
 export const BORDER_STYLES = ["solid", "dashed", "dotted", "double", "none"] as const;
 
 export type BorderStyle = (typeof BORDER_STYLES)[number];
@@ -79,11 +79,15 @@ export const borderStyleSchema = z
     'Border line style: "solid", "dashed", "dotted", "double", or "none" (no line drawn, whatever the width).',
   );
 
-// ---------------------------------------------------------------------------
-// Containers
-// ---------------------------------------------------------------------------
+/*
+  ---------------------------------------------------------------------------
+  Containers
+  ---------------------------------------------------------------------------
+*/
 
-/** The document root. Exactly one per document; id is literally "root". */
+/*
+  The document root. Exactly one per document; id is literally "root".
+*/
 export const rootBlockSchema = z
   .strictObject({
     id: rootBlockIdSchema,
@@ -108,7 +112,9 @@ export const rootBlockSchema = z
 
 export type RootBlock = z.infer<typeof rootBlockSchema>;
 
-/** A full-width horizontal band of the email. Maps to React Email Section. */
+/*
+  A full-width horizontal band of the email. Maps to React Email Section.
+*/
 export const sectionBlockSchema = z
   .strictObject({
     id: sectionBlockIdSchema,
@@ -145,7 +151,9 @@ export const sectionBlockSchema = z
 
 export type SectionBlock = z.infer<typeof sectionBlockSchema>;
 
-/** A horizontal group of columns inside a section. Maps to React Email Row. */
+/*
+  A horizontal group of columns inside a section. Maps to React Email Row.
+*/
 export const rowBlockSchema = z
   .strictObject({
     id: rowBlockIdSchema,
@@ -173,7 +181,9 @@ export const rowBlockSchema = z
 
 export type RowBlock = z.infer<typeof rowBlockSchema>;
 
-/** A vertical slice of a row holding leaf blocks. Maps to React Email Column. */
+/*
+  A vertical slice of a row holding leaf blocks. Maps to React Email Column.
+*/
 export const columnBlockSchema = z
   .strictObject({
     id: columnBlockIdSchema,
@@ -213,11 +223,15 @@ export const columnBlockSchema = z
 
 export type ColumnBlock = z.infer<typeof columnBlockSchema>;
 
-// ---------------------------------------------------------------------------
-// Leaves
-// ---------------------------------------------------------------------------
+/*
+  ---------------------------------------------------------------------------
+  Leaves
+  ---------------------------------------------------------------------------
+*/
 
-/** Rich text (mixed headings and paragraphs). Renders to Heading/Text. */
+/*
+  Rich text (mixed headings and paragraphs). Renders to Heading/Text.
+*/
 export const textBlockSchema = z
   .strictObject({
     id: textBlockIdSchema,
@@ -260,7 +274,9 @@ export const textBlockSchema = z
 
 export type TextBlock = z.infer<typeof textBlockSchema>;
 
-/** A call-to-action button. Maps to React Email Button. */
+/*
+  A call-to-action button. Maps to React Email Button.
+*/
 export const buttonBlockSchema = z
   .strictObject({
     id: buttonBlockIdSchema,
@@ -340,7 +356,9 @@ export const buttonBlockSchema = z
 
 export type ButtonBlock = z.infer<typeof buttonBlockSchema>;
 
-/** An image, optionally linked. Maps to React Email Img. */
+/*
+  An image, optionally linked. Maps to React Email Img.
+*/
 export const imageBlockSchema = z
   .strictObject({
     id: imageBlockIdSchema,
@@ -420,7 +438,9 @@ export const imageBlockSchema = z
 
 export type ImageBlock = z.infer<typeof imageBlockSchema>;
 
-/** A horizontal rule. Maps to React Email Hr. */
+/*
+  A horizontal rule. Maps to React Email Hr.
+*/
 export const dividerBlockSchema = z
   .strictObject({
     id: dividerBlockIdSchema,
@@ -449,11 +469,11 @@ export const dividerBlockSchema = z
 
 export type DividerBlock = z.infer<typeof dividerBlockSchema>;
 
-/**
- * Languages the code block can highlight — a curated, developer-recognizable
- * subset of React Email's Prism languages, kept small so agent-facing tool
- * schemas stay readable.
- */
+/*
+  Languages the code block can highlight — a curated, developer-recognizable
+  subset of React Email's Prism languages, kept small so agent-facing tool
+  schemas stay readable.
+*/
 export const CODE_BLOCK_LANGUAGES = [
   "bash",
   "c",
@@ -483,12 +503,16 @@ export const CODE_BLOCK_LANGUAGES = [
 
 export type CodeBlockLanguage = (typeof CODE_BLOCK_LANGUAGES)[number];
 
-/** Color scheme names for the code block, mapped to Prism themes by the renderer. */
+/*
+  Color scheme names for the code block, mapped to Prism themes by the renderer.
+*/
 export const CODE_BLOCK_THEMES = ["light", "dark"] as const;
 
 export type CodeBlockTheme = (typeof CODE_BLOCK_THEMES)[number];
 
-/** A standalone styled hyperlink. Maps to React Email Link. */
+/*
+  A standalone styled hyperlink. Maps to React Email Link.
+*/
 export const linkBlockSchema = z
   .strictObject({
     id: linkBlockIdSchema,
@@ -540,7 +564,9 @@ export const linkBlockSchema = z
 
 export type LinkBlock = z.infer<typeof linkBlockSchema>;
 
-/** A syntax-highlighted code snippet. Maps to React Email CodeBlock. */
+/*
+  A syntax-highlighted code snippet. Maps to React Email CodeBlock.
+*/
 export const codeBlockSchema = z
   .strictObject({
     id: codeBlockIdSchema,
@@ -578,7 +604,9 @@ export const codeBlockSchema = z
 
 export type CodeBlock = z.infer<typeof codeBlockSchema>;
 
-/** Fixed vertical whitespace. Rendered as an email-safe fixed-height cell. */
+/*
+  Fixed vertical whitespace. Rendered as an email-safe fixed-height cell.
+*/
 export const spacerBlockSchema = z
   .strictObject({
     id: spacerBlockIdSchema,
@@ -602,11 +630,15 @@ export const spacerBlockSchema = z
 
 export type SpacerBlock = z.infer<typeof spacerBlockSchema>;
 
-// ---------------------------------------------------------------------------
-// Union
-// ---------------------------------------------------------------------------
+/*
+  ---------------------------------------------------------------------------
+  Union
+  ---------------------------------------------------------------------------
+*/
 
-/** Any block — discriminated union on `type`. */
+/*
+  Any block — discriminated union on `type`.
+*/
 export const blockSchema = z
   .discriminatedUnion("type", [
     rootBlockSchema,
@@ -625,10 +657,14 @@ export const blockSchema = z
 
 export type Block = z.infer<typeof blockSchema>;
 
-/** Any container block (may have children). */
+/*
+  Any container block (may have children).
+*/
 export type ContainerBlock = RootBlock | SectionBlock | RowBlock | ColumnBlock;
 
-/** Any leaf block (never has children). */
+/*
+  Any leaf block (never has children).
+*/
 export type LeafBlock =
   | TextBlock
   | ButtonBlock

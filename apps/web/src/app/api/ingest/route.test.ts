@@ -7,14 +7,14 @@ vi.mock("@/lib/content-ingestion/ingest-page", () => ({ ingestPage: ingestPageMo
 
 import { POST } from "./route";
 
-/**
- * Contract tests for the page pipeline's HTTP surface. The pipeline itself is
- * covered in lib/content-ingestion; here we pin the request gates, the session
- * plumbing, the compatibility promise made to callers of the old two-mode
- * route, and — the part that matters — that an unreadable page comes back as a
- * REFUSAL with a user-facing message and no content, rather than as a 200 with
- * something invented in its place.
- */
+/*
+  Contract tests for the page pipeline's HTTP surface. The pipeline itself is
+  covered in lib/content-ingestion; here we pin the request gates, the session
+  plumbing, the compatibility promise made to callers of the old two-mode
+  route, and — the part that matters — that an unreadable page comes back as a
+  REFUSAL with a user-facing message and no content, rather than as a 200 with
+  something invented in its place.
+*/
 
 const PAGE_URL = "https://www.dailymeridian.com/climate/solar-canopy-city";
 
@@ -111,7 +111,9 @@ describe("POST /api/ingest — a refusal is not invented content", () => {
     expect(response.status).toBe(422);
     const body = await response.json();
     expect(body).toMatchObject({ isOk: false, reason, message });
-    /* Nothing was invented to fill the gap. */
+    /*
+      Nothing was invented to fill the gap.
+    */
     expect(body).not.toHaveProperty("page");
   });
 });

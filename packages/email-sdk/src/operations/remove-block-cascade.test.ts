@@ -18,27 +18,27 @@ import {
   type RestoreBlocksOperation,
 } from "./ops";
 
-/**
- * removeBlock's empty-container cascade (`shouldRemoveEmptyAncestors`) —
- * column lifecycle rules when content is deleted:
- *
- * 1. Empty columns never persist: removing a column's last block removes the
- *    column, and the surviving sibling columns reset to an equal width split
- *    (explicit widthPercent values stripped — placeBlockBeside's convention).
- * 2. Empty rows never persist: removing a row's last column removes the row.
- * 3. One undo restores everything: the inverse stays ONE restoreBlocks that
- *    carries the removed subtree AND the stripped sibling widths.
- * 4. Historical compatibility: ops WITHOUT the flag (everything logged before
- *    the field existed) replay with the original no-cascade semantics.
- *
- * Sample document shape (createSampleDocument):
- *   root
- *   ├─ sec_a1b2: [txt_e5f6, img_g7h8, div_i9j0]          (leaves directly in a section)
- *   ├─ sec_c3d4: [row_k1l2]
- *   │   ├─ col_m3n4 (60%): [txt_r7s8]
- *   │   └─ col_p5q6 (40%): [btn_t9u0]
- *   └─ sec_e5f6: [txt_v1w2, cod_x3y4, spc_z5a6, lnk_b7c8]
- */
+/*
+  removeBlock's empty-container cascade (`shouldRemoveEmptyAncestors`) —
+  column lifecycle rules when content is deleted:
+
+  1. Empty columns never persist: removing a column's last block removes the
+     column, and the surviving sibling columns reset to an equal width split
+     (explicit widthPercent values stripped — placeBlockBeside's convention).
+  2. Empty rows never persist: removing a row's last column removes the row.
+  3. One undo restores everything: the inverse stays ONE restoreBlocks that
+     carries the removed subtree AND the stripped sibling widths.
+  4. Historical compatibility: ops WITHOUT the flag (everything logged before
+     the field existed) replay with the original no-cascade semantics.
+
+  Sample document shape (createSampleDocument):
+    root
+    ├─ sec_a1b2: [txt_e5f6, img_g7h8, div_i9j0]          (leaves directly in a section)
+    ├─ sec_c3d4: [row_k1l2]
+    │   ├─ col_m3n4 (60%): [txt_r7s8]
+    │   └─ col_p5q6 (40%): [btn_t9u0]
+    └─ sec_e5f6: [txt_v1w2, cod_x3y4, spc_z5a6, lnk_b7c8]
+*/
 
 function applyOrThrow(document: EmailDocument, operation: Operation) {
   const result = applyOperation(document, operation);
@@ -69,7 +69,9 @@ function expectErrorCode({
   return result;
 }
 
-/** Purity + exact inverse round trip — the same bar every op is held to. */
+/*
+  Purity + exact inverse round trip — the same bar every op is held to.
+*/
 function expectPureInverseRoundTrip(document: EmailDocument, operation: Operation) {
   const before = structuredClone(document);
   const applied = applyOrThrow(document, operation);
@@ -79,7 +81,9 @@ function expectPureInverseRoundTrip(document: EmailDocument, operation: Operatio
   return applied;
 }
 
-/** Remove the last block of col_m3n4 (2-column row) with the cascade on. */
+/*
+  Remove the last block of col_m3n4 (2-column row) with the cascade on.
+*/
 const REMOVE_LAST_IN_COLUMN_OP: RemoveBlockOperation = {
   name: "removeBlock",
   blockId: "txt_r7s8",
@@ -90,13 +94,15 @@ function makeDivider(id: string): DividerBlock {
   return {
     id,
     type: "divider",
-    parentId: "col_none", // overwritten on apply
+    parentId: "col_none", /* overwritten on apply */
     childrenIds: [],
     properties: {},
   } as DividerBlock;
 }
 
-/** Sample doc grown to a 4-column row via two placeBlockBeside insert drops. */
+/*
+  Sample doc grown to a 4-column row via two placeBlockBeside insert drops.
+*/
 function createFourColumnDocument(): EmailDocument {
   const withThird = applyOrThrow(createSampleDocument(), {
     name: "placeBlockBeside",
@@ -123,10 +129,14 @@ describe("removeBlock without shouldRemoveEmptyAncestors (historical replay sema
     });
     const column = doc.col_m3n4 as ColumnBlock;
     expect(column.childrenIds).toEqual([]);
-    // Sibling widths untouched — no redistribution without the flag.
+    /*
+      Sibling widths untouched — no redistribution without the flag.
+    */
     expect(column.properties.widthPercent).toBe(60);
     expect((doc.col_p5q6 as ColumnBlock).properties.widthPercent).toBe(40);
-    // Inverse shape unchanged: no previousWidths field creeps in.
+    /*
+      Inverse shape unchanged: no previousWidths field creeps in.
+    */
     expect(inverse).toEqual({
       name: "restoreBlocks",
       blocks: [document.txt_r7s8],
@@ -155,10 +165,14 @@ describe("removeBlock cascade — emptied column collapses", () => {
     expect(doc.col_m3n4).toBeUndefined();
     const row = doc.row_k1l2 as RowBlock;
     expect(row.childrenIds).toEqual(["col_p5q6"]);
-    // Equal split: the survivor's explicit 40% is stripped (no widths = full row).
+    /*
+      Equal split: the survivor's explicit 40% is stripped (no widths = full row).
+    */
     expect((doc.col_p5q6 as ColumnBlock).properties.widthPercent).toBeUndefined();
 
-    // ONE inverse restores the block, its column, the position, AND the widths.
+    /*
+      ONE inverse restores the block, its column, the position, AND the widths.
+    */
     expect(inverse).toEqual({
       name: "restoreBlocks",
       blocks: [document.col_m3n4, document.txt_r7s8],
@@ -197,7 +211,9 @@ describe("removeBlock cascade — emptied column collapses", () => {
     for (const columnId of row.childrenIds) {
       expect((doc[columnId] as ColumnBlock).properties.widthPercent).toBeUndefined();
     }
-    // The survivors were already width-free, so the inverse carries no widths.
+    /*
+      The survivors were already width-free, so the inverse carries no widths.
+    */
     expect((inverse as RestoreBlocksOperation).previousWidths).toBeUndefined();
   });
 
@@ -237,7 +253,9 @@ describe("removeBlock cascade — emptied column collapses", () => {
 });
 
 describe("removeBlock cascade — emptied row collapses with its last column", () => {
-  /** sec_c3d4's row reduced to one column (col_p5q6) via a first cascade. */
+  /*
+    sec_c3d4's row reduced to one column (col_p5q6) via a first cascade.
+  */
   function createSingleColumnRowDocument(): EmailDocument {
     return applyOrThrow(createSampleDocument(), REMOVE_LAST_IN_COLUMN_OP).doc;
   }
@@ -249,13 +267,19 @@ describe("removeBlock cascade — emptied row collapses with its last column", (
       blockId: "btn_t9u0",
       shouldRemoveEmptyAncestors: true,
     });
-    // No empty column, no empty row — the whole chain is gone.
+    /*
+      No empty column, no empty row — the whole chain is gone.
+    */
     expect(doc.btn_t9u0).toBeUndefined();
     expect(doc.col_p5q6).toBeUndefined();
     expect(doc.row_k1l2).toBeUndefined();
-    // The section persists (sections never collapse).
+    /*
+      The section persists (sections never collapse).
+    */
     expect((doc.sec_c3d4 as SectionBlock).childrenIds).toEqual([]);
-    // Row removal strips no widths: the inverse is a plain subtree restore.
+    /*
+      Row removal strips no widths: the inverse is a plain subtree restore.
+    */
     expect(inverse).toEqual({
       name: "restoreBlocks",
       blocks: [document.row_k1l2, document.col_p5q6, document.btn_t9u0],
@@ -277,12 +301,16 @@ describe("removeBlock cascade — one undo, exact redo", () => {
     const document = createSampleDocument();
     const removed = applyOrThrow(document, REMOVE_LAST_IN_COLUMN_OP);
 
-    // UNDO: one restoreBlocks puts everything back exactly.
+    /*
+      UNDO: one restoreBlocks puts everything back exactly.
+    */
     const undone = applyOrThrow(removed.doc, removed.inverse);
     expect(undone.doc).toEqual(document);
 
-    // REDO: the undo's inverse re-strips the restored widths (flagged
-    // removeBlock of the column) and lands on the identical post-delete doc.
+    /*
+      REDO: the undo's inverse re-strips the restored widths (flagged
+      removeBlock of the column) and lands on the identical post-delete doc.
+    */
     expect(undone.inverse).toEqual({
       name: "removeBlock",
       blockId: "col_m3n4",
@@ -291,7 +319,9 @@ describe("removeBlock cascade — one undo, exact redo", () => {
     const redone = applyOrThrow(undone.doc, undone.inverse);
     expect(redone.doc).toEqual(removed.doc);
 
-    // And the cycle stays stable: undoing the redo restores the original again.
+    /*
+      And the cycle stays stable: undoing the redo restores the original again.
+    */
     expect(applyOrThrow(redone.doc, redone.inverse).doc).toEqual(document);
   });
 

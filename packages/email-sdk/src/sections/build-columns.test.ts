@@ -4,7 +4,9 @@ import type { RandomFn } from "../schema/ids";
 import { buildColumns, computeEqualColumnWidths } from "./build-columns";
 import { createIdAllocator, type LeafSpec } from "./build-helpers";
 
-/** Deterministic LCG so allocated ids are stable across runs. */
+/*
+  Deterministic LCG so allocated ids are stable across runs.
+*/
 function createSeededRandom(seed = 42): RandomFn {
   let state = seed;
   return () => {
@@ -69,7 +71,9 @@ describe("buildColumns", () => {
       expect(columns.some((column) => column.id === leaf.parentId)).toBe(true);
     }
 
-    // Every generated id is unique.
+    /*
+      Every generated id is unique.
+    */
     expect(new Set(blocks.map((block) => block.id)).size).toBe(blocks.length);
   });
 

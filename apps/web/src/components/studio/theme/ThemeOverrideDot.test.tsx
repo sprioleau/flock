@@ -3,21 +3,21 @@ import { describe, expect, it, vi } from "vitest";
 import type { Block } from "@flock/email-sdk";
 import type { Id } from "@convex/_generated/dataModel";
 
-/**
- * The override indicator's WIRING, checked the way this app checks components:
- * there is no DOM here (vitest.config.ts pins `environment: "node"`), so the
- * component is called as a plain function over stubbed hooks and the element
- * tree it returns is walked. The appearance RULE itself is a pure function with
- * its own suite (lib/brand-theme-link.test.ts); what only this file can prove is
- * the composition that rule depends on:
- *
- * - the dot is silent for a draft with no parent theme, and for a parent with
- *   nothing overridden — "not super in their face" is the whole brief;
- * - it appears for an overridden GLOBAL, which the server query supplies;
- * - it appears for a per-section background override, which the server query
- *   deliberately does NOT know about and the editor store supplies locally.
- *   That second layer is the part a refactor would silently drop.
- */
+/*
+  The override indicator's WIRING, checked the way this app checks components:
+  there is no DOM here (vitest.config.ts pins `environment: "node"`), so the
+  component is called as a plain function over stubbed hooks and the element
+  tree it returns is walked. The appearance RULE itself is a pure function with
+  its own suite (lib/brand-theme-link.test.ts); what only this file can prove is
+  the composition that rule depends on:
+
+  - the dot is silent for a draft with no parent theme, and for a parent with
+    nothing overridden — "not super in their face" is the whole brief;
+  - it appears for an overridden GLOBAL, which the server query supplies;
+  - it appears for a per-section background override, which the server query
+    deliberately does NOT know about and the editor store supplies locally.
+    That second layer is the part a refactor would silently drop.
+*/
 
 const DOCUMENT_ID = "doc_theme_dot" as Id<"documents">;
 
@@ -68,7 +68,9 @@ function collectElements(node: ReactNode): ElementWithProps[] {
   return found;
 }
 
-/** The dot's own element, found by the test id it carries, or undefined. */
+/*
+  The dot's own element, found by the test id it carries, or undefined.
+*/
 function findDot(node: ReactNode): ElementWithProps | undefined {
   return collectElements(node).find(
     (element) => element.props["data-testid"] === `theme-override-dot-${DOCUMENT_ID}`,
@@ -126,7 +128,9 @@ describe("ThemeOverrideDot", () => {
     });
     const dot = findDot(tree);
     expect(dot).toBeDefined();
-    /* Announced to screen readers: the dot itself is pure color. */
+    /*
+      Announced to screen readers: the dot itself is pure color.
+    */
     expect(dot?.props["aria-label"]).toContain("Midnight");
     expect(dot?.props["aria-label"]).toContain("1 local change");
     expect(dot?.props["aria-label"]).toContain("Pick the theme again to reset");

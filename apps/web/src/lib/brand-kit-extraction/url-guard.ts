@@ -17,14 +17,14 @@ import { isIP } from "node:net";
 
 export const MAX_URL_LENGTH = 2048;
 
-/**
- * Normalize a user-typed website address BEFORE validation: scheme-less
- * input ("cnn.com") gets **https:// only** — NEVER an http:// fallback
- * (owner decision), and protocol-relative "//host" resolves to https too.
- * Anything already carrying a scheme is left untouched so the guard can
- * judge it as typed. Purely syntactic — the full SSRF guard still runs on
- * the normalized URL.
- */
+/*
+  Normalize a user-typed website address BEFORE validation: scheme-less
+  input ("cnn.com") gets **https:// only** — NEVER an http:// fallback
+  (owner decision), and protocol-relative "//host" resolves to https too.
+  Anything already carrying a scheme is left untouched so the guard can
+  judge it as typed. Purely syntactic — the full SSRF guard still runs on
+  the normalized URL.
+*/
 export function normalizeWebsiteUrl(rawUrl: string): string {
   const trimmed = rawUrl.trim();
   if (trimmed.length === 0 || /^[a-zA-Z][a-zA-Z0-9+.-]*:/.test(trimmed)) {
@@ -40,43 +40,47 @@ export type UrlGuardResult =
 function isPrivateIpv4(ip: string): boolean {
   const octets = ip.split(".").map(Number);
   if (octets.length !== 4 || octets.some((octet) => Number.isNaN(octet))) {
-    return true; // unparseable — treat as unsafe
+    return true; /* unparseable — treat as unsafe */
   }
   const [a, b] = octets;
   return (
-    a === 0 || // "this network"
+    a === 0 || /* "this network" */
     a === 10 ||
-    a === 127 || // loopback
-    (a === 100 && b >= 64 && b <= 127) || // CGNAT
-    (a === 169 && b === 254) || // link-local / cloud metadata
+    a === 127 || /* loopback */
+    (a === 100 && b >= 64 && b <= 127) || /* CGNAT */
+    (a === 169 && b === 254) || /* link-local / cloud metadata */
     (a === 172 && b >= 16 && b <= 31) ||
     (a === 192 && b === 168) ||
-    (a === 192 && b === 0) || // 192.0.0.0/24 + 192.0.2.0/24 doc range
-    (a === 198 && (b === 18 || b === 19)) || // benchmarking
-    a >= 224 // multicast + reserved
+    (a === 192 && b === 0) || /* 192.0.0.0/24 + 192.0.2.0/24 doc range */
+    (a === 198 && (b === 18 || b === 19)) || /* benchmarking */
+    a >= 224 /* multicast + reserved */
   );
 }
 
 function isPrivateIpv6(rawIp: string): boolean {
   const ip = rawIp.toLowerCase();
-  // IPv4-mapped (::ffff:a.b.c.d) — defer to the IPv4 ranges.
+  /*
+    IPv4-mapped (::ffff:a.b.c.d) — defer to the IPv4 ranges.
+  */
   const mappedMatch = ip.match(/^::ffff:(\d+\.\d+\.\d+\.\d+)$/);
   if (mappedMatch !== null) {
     return isPrivateIpv4(mappedMatch[1]);
   }
   return (
     ip === "::" ||
-    ip === "::1" || // loopback
-    ip.startsWith("fc") || // fc00::/7 unique-local
+    ip === "::1" || /* loopback */
+    ip.startsWith("fc") || /* fc00::/7 unique-local */
     ip.startsWith("fd") ||
-    ip.startsWith("fe8") || // fe80::/10 link-local
+    ip.startsWith("fe8") || /* fe80::/10 link-local */
     ip.startsWith("fe9") ||
     ip.startsWith("fea") ||
     ip.startsWith("feb")
   );
 }
 
-/** True when an IP address (v4 or v6) is loopback/private/link-local/etc. */
+/*
+  True when an IP address (v4 or v6) is loopback/private/link-local/etc.
+*/
 export function isBlockedAddress(ip: string): boolean {
   const version = isIP(ip);
   if (version === 4) {
@@ -85,15 +89,15 @@ export function isBlockedAddress(ip: string): boolean {
   if (version === 6) {
     return isPrivateIpv6(ip);
   }
-  return true; // not an IP at all — callers pass resolved addresses only
+  return true; /* not an IP at all — callers pass resolved addresses only */
 }
 
 const BLOCKED_HOSTNAME_SUFFIXES = [".localhost", ".local", ".internal", ".home.arpa"];
 
-/**
- * Synchronous URL validation: parseable, http(s) only, length-capped, and no
- * obviously-internal hostname or private IP literal.
- */
+/*
+  Synchronous URL validation: parseable, http(s) only, length-capped, and no
+  obviously-internal hostname or private IP literal.
+*/
 export function validateUrlSyntax(rawUrl: string): UrlGuardResult {
   if (rawUrl.length > MAX_URL_LENGTH) {
     return { isAllowed: false, reason: "URL is too long." };
@@ -108,7 +112,9 @@ export function validateUrlSyntax(rawUrl: string): UrlGuardResult {
     return { isAllowed: false, reason: "Only http and https URLs are supported." };
   }
   const hostname = url.hostname.toLowerCase();
-  // Strip IPv6 brackets for the IP-literal check.
+  /*
+    Strip IPv6 brackets for the IP-literal check.
+  */
   const bareHost = hostname.replace(/^\[|\]$/g, "");
   if (isIP(bareHost) !== 0 && isBlockedAddress(bareHost)) {
     return { isAllowed: false, reason: "That address points at a private network." };
@@ -123,10 +129,10 @@ export function validateUrlSyntax(rawUrl: string): UrlGuardResult {
   return { isAllowed: true, url };
 }
 
-/**
- * Resolve the hostname and verify every returned address is public. IP
- * literals are checked directly (no lookup).
- */
+/*
+  Resolve the hostname and verify every returned address is public. IP
+  literals are checked directly (no lookup).
+*/
 export async function assertHostResolvesPublic(url: URL): Promise<UrlGuardResult> {
   const bareHost = url.hostname.replace(/^\[|\]$/g, "");
   if (isIP(bareHost) !== 0) {
@@ -149,7 +155,9 @@ export async function assertHostResolvesPublic(url: URL): Promise<UrlGuardResult
     : { isAllowed: true, url };
 }
 
-/** Full guard: syntax + DNS. The one call sites should use. */
+/*
+  Full guard: syntax + DNS. The one call sites should use.
+*/
 export async function guardUrl(rawUrl: string): Promise<UrlGuardResult> {
   const syntaxResult = validateUrlSyntax(rawUrl);
   if (!syntaxResult.isAllowed) {

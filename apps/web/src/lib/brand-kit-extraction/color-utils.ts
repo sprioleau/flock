@@ -1,8 +1,8 @@
-/**
- * Small deterministic color helpers for the brand-kit extraction pipeline:
- * normalization of scraped CSS colors and luminance-aware mixing used by the
- * contrast repair pass.
- */
+/*
+  Small deterministic color helpers for the brand-kit extraction pipeline:
+  normalization of scraped CSS colors and luminance-aware mixing used by the
+  contrast repair pass.
+*/
 
 /**
  * Parse "#rgb" / "#rrggbb" into [r, g, b] (0–255), or null. Leading "#" is
@@ -28,17 +28,17 @@ export function parseHexColor(color: string): [number, number, number] | null {
   ];
 }
 
-/**
- * WCAG relative luminance (0–1) of a hex color, or null when unparseable.
- *
- * THE SINGLE SOURCE OF TRUTH for the WCAG formula. `getContrastRatio` in
- * src/lib/brand-kit.ts is built on this, which puts all three contrast
- * consumers — brand kit validation, the theme contrast repair pass, and the
- * `low-contrast-edit` critique — on one implementation. It was duplicated
- * once; changing the coefficients or the 0.03928 knee in a copy moved some
- * consumers and silently left the rest behind, so there is deliberately no
- * second copy to keep in sync.
- */
+/*
+  WCAG relative luminance (0–1) of a hex color, or null when unparseable.
+
+  THE SINGLE SOURCE OF TRUTH for the WCAG formula. `getContrastRatio` in
+  src/lib/brand-kit.ts is built on this, which puts all three contrast
+  consumers — brand kit validation, the theme contrast repair pass, and the
+  `low-contrast-edit` critique — on one implementation. It was duplicated
+  once; changing the coefficients or the 0.03928 knee in a copy moved some
+  consumers and silently left the rest behind, so there is deliberately no
+  second copy to keep in sync.
+*/
 export function getRelativeLuminance(color: string): number | null {
   const rgb = parseHexColor(color);
   if (rgb === null) {
@@ -57,12 +57,16 @@ function toHexByte(value: number): string {
     .padStart(2, "0");
 }
 
-/** [r, g, b] → "#rrggbb". */
+/*
+  [r, g, b] → "#rrggbb".
+*/
 export function rgbToHex(rgb: [number, number, number]): string {
   return `#${toHexByte(rgb[0])}${toHexByte(rgb[1])}${toHexByte(rgb[2])}`;
 }
 
-/** hsl → rgb (h in degrees, s/l in 0–1). Standard CSS algorithm. */
+/*
+  hsl → rgb (h in degrees, s/l in 0–1). Standard CSS algorithm.
+*/
 function hslToRgb({ h, s, l }: { h: number; s: number; l: number }): [number, number, number] {
   const hue = ((h % 360) + 360) % 360;
   const chroma = (1 - Math.abs(2 * l - 1)) * s;
@@ -80,13 +84,13 @@ function hslToRgb({ h, s, l }: { h: number; s: number; l: number }): [number, nu
   return [(r + m) * 255, (g + m) * 255, (b + m) * 255];
 }
 
-/**
- * Normalize a scraped CSS color token to lowercase "#rrggbb".
- * Accepts #rgb, #rrggbb, rgb()/rgba() and hsl()/hsla() (comma or space
- * syntax); an alpha < 0.5 is treated as noise (overlays/shadows) and
- * rejected. Anything else (named colors, oklch, var()) returns null — the
- * harvester only reports colors it can represent exactly.
- */
+/*
+  Normalize a scraped CSS color token to lowercase "#rrggbb".
+  Accepts #rgb, #rrggbb, rgb()/rgba() and hsl()/hsla() (comma or space
+  syntax); an alpha < 0.5 is treated as noise (overlays/shadows) and
+  rejected. Anything else (named colors, oklch, var()) returns null — the
+  harvester only reports colors it can represent exactly.
+*/
 export function normalizeCssColor(raw: string): string | null {
   const value = raw.trim().toLowerCase();
   const hexRgb = parseHexColor(value);
@@ -130,17 +134,19 @@ export function normalizeCssColor(raw: string): string | null {
   return null;
 }
 
-/**
- * Normalized chroma (0–1): max minus min RGB channel. High-chroma colors are
- * vivid/saturated; grays are 0. Used by the harvester's vibrancy-aware
- * ranking — brand accents are typically LOW-frequency HIGH-chroma colors.
- */
+/*
+  Normalized chroma (0–1): max minus min RGB channel. High-chroma colors are
+  vivid/saturated; grays are 0. Used by the harvester's vibrancy-aware
+  ranking — brand accents are typically LOW-frequency HIGH-chroma colors.
+*/
 export function getChroma(color: string): number | null {
   const rgb = parseHexColor(color);
   return rgb === null ? null : (Math.max(...rgb) - Math.min(...rgb)) / 255;
 }
 
-/** Mix `base` toward `target` by `amount` (0 = base, 1 = target). */
+/*
+  Mix `base` toward `target` by `amount` (0 = base, 1 = target).
+*/
 export function mixHexColors({
   base,
   target,
@@ -167,21 +173,21 @@ function getChannelSpread(color: string): number | null {
   return rgb === null ? null : Math.max(...rgb) - Math.min(...rgb);
 }
 
-/**
- * Near-white GRAY noise (#fff, #fafafa…) — filtered from ranked candidates.
- * Tinted lights (creams, pale brand washes) are kept: only low-saturation
- * (small channel spread) colors count as noise.
- */
+/*
+  Near-white GRAY noise (#fff, #fafafa…) — filtered from ranked candidates.
+  Tinted lights (creams, pale brand washes) are kept: only low-saturation
+  (small channel spread) colors count as noise.
+*/
 export function isNearWhite(color: string): boolean {
   const luminance = getRelativeLuminance(color);
   const spread = getChannelSpread(color);
   return luminance !== null && spread !== null && luminance > 0.92 && spread < 16;
 }
 
-/**
- * Near-black GRAY noise (#000, #111…) — filtered from ranked candidates.
- * Very dark BRAND colors (deep purples/navies) are kept via the spread check.
- */
+/*
+  Near-black GRAY noise (#000, #111…) — filtered from ranked candidates.
+  Very dark BRAND colors (deep purples/navies) are kept via the spread check.
+*/
 export function isNearBlack(color: string): boolean {
   const luminance = getRelativeLuminance(color);
   const spread = getChannelSpread(color);

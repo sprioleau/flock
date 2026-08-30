@@ -31,11 +31,11 @@ import { useSendTestEmail } from "./use-send-test-email";
 export function SendTestEmailDialog({
   isIconTrigger = false,
 }: {
-  /**
-   * The compact icon-only trigger used by the floating per-frame toolbar
-   * (§10.2 frames UX — a test sends ONE draft, so the entry point rides the
-   * frame); default is the labeled header-style button.
-   */
+  /*
+    The compact icon-only trigger used by the floating per-frame toolbar
+    (§10.2 frames UX — a test sends ONE draft, so the entry point rides the
+    frame); default is the labeled header-style button.
+  */
   isIconTrigger?: boolean;
 }) {
   const [isOpen, setIsOpen] = useState(false);
@@ -52,8 +52,10 @@ export function SendTestEmailDialog({
     }
   };
 
-  // Agent-parity: the chat's openPanel("send-test") command opens this dialog
-  // through the same reset-and-prefill path as a human click.
+  /*
+    Agent-parity: the chat's openPanel("send-test") command opens this dialog
+    through the same reset-and-prefill path as a human click.
+  */
   useUiSurfaceOpenRequest("send-test", () => handleOpenChange(true));
 
   return (
@@ -73,8 +75,10 @@ export function SendTestEmailDialog({
           <SendIcon className="size-4" />
         </DialogTrigger>
       ) : (
-        /* Icon-only below xl (header containment discipline): the label span
-           hides and the width collapses to match the icon buttons beside it. */
+        /*
+          Icon-only below xl (header containment discipline): the label span
+          hides and the width collapses to match the icon buttons beside it.
+        */
         <DialogTrigger
           render={
             <Button

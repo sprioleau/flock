@@ -1,27 +1,27 @@
-/**
- * Re-scrape reconciliation for human-editable brand-kit fields
- * (docs/proposals/brand-kit-user-control.md §8) — pure functions, no ctx, so
- * the Convex mutations and the tests share one implementation.
- *
- * THE PROBLEM: `saveBrandKit` is a wholesale replace. The moment a human can
- * name a color or write a tone of voice, re-running the scrape becomes a
- * silent data-loss path — the exact failure the "agent proposes, human
- * disposes" principle exists to prevent.
- *
- * THE STRATEGY (§8.2 option 2, provenance + sticky user edits): every
- * editable field carries an `origin` marker (colors and tone of voice carry a
- * `userEditedAtMs` alongside it; social links, added later, carry only the
- * marker — see reconcileSocialLinks). A re-scrape writes only into fields NOT
- * touched by a human, and reports what it kept so the panel can say so in
- * words. Chosen over full diff-and-confirm because it
- * needs no new UI surface, no place to park a candidate kit, and no answer to
- * "what if the user walks away mid-diff" — and because provenance is what
- * would make a diff view meaningful later anyway. It composes; it doesn't
- * foreclose.
- *
- * Hex normalization is deliberately duplicated-by-behavior rather than
- * imported: this module must stay importable from convex/ (no React, no DOM).
- */
+/*
+  Re-scrape reconciliation for human-editable brand-kit fields
+  (docs/proposals/brand-kit-user-control.md §8) — pure functions, no ctx, so
+  the Convex mutations and the tests share one implementation.
+
+  THE PROBLEM: `saveBrandKit` is a wholesale replace. The moment a human can
+  name a color or write a tone of voice, re-running the scrape becomes a
+  silent data-loss path — the exact failure the "agent proposes, human
+  disposes" principle exists to prevent.
+
+  THE STRATEGY (§8.2 option 2, provenance + sticky user edits): every
+  editable field carries an `origin` marker (colors and tone of voice carry a
+  `userEditedAtMs` alongside it; social links, added later, carry only the
+  marker — see reconcileSocialLinks). A re-scrape writes only into fields NOT
+  touched by a human, and reports what it kept so the panel can say so in
+  words. Chosen over full diff-and-confirm because it
+  needs no new UI surface, no place to park a candidate kit, and no answer to
+  "what if the user walks away mid-diff" — and because provenance is what
+  would make a diff view meaningful later anyway. It composes; it doesn't
+  foreclose.
+
+  Hex normalization is deliberately duplicated-by-behavior rather than
+  imported: this module must stay importable from convex/ (no React, no DOM).
+*/
 
 import {
   MAX_BRAND_COLORS,
@@ -32,7 +32,9 @@ import {
 } from "./brand-kit";
 import { SOCIAL_PLATFORM_ORDER } from "./social-links";
 
-/** Lowercased #rrggbb, or null for anything unparseable. */
+/*
+  Lowercased #rrggbb, or null for anything unparseable.
+*/
 function normalizeHex(hex: string): string | null {
   const raw = hex.trim().replace(/^#/, "");
   const isShort = /^[0-9a-f]{3}$/i.test(raw);
@@ -44,27 +46,33 @@ function normalizeHex(hex: string): string | null {
   return `#${full.toLowerCase()}`;
 }
 
-/**
- * A stable id for a scraped color, derived from the hex so an unchanged color
- * keeps its identity across re-scrapes. Ids never change afterwards — a human
- * recoloring "Banana" keeps the id (§3.2), which is what makes the entry
- * recognizable as the same curated slot.
- */
+/*
+  A stable id for a scraped color, derived from the hex so an unchanged color
+  keeps its identity across re-scrapes. Ids never change afterwards — a human
+  recoloring "Banana" keeps the id (§3.2), which is what makes the entry
+  recognizable as the same curated slot.
+*/
 export function buildBrandColorId(hex: string): string {
   return `color-${(normalizeHex(hex) ?? "#000000").slice(1)}`;
 }
 
-/** True when a human authored or overrode this entry — the re-scrape lock. */
+/*
+  True when a human authored or overrode this entry — the re-scrape lock.
+*/
 export function isHumanOwnedColor(color: BrandColor): boolean {
   return color.origin === "user" || color.userEditedAtMs !== undefined;
 }
 
-/** True when a human authored or overrode the tone of voice. */
+/*
+  True when a human authored or overrode the tone of voice.
+*/
 export function isHumanOwnedTone(tone: BrandToneOfVoice): boolean {
   return tone.origin === "user" || tone.userEditedAtMs !== undefined;
 }
 
-/** Renumber `orderIndex` densely within each category (0, 1, 2, …). */
+/*
+  Renumber `orderIndex` densely within each category (0, 1, 2, …).
+*/
 export function renumberBrandColors(colors: BrandColor[]): BrandColor[] {
   const nextIndexByCategory = new Map<BrandColorCategory, number>();
   return colors.map((color) => {
@@ -76,26 +84,30 @@ export function renumberBrandColors(colors: BrandColor[]): BrandColor[] {
 
 export interface BrandColorsReconciliation {
   colors: BrandColor[];
-  /** How many human-owned entries survived untouched. */
+  /*
+    How many human-owned entries survived untouched.
+  */
   keptUserEditedCount: number;
-  /** How many entries the incoming scrape contributed. */
+  /*
+    How many entries the incoming scrape contributed.
+  */
   adoptedFromSiteCount: number;
 }
 
-/**
- * Merge a fresh scrape's palette into the stored one.
- *
- * Rules, in order:
- * 1. Every human-owned entry survives VERBATIM — name, hex, category, order.
- * 2. Incoming entries whose color a surviving entry already claims are
- *    dropped (the human's name for that color wins).
- * 3. Remaining incoming entries are adopted, up to the cap.
- * 4. Machine entries from the previous scrape are discarded — that is the
- *    part a re-scrape is FOR.
- *
- * `incoming` absent (a save that carries no palette, e.g. a legacy client)
- * leaves the stored palette completely alone rather than deleting it.
- */
+/*
+  Merge a fresh scrape's palette into the stored one.
+
+  Rules, in order:
+  1. Every human-owned entry survives VERBATIM — name, hex, category, order.
+  2. Incoming entries whose color a surviving entry already claims are
+     dropped (the human's name for that color wins).
+  3. Remaining incoming entries are adopted, up to the cap.
+  4. Machine entries from the previous scrape are discarded — that is the
+     part a re-scrape is FOR.
+
+  `incoming` absent (a save that carries no palette, e.g. a legacy client)
+  leaves the stored palette completely alone rather than deleting it.
+*/
 export function reconcileBrandColors({
   existing,
   incoming,
@@ -141,16 +153,18 @@ export function reconcileBrandColors({
 
 export interface ToneOfVoiceReconciliation {
   toneOfVoice: BrandToneOfVoice | undefined;
-  /** True when the human's tone was kept and the scrape's was discarded. */
+  /*
+    True when the human's tone was kept and the scrape's was discarded.
+  */
   keptUserEdit: boolean;
 }
 
-/**
- * Tone of voice is one object, so reconciliation is all-or-nothing: a human
- * who wrote their own voice keeps it, and a re-scrape never overwrites it.
- * (Field-level merging here would produce a Frankenstein voice — half the
- * user's guidance, half the site's descriptors — which is worse than either.)
- */
+/*
+  Tone of voice is one object, so reconciliation is all-or-nothing: a human
+  who wrote their own voice keeps it, and a re-scrape never overwrites it.
+  (Field-level merging here would produce a Frankenstein voice — half the
+  user's guidance, half the site's descriptors — which is worse than either.)
+*/
 export function reconcileToneOfVoice({
   existing,
   incoming,
@@ -185,12 +199,16 @@ export interface StoredSocialLink {
   origin?: BrandDataOrigin;
 }
 
-/* True when a human authored or overrode this link — the re-scrape lock. */
+/*
+  True when a human authored or overrode this link — the re-scrape lock.
+*/
 export function isHumanOwnedSocialLink(link: StoredSocialLink): boolean {
   return link.origin === "user";
 }
 
-/* Position in the shared display order; unknown platforms sort last. */
+/*
+  Position in the shared display order; unknown platforms sort last.
+*/
 function rankSocialPlatform(platform: string): number {
   const index = SOCIAL_PLATFORM_ORDER.findIndex((candidate) => candidate === platform);
   return index === -1 ? SOCIAL_PLATFORM_ORDER.length : index;
@@ -218,7 +236,9 @@ function orderSocialLinksForDisplay(links: StoredSocialLink[]): StoredSocialLink
 
 export interface SocialLinksReconciliation {
   socialLinks: StoredSocialLink[];
-  /* How many human-owned links survived untouched. */
+  /*
+    How many human-owned links survived untouched.
+  */
   keptUserEditedCount: number;
 }
 
@@ -304,11 +324,11 @@ export function stampUserEditedSocialLinks({
   });
 }
 
-/**
- * The one-line summary the panel shows after a re-scrape — "silent skip" is
- * exactly the failure mode provenance exists to avoid, so what was kept has
- * to be visible. Returns null when there was nothing of the human's to keep.
- */
+/*
+  The one-line summary the panel shows after a re-scrape — "silent skip" is
+  exactly the failure mode provenance exists to avoid, so what was kept has
+  to be visible. Returns null when there was nothing of the human's to keep.
+*/
 export function describeBrandKitReconciliation({
   keptUserEditedColors,
   keptUserToneOfVoice,
@@ -343,16 +363,16 @@ export function describeBrandKitReconciliation({
   return `Updated from the site — we kept ${list}.`;
 }
 
-/**
- * Stamp a human's palette edit for storage: entries that DIFFER from what is
- * stored (or are brand new) become `origin: "user"` with a fresh
- * `userEditedAtMs`; untouched entries keep whatever provenance they had, so
- * saving the panel without changing anything doesn't silently lock the whole
- * palette against future scrapes.
- *
- * Done server-side on purpose: the client sends the array it is showing, and
- * the server decides what counts as an edit. Nothing has to be trusted.
- */
+/*
+  Stamp a human's palette edit for storage: entries that DIFFER from what is
+  stored (or are brand new) become `origin: "user"` with a fresh
+  `userEditedAtMs`; untouched entries keep whatever provenance they had, so
+  saving the panel without changing anything doesn't silently lock the whole
+  palette against future scrapes.
+
+  Done server-side on purpose: the client sends the array it is showing, and
+  the server decides what counts as an edit. Nothing has to be trusted.
+*/
 export function planBrandColorsUpdate({
   existing,
   incoming,
@@ -379,8 +399,10 @@ export function planBrandColorsUpdate({
       hex: normalizedHex,
       origin: "user" as const,
       userEditedAtMs: nowMs,
-      // Provenance from the scrape is kept even after a human edit — it is
-      // why the color was proposed, and it survives the rename it explains.
+      /*
+        Provenance from the scrape is kept even after a human edit — it is
+        why the color was proposed, and it survives the rename it explains.
+      */
       ...(stored?.sourceVariableName !== undefined && color.sourceVariableName === undefined
         ? { sourceVariableName: stored.sourceVariableName }
         : {}),

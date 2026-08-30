@@ -10,17 +10,17 @@ import {
   type DraftBrandPointer,
 } from "./brand-theme-link";
 
-/**
- * Theme identity and per-property overrides (§14.5a). Everything here is a
- * property somebody's draft depends on:
- *
- * - the MIGRATION table: every shape a `documents.brand` row can have today
- *   resolves to the same *rendered* draft and the same *pill behaviour* it did
- *   before this landed. A migration that restyles is the failure mode;
- * - a theme EDIT propagates to referencing drafts;
- * - an overridden property SURVIVES that propagation;
- * - the indicator appears only for parent + at least one override.
- */
+/*
+  Theme identity and per-property overrides (§14.5a). Everything here is a
+  property somebody's draft depends on:
+
+  - the MIGRATION table: every shape a `documents.brand` row can have today
+    resolves to the same *rendered* draft and the same *pill behaviour* it did
+    before this landed. A migration that restyles is the failure mode;
+  - a theme EDIT propagates to referencing drafts;
+  - an overridden property SURVIVES that propagation;
+  - the indicator appears only for parent + at least one override.
+*/
 
 const CLASSIC: ThemeVariation = MOCK_BRAND_KIT.variations[0]!;
 const MIDNIGHT: ThemeVariation = MOCK_BRAND_KIT.variations[1]!;
@@ -148,7 +148,9 @@ describe("resolveDraftThemeLink — migration: every existing row shape keeps it
       parentVariationId: null,
       overriddenGlobalKeys: [],
     });
-    /* Null parent ⇒ no dot, no note: there is nothing to be overridden AGAINST. */
+    /*
+      Null parent ⇒ no dot, no note: there is nothing to be overridden AGAINST.
+    */
     expect(
       getThemeOverrideIndicator({
         parentVariationId: link.parentVariationId,

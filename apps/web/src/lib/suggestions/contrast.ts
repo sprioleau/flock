@@ -49,17 +49,25 @@ import { getAncestorIds } from "@/lib/get-ancestor-ids";
     That is a different rule with its own ladder, not this one.
 */
 
-/* WCAG 2.1: text at 24px (18pt), or 18.66px bold, clears at 3:1 instead. */
+/*
+  WCAG 2.1: text at 24px (18pt), or 18.66px bold, clears at 3:1 instead.
+*/
 export const LARGE_TEXT_MIN_RATIO = 3;
 export const LARGE_TEXT_MIN_FONT_SIZE_PX = 24;
 
-/** One measured legibility claim: the resolved pair, its ratio, and the bar. */
+/*
+  One measured legibility claim: the resolved pair, its ratio, and the bar.
+*/
 export interface ContrastSubject {
   foreground: string;
   background: string;
-  /** WCAG contrast ratio, 1–21. */
+  /*
+    WCAG contrast ratio, 1–21.
+  */
   ratio: number;
-  /** The bar this pair has to clear (4.5, or 3 for large text). */
+  /*
+    The bar this pair has to clear (4.5, or 3 for large text).
+  */
   minRatio: number;
   isFailing: boolean;
 }
@@ -75,7 +83,9 @@ const CRITIQUE_PROPERTY_KEYS: Partial<Record<Block["type"], ReadonlySet<string>>
   link: new Set(["textColor", "fontSize"]),
 };
 
-/** Could an edit to this property have created a contrast defect on this block? */
+/*
+  Could an edit to this property have created a contrast defect on this block?
+*/
 export function getIsContrastCritiqueProperty({
   blockType,
   propertyKey,
@@ -137,13 +147,17 @@ function measure({
 }): ContrastSubject | null {
   const ratio = getContrastRatio({ foreground, background });
   if (ratio === null) {
-    /* Not hex we can read (a named color, a gradient) — never guess a verdict. */
+    /*
+      Not hex we can read (a named color, a gradient) — never guess a verdict.
+    */
     return null;
   }
   return { foreground, background, ratio, minRatio, isFailing: ratio < minRatio };
 }
 
-/** The legibility claim for one block, or null when it cannot be measured. */
+/*
+  The legibility claim for one block, or null when it cannot be measured.
+*/
 export function getContrastSubject({
   doc,
   block,

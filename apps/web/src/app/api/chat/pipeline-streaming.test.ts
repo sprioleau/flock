@@ -6,19 +6,19 @@ import { MOCK_MODEL_ID } from "./constants";
 import { createMockChatModel, MOCK_COMPOSE_EMAIL_TEMPLATE_IDS } from "./mock-model";
 import { runChatPipeline } from "./pipeline";
 
-/**
- * Per-section streaming (the perceived-latency contract): when a model
- * composes a full email as N per-section tool calls, the pipeline must
- * deliver each VALIDATED call to the client as it completes — never buffer
- * the step and flush all calls at the end. The client applies each content
- * op at input-available (use-flock-chat onToolCall), so "call k delivered
- * before call k+1 starts generating" IS "section k painted before section
- * k+1 exists".
- *
- * Driven end-to-end through the real pipeline (streamText → validation →
- * toUIMessageStream) with the mock model's compose script: four sequential
- * scaffoldSection calls streamed with real inter-chunk delays.
- */
+/*
+  Per-section streaming (the perceived-latency contract): when a model
+  composes a full email as N per-section tool calls, the pipeline must
+  deliver each VALIDATED call to the client as it completes — never buffer
+  the step and flush all calls at the end. The client applies each content
+  op at input-available (use-flock-chat onToolCall), so "call k delivered
+  before call k+1 starts generating" IS "section k painted before section
+  k+1 exists".
+
+  Driven end-to-end through the real pipeline (streamText → validation →
+  toUIMessageStream) with the mock model's compose script: four sequential
+  scaffoldSection calls streamed with real inter-chunk delays.
+*/
 
 interface RecordedChunk {
   type: string;
@@ -85,23 +85,29 @@ describe("per-section streaming through the chat pipeline", () => {
     expect(inputStarts).toHaveLength(MOCK_COMPOSE_EMAIL_TEMPLATE_IDS.length);
     expect(inputAvailables).toHaveLength(MOCK_COMPOSE_EMAIL_TEMPLATE_IDS.length);
 
-    // Interleaving: section k's call is fully validated and delivered BEFORE
-    // section k+1's input begins streaming — the no-buffering guarantee.
+    /*
+      Interleaving: section k's call is fully validated and delivered BEFORE
+      section k+1's input begins streaming — the no-buffering guarantee.
+    */
     for (let sectionIndex = 0; sectionIndex < inputAvailables.length - 1; sectionIndex++) {
       const availableAt = recordedChunks.indexOf(inputAvailables[sectionIndex]!);
       const nextStartAt = recordedChunks.indexOf(inputStarts[sectionIndex + 1]!);
       expect(availableAt).toBeLessThan(nextStartAt);
     }
 
-    // Pacing: with the mock's 20ms inter-chunk delay, successive sections
-    // must land measurably apart (a buffered flush would record ~0ms gaps).
+    /*
+      Pacing: with the mock's 20ms inter-chunk delay, successive sections
+      must land measurably apart (a buffered flush would record ~0ms gaps).
+    */
     const gapsMs = inputAvailables
       .slice(1)
       .map((chunk, index) => chunk.atMs - inputAvailables[index]!.atMs);
     for (const gapMs of gapsMs) {
       expect(gapMs).toBeGreaterThan(20);
     }
-    // Evidence line for the latency report (inter-section paint gaps).
+    /*
+      Evidence line for the latency report (inter-section paint gaps).
+    */
     console.log(
       JSON.stringify({
         tag: "flock.test.sectionStreamGaps",
@@ -111,10 +117,12 @@ describe("per-section streaming through the chat pipeline", () => {
   });
 
   it("passes a saved-section scaffold call through the server validation gate", async () => {
-    // Owner V2 item 3: templateId "saved:<rowId>" must clear streamText's
-    // inputSchema validation (the widened SDK schema through the Gemini
-    // model-schema conversion) and stream as a VALIDATED tool call — the
-    // client's saved-scaffold intercept receives it at input-available.
+    /*
+      Owner V2 item 3: templateId "saved:<rowId>" must clear streamText's
+      inputSchema validation (the widened SDK schema through the Gemini
+      model-schema conversion) and stream as a VALIDATED tool call — the
+      client's saved-scaffold intercept receives it at input-available.
+    */
     const recordedChunks = await runPipelineProbe(
       "Add my saved:kd70yrb5kq2r62zwn5x6q5aptd8bkzwc section at the bottom.",
     );
@@ -125,7 +133,9 @@ describe("per-section streaming through the chat pipeline", () => {
       templateId: "saved:kd70yrb5kq2r62zwn5x6q5aptd8bkzwc",
       position: "bottom",
     });
-    // No invalid-call degradation anywhere in the stream.
+    /*
+      No invalid-call degradation anywhere in the stream.
+    */
     expect(recordedChunks.some((chunk) => chunk.type.includes("error"))).toBe(false);
   });
 });

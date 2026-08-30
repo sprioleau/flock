@@ -2,18 +2,18 @@ import type { GlobalStyles } from "@flock/email-sdk";
 import { cn } from "@/lib/utils";
 import { formatTransitionTooltip, type ValueTransition } from "./value-transition";
 
-/**
- * The compact before → after glance appended to op-log rows, rendering a
- * `ValueTransition` from value-transition.ts. Purely additive next to the
- * existing text labels:
- * - color:  two small circles with an arrow — the same circle language as the
- *   theme dropdown's ThemeSwatch (border ring for near-white visibility).
- * - number: "24 → 12px" in compact mono.
- * - text:   "left → center" in compact mono.
- * - theme:  two mini email/content circle stacks (ThemeSwatch's two-circle
- *   cue, miniaturized) with an arrow.
- * Raw values always available via the title tooltip.
- */
+/*
+  The compact before → after glance appended to op-log rows, rendering a
+  `ValueTransition` from value-transition.ts. Purely additive next to the
+  existing text labels:
+  - color:  two small circles with an arrow — the same circle language as the
+    theme dropdown's ThemeSwatch (border ring for near-white visibility).
+  - number: "24 → 12px" in compact mono.
+  - text:   "left → center" in compact mono.
+  - theme:  two mini email/content circle stacks (ThemeSwatch's two-circle
+    cue, miniaturized) with an arrow.
+  Raw values always available via the title tooltip.
+*/
 export function BeforeAfterChip({
   transition,
   className,
@@ -71,7 +71,9 @@ export function BeforeAfterChip({
   );
 }
 
-/** One color circle, ringed like ThemeSwatch so near-white stays visible. */
+/*
+  One color circle, ringed like ThemeSwatch so near-white stays visible.
+*/
 function ColorDot({ color }: { color: string }) {
   return (
     <span
@@ -89,10 +91,10 @@ function TransitionArrow() {
   );
 }
 
-/**
- * ThemeSwatch's two-circle cue at chip scale: BACK circle = email (canvas)
- * background, FRONT circle = content (sections') background.
- */
+/*
+  ThemeSwatch's two-circle cue at chip scale: BACK circle = email (canvas)
+  background, FRONT circle = content (sections') background.
+*/
 function ThemeDotPair({ globals }: { globals: Required<GlobalStyles> }) {
   return (
     <span className="relative inline-block h-3 w-[18px] shrink-0" aria-hidden>

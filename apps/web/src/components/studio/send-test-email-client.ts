@@ -7,28 +7,34 @@ import {
   type SendTestEmailResponseBody,
 } from "@/app/api/send-test-email/contract";
 
-/**
- * The client half of the test-send flow, as plain functions.
- *
- * Every surface that can send a test (the frame toolbar's Send-test dialog and
- * the HTML preview dialog's inline send row) goes through THIS module, which in
- * turn goes through POST /api/send-test-email — the one human send path, which
- * itself dispatches into the same `sendTestEmailWithResend` the chat approval
- * flow executes. Two entry points in the UI, one send path underneath.
- *
- * Deliberately React-free: the app's vitest environment is `node`, so keeping
- * recipient resolution, validation and response mapping out of components is
- * what makes the success / failure / not-configured paths testable at all.
- */
+/*
+  The client half of the test-send flow, as plain functions.
 
-// ---------------------------------------------------------------------------
-// Remembering the last recipient
-// ---------------------------------------------------------------------------
+  Every surface that can send a test (the frame toolbar's Send-test dialog and
+  the HTML preview dialog's inline send row) goes through THIS module, which in
+  turn goes through POST /api/send-test-email — the one human send path, which
+  itself dispatches into the same `sendTestEmailWithResend` the chat approval
+  flow executes. Two entry points in the UI, one send path underneath.
 
-/** Shared by every send surface, so they agree on "the address you last used". */
+  Deliberately React-free: the app's vitest environment is `node`, so keeping
+  recipient resolution, validation and response mapping out of components is
+  what makes the success / failure / not-configured paths testable at all.
+*/
+
+/*
+  ---------------------------------------------------------------------------
+  Remembering the last recipient
+  ---------------------------------------------------------------------------
+*/
+
+/*
+  Shared by every send surface, so they agree on "the address you last used".
+*/
 export const LAST_RECIPIENT_STORAGE_KEY = "flock:send-test-email:last-recipient";
 
-/** Empty string when unset or when storage is unavailable (private mode). */
+/*
+  Empty string when unset or when storage is unavailable (private mode).
+*/
 export function readLastUsedRecipient(): string {
   try {
     return window.localStorage.getItem(LAST_RECIPIENT_STORAGE_KEY) ?? "";
@@ -41,34 +47,38 @@ export function saveLastUsedRecipient(recipient: string): void {
   try {
     window.localStorage.setItem(LAST_RECIPIENT_STORAGE_KEY, recipient);
   } catch {
-    // Storage unavailable — the prefill nicety is skipped, the send stands.
+    /*
+      Storage unavailable — the prefill nicety is skipped, the send stands.
+    */
   }
 }
 
-// ---------------------------------------------------------------------------
-// The default recipient
-// ---------------------------------------------------------------------------
+/*
+  ---------------------------------------------------------------------------
+  The default recipient
+  ---------------------------------------------------------------------------
+*/
 
 export interface DefaultRecipientInput {
-  /**
-   * The signed-in identity, or null/undefined when signed out, still loading,
-   * or when the auth roll-out flag is off.
-   */
+  /*
+    The signed-in identity, or null/undefined when signed out, still loading,
+    or when the auth roll-out flag is off.
+  */
   identity: { email: string; isAnonymous: boolean } | null | undefined;
   /** Whatever {@link readLastUsedRecipient} produced. */
   lastUsedRecipient: string;
 }
 
-/**
- * Who a test send should go to before the user types anything.
- *
- * The signed-in user's own address wins: it is the address they can actually
- * check, and it is the one that cannot be a typo. ANONYMOUS identities are
- * skipped on purpose — Better Auth mints those a synthetic `temp-<id>@<domain>`
- * address that no inbox will ever receive, so prefilling it would look like a
- * working default and silently fail. Those users fall through to the address
- * they last sent to, and finally to an empty field.
- */
+/*
+  Who a test send should go to before the user types anything.
+
+  The signed-in user's own address wins: it is the address they can actually
+  check, and it is the one that cannot be a typo. ANONYMOUS identities are
+  skipped on purpose — Better Auth mints those a synthetic `temp-<id>@<domain>`
+  address that no inbox will ever receive, so prefilling it would look like a
+  working default and silently fail. Those users fall through to the address
+  they last sent to, and finally to an empty field.
+*/
 export function resolveDefaultRecipient({
   identity,
   lastUsedRecipient,
@@ -82,18 +92,20 @@ export function resolveDefaultRecipient({
   return lastUsedRecipient.trim();
 }
 
-// ---------------------------------------------------------------------------
-// Recipient validation (the same gate the server re-runs)
-// ---------------------------------------------------------------------------
+/*
+  ---------------------------------------------------------------------------
+  Recipient validation (the same gate the server re-runs)
+  ---------------------------------------------------------------------------
+*/
 
 export type RecipientValidation =
   | { isValid: true; recipient: string }
   | { isValid: false; message: string };
 
-/**
- * Bad addresses never leave the browser. The server re-validates regardless —
- * this only spares the user a round trip and gives them the message instantly.
- */
+/*
+  Bad addresses never leave the browser. The server re-validates regardless —
+  this only spares the user a round trip and gives them the message instantly.
+*/
 export function validateRecipient(recipient: string): RecipientValidation {
   const trimmedRecipient = recipient.trim();
   if (trimmedRecipient === "") {
@@ -177,17 +189,21 @@ export function validateRecipients(recipients: string[]): RecipientsValidation {
   return { isValid: true, recipients: dedupedRecipients };
 }
 
-// ---------------------------------------------------------------------------
-// Deriving a subject from the draft (no server import)
-// ---------------------------------------------------------------------------
+/*
+  ---------------------------------------------------------------------------
+  Deriving a subject from the draft (no server import)
+  ---------------------------------------------------------------------------
+*/
 
-/**
- * The longest subject we prefill from a heading. The canvas mutation caps the
- * stored value too (see convex/canvases.ts); this only bounds what we suggest.
- */
+/*
+  The longest subject we prefill from a heading. The canvas mutation caps the
+  stored value too (see convex/canvases.ts); this only bounds what we suggest.
+*/
 const MAX_DERIVED_SUBJECT_LENGTH = 90;
 
-/** The visible text of a run of inline nodes; non-text nodes read as a space. */
+/*
+  The visible text of a run of inline nodes; non-text nodes read as a space.
+*/
 function getInlineNodesText(nodes: InlineNode[] | undefined): string {
   if (nodes === undefined) {
     return "";
@@ -198,20 +214,20 @@ function getInlineNodesText(nodes: InlineNode[] | undefined): string {
     .trim();
 }
 
-/**
- * The draft's first heading, in document order — the subject we prefill when
- * the canvas has none saved.
- *
- * This intentionally MIRRORS the server's `deriveTestSendSubject` walk rather
- * than importing it: that helper lives in a server-only module (it pulls in the
- * Resend SDK and `node:crypto`), and this module is the React-free half that
- * runs in the browser and under a `node` vitest with no server deps. The one
- * behavioural difference is the fallback: the server returns its "Flock test
- * email" constant, whereas this returns "" so an empty field defers to exactly
- * that server fallback instead of duplicating the constant here — the wire
- * contract makes `subject` optional precisely so an absent one derives server
- * side (see send-test-email/contract.ts).
- */
+/*
+  The draft's first heading, in document order — the subject we prefill when
+  the canvas has none saved.
+
+  This intentionally MIRRORS the server's `deriveTestSendSubject` walk rather
+  than importing it: that helper lives in a server-only module (it pulls in the
+  Resend SDK and `node:crypto`), and this module is the React-free half that
+  runs in the browser and under a `node` vitest with no server deps. The one
+  behavioural difference is the fallback: the server returns its "Flock test
+  email" constant, whereas this returns "" so an empty field defers to exactly
+  that server fallback instead of duplicating the constant here — the wire
+  contract makes `subject` optional precisely so an absent one derives server
+  side (see send-test-email/contract.ts).
+*/
 export function deriveSubjectFromDocument(document: EmailDocument): string {
   const rootBlock = document[ROOT_BLOCK_ID];
   if (rootBlock === undefined) {
@@ -239,12 +255,12 @@ export function deriveSubjectFromDocument(document: EmailDocument): string {
   return "";
 }
 
-/**
- * The success line, phrased for how many inboxes the send actually reached: the
- * single-recipient case names the address (the one thing worth confirming),
- * while several recipients read as a count — five addresses spelled out would
- * be noise, and the list is already on screen in the form above.
- */
+/*
+  The success line, phrased for how many inboxes the send actually reached: the
+  single-recipient case names the address (the one thing worth confirming),
+  while several recipients read as a count — five addresses spelled out would
+  be noise, and the list is already on screen in the form above.
+*/
 export function describeSentRecipients(recipients: string[]): string {
   if (recipients.length === 1) {
     return `Sent to ${recipients[0]}.`;
@@ -252,9 +268,11 @@ export function describeSentRecipients(recipients: string[]): string {
   return `Sent to ${recipients.length} recipients.`;
 }
 
-// ---------------------------------------------------------------------------
-// The send
-// ---------------------------------------------------------------------------
+/*
+  ---------------------------------------------------------------------------
+  The send
+  ---------------------------------------------------------------------------
+*/
 
 export type SendTestEmailFailureKind =
   | "invalid_recipient"
@@ -267,12 +285,12 @@ export type SendTestEmailResult =
   | { isSent: true; recipients: string[] }
   | { isSent: false; kind: SendTestEmailFailureKind; message: string };
 
-/**
- * Plain-language copy for a server that has no email delivery wired up. The
- * route names the missing settings in its own response, but the person looking
- * at the dialog is not the person who sets them, so what they see says what
- * happened and who can fix it — never an environment variable name.
- */
+/*
+  Plain-language copy for a server that has no email delivery wired up. The
+  route names the missing settings in its own response, but the person looking
+  at the dialog is not the person who sets them, so what they see says what
+  happened and who can fix it — never an environment variable name.
+*/
 const NOT_CONFIGURED_MESSAGE =
   "This Flock can’t send email yet — whoever set it up needs to connect an email service first.";
 
@@ -288,23 +306,31 @@ const NOT_SIGNED_IN_MESSAGE =
   "Your session expired before this could send — reload the page and try again.";
 
 export interface RequestTestEmailSendInput {
-  /** The document to send — read from the store at submit time by the caller. */
+  /*
+    The document to send — read from the store at submit time by the caller.
+  */
   document: EmailDocument;
   /** One to five, already trimmed and validated by {@link validateRecipients}. */
   to: string[];
-  /**
-   * The subject to send. Trimmed here; an empty/whitespace value is OMITTED
-   * from the body entirely so the server derives one from the draft (the wire
-   * contract makes it optional for exactly this reason).
-   */
+  /*
+    The subject to send. Trimmed here; an empty/whitespace value is OMITTED
+    from the body entirely so the server derives one from the draft (the wire
+    contract makes it optional for exactly this reason).
+  */
   subject?: string;
-  /** Inbox-preview text. Trimmed and omitted when empty, same as `subject`. */
+  /*
+    Inbox-preview text. Trimmed and omitted when empty, same as `subject`.
+  */
   previewText?: string;
-  /** Injectable for tests; defaults to the ambient `fetch`. */
+  /*
+    Injectable for tests; defaults to the ambient `fetch`.
+  */
   fetchImpl?: typeof fetch;
 }
 
-/** POST the draft to the human send route and map the reply to UI-ready copy. */
+/*
+  POST the draft to the human send route and map the reply to UI-ready copy.
+*/
 export async function requestTestEmailSend({
   document,
   to,
@@ -323,8 +349,10 @@ export async function requestTestEmailSend({
       body: JSON.stringify({
         document,
         to,
-        // Only sent when the user actually has one — an absent field lets the
-        // server fall back rather than us shipping an empty subject/preview.
+        /*
+          Only sent when the user actually has one — an absent field lets the
+          server fall back rather than us shipping an empty subject/preview.
+        */
         ...(trimmedSubject !== undefined && trimmedSubject !== ""
           ? { subject: trimmedSubject }
           : {}),
@@ -351,8 +379,10 @@ export async function requestTestEmailSend({
   }
 
   if (response.ok && payload.messageId !== undefined) {
-    // The server echoes the trimmed `to` array it actually sent to; fall back
-    // to what we posted if an older/edge reply omits it.
+    /*
+      The server echoes the trimmed `to` array it actually sent to; fall back
+      to what we posted if an older/edge reply omits it.
+    */
     return { isSent: true, recipients: payload.to ?? to };
   }
 

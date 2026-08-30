@@ -9,11 +9,11 @@ import {
 } from "../build-helpers";
 import { defineSectionTemplate } from "../types";
 
-/**
- * `article` — one editorial story: heading, rich paragraph, optional image.
- * Reference: react.email/components "article-with-image" and the text-only
- * article patterns.
- */
+/*
+  `article` — one editorial story: heading, rich paragraph, optional image.
+  Reference: react.email/components "article-with-image" and the text-only
+  article patterns.
+*/
 
 export const articleParamsSchema = z
   .strictObject({

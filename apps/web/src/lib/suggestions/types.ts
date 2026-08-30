@@ -21,68 +21,88 @@ import type { Block, BlockId, EmailDocument, Operation } from "@flock/email-sdk"
  * `Suggestion` type knows or cares how a suggestion was made.
  */
 
-/** How a suggestion was produced. v1 only ever emits "rule" (see seam note above). */
+/*
+  How a suggestion was produced. v1 only ever emits "rule" (see seam note above).
+*/
 export type SuggestionSource = "rule" | "analysis";
 
-/** Ids of the v1 deterministic rules (the extensible registry in rules.ts). */
+/*
+  Ids of the v1 deterministic rules (the extensible registry in rules.ts).
+*/
 export type SuggestionRuleId =
   | "repeated-property-edit"
   | "sibling-asymmetry"
   | "low-contrast-edit";
 
-/**
- * The escalation-ladder scopes, smallest to largest. "retheme" is the
- * whole-email rung and always gates behind an explicit confirm.
- *
- * "fix" is not a ladder scope at all — it is the single corrective batch a
- * CRITIQUE attaches (§10 row 7). A critique is about one block that is
- * objectively wrong, so there is nothing to escalate: offering to spread the
- * same treatment across the email would be offering to spread a defect.
- */
+/*
+  The escalation-ladder scopes, smallest to largest. "retheme" is the
+  whole-email rung and always gates behind an explicit confirm.
+
+  "fix" is not a ladder scope at all — it is the single corrective batch a
+  CRITIQUE attaches (§10 row 7). A critique is about one block that is
+  objectively wrong, so there is nothing to escalate: offering to spread the
+  same treatment across the email would be offering to spread a defect.
+*/
 export type SuggestionRungId = "section" | "email" | "retheme" | "fix";
 
-/** One rung of the escalation ladder: a label and its ready-to-dispatch ops. */
+/*
+  One rung of the escalation ladder: a label and its ready-to-dispatch ops.
+*/
 export interface SuggestionRung {
   id: SuggestionRungId;
-  /** Button label. Names things ("the other 2 buttons"), never block ids. */
+  /*
+    Button label. Names things ("the other 2 buttons"), never block ids.
+  */
   label: string;
-  /** Pre-composed ops, dispatched verbatim (and instantly) on Apply. */
+  /*
+    Pre-composed ops, dispatched verbatim (and instantly) on Apply.
+  */
   ops: Operation[];
-  /** Largest-scope rungs require an explicit inline confirm before applying. */
+  /*
+    Largest-scope rungs require an explicit inline confirm before applying.
+  */
   needsConfirm?: boolean;
-  /** What the confirm step explains (required when needsConfirm is true). */
+  /*
+    What the confirm step explains (required when needsConfirm is true).
+  */
   confirmDescription?: string;
 }
 
-/** One suggestion: quiet card copy plus its pre-validated op ladder. */
+/*
+  One suggestion: quiet card copy plus its pre-validated op ladder.
+*/
 export interface Suggestion {
-  /** Unique per instance (a fresh id per generation). */
+  /*
+    Unique per instance (a fresh id per generation).
+  */
   id: string;
   ruleId: SuggestionRuleId;
   source: SuggestionSource;
-  /**
-   * Dismissal identity for this document: `${blockType}|${propertyKey}`.
-   * Deliberately excludes the rule id — dismissing "match the buttons'
-   * background color" quiets BOTH rules for that pattern on this doc.
-   */
+  /*
+    Dismissal identity for this document: `${blockType}|${propertyKey}`.
+    Deliberately excludes the rule id — dismissing "match the buttons'
+    background color" quiets BOTH rules for that pattern on this doc.
+  */
   patternKey: string;
   title: string;
   description: string;
-  /** At least one non-gated rung is guaranteed (see rules.ts). */
+  /*
+    At least one non-gated rung is guaranteed (see rules.ts).
+  */
   rungs: SuggestionRung[];
-  /**
-   * The block the pattern hangs off — the one the user JUST edited. Carried
-   * explicitly (rather than read off `targetBlockIds[0]`, which is only the
-   * anchor by Set insertion order) because the canvas surface anchors real UI
-   * to it: the suggestion pill renders inside that block's shell.
-   */
+  /*
+    The block the pattern hangs off — the one the user JUST edited. Carried
+    explicitly (rather than read off `targetBlockIds[0]`, which is only the
+    anchor by Set insertion order) because the canvas surface anchors real UI
+    to it: the suggestion pill renders inside that block's shell.
+  */
   anchorBlockId: BlockId;
-  /**
-   * Every block this suggestion depends on: all rung target blocks, the
-   * anchor block the pattern hangs off, and the root block when a re-theme
-   * rung reads the current globals. Any change to one of these (including
-   * deletion) invalidates the suggestion immediately.
-   */
+  /*
+    Every block this suggestion depends on: all rung target blocks, the
+    anchor block the pattern hangs off, and the root block when a re-theme
+    rung reads the current globals. Any change to one of these (including
+    deletion) invalidates the suggestion immediately.
+  */
   targetBlockIds: BlockId[];
 }
 
@@ -99,71 +119,91 @@ export interface Suggestion {
  * (use-persona-advisors.ts reuses it piece by piece).
  */
 export interface PersonaSuggestion {
-  /** Unique per instance (fresh id per runner response). */
+  /*
+    Unique per instance (fresh id per runner response).
+  */
   id: string;
   source: Extract<SuggestionSource, "analysis">;
-  /** Persona identity for the card chip + apply provenance. */
+  /*
+    Persona identity for the card chip + apply provenance.
+  */
   personaSlug: string;
   personaName: string;
   personaColor: string;
-  /**
-   * Dismissal identity: `persona:${personaSlug}|${sorted targetBlockIds}`.
-   * Dismissing quiets THIS persona for THOSE blocks on this document
-   * (shared localStorage bookkeeping with rule suggestions — the `persona:`
-   * prefix keeps the key spaces disjoint).
-   */
+  /*
+    Dismissal identity: `persona:${personaSlug}|${sorted targetBlockIds}`.
+    Dismissing quiets THIS persona for THOSE blocks on this document
+    (shared localStorage bookkeeping with rule suggestions — the `persona:`
+    prefix keeps the key spaces disjoint).
+  */
   patternKey: string;
   title: string;
   description: string;
-  /** Visible content references ("the button labeled 'Buy now'") — never ids. */
+  /*
+    Visible content references ("the button labeled 'Buy now'") — never ids.
+  */
   targetBlockNames: string[];
-  /** Blocks the finding depends on; any change invalidates it (staleness). */
+  /*
+    Blocks the finding depends on; any change invalidates it (staleness).
+  */
   targetBlockIds: BlockId[];
-  /** Pre-composed, dry-run-validated ops. Empty = informational card. */
+  /*
+    Pre-composed, dry-run-validated ops. Empty = informational card.
+  */
   ops: Operation[];
-  /**
-   * Main-agent handoff for op-less findings: a ready-to-send chat prompt in
-   * the user's voice. The card's "Ask in chat" inserts it into the composer
-   * (focused, editable — never auto-sent). Absent on findings with ops and
-   * on rows recorded before the field existed (no CTA then).
-   */
+  /*
+    Main-agent handoff for op-less findings: a ready-to-send chat prompt in
+    the user's voice. The card's "Ask in chat" inserts it into the composer
+    (focused, editable — never auto-sent). Absent on findings with ops and
+    on rows recorded before the field existed (no CTA then).
+  */
   suggestedPrompt?: string;
 }
 
-/** One settled user property edit, extracted from an op-log entry. */
+/*
+  One settled user property edit, extracted from an op-log entry.
+*/
 export interface RecentPropertyEdit {
   blockId: BlockId;
   blockType: Block["type"];
   propertyKey: string;
   value: unknown;
-  /**
-   * Who made it. Pattern rules only ever look at the user's own habits, but a
-   * CRITIQUE happily judges an agent-authored edit — a model that recolors a
-   * button into illegibility is exactly the case worth catching, and the agent
-   * has no feelings to spare (see rules.ts, low-contrast-edit).
-   */
+  /*
+    Who made it. Pattern rules only ever look at the user's own habits, but a
+    CRITIQUE happily judges an agent-authored edit — a model that recolors a
+    button into illegibility is exactly the case worth catching, and the agent
+    has no feelings to spare (see rules.ts, low-contrast-edit).
+  */
   author: "user" | "agent";
-  /** The op-log version of the entry this edit came from. */
+  /*
+    The op-log version of the entry this edit came from.
+  */
   version: number;
   createdAtMs: number;
 }
 
-/** Everything a rule sees. `doc` is the CURRENT rendered document (overlay included). */
+/*
+  Everything a rule sees. `doc` is the CURRENT rendered document (overlay included).
+*/
 export interface SuggestionRuleContext {
   doc: EmailDocument;
-  /** Suggestible user edits within the recency window, oldest → newest. */
+  /*
+    Suggestible user edits within the recency window, oldest → newest.
+  */
   recentEdits: RecentPropertyEdit[];
-  /**
-   * The edit whose settling triggered this evaluation. Normally the last of
-   * `recentEdits`; for an AGENT-authored gesture it is parsed straight off the
-   * triggering op instead, because `recentEdits` stays deliberately user-only
-   * (agent ops must never crowd the pattern window — see use-suggestions.ts).
-   */
+  /*
+    The edit whose settling triggered this evaluation. Normally the last of
+    `recentEdits`; for an AGENT-authored gesture it is parsed straight off the
+    triggering op instead, because `recentEdits` stays deliberately user-only
+    (agent ops must never crowd the pattern window — see use-suggestions.ts).
+  */
   anchorEdit: RecentPropertyEdit;
   isPatternDismissed: (patternKey: string) => boolean;
 }
 
-/** One registry entry: a cheap pattern detector that composes a full suggestion. */
+/*
+  One registry entry: a cheap pattern detector that composes a full suggestion.
+*/
 export interface SuggestionRule {
   id: SuggestionRuleId;
   detect: (context: SuggestionRuleContext) => Suggestion | null;

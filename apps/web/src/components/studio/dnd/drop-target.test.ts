@@ -23,13 +23,13 @@ import {
   resolveContainerId,
 } from "./drop-target";
 
-/**
- * Pure-logic coverage for the drop pipeline (resolveDropTarget itself needs
- * live DOM rects and is exercised in the browser): the op each drop
- * dispatches, for both drag sources. Every produced op must APPLY cleanly —
- * the SDK's validation is the arbiter that palette insertions are
- * well-formed documents.
- */
+/*
+  Pure-logic coverage for the drop pipeline (resolveDropTarget itself needs
+  live DOM rects and is exercised in the browser): the op each drop
+  dispatches, for both drag sources. Every produced op must APPLY cleanly —
+  the SDK's validation is the arbiter that palette insertions are
+  well-formed documents.
+*/
 
 const id = (value: string) => value as BlockId;
 
@@ -41,7 +41,9 @@ function apply(doc: EmailDocument, op: Operation): EmailDocument {
   return result.doc;
 }
 
-/** root > sec_aaaa [txt_aaaa, btn_aaaa] , sec_bbbb [] */
+/*
+  root > sec_aaaa [txt_aaaa, btn_aaaa] , sec_bbbb []
+*/
 function buildFixtureDoc(): EmailDocument {
   let doc = createEmptyDocument();
   doc = apply(doc, { name: "addSection", section: createDefaultSection(id("sec_aaaa")), index: 0 });
@@ -113,10 +115,10 @@ describe("buildPaletteDropInsertion", () => {
     expect(insertion!.op.name).toBe("addBlock");
     if (insertion!.op.name !== "addBlock") return;
     expect(insertion!.op.parentId).toBe("sec_aaaa");
-    expect(insertion!.op.index).toBe(1); // before btn_aaaa
+    expect(insertion!.op.index).toBe(1); /* before btn_aaaa */
     expect(insertion!.op.block.type).toBe("text");
     expect(insertion!.op.block.id).toBe(insertion!.newBlockId);
-    expect(doc[insertion!.newBlockId!]).toBeUndefined(); // fresh id
+    expect(doc[insertion!.newBlockId!]).toBeUndefined(); /* fresh id */
     const applied = apply(doc, insertion!.op);
     expect(applied[id("sec_aaaa")]?.childrenIds).toEqual(["txt_aaaa", insertion!.newBlockId, "btn_aaaa"]);
   });
@@ -149,9 +151,11 @@ describe("buildPaletteDropInsertion", () => {
     const applied = apply(doc, insertion!.op);
     expect(applied[id("sec_bbbb")]?.childrenIds).toEqual([row!.id]);
     expect(applied[row!.id as BlockId]?.childrenIds).toHaveLength(2);
-    // Each fresh column carries ONE spacer: the seed that keeps the layout
-    // alive under removeBlock's empty-column cascade (deleting a column's
-    // spacer collapses that column; the last one removes the whole row).
+    /*
+      Each fresh column carries ONE spacer: the seed that keeps the layout
+      alive under removeBlock's empty-column cascade (deleting a column's
+      spacer collapses that column; the last one removes the whole row).
+    */
     for (const column of columns) {
       expect(column.parentId).toBe(row!.id);
       const appliedColumn = applied[column.id as BlockId];
@@ -180,8 +184,10 @@ describe("buildPaletteDropInsertion", () => {
       return column.type === "column" ? column.properties.widthPercent : undefined;
     });
     expect(widths.reduce((total: number, width) => total + (width ?? 0), 0)).toBeCloseTo(100, 2);
-    // The preset lands AT the 4-column cap: every leaf's edge zones must be
-    // dead, so the at-cap deactivation survives the new tile.
+    /*
+      The preset lands AT the 4-column cap: every leaf's edge zones must be
+      dead, so the at-cap deactivation survives the new tile.
+    */
     const seededSpacerId = applied[columnIds[0]!]!.childrenIds[0]! as BlockId;
     expect(
       resolveColumnSplitCandidate({
@@ -202,7 +208,7 @@ describe("buildPaletteDropInsertion", () => {
     });
     expect(insertion!.op.name).toBe("addSection");
     if (insertion!.op.name !== "addSection") return;
-    expect(insertion!.op.index).toBe(1); // between sec_aaaa and sec_bbbb
+    expect(insertion!.op.index).toBe(1); /* between sec_aaaa and sec_bbbb */
     const applied = apply(doc, insertion!.op);
     expect(applied[id("root")]?.childrenIds).toEqual(["sec_aaaa", insertion!.newBlockId, "sec_bbbb"]);
   });
@@ -219,15 +225,19 @@ describe("buildPaletteDropInsertion", () => {
     if (insertion!.op.name !== "scaffoldSection") return;
     expect(insertion!.op.templateId).toBe("hero");
     expect(insertion!.op.position).toEqual({ beforeSectionId: "sec_bbbb" });
-    // The id is only known after dispatch resolves the intent (newBlockId
-    // null is the read-it-from-the-applied-op contract, as in click-to-add).
+    /*
+      The id is only known after dispatch resolves the intent (newBlockId
+      null is the read-it-from-the-applied-op contract, as in click-to-add).
+    */
     expect(insertion!.newBlockId).toBeNull();
-    // The intent must RESOLVE against this document to one applying addSection
-    // in the gap — the same translation dispatch performs.
+    /*
+      The intent must RESOLVE against this document to one applying addSection
+      in the gap — the same translation dispatch performs.
+    */
     const resolved = resolveScaffoldSectionOperation({ doc, input: insertion!.op });
     expect(resolved.isOk).toBe(true);
     if (!resolved.isOk) return;
-    expect(resolved.op.index).toBe(1); // between sec_aaaa and sec_bbbb
+    expect(resolved.op.index).toBe(1); /* between sec_aaaa and sec_bbbb */
     const applied = apply(doc, resolved.op);
     expect(applied[id("root")]?.childrenIds).toEqual([
       "sec_aaaa",
@@ -321,8 +331,10 @@ describe("buildDropOperation (existing-SECTION drags — owner reversal of arrow
 
   it("same-position section drop reorders to the identical list (resolver marks it noop)", () => {
     const doc = buildFixtureDoc();
-    // resolveDropTarget derives isNoop from exactly this equality; pin it so
-    // a release-in-place stays dispatch-free.
+    /*
+      resolveDropTarget derives isNoop from exactly this equality; pin it so
+      a release-in-place stays dispatch-free.
+    */
     expect(
       computeReorderedChildIds({
         childIds: doc[id("root")]!.childrenIds,
@@ -334,7 +346,9 @@ describe("buildDropOperation (existing-SECTION drags — owner reversal of arrow
 });
 
 describe("resolveContainerId (nesting legality, pure hit-chain walk)", () => {
-  /** Fixture doc plus a 2-column row inside sec_bbbb; returns a column id. */
+  /*
+    Fixture doc plus a 2-column row inside sec_bbbb; returns a column id.
+  */
   function buildColumnsFixture(): { doc: EmailDocument; columnId: BlockId } {
     const base = buildFixtureDoc();
     const preset = createDefaultColumnsPreset({ columnCount: 2, sectionId: id("sec_bbbb"), doc: base });
@@ -383,12 +397,12 @@ describe("resolveContainerId (nesting legality, pure hit-chain walk)", () => {
 });
 
 describe("resolveColumnCellHitBlockId (empty-column cells are first-class targets)", () => {
-  /**
-   * Fixture: sec_bbbb holds a 2-column row whose SECOND column was emptied
-   * (its seed spacer moved out) — the owner-repro shape where an empty
-   * column's cell hit-tests to the ROW because the column shell only covers
-   * its min-height strip.
-   */
+  /*
+    Fixture: sec_bbbb holds a 2-column row whose SECOND column was emptied
+    (its seed spacer moved out) — the owner-repro shape where an empty
+    column's cell hit-tests to the ROW because the column shell only covers
+    its min-height strip.
+  */
   function buildEmptyColumnFixture(): {
     doc: EmailDocument;
     rowId: BlockId;
@@ -405,8 +419,10 @@ describe("resolveColumnCellHitBlockId (empty-column cells are first-class target
     });
     const rowId = preset.rowId;
     const [filledColumnId, emptyColumnId] = doc[rowId]!.childrenIds as readonly BlockId[];
-    // Empty the second column by MOVING its seed spacer out (moveBlock does
-    // not cascade — this is exactly how empty columns arise in practice).
+    /*
+      Empty the second column by MOVING its seed spacer out (moveBlock does
+      not cascade — this is exactly how empty columns arise in practice).
+    */
     doc = apply(doc, {
       name: "moveBlock",
       blockId: doc[emptyColumnId!]!.childrenIds[0]! as BlockId,
@@ -417,7 +433,9 @@ describe("resolveColumnCellHitBlockId (empty-column cells are first-class target
     return { doc, rowId, filledColumnId: filledColumnId!, emptyColumnId: emptyColumnId! };
   }
 
-  /** Cells tile the row: filled column spans x 0–100, empty column 100–200. */
+  /*
+    Cells tile the row: filled column spans x 0–100, empty column 100–200.
+  */
   const getColumnSpan =
     (fixture: { filledColumnId: BlockId; emptyColumnId: BlockId }) =>
     (columnId: BlockId): { left: number; right: number } | null =>
@@ -458,7 +476,9 @@ describe("resolveColumnCellHitBlockId (empty-column cells are first-class target
     expect(resolveContainerId({ doc: fixture.doc, draggedType: "text", hitBlockId })).toBe(
       fixture.emptyColumnId,
     );
-    // …and never to a column-split (splits need a LEAF under the pointer).
+    /*
+      …and never to a column-split (splits need a LEAF under the pointer).
+    */
     expect(
       resolveColumnSplitCandidate({
         doc: fixture.doc,
@@ -528,7 +548,9 @@ describe("resolveColumnCellHitBlockId (empty-column cells are first-class target
 });
 
 describe("column-split drops (drag-to-create columns)", () => {
-  /** Fixture doc plus a 2-column row in sec_bbbb with a leaf in column A. */
+  /*
+    Fixture doc plus a 2-column row in sec_bbbb with a leaf in column A.
+  */
   function buildColumnLeafFixture(): { doc: EmailDocument; columnLeafId: BlockId } {
     const base = buildFixtureDoc();
     const preset = createDefaultColumnsPreset({
@@ -566,7 +588,9 @@ describe("column-split drops (drag-to-create columns)", () => {
     expect(op!.targetBlockId).toBe("txt_aaaa");
     expect(op!.side).toBe("right");
     expect(op!.content).toEqual({ kind: "existing-block", blockId: "btn_aaaa" });
-    // Wrap case: the section-level target needs the full scaffolding.
+    /*
+      Wrap case: the section-level target needs the full scaffolding.
+    */
     expect(op!.newRowId).toBeDefined();
     expect(op!.newTargetColumnId).toBeDefined();
     const applied = apply(doc, op!);
@@ -592,7 +616,9 @@ describe("column-split drops (drag-to-create columns)", () => {
     const applied = apply(doc, op!);
     const targetColumnId = doc[columnLeafId]!.parentId! as BlockId;
     const rowId = doc[targetColumnId]!.parentId! as BlockId;
-    // side "left": the new column lands before the target's column.
+    /*
+      side "left": the new column lands before the target's column.
+    */
     const rowChildIds = applied[rowId]!.childrenIds as readonly BlockId[];
     expect(rowChildIds.indexOf(op!.newColumnId as BlockId)).toBe(
       rowChildIds.indexOf(targetColumnId) - 1,
@@ -612,7 +638,7 @@ describe("column-split drops (drag-to-create columns)", () => {
     expect(insertion!.op.content.kind).toBe("new-block");
     if (insertion!.op.content.kind !== "new-block") return;
     expect(insertion!.op.content.block.id).toBe(insertion!.newBlockId);
-    expect(doc[insertion!.newBlockId!]).toBeUndefined(); // fresh id
+    expect(doc[insertion!.newBlockId!]).toBeUndefined(); /* fresh id */
     const applied = apply(doc, insertion!.op);
     expect(applied[insertion!.newBlockId!]?.parentId).toBe(insertion!.op.newColumnId);
     expect(applied[insertion!.newBlockId!]?.type).toBe("text");
@@ -629,7 +655,9 @@ describe("column-split drops (drag-to-create columns)", () => {
 
   it("resolveColumnSplitCandidate gates on leaf-over-leaf, self-drops, and the column cap", () => {
     const { doc, columnLeafId } = buildColumnLeafFixture();
-    // Eligible: leaf dragged over a section-level leaf, or a column leaf.
+    /*
+      Eligible: leaf dragged over a section-level leaf, or a column leaf.
+    */
     expect(
       resolveColumnSplitCandidate({
         doc,
@@ -646,7 +674,9 @@ describe("column-split drops (drag-to-create columns)", () => {
         hitBlockId: columnLeafId,
       }),
     ).toEqual({ targetBlockId: columnLeafId });
-    // Ineligible: dragging a section, hovering a section, hovering yourself.
+    /*
+      Ineligible: dragging a section, hovering a section, hovering yourself.
+    */
     expect(
       resolveColumnSplitCandidate({
         doc,
@@ -677,7 +707,9 @@ describe("column-split drops (drag-to-create columns)", () => {
     const fixture = buildColumnLeafFixture();
     const { columnLeafId } = fixture;
     let doc = fixture.doc;
-    // Grow the 2-column row to 4 columns with palette edge drops.
+    /*
+      Grow the 2-column row to 4 columns with palette edge drops.
+    */
     for (let drops = 0; drops < 2; drops += 1) {
       expect(
         resolveColumnSplitCandidate({
@@ -699,7 +731,9 @@ describe("column-split drops (drag-to-create columns)", () => {
     }
     const rowId = doc[doc[columnLeafId]!.parentId! as BlockId]!.parentId! as BlockId;
     expect(doc[rowId]?.childrenIds).toHaveLength(4);
-    // At the cap the candidate resolver goes dead for every leaf in the row.
+    /*
+      At the cap the candidate resolver goes dead for every leaf in the row.
+    */
     expect(
       resolveColumnSplitCandidate({
         doc,

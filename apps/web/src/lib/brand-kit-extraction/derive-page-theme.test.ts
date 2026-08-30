@@ -1,15 +1,15 @@
-/**
- * Theme derivation from an ALREADY-FETCHED page — the deterministic path.
- *
- * No model is mocked here because no model is called: every value in a derived
- * theme is a color or a font family the page itself declared. The only I/O is
- * the injected stylesheet fetcher, which every test supplies from a fixture.
- *
- * The two real-page cases at the bottom are the ones this work is judged on.
- * They are VERBATIM excerpts of pages fetched with a plain GET — the same
- * request `fetchPage` makes — because five bugs once sat in the extractor while
- * every hand-written fixture passed.
- */
+/*
+  Theme derivation from an ALREADY-FETCHED page — the deterministic path.
+
+  No model is mocked here because no model is called: every value in a derived
+  theme is a color or a font family the page itself declared. The only I/O is
+  the injected stylesheet fetcher, which every test supplies from a fixture.
+
+  The two real-page cases at the bottom are the ones this work is judged on.
+  They are VERBATIM excerpts of pages fetched with a plain GET — the same
+  request `fetchPage` makes — because five bugs once sat in the extractor while
+  every hand-written fixture passed.
+*/
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { describe, expect, it, vi } from "vitest";
@@ -23,7 +23,9 @@ function readFixture(name: string): string {
   return readFileSync(path.join(FIXTURES_DIR, name), "utf8");
 }
 
-/** A stylesheet fetcher over a fixture table — the pipeline's fetch, offline. */
+/*
+  A stylesheet fetcher over a fixture table — the pipeline's fetch, offline.
+*/
 function fixtureCssFetcher(byUrlSuffix: Record<string, string>) {
   return vi.fn(async (url: string) => {
     const match = Object.entries(byUrlSuffix).find(([suffix]) => url.endsWith(suffix));
@@ -161,7 +163,9 @@ describe("derivePageTheme — the applyTheme contract", () => {
 
   it("maps the page's own font to the closest email-safe stack", async () => {
     const theme = await derivePageTheme({ html, finalUrl: "https://contract.test/", fetchCss: null });
-    /* Quando is a serif; Georgia is the email-safe serif. */
+    /*
+      Quando is a serif; Georgia is the email-safe serif.
+    */
     expect(theme?.globals.heading1FontFamily).toBe("Georgia, 'Times New Roman', serif");
     expect(theme?.globals.paragraphFontFamily).toBe("Georgia, 'Times New Roman', serif");
   });
@@ -185,11 +189,17 @@ describe("derivePageTheme — real pages, fetched with a plain GET", () => {
       }),
     });
     expect(theme).not.toBeNull();
-    /* --ui-accent-1: #ffc400 — declared once, referenced fifty-one times. */
+    /*
+      --ui-accent-1: #ffc400 — declared once, referenced fifty-one times.
+    */
     expect(theme?.globals.buttonBackgroundColor).toBe("#ffc400");
-    /* --ui-bg / theme-color: #16032c — the site really is that dark. */
+    /*
+      --ui-bg / theme-color: #16032c — the site really is that dark.
+    */
     expect(theme?.globals.contentBackgroundColor).toBe("#16032c");
-    /* A dark canvas must produce LIGHT text, not the default near-black. */
+    /*
+      A dark canvas must produce LIGHT text, not the default near-black.
+    */
     expect(
       contrastOf({
         foreground: theme?.globals.paragraphTextColor ?? "",
@@ -206,7 +216,9 @@ describe("derivePageTheme — real pages, fetched with a plain GET", () => {
       fetchCss: fixtureCssFetcher({ "_layout-hp_J14D5.css": readFixture("wesbos-com.css") }),
     });
     expect(theme).not.toBeNull();
-    /* --yellow: #ffc600, and the same value in theme-color. */
+    /*
+      --yellow: #ffc600, and the same value in theme-color.
+    */
     expect(theme?.globals.buttonBackgroundColor).toBe("#ffc600");
     /*
       The page declares no background variable and its theme-color is the
@@ -214,7 +226,9 @@ describe("derivePageTheme — real pages, fetched with a plain GET", () => {
       painted yellow.
     */
     expect(theme?.globals.contentBackgroundColor).toBe(DEFAULT_GLOBAL_STYLES.contentBackgroundColor);
-    /* Yellow fails AA against white, so links are repaired, never shipped broken. */
+    /*
+      Yellow fails AA against white, so links are repaired, never shipped broken.
+    */
     expect(
       contrastOf({
         foreground: theme?.globals.linkTextColor ?? "",

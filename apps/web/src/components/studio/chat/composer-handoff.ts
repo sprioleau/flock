@@ -28,28 +28,34 @@
  */
 
 export interface ComposerHandoffHandlers {
-  /** Replace the draft with `prompt`, expand, and focus — never auto-send. */
+  /*
+    Replace the draft with `prompt`, expand, and focus — never auto-send.
+  */
   insertPrompt: (prompt: string) => void;
-  /** Submit `prompt` through the composer's send path (queues while busy). */
+  /*
+    Submit `prompt` through the composer's send path (queues while busy).
+  */
   sendPrompt: (prompt: string) => void;
-  /** Expand the panel and focus the composer, keeping the current draft. */
+  /*
+    Expand the panel and focus the composer, keeping the current draft.
+  */
   focusComposer: () => void;
-  /**
-   * SEND + SETTLEMENT (comments-mode fix dispatch): submit `prompt` exactly
-   * like sendPrompt, then invoke `onTurnSettled` once the agent NEXT returns
-   * to full idle (turn finished, queue drained, no pending approval). An
-   * error-paused turn does NOT settle — the callback is dropped, so nothing
-   * downstream records a response that never happened.
-   */
+  /*
+    SEND + SETTLEMENT (comments-mode fix dispatch): submit `prompt` exactly
+    like sendPrompt, then invoke `onTurnSettled` once the agent NEXT returns
+    to full idle (turn finished, queue drained, no pending approval). An
+    error-paused turn does NOT settle — the callback is dropped, so nothing
+    downstream records a response that never happened.
+  */
   sendPromptWithSettlement: (input: { prompt: string; onTurnSettled: () => void }) => void;
 }
 
 let activeHandlers: ComposerHandoffHandlers | null = null;
 
-/**
- * ChatPanel's registration (one composer per studio — last registration
- * wins, and unregistering only clears its own handlers on unmount races).
- */
+/*
+  ChatPanel's registration (one composer per studio — last registration
+  wins, and unregistering only clears its own handlers on unmount races).
+*/
 export function registerComposerHandoffHandlers(handlers: ComposerHandoffHandlers): () => void {
   activeHandlers = handlers;
   return () => {
@@ -59,10 +65,10 @@ export function registerComposerHandoffHandlers(handlers: ComposerHandoffHandler
   };
 }
 
-/**
- * Insert `prompt` into the chat composer (expanding/focusing it), replacing
- * the current draft. Returns whether a composer was mounted to receive it.
- */
+/*
+  Insert `prompt` into the chat composer (expanding/focusing it), replacing
+  the current draft. Returns whether a composer was mounted to receive it.
+*/
 export function handOffPromptToComposer(prompt: string): boolean {
   if (activeHandlers === null) {
     return false;
@@ -71,11 +77,11 @@ export function handOffPromptToComposer(prompt: string): boolean {
   return true;
 }
 
-/**
- * Send `prompt` as a normal chat message via the composer's own send path
- * (the panel expands so the message is seen landing in the thread). Returns
- * whether a composer was mounted to receive it.
- */
+/*
+  Send `prompt` as a normal chat message via the composer's own send path
+  (the panel expands so the message is seen landing in the thread). Returns
+  whether a composer was mounted to receive it.
+*/
 export function sendPromptThroughComposer(prompt: string): boolean {
   if (activeHandlers === null) {
     return false;
@@ -84,7 +90,9 @@ export function sendPromptThroughComposer(prompt: string): boolean {
   return true;
 }
 
-/** Expand the chat panel and focus the composer (draft preserved). */
+/*
+  Expand the chat panel and focus the composer (draft preserved).
+*/
 export function focusChatComposer(): boolean {
   if (activeHandlers === null) {
     return false;
@@ -93,12 +101,12 @@ export function focusChatComposer(): boolean {
   return true;
 }
 
-/**
- * Send `prompt` as a normal chat message AND get `onTurnSettled` back once
- * the agent next reaches full idle (see the handler doc). Comments-mode fix
- * dispatch uses this to append the "agent responded" thread entry after the
- * fix turn ran. Returns whether a composer was mounted to receive it.
- */
+/*
+  Send `prompt` as a normal chat message AND get `onTurnSettled` back once
+  the agent next reaches full idle (see the handler doc). Comments-mode fix
+  dispatch uses this to append the "agent responded" thread entry after the
+  fix turn ran. Returns whether a composer was mounted to receive it.
+*/
 export function sendPromptForSettledTurn(input: {
   prompt: string;
   onTurnSettled: () => void;

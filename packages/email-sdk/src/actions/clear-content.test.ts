@@ -16,17 +16,19 @@ import {
   isBrandLogoBlock,
 } from "./clear-content";
 
-/**
- * The one-click "clear the content" transform.
- *
- * The fixture is the shared sample document — which already covers every leaf
- * type in the schema union — extended with the three cases the sample has no
- * reason to carry: a brand logo (the one image a clear must NOT touch), a
- * second ordinary image, and a text block that mixes a heading with two
- * paragraphs (the node-granularity case).
- */
+/*
+  The one-click "clear the content" transform.
 
-/** Apply a plan and fail loudly if the op path rejects it. */
+  The fixture is the shared sample document — which already covers every leaf
+  type in the schema union — extended with the three cases the sample has no
+  reason to carry: a brand logo (the one image a clear must NOT touch), a
+  second ordinary image, and a text block that mixes a heading with two
+  paragraphs (the node-granularity case).
+*/
+
+/*
+  Apply a plan and fail loudly if the op path rejects it.
+*/
 function applyPlan(document: EmailDocument): EmailDocument {
   const result = applyOperations(document, buildClearContentOperations(document));
   if (!result.isOk) {
@@ -47,7 +49,9 @@ function buildFixture(): EmailDocument {
       ...header,
       childrenIds: ["img_lg01", "txt_m1x2", ...header.childrenIds, "img_ph01"],
     },
-    // The brand logo: an image carrying the role marker. Survives verbatim.
+    /*
+      The brand logo: an image carrying the role marker. Survives verbatim.
+    */
     img_lg01: {
       id: "img_lg01",
       type: "image",
@@ -62,7 +66,9 @@ function buildFixture(): EmailDocument {
         href: "https://acme.example.com",
       },
     },
-    // A second, ordinary image — same alt-text SHAPE as a logo, no marker.
+    /*
+      A second, ordinary image — same alt-text SHAPE as a logo, no marker.
+    */
     img_ph01: {
       id: "img_ph01",
       type: "image",
@@ -78,8 +84,10 @@ function buildFixture(): EmailDocument {
         paddingTop: 12,
       },
     },
-    // One block, three nodes: a level-3 heading and two paragraphs, one of
-    // them carrying a per-node alignment override.
+    /*
+      One block, three nodes: a level-3 heading and two paragraphs, one of
+      them carrying a per-node alignment override.
+    */
     txt_m1x2: {
       id: "txt_m1x2",
       type: "text",
@@ -117,7 +125,9 @@ function buildFixture(): EmailDocument {
   };
 }
 
-/** Every block-level node's single text run, as plain strings. */
+/*
+  Every block-level node's single text run, as plain strings.
+*/
 function readTextRuns(block: Block | undefined): string[] {
   if (block === undefined || block.type !== "text") {
     throw new Error("expected a text block");
@@ -139,7 +149,9 @@ describe("buildClearContentOperations", () => {
       "updateBlockProperties",
       "updateText",
     ]);
-    // sec_a1b2's children come first, in the order the reader meets them.
+    /*
+      sec_a1b2's children come first, in the order the reader meets them.
+    */
     expect(operations.map((operation) => ("blockId" in operation ? operation.blockId : null))).toEqual(
       [
         "txt_m1x2",
@@ -155,11 +167,15 @@ describe("buildClearContentOperations", () => {
     );
   });
 
-  // --- Per block type -----------------------------------------------------
+  /*
+    --- Per block type -----------------------------------------------------
+  */
 
   it("covers every block type in the schema union", () => {
-    // A guard against a new block type quietly slipping past the transform:
-    // if this fails, decide what a clear does to the new type and say so here.
+    /*
+      A guard against a new block type quietly slipping past the transform:
+      if this fails, decide what a clear does to the new type and say so here.
+    */
     expect([...BLOCK_TYPES].sort()).toEqual(
       [
         "button",
@@ -212,7 +228,9 @@ describe("buildClearContentOperations", () => {
       CLEARED_HEADING_TEXT,
       CLEARED_PARAGRAPH_TEXT,
     ]);
-    // txt_r7s8's paragraph held an italic run AND a hard break — one plain run now.
+    /*
+      txt_r7s8's paragraph held an italic run AND a hard break — one plain run now.
+    */
     expect(readTextRuns(cleared.txt_r7s8)).toEqual([CLEARED_PARAGRAPH_TEXT]);
     const block = cleared.txt_r7s8;
     if (block?.type !== "text") {
@@ -306,7 +324,9 @@ describe("buildClearContentOperations", () => {
     expect(cleared.spc_z5a6).toEqual(fixture.spc_z5a6);
   });
 
-  // --- What must survive --------------------------------------------------
+  /*
+    --- What must survive --------------------------------------------------
+  */
 
   it("leaves the brand logo exactly as it was", () => {
     const fixture = buildFixture();
@@ -322,7 +342,9 @@ describe("buildClearContentOperations", () => {
   it("identifies the logo by its role marker, never by its alt text", () => {
     const fixture = buildFixture();
     expect(isBrandLogoBlock(fixture.img_lg01!)).toBe(true);
-    // Alt text SAYS logo; no marker, so it is cleared like any other image.
+    /*
+      Alt text SAYS logo; no marker, so it is cleared like any other image.
+    */
     expect(isBrandLogoBlock(fixture.img_ph01!)).toBe(false);
     const cleared = applyPlan(fixture);
     const photo = cleared.img_ph01;
@@ -348,7 +370,9 @@ describe("buildClearContentOperations", () => {
       expect(clearedBlock?.parentId).toBe(block.parentId);
       expect(clearedBlock?.childrenIds).toEqual(block.childrenIds);
     }
-    // Sections, rows and columns keep their own properties too.
+    /*
+      Sections, rows and columns keep their own properties too.
+    */
     expect(cleared.sec_c3d4).toEqual(fixture.sec_c3d4);
     expect(cleared.row_k1l2).toEqual(fixture.row_k1l2);
     expect(cleared.col_m3n4).toEqual(fixture.col_m3n4);
@@ -374,7 +398,9 @@ describe("buildClearContentOperations", () => {
     expect(fixture).toEqual(before);
   });
 
-  // --- Idempotency --------------------------------------------------------
+  /*
+    --- Idempotency --------------------------------------------------------
+  */
 
   it("is a no-op the second time — an already-cleared document plans nothing", () => {
     const cleared = applyPlan(buildFixture());
@@ -415,7 +441,9 @@ describe("buildClearContentOperations", () => {
     expect(buildClearContentOperations(structureOnly)).toEqual([]);
   });
 
-  // --- The reverse direction ----------------------------------------------
+  /*
+    --- The reverse direction ----------------------------------------------
+  */
 
   it("is exactly undoable: applying the generated inverses restores the original", () => {
     const fixture = buildFixture();
@@ -424,7 +452,9 @@ describe("buildClearContentOperations", () => {
     if (!forward.isOk) {
       throw new Error("clear plan did not apply");
     }
-    // `inverses` is already in reverse order — front to back undoes the batch.
+    /*
+      `inverses` is already in reverse order — front to back undoes the batch.
+    */
     const back = applyOperations(forward.doc, forward.inverses);
     if (!back.isOk) {
       throw new Error("inverses did not apply");

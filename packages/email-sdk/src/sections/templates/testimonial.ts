@@ -2,10 +2,10 @@ import { z } from "zod";
 import { createSectionComposer, paragraphNode, textDocOf, textRun } from "../build-helpers";
 import { defineSectionTemplate } from "../types";
 
-/**
- * `testimonial` — one customer quote with its attribution, centered.
- * Reference: react.email/components "testimonial-simple-centered".
- */
+/*
+  `testimonial` — one customer quote with its attribution, centered.
+  Reference: react.email/components "testimonial-simple-centered".
+*/
 
 export const testimonialParamsSchema = z
   .strictObject({

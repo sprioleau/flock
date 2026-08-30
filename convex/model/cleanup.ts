@@ -75,33 +75,35 @@ import { deleteBlockSyncDoc } from "./textBlockSync";
 export const DEFAULT_RETENTION_DAYS = 30;
 export const MS_PER_DAY = 24 * 60 * 60 * 1000;
 
-/** Stale documents picked up per cron run (continuations re-schedule for the rest). */
+/*
+  Stale documents picked up per cron run (continuations re-schedule for the rest).
+*/
 export const MAX_STALE_DOCUMENTS_PER_RUN = 5;
 
-/**
- * Row-deletion budget per mutation run, well under Convex's per-mutation
- * write limits (mirrors the MAX_OPERATIONS_PER_CALL bounding style in
- * model/emailDocuments.ts). Component sync-doc deletes count against it too;
- * the component internally pages its own snapshot/step deletion via the
- * scheduler, so each call is cheap here.
- */
+/*
+  Row-deletion budget per mutation run, well under Convex's per-mutation
+  write limits (mirrors the MAX_OPERATIONS_PER_CALL bounding style in
+  model/emailDocuments.ts). Component sync-doc deletes count against it too;
+  the component internally pages its own snapshot/step deletion via the
+  scheduler, so each call is cheap here.
+*/
 export const MAX_ROW_DELETIONS_PER_RUN = 1000;
 
-/**
- * Upper bound on the `_storage` scan used to reverse-map serving URLs to
- * storage ids (see resolveStorageIdsByUrl). Beyond this many files the
- * mapping is skipped — files are then retained, never guess-deleted.
- */
+/*
+  Upper bound on the `_storage` scan used to reverse-map serving URLs to
+  storage ids (see resolveStorageIdsByUrl). Beyond this many files the
+  mapping is skipped — files are then retained, never guess-deleted.
+*/
 export const MAX_STORAGE_FILES_SCANNED = 256;
 
-/**
- * Bound on the whole-table `blocks` read used by the storage-file reference
- * check (`properties` is a v.record, which Convex cannot index by nested
- * path, so an index-backed lookup on properties.src is impossible). The scan
- * runs at most once per cascade, and only for documents that actually
- * reference this deployment's file storage. Over the bound, files are
- * retained — never guess-deleted.
- */
+/*
+  Bound on the whole-table `blocks` read used by the storage-file reference
+  check (`properties` is a v.record, which Convex cannot index by nested
+  path, so an index-backed lookup on properties.src is impossible). The scan
+  runs at most once per cascade, and only for documents that actually
+  reference this deployment's file storage. Over the bound, files are
+  retained — never guess-deleted.
+*/
 const MAX_BLOCK_ROWS_SCANNED = 4000;
 
 /*
@@ -125,7 +127,9 @@ export const MAX_AUTH_USERS_SCANNED = 4096;
 */
 const MAX_SESSION_ROWS_SWEPT = 256;
 
-/** Mutable row-deletion budget threaded through one cleanup run. */
+/*
+  Mutable row-deletion budget threaded through one cleanup run.
+*/
 export interface DeletionBudget {
   remaining: number;
 }
@@ -138,7 +142,9 @@ export interface CleanupStats {
   deletedSnapshots: number;
   deletedSyncDocs: number;
   deletedStorageFiles: number;
-  /** Session-keyed library rows, swept once a session owns nothing. */
+  /*
+    Session-keyed library rows, swept once a session owns nothing.
+  */
   deletedBrandKits: number;
   deletedAssets: number;
   deletedSavedSections: number;
@@ -219,16 +225,20 @@ export async function loadAuthUserIndex(ctx: MutationCtx): Promise<AuthUserIndex
 }
 
 export interface DocumentOwnerVerdict {
-  /** True when this document belongs to an account somebody claimed by email. */
+  /*
+    True when this document belongs to an account somebody claimed by email.
+  */
   isClaimed: boolean;
-  /**
-   * Owner keys this document's session is known by, populated only when the
-   * session is unclaimed — the keys sweepDeadSessionRows is driven from.
-   */
+  /*
+    Owner keys this document's session is known by, populated only when the
+    session is unclaimed — the keys sweepDeadSessionRows is driven from.
+  */
   unclaimedOwnerKeys: string[];
 }
 
-/** A key that names a Better Auth user who is no longer anonymous. */
+/*
+  A key that names a Better Auth user who is no longer anonymous.
+*/
 function isClaimedOwnerKey(authUsers: AuthUserIndex, ownerKey: string): boolean {
   return authUsers.isAnonymousById.get(ownerKey) === false;
 }
@@ -333,11 +343,11 @@ export async function classifyDocumentOwner({
   return { isClaimed: false, unclaimedOwnerKeys: [...unclaimedOwnerKeys] };
 }
 
-/**
- * Delete the full constellation of one stale document, respecting `budget`.
- * Returns isComplete=false when the budget ran out mid-cascade; the document
- * row is still present then, so the next run resumes it idempotently.
- */
+/*
+  Delete the full constellation of one stale document, respecting `budget`.
+  Returns isComplete=false when the budget ran out mid-cascade; the document
+  row is still present then, so the next run resumes it idempotently.
+*/
 export async function deleteDocumentCascade({
   ctx,
   document,
@@ -351,7 +361,9 @@ export async function deleteDocumentCascade({
 }): Promise<{ isComplete: boolean }> {
   const documentId = document._id;
 
-  // 1. Operation rows — the only table that can be large per document; paged.
+  /*
+    1. Operation rows — the only table that can be large per document; paged.
+  */
   {
     const rows = await ctx.db
       .query("operations")
@@ -368,7 +380,9 @@ export async function deleteDocumentCascade({
     }
   }
 
-  // 2. Snapshot rows.
+  /*
+    2. Snapshot rows.
+  */
   {
     const rows = await ctx.db
       .query("snapshots")
@@ -385,15 +399,19 @@ export async function deleteDocumentCascade({
     }
   }
 
-  // Block rows are bounded (an email document is a few dozen blocks).
+  /*
+    Block rows are bounded (an email document is a few dozen blocks).
+  */
   const blockRows = await ctx.db
     .query("blocks")
     .withIndex("by_documentId", (q) => q.eq("documentId", documentId))
     .collect();
 
-  // 3. Storage files referenced by this document's image blocks — BEFORE the
-  // block rows are deleted, so a budget-exhausted run cannot orphan a file by
-  // losing the only rows that pointed at it.
+  /*
+    3. Storage files referenced by this document's image blocks — BEFORE the
+    block rows are deleted, so a budget-exhausted run cannot orphan a file by
+    losing the only rows that pointed at it.
+  */
   const imageSrcUrls = new Set<string>();
   for (const row of blockRows) {
     if (row.type === "image" && typeof row.properties.src === "string") {
@@ -411,8 +429,10 @@ export async function deleteDocumentCascade({
     return { isComplete: false };
   }
 
-  // 4. Per-text-block ProseMirror sync docs (composite id
-  // `${documentId}:${blockId}`) and the block rows themselves.
+  /*
+    4. Per-text-block ProseMirror sync docs (composite id
+    `${documentId}:${blockId}`) and the block rows themselves.
+  */
   for (const row of blockRows) {
     if (budget.remaining <= 0) {
       return { isComplete: false };
@@ -427,8 +447,10 @@ export async function deleteDocumentCascade({
     budget.remaining -= 1;
   }
 
-  // 5. The transient ghost-session row (at most one per document; a stranded
-  // row would otherwise dangle forever once its document is gone).
+  /*
+    5. The transient ghost-session row (at most one per document; a stranded
+    row would otherwise dangle forever once its document is gone).
+  */
   const ghostSessionRows = await ctx.db
     .query("ghostSessions")
     .withIndex("by_documentId", (q) => q.eq("documentId", documentId))
@@ -441,9 +463,11 @@ export async function deleteDocumentCascade({
     budget.remaining -= 1;
   }
 
-  // 6. Persisted persona findings (advisory suggestion rows) — added after
-  // Phase 6.1: without this step a deleted document would strand its open/
-  // dismissed/applied finding rows forever.
+  /*
+    6. Persisted persona findings (advisory suggestion rows) — added after
+    Phase 6.1: without this step a deleted document would strand its open/
+    dismissed/applied finding rows forever.
+  */
   const personaFindingRows = await ctx.db
     .query("personaFindings")
     .withIndex("by_documentId", (q) => q.eq("documentId", documentId))
@@ -456,9 +480,11 @@ export async function deleteDocumentCascade({
     budget.remaining -= 1;
   }
 
-  // 6b. Comment threads placed on this document (comments mode) — bounded
-  // like findings (a canvas holds at most a couple hundred), and deleted
-  // BEFORE the document row for the same resumability reason.
+  /*
+    6b. Comment threads placed on this document (comments mode) — bounded
+    like findings (a canvas holds at most a couple hundred), and deleted
+    BEFORE the document row for the same resumability reason.
+  */
   const commentRows = await ctx.db
     .query("comments")
     .withIndex("by_documentId", (q) => q.eq("documentId", documentId))
@@ -471,7 +497,9 @@ export async function deleteDocumentCascade({
     budget.remaining -= 1;
   }
 
-  // 7. The document row, LAST — its presence is the resumption marker.
+  /*
+    7. The document row, LAST — its presence is the resumption marker.
+  */
   if (budget.remaining <= 0) {
     return { isComplete: false };
   }
@@ -479,11 +507,13 @@ export async function deleteDocumentCascade({
   stats.deletedDocuments += 1;
   budget.remaining -= 1;
 
-  // 8. The parent canvas, iff this was its last document — and with it the
-  // dashboard ownership rows that pointed at it. Those rows are inlined here
-  // rather than imported from convex/canvases.ts because that module imports
-  // THIS one (it reuses this cascade for whole-canvas deletion); a dangling
-  // owner row is otherwise immortal, since nothing else ever revisits it.
+  /*
+    8. The parent canvas, iff this was its last document — and with it the
+    dashboard ownership rows that pointed at it. Those rows are inlined here
+    rather than imported from convex/canvases.ts because that module imports
+    THIS one (it reuses this cascade for whole-canvas deletion); a dangling
+    owner row is otherwise immortal, since nothing else ever revisits it.
+  */
   const survivingSibling = await ctx.db
     .query("documents")
     .withIndex("by_canvasId", (q) => q.eq("canvasId", document.canvasId))
@@ -556,7 +586,9 @@ export async function sweepDeadSessionRows({
 }: {
   ctx: MutationCtx;
   ownerKey: string;
-  /** Rows must all pre-date this to be swept (the run's retention cutoff). */
+  /*
+    Rows must all pre-date this to be swept (the run's retention cutoff).
+  */
   cutoffMs: number;
   budget: DeletionBudget;
   stats: CleanupStats;
@@ -624,7 +656,9 @@ export async function sweepDeadSessionRows({
     return;
   }
 
-  /* Storage files count against the budget exactly as the cascade counts them. */
+  /*
+    Storage files count against the budget exactly as the cascade counts them.
+  */
   const kitStorageIds = brandKitRows.flatMap((row) => collectRowStorageIds(row));
   const plannedDeletionCount = allRows.length + kitStorageIds.length + assetRows.length;
   const isOverBound = [brandKitRows, assetRows, savedSectionRows, personaCopyRows].some(
@@ -679,22 +713,22 @@ export async function sweepDeadSessionRows({
   }
 }
 
-/**
- * Delete the Convex storage files behind `urls` that no OTHER document's
- * block rows reference.
- *
- * Serving URLs do NOT embed the storage id — verified against real dev data:
- * `_storage` id "kg21nnqt…" serves at ".../api/storage/63604288-1e43-…"
- * (an internal UUID). Parsing is therefore impossible; instead we reverse-map
- * by scanning `_storage` (bounded) and comparing each file's stable
- * `ctx.storage.getUrl` output against the candidate URLs. Anything that
- * cannot be resolved is RETAINED, never guess-deleted.
- *
- * Known accepted gap: references living only in a surviving document's
- * HISTORY (op inverses / version snapshots, e.g. a fork that later removed a
- * shared image) are not scanned — undo/restore of such an image would 404.
- * Head block rows of every surviving document ARE checked, via by_imageSrc.
- */
+/*
+  Delete the Convex storage files behind `urls` that no OTHER document's
+  block rows reference.
+
+  Serving URLs do NOT embed the storage id — verified against real dev data:
+  `_storage` id "kg21nnqt…" serves at ".../api/storage/63604288-1e43-…"
+  (an internal UUID). Parsing is therefore impossible; instead we reverse-map
+  by scanning `_storage` (bounded) and comparing each file's stable
+  `ctx.storage.getUrl` output against the candidate URLs. Anything that
+  cannot be resolved is RETAINED, never guess-deleted.
+
+  Known accepted gap: references living only in a surviving document's
+  HISTORY (op inverses / version snapshots, e.g. a fork that later removed a
+  shared image) are not scanned — undo/restore of such an image would 404.
+  Head block rows of every surviving document ARE checked, via by_imageSrc.
+*/
 async function deleteUnreferencedStorageFiles({
   ctx,
   urls,
@@ -708,21 +742,25 @@ async function deleteUnreferencedStorageFiles({
   budget: DeletionBudget;
   stats: CleanupStats;
 }): Promise<{ isComplete: boolean }> {
-  // Only URLs served by THIS deployment's file storage are candidates
-  // (sample docs use placehold.co etc.; foreign URLs are not ours to delete).
+  /*
+    Only URLs served by THIS deployment's file storage are candidates
+    (sample docs use placehold.co etc.; foreign URLs are not ours to delete).
+  */
   const storageUrlPrefix = `${process.env.CONVEX_CLOUD_URL}/api/storage/`;
   const prefixedUrls = [...urls].filter((url) => url.startsWith(storageUrlPrefix));
   if (prefixedUrls.length === 0) {
     return { isComplete: true };
   }
 
-  // Content Studio retain rule (docs/proposals/content-studio.md §6.1):
-  // REGISTERED assets are owned by the session's library, not by documents —
-  // "the image I uploaded yesterday" must survive the draft it was used in.
-  // One indexed assets.by_url point lookup per candidate; registered files
-  // are retained unconditionally. Unregistered legacy files keep the
-  // reference-counted cascade behavior below until the backfill (Stage M)
-  // registers them.
+  /*
+    Content Studio retain rule (docs/proposals/content-studio.md §6.1):
+    REGISTERED assets are owned by the session's library, not by documents —
+    "the image I uploaded yesterday" must survive the draft it was used in.
+    One indexed assets.by_url point lookup per candidate; registered files
+    are retained unconditionally. Unregistered legacy files keep the
+    reference-counted cascade behavior below until the backfill (Stage M)
+    registers them.
+  */
   const candidateUrls: string[] = [];
   for (const url of prefixedUrls) {
     if (!(await isUrlRegisteredAsset(ctx, url))) {
@@ -733,11 +771,13 @@ async function deleteUnreferencedStorageFiles({
     return { isComplete: true };
   }
 
-  // Keep any file still referenced at head by a different document (forks
-  // copy block rows verbatim, so cross-document sharing is real). The stale
-  // document's own rows still exist at this point, so exclude them by id.
-  // One bounded whole-table read (see MAX_BLOCK_ROWS_SCANNED for why no
-  // index is possible); over the bound every candidate is retained.
+  /*
+    Keep any file still referenced at head by a different document (forks
+    copy block rows verbatim, so cross-document sharing is real). The stale
+    document's own rows still exist at this point, so exclude them by id.
+    One bounded whole-table read (see MAX_BLOCK_ROWS_SCANNED for why no
+    index is possible); over the bound every candidate is retained.
+  */
   const allBlockRows = await ctx.db.query("blocks").take(MAX_BLOCK_ROWS_SCANNED + 1);
   if (allBlockRows.length > MAX_BLOCK_ROWS_SCANNED) {
     console.warn(
@@ -765,8 +805,10 @@ async function deleteUnreferencedStorageFiles({
   for (const url of unreferencedUrls) {
     const storageId = storageIdsByUrl.get(url);
     if (storageId === undefined) {
-      // Already deleted by an earlier partial run, or unresolvable (scan
-      // bound exceeded) — retain rather than guess.
+      /*
+        Already deleted by an earlier partial run, or unresolvable (scan
+        bound exceeded) — retain rather than guess.
+      */
       continue;
     }
     if (budget.remaining <= 0) {
@@ -779,7 +821,9 @@ async function deleteUnreferencedStorageFiles({
   return { isComplete: true };
 }
 
-/** Reverse-map serving URLs to `_storage` ids via a bounded table scan. */
+/*
+  Reverse-map serving URLs to `_storage` ids via a bounded table scan.
+*/
 async function resolveStorageIdsByUrl({
   ctx,
   urls,

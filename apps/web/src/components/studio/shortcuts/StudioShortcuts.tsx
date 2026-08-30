@@ -13,23 +13,23 @@ import { STUDIO_SHORTCUTS } from "./shortcut-keys";
 import { useHoldToQuickAdd } from "./use-hold-to-quick-add";
 import { useQuickPromptAnchor, type QuickPromptAnchor } from "./use-quick-prompt-anchor";
 
-/**
- * The studio's keyboard layer, mounted once by StudioShell (only when the
- * document is ready — shortcuts never fire on gate screens). Bindings live in
- * ONE place, on the catalog in shortcut-keys.ts, next to the two gesture
- * surfaces they summon (the slash quick-prompt overlay and the hold-A
- * quick-add layer).
- *
- * Guard policy (react-hotkeys-hook built-ins):
- * - PANEL/CHROME shortcuts (⌘B, ⌘\, ⌘K, ⇧⌘L) also fire while typing in form
- *   fields — they carry a modifier, collide with nothing native there, and
- *   "⌘K from the composer" must work — but NEVER in contenteditable, where
- *   the inline text editor owns ⌘-combos (⌘B = bold).
- * - UNDO/REDO fire only outside all text-editing contexts: form fields keep
- *   native text undo, the inline editor keeps its collab undo.
- * - SINGLE-KEY gestures ("/", hold-A, "c") fire only outside all typing
- *   contexts.
- */
+/*
+  The studio's keyboard layer, mounted once by StudioShell (only when the
+  document is ready — shortcuts never fire on gate screens). Bindings live in
+  ONE place, on the catalog in shortcut-keys.ts, next to the two gesture
+  surfaces they summon (the slash quick-prompt overlay and the hold-A
+  quick-add layer).
+
+  Guard policy (react-hotkeys-hook built-ins):
+  - PANEL/CHROME shortcuts (⌘B, ⌘\, ⌘K, ⇧⌘L) also fire while typing in form
+    fields — they carry a modifier, collide with nothing native there, and
+    "⌘K from the composer" must work — but NEVER in contenteditable, where
+    the inline text editor owns ⌘-combos (⌘B = bold).
+  - UNDO/REDO fire only outside all text-editing contexts: form fields keep
+    native text undo, the inline editor keeps its collab undo.
+  - SINGLE-KEY gestures ("/", hold-A, "c") fire only outside all typing
+    contexts.
+*/
 export function StudioShortcuts() {
   /*
     Null is CLOSED; an object is one open session, holding the anchor resolved
@@ -117,8 +117,10 @@ export function StudioShortcuts() {
     [resolveQuickPromptAnchor],
   );
 
-  // Single-key "c" — like "/" above, the library's default guards keep it
-  // silent while typing (form fields and contenteditable both excluded).
+  /*
+    Single-key "c" — like "/" above, the library's default guards keep it
+    silent while typing (form fields and contenteditable both excluded).
+  */
   useHotkeys(
     STUDIO_SHORTCUTS.toggleCommentsMode.combo,
     () => {
@@ -141,11 +143,15 @@ export function StudioShortcuts() {
   );
 }
 
-/** ⇧⌘L walks light → dark → system (system last: it's the "hands-off" state). */
+/*
+  ⇧⌘L walks light → dark → system (system last: it's the "hands-off" state).
+*/
 const THEME_CYCLE = ["light", "dark", "system"] as const;
 
 function getNextTheme(currentTheme: string | undefined): string {
   const currentIndex = THEME_CYCLE.indexOf(currentTheme as (typeof THEME_CYCLE)[number]);
-  // Unknown/undefined behaves like "system", so the next stop is "light".
+  /*
+    Unknown/undefined behaves like "system", so the next stop is "light".
+  */
   return THEME_CYCLE[(currentIndex + 1) % THEME_CYCLE.length] ?? "light";
 }

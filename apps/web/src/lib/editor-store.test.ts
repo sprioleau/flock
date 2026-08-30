@@ -12,14 +12,14 @@ import {
   useEditorStore,
 } from "./editor-store";
 
-/**
- * Drafts v2 — the per-document store factory. These tests pin the structural
- * guarantees the multi-frame editing seam depends on: instance isolation
- * (two stores never share document state), the refcounted per-documentId
- * registry, and the active-instance delegation that keeps the historical
- * `useEditorStore.getState()/.subscribe()` consumer surface working across
- * instance swaps.
- */
+/*
+  Drafts v2 — the per-document store factory. These tests pin the structural
+  guarantees the multi-frame editing seam depends on: instance isolation
+  (two stores never share document state), the refcounted per-documentId
+  registry, and the active-instance delegation that keeps the historical
+  `useEditorStore.getState()/.subscribe()` consumer surface working across
+  instance swaps.
+*/
 
 const DOCUMENT_A = "doc_factory_a" as Id<"documents">;
 
@@ -70,11 +70,15 @@ describe("per-document registry", () => {
     expect(secondHold).toBe(firstHold);
 
     releaseEditorStore(DOCUMENT_A);
-    // One holder remains: still cached.
+    /*
+      One holder remains: still cached.
+    */
     expect(peekEditorStore(DOCUMENT_A)).toBe(firstHold);
 
     releaseEditorStore(DOCUMENT_A);
-    // Last holder gone: evicted; the next acquire builds a fresh instance.
+    /*
+      Last holder gone: evicted; the next acquire builds a fresh instance.
+    */
     expect(peekEditorStore(DOCUMENT_A)).toBeNull();
     const freshHold = acquireEditorStore(DOCUMENT_A);
     expect(freshHold).not.toBe(firstHold);
@@ -116,7 +120,9 @@ describe("active-instance delegation (the compat surface)", () => {
     storeA.setState({ notice: "from A" });
     setActiveEditorStore(storeB);
     storeB.setState({ notice: "from B" });
-    // A is no longer active: its updates must not reach the subscription.
+    /*
+      A is no longer active: its updates must not reach the subscription.
+    */
     storeA.setState({ notice: "from A again" });
 
     expect(seenNotices).toEqual(["from A", "from B"]);

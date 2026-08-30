@@ -13,13 +13,13 @@ import {
   validateRecipients,
 } from "./send-test-email-client";
 
-/**
- * The decisions behind every test-send surface: which address is prefilled,
- * which addresses are allowed to leave the browser, and what each server reply
- * means in plain English. The components that render these are thin by design
- * (the app's vitest environment is `node`, so there is no DOM to mount into) —
- * everything worth pinning is here.
- */
+/*
+  The decisions behind every test-send surface: which address is prefilled,
+  which addresses are allowed to leave the browser, and what each server reply
+  means in plain English. The components that render these are thin by design
+  (the app's vitest environment is `node`, so there is no DOM to mount into) —
+  everything worth pinning is here.
+*/
 
 const DOCUMENT = createEmptyDocument();
 
@@ -41,9 +41,11 @@ describe("resolveDefaultRecipient", () => {
   });
 
   it("never prefills an anonymous identity's synthetic address", () => {
-    // Better Auth mints anonymous users a `temp-<id>@<domain>` address that no
-    // inbox receives — prefilling it would look like a working default and
-    // then silently fail to arrive.
+    /*
+      Better Auth mints anonymous users a `temp-<id>@<domain>` address that no
+      inbox receives — prefilling it would look like a working default and
+      then silently fail to arrive.
+    */
     expect(
       resolveDefaultRecipient({
         identity: { email: "temp-abc123@flockto.email", isAnonymous: true },
@@ -107,7 +109,9 @@ describe("requestTestEmailSend", () => {
     expect(url).toBe(SEND_TEST_EMAIL_API_PATH);
     expect(init?.method).toBe("POST");
     const body = JSON.parse(String(init?.body));
-    // `to` is an ARRAY on the wire, matching the frozen contract.
+    /*
+      `to` is an ARRAY on the wire, matching the frozen contract.
+    */
     expect(Array.isArray(body.to)).toBe(true);
     expect(body).toEqual({ document: DOCUMENT, to: ["owner@example.com"] });
   });
@@ -126,7 +130,9 @@ describe("requestTestEmailSend", () => {
     });
 
     const withMeta = JSON.parse(String(fetchImpl.mock.calls[0]![1]?.body));
-    // Trimmed, and present because the caller supplied them.
+    /*
+      Trimmed, and present because the caller supplied them.
+    */
     expect(withMeta).toEqual({
       document: DOCUMENT,
       to: ["owner@example.com"],
@@ -138,7 +144,9 @@ describe("requestTestEmailSend", () => {
     await requestTestEmailSend({
       document: DOCUMENT,
       to: ["owner@example.com"],
-      // A whitespace-only subject is treated as absent so the server derives one.
+      /*
+        A whitespace-only subject is treated as absent so the server derives one.
+      */
       subject: "   ",
       fetchImpl,
     });
@@ -199,16 +207,20 @@ describe("requestTestEmailSend", () => {
 
     expect(result.isSent).toBe(false);
     expect(result).toMatchObject({ kind: "not_configured" });
-    // The operator's problem stays in the server log; the user reads product
-    // language and is told who can fix it.
+    /*
+      The operator's problem stays in the server log; the user reads product
+      language and is told who can fix it.
+    */
     expect(result).not.toMatchObject({ message: expect.stringContaining("RESEND") });
     expect(result).toMatchObject({ message: expect.stringContaining("can’t send email yet") });
   });
 
   it("turns the route's identity refusal into copy that names the fix", async () => {
-    // A 401 here is not a problem with the draft or the address, so the dialog
-    // must not render it as "try again" — the user has to reload to get a
-    // session back, and nothing else they can do in the form will help.
+    /*
+      A 401 here is not a problem with the draft or the address, so the dialog
+      must not render it as "try again" — the user has to reload to get a
+      session back, and nothing else they can do in the form will help.
+    */
     const fetchImpl = vi.fn<typeof fetch>().mockResolvedValue(
       jsonResponse(401, {
         error: "not_signed_in",
@@ -300,7 +312,9 @@ describe("validateRecipients", () => {
   });
 
   it(`rejects more than ${MAX_TEST_SEND_RECIPIENTS} DISTINCT recipients`, () => {
-    // All six are valid and distinct, so only the count check can catch them.
+    /*
+      All six are valid and distinct, so only the count check can catch them.
+    */
     const sixValid = ["a@x.com", "b@x.com", "c@x.com", "d@x.com", "e@x.com", "f@x.com"];
     expect(sixValid).toHaveLength(MAX_TEST_SEND_RECIPIENTS + 1);
     const result = validateRecipients(sixValid);
@@ -309,7 +323,9 @@ describe("validateRecipients", () => {
   });
 
   it("counts AFTER the dedupe, so a repeated address is not over the limit", () => {
-    // Six rows, but one is a dupe → five distinct → a legal send.
+    /*
+      Six rows, but one is a dupe → five distinct → a legal send.
+    */
     const result = validateRecipients([
       "a@x.com",
       "b@x.com",
@@ -340,7 +356,9 @@ describe("validateRecipients", () => {
 
 describe("deriveSubjectFromDocument", () => {
   it("takes the draft's first heading as the subject", () => {
-    // The starter document opens with a heading (mirrors the server derivation).
+    /*
+      The starter document opens with a heading (mirrors the server derivation).
+    */
     expect(deriveSubjectFromDocument(createStarterDocument())).toBe("Welcome to Flock.");
   });
 

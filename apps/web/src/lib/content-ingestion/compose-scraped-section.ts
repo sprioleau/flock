@@ -6,43 +6,51 @@ import type { AddSectionOperation, Block, TextBlockNode } from "@flock/email-sdk
 */
 import type { ReadWebPagePayload } from "../../../../../packages/agent/src/read-web-page";
 
-/**
- * Deterministic composition of ONE scraped page into ONE `addSection`
- * operation.
- *
- * Who uses this: the MOCK chat model (app/api/chat/mock-model.ts). On the real
- * path the agent composes the section itself — that is the design, and the
- * whole point of handing the model a faithful payload. This module is the
- * model's stand-in for the deterministic tier, so the whole read → compose →
- * apply → undo flow can be exercised without spending a live model call.
- *
- * ONE composer, because there is one tool. It replaces `composeArticleSection`
- * and `composePersonSection`, which existed only because the layer above them
- * had already forked on page type. With that fork gone there is nothing left to
- * pick between: this reads a `ReadWebPagePayload` and emits whatever the page
- * actually gave up. A prose-heavy article contributes sentences and no lists; a
- * lean portfolio contributes lists and almost no sentences; the same code walks
- * both, and neither one is named anywhere below.
- *
- * It follows the same faithfulness rules the guidance imposes on the model,
- * which is what makes it a legitimate stand-in:
- * - every string it emits is copied out of the payload;
- * - the attribution button always points at the payload's canonical URL;
- * - the image is emitted only when the payload actually carries one, and only
- *   at the URL the pipeline stored.
- */
+/*
+  Deterministic composition of ONE scraped page into ONE `addSection`
+  operation.
 
-/** At most this many of the page's lists reach the section. */
+  Who uses this: the MOCK chat model (app/api/chat/mock-model.ts). On the real
+  path the agent composes the section itself — that is the design, and the
+  whole point of handing the model a faithful payload. This module is the
+  model's stand-in for the deterministic tier, so the whole read → compose →
+  apply → undo flow can be exercised without spending a live model call.
+
+  ONE composer, because there is one tool. It replaces `composeArticleSection`
+  and `composePersonSection`, which existed only because the layer above them
+  had already forked on page type. With that fork gone there is nothing left to
+  pick between: this reads a `ReadWebPagePayload` and emits whatever the page
+  actually gave up. A prose-heavy article contributes sentences and no lists; a
+  lean portfolio contributes lists and almost no sentences; the same code walks
+  both, and neither one is named anywhere below.
+
+  It follows the same faithfulness rules the guidance imposes on the model,
+  which is what makes it a legitimate stand-in:
+  - every string it emits is copied out of the payload;
+  - the attribution button always points at the payload's canonical URL;
+  - the image is emitted only when the payload actually carries one, and only
+    at the URL the pipeline stored.
+*/
+
+/*
+  At most this many of the page's lists reach the section.
+*/
 const MAX_RENDERED_LISTS = 3;
 
-/** At most this many items from any one list. */
+/*
+  At most this many items from any one list.
+*/
 const MAX_RENDERED_LIST_ITEMS = 8;
 
-/** Opening sentences of prose to keep, and their character budget. */
+/*
+  Opening sentences of prose to keep, and their character budget.
+*/
 const SUMMARY_SENTENCE_COUNT = 3;
 const SUMMARY_MAX_CHARS = 480;
 
-/** Sentence-ish splitter — good enough to pick the opening lines of prose. */
+/*
+  Sentence-ish splitter — good enough to pick the opening lines of prose.
+*/
 function splitIntoSentences(text: string): string[] {
   return text
     .split(/(?<=[.!?…]["'”’]?)\s+/)
@@ -50,14 +58,14 @@ function splitIntoSentences(text: string): string[] {
     .filter((sentence) => sentence.length > 0);
 }
 
-/**
- * The first `sentenceCount` sentences of a page's prose, capped — a
- * condensation of the real text, never a rewrite of it.
- *
- * This is `condenseArticleBody` from `compose-article-section.ts`, carried over
- * so it survives that file's removal. Only its name changed: "article" was a
- * page type, and there are none of those here.
- */
+/*
+  The first `sentenceCount` sentences of a page's prose, capped — a
+  condensation of the real text, never a rewrite of it.
+
+  This is `condenseArticleBody` from `compose-article-section.ts`, carried over
+  so it survives that file's removal. Only its name changed: "article" was a
+  page type, and there are none of those here.
+*/
 export function condenseProse({
   prose,
   sentenceCount,
@@ -77,7 +85,9 @@ function textDoc(nodes: TextBlockNode[]) {
   return { type: "doc" as const, content: nodes };
 }
 
-/** A section builder that keeps ids, parentIds, and childrenIds consistent. */
+/*
+  A section builder that keeps ids, parentIds, and childrenIds consistent.
+*/
 function createSection() {
   const sectionId = generateBlockId("section");
   const children: Block[] = [];
@@ -132,21 +142,23 @@ function createSection() {
 
 export interface ComposeScrapedSectionInput {
   page: ReadWebPagePayload;
-  /** Where the section goes among the root's children. */
+  /*
+    Where the section goes among the root's children.
+  */
   index: number;
 }
 
-/**
- * Compose one section from a page that was read: its title, the stored lead
- * image when there is one, its own opening sentences (or, when it barely wrote
- * any, its own summary line), the lists it wrote, a source credit, and the
- * attribution button pointing at the canonical URL.
- *
- * The prose and the lists are not alternatives chosen by a page kind — both are
- * emitted whenever the page has them, and a page that has only one of the two
- * simply contributes only that. That is the whole difference between this and
- * the two composers it replaces.
- */
+/*
+  Compose one section from a page that was read: its title, the stored lead
+  image when there is one, its own opening sentences (or, when it barely wrote
+  any, its own summary line), the lists it wrote, a source credit, and the
+  attribution button pointing at the canonical URL.
+
+  The prose and the lists are not alternatives chosen by a page kind — both are
+  emitted whenever the page has them, and a page that has only one of the two
+  simply contributes only that. That is the whole difference between this and
+  the two composers it replaces.
+*/
 export function composeScrapedSection({
   page,
   index,

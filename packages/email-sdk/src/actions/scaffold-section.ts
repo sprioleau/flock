@@ -10,30 +10,34 @@ import {
   type ResolvedOperationError,
 } from "./define";
 
-/**
- * `scaffoldSection` — the intent-level section-scaffolding action (Phase 7.2).
- *
- * THE PRINCIPLE (owner working agreement, same as styleTextSpan): LLM-facing
- * tools take SIMPLE intent-level args; ALL complexity lives inside the tool
- * as a deterministic translation. The model says "add a hero above the
- * footer" as `{ templateId, position, params }` — it NEVER hand-assembles
- * blocks, ids, or column arithmetic. This module is that translation: pick
- * the catalog template, resolve the position anchor against the CURRENT
- * document, validate/default the content params, build the whole subtree
- * with fresh ids, and emit ONE canonical `addSection` operation for the
- * history spine — so one scaffold is one undo step and the standard
- * `removeBlock` inverse comes for free.
- *
- * The Convex round-trip and the editor store's optimistic apply both see only
- * the resolved plain `addSection` op (the resolveOperation dispatch contract),
- * so the existing content-op apply path needs no scaffold-specific handling.
- */
+/*
+  `scaffoldSection` — the intent-level section-scaffolding action (Phase 7.2).
 
-// ---------------------------------------------------------------------------
-// Input schema (what the model sees)
-// ---------------------------------------------------------------------------
+  THE PRINCIPLE (owner working agreement, same as styleTextSpan): LLM-facing
+  tools take SIMPLE intent-level args; ALL complexity lives inside the tool
+  as a deterministic translation. The model says "add a hero above the
+  footer" as `{ templateId, position, params }` — it NEVER hand-assembles
+  blocks, ids, or column arithmetic. This module is that translation: pick
+  the catalog template, resolve the position anchor against the CURRENT
+  document, validate/default the content params, build the whole subtree
+  with fresh ids, and emit ONE canonical `addSection` operation for the
+  history spine — so one scaffold is one undo step and the standard
+  `removeBlock` inverse comes for free.
 
-/** Where to insert the new section among the document's top-level sections. */
+  The Convex round-trip and the editor store's optimistic apply both see only
+  the resolved plain `addSection` op (the resolveOperation dispatch contract),
+  so the existing content-op apply path needs no scaffold-specific handling.
+*/
+
+/*
+  ---------------------------------------------------------------------------
+  Input schema (what the model sees)
+  ---------------------------------------------------------------------------
+*/
+
+/*
+  Where to insert the new section among the document's top-level sections.
+*/
 export const scaffoldSectionPositionSchema = z
   .union([
     z.literal("top").describe("Insert as the FIRST section of the email."),
@@ -59,17 +63,23 @@ export const scaffoldSectionPositionSchema = z
 
 export type ScaffoldSectionPosition = z.infer<typeof scaffoldSectionPositionSchema>;
 
-/**
- * The scaffoldSection intent — `params` is typed per template in the Zod
- * schema (a discriminated union on templateId), erased to a plain record here.
- */
+/*
+  The scaffoldSection intent — `params` is typed per template in the Zod
+  schema (a discriminated union on templateId), erased to a plain record here.
+*/
 export interface ScaffoldSectionInput {
   name: "scaffoldSection";
-  /** One of the catalog's template ids (see SECTION_TEMPLATE_IDS). */
+  /*
+    One of the catalog's template ids (see SECTION_TEMPLATE_IDS).
+  */
   templateId: string;
-  /** Where to insert. Omitted = "bottom". */
+  /*
+    Where to insert. Omitted = "bottom".
+  */
   position?: ScaffoldSectionPosition;
-  /** The template's CONTENT params. Every field defaults; omit for a complete demo section. */
+  /*
+    The template's CONTENT params. Every field defaults; omit for a complete demo section.
+  */
   params?: Record<string, unknown>;
 }
 
@@ -97,19 +107,21 @@ const scaffoldSectionBranchesByTemplate = SECTION_TEMPLATES.map((template) => ({
 
 const scaffoldSectionBranches = scaffoldSectionBranchesByTemplate.map((entry) => entry.branch);
 
-/* Branch lookup for the failure prose below: templateId → that branch alone. */
+/*
+  Branch lookup for the failure prose below: templateId → that branch alone.
+*/
 const scaffoldSectionBranchesByTemplateId: ReadonlyMap<string, z.ZodType> = new Map(
   scaffoldSectionBranchesByTemplate.map((entry) => [entry.templateId, entry.branch]),
 );
 
-/**
- * Saved-section templateIds: `saved:<rowId>` — the ids the host app's saved
- * sections library advertises in the FRESH per-request context (they are
- * user data, so they can never be part of this static schema). The catalog
- * resolver below cannot resolve them (the subtree lives in the host's
- * storage); the HOST intercepts scaffoldSection calls whose templateId
- * carries this prefix and performs its own one-op insert.
- */
+/*
+  Saved-section templateIds: `saved:<rowId>` — the ids the host app's saved
+  sections library advertises in the FRESH per-request context (they are
+  user data, so they can never be part of this static schema). The catalog
+  resolver below cannot resolve them (the subtree lives in the host's
+  storage); the HOST intercepts scaffoldSection calls whose templateId
+  carries this prefix and performs its own one-op insert.
+*/
 export const SAVED_SECTION_TEMPLATE_ID_PREFIX = "saved:";
 
 export function isSavedSectionTemplateId(templateId: string): boolean {
@@ -143,14 +155,20 @@ const savedSectionBranch = z.strictObject({
     .describe("Saved sections carry their own content — omit params entirely."),
 });
 
-// ---------------------------------------------------------------------------
-// Failure prose: report the branch the caller actually meant
-// ---------------------------------------------------------------------------
+/*
+  ---------------------------------------------------------------------------
+  Failure prose: report the branch the caller actually meant
+  ---------------------------------------------------------------------------
+*/
 
-/** Depth cap for the wrapper unwrap below — guards against a pathological chain. */
+/*
+  Depth cap for the wrapper unwrap below — guards against a pathological chain.
+*/
 const MAX_SCHEMA_UNWRAP_DEPTH = 8;
 
-/* Strip optional/default/nullable wrappers down to the node that has a shape. */
+/*
+  Strip optional/default/nullable wrappers down to the node that has a shape.
+*/
 function unwrapSchemaNode(schema: z.core.$ZodType): z.core.$ZodType {
   let current: z.core.$ZodType = schema;
   for (let depth = 0; depth < MAX_SCHEMA_UNWRAP_DEPTH; depth += 1) {
@@ -195,7 +213,9 @@ function resolveSchemaAtPath(
   return current;
 }
 
-/** The field names an object schema accepts, or undefined if it is not an object. */
+/*
+  The field names an object schema accepts, or undefined if it is not an object.
+*/
 function listObjectFieldNames(schema: z.core.$ZodType | undefined): readonly string[] | undefined {
   if (schema === undefined) {
     return undefined;
@@ -209,10 +229,14 @@ function formatQuotedList(values: readonly string[]): string {
 }
 
 interface FormatSchemaIssuesInput {
-  /** The schema the issue paths are rooted at. */
+  /*
+    The schema the issue paths are rooted at.
+  */
   rootSchema: z.core.$ZodType;
   error: z.ZodError;
-  /** What to call the root in prose, for issues whose path is empty. */
+  /*
+    What to call the root in prose, for issues whose path is empty.
+  */
   rootLabel: string;
 }
 
@@ -246,7 +270,9 @@ function formatSchemaIssues({ rootSchema, error, rootLabel }: FormatSchemaIssues
     .join(" ");
 }
 
-/** The templateId a raw input claims, or undefined when it did not send a usable one. */
+/*
+  The templateId a raw input claims, or undefined when it did not send a usable one.
+*/
 function readTemplateId(input: unknown): string | undefined {
   if (typeof input !== "object" || input === null || Array.isArray(input)) {
     return undefined;
@@ -322,40 +348,50 @@ export const scaffoldSectionInputSchema = z
     "Adds one complete, professionally structured section in a single step: pick a templateId (a catalog template, or one of the user's saved sections when listed in the document context), give only the content the user specified, and say where it goes.",
   ) as unknown as z.ZodType<ScaffoldSectionInput>;
 
-// ---------------------------------------------------------------------------
-// Intent → canonical operation resolution
-// ---------------------------------------------------------------------------
+/*
+  ---------------------------------------------------------------------------
+  Intent → canonical operation resolution
+  ---------------------------------------------------------------------------
+*/
 
 export type ResolveScaffoldSectionResult =
   | { isOk: true; op: AddSectionOperation }
   | { isOk: false; errors: ResolvedOperationError[] };
 
 export interface ResolveScaffoldSectionOperationInput {
-  /** The document to insert into. Never mutated. */
+  /*
+    The document to insert into. Never mutated.
+  */
   doc: EmailDocument;
-  /** Validated scaffoldSection input. */
+  /*
+    Validated scaffoldSection input.
+  */
   input: ScaffoldSectionInput;
-  /** Randomness source for the new blocks' ids — injectable for tests. */
+  /*
+    Randomness source for the new blocks' ids — injectable for tests.
+  */
   random?: RandomFn;
 }
 
-/** Rebuild attempts when generated ids collide with the document (vanishingly rare). */
+/*
+  Rebuild attempts when generated ids collide with the document (vanishingly rare).
+*/
 const MAX_BUILD_ATTEMPTS = 5;
 
-/**
- * The intent→operation translation: resolve a scaffoldSection input against a
- * document into ONE canonical `addSection` operation. Deterministic given a
- * RandomFn (ids are the only randomness). Every failure is a structured,
- * retryable repair hint: an unknown templateId lists the valid ids, a bad
- * position anchor quotes the document's ACTUAL top-level section ids, and bad
- * params carry the exact validation issues.
- */
-/**
- * Resolve a scaffold position ("top" / "bottom" / before/after anchor) into
- * an insertion index among the root's sections. Shared by the catalog
- * resolver below and host-app saved-section inserts (which resolve the SAME
- * position vocabulary against their own subtree source).
- */
+/*
+  The intent→operation translation: resolve a scaffoldSection input against a
+  document into ONE canonical `addSection` operation. Deterministic given a
+  RandomFn (ids are the only randomness). Every failure is a structured,
+  retryable repair hint: an unknown templateId lists the valid ids, a bad
+  position anchor quotes the document's ACTUAL top-level section ids, and bad
+  params carry the exact validation issues.
+*/
+/*
+  Resolve a scaffold position ("top" / "bottom" / before/after anchor) into
+  an insertion index among the root's sections. Shared by the catalog
+  resolver below and host-app saved-section inserts (which resolve the SAME
+  position vocabulary against their own subtree source).
+*/
 export function resolveScaffoldSectionIndex({
   doc,
   position,
@@ -414,9 +450,11 @@ export function resolveScaffoldSectionOperation({
 }: ResolveScaffoldSectionOperationInput): ResolveScaffoldSectionResult {
   const template = getSectionTemplate(input.templateId);
   if (template === undefined) {
-    // Saved-section ids validate (see savedSectionBranch) but resolve in the
-    // HOST app, which owns the saved subtrees and intercepts these calls
-    // before dispatch. Reaching this resolver with one is a wiring gap.
+    /*
+      Saved-section ids validate (see savedSectionBranch) but resolve in the
+      HOST app, which owns the saved subtrees and intercepts these calls
+      before dispatch. Reaching this resolver with one is a wiring gap.
+    */
     if (isSavedSectionTemplateId(input.templateId)) {
       return {
         isOk: false,
@@ -484,17 +522,19 @@ export function resolveScaffoldSectionOperation({
   };
 }
 
-// ---------------------------------------------------------------------------
-// The action definition
-// ---------------------------------------------------------------------------
+/*
+  ---------------------------------------------------------------------------
+  The action definition
+  ---------------------------------------------------------------------------
+*/
 
-/**
- * The scaffoldSection content action. `resolveOperation` is the intent→op
- * translation above; per the dispatch contract (see dispatchContentAction),
- * `run` therefore receives the RESOLVED `addSection` operation — the op log,
- * undo/redo, and AI-batch revert only ever see a standard replayable op, and
- * one scaffold is exactly one undo step.
- */
+/*
+  The scaffoldSection content action. `resolveOperation` is the intent→op
+  translation above; per the dispatch contract (see dispatchContentAction),
+  `run` therefore receives the RESOLVED `addSection` operation — the op log,
+  undo/redo, and AI-batch revert only ever see a standard replayable op, and
+  one scaffold is exactly one undo step.
+*/
 export const scaffoldSectionAction = defineEmailAction({
   name: "scaffoldSection",
   description:
@@ -502,10 +542,12 @@ export const scaffoldSectionAction = defineEmailAction({
   kind: "content",
   schema: scaffoldSectionInputSchema,
   readOnly: false,
-  parallelSafe: false, // structural: sibling indices shift
+  parallelSafe: false, /* structural: sibling indices shift */
   needsApproval: false,
   resolveOperation: (doc, input) => resolveScaffoldSectionOperation({ doc, input }),
-  // dispatchContentAction calls run with the RESOLVED addSection operation
-  // (never the raw intent input), hence the cast.
+  /*
+    dispatchContentAction calls run with the RESOLVED addSection operation
+    (never the raw intent input), hence the cast.
+  */
   run: (doc, input) => applyOperation(doc, input as unknown as Operation),
 });

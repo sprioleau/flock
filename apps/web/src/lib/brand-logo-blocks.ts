@@ -30,7 +30,9 @@
 
 import type { BlockId, EmailDocument } from "@flock/email-sdk";
 
-/* The confirmed brand logo as a document write — src plus the alt to match. */
+/*
+  The confirmed brand logo as a document write — src plus the alt to match.
+*/
 export interface BrandLogoSource {
   src: string;
   alt: string;
@@ -42,9 +44,13 @@ export interface BrandLogoSource {
   is not yet using.
 */
 export type LogoBlockPromptState =
-  /* No saved kit for this canvas — the logo has nowhere to come from yet. */
+  /*
+    No saved kit for this canvas — the logo has nowhere to come from yet.
+  */
   | { kind: "no-kit" }
-  /* A kit exists but carries no logo at all. */
+  /*
+    A kit exists but carries no logo at all.
+  */
   | { kind: "no-logo" }
   /*
     A logo is present as a SUGGESTION — not yet rehosted, so not usable.
@@ -95,7 +101,9 @@ export function getLogoBlockPromptState({
     the only kit the session-scoped confirm route can act on.
   */
   isViewerOwnKit: boolean;
-  /* The confirmed logo, or null. The only value allowed into a document. */
+  /*
+    The confirmed logo, or null. The only value allowed into a document.
+  */
   confirmedLogo: BrandLogoSource | null;
   doc: EmailDocument;
   blockId: BlockId;
@@ -118,13 +126,17 @@ export function getLogoBlockPromptState({
   };
 }
 
-/* One block to re-source, as a property merge-patch the panel dispatches. */
+/*
+  One block to re-source, as a property merge-patch the panel dispatches.
+*/
 export interface LogoBlockUpdate {
   blockId: BlockId;
   properties: { src: string; alt: string };
 }
 
-/* Every `role: "logo"` image block in the document, in document order. */
+/*
+  Every `role: "logo"` image block in the document, in document order.
+*/
 export function collectLogoBlockIds(doc: EmailDocument): BlockId[] {
   return Object.values(doc)
     .filter((block) => block.type === "image" && block.properties.role === "logo")
@@ -144,7 +156,9 @@ export function buildLogoBlockUpdates({
 }: {
   doc: EmailDocument;
   logo: BrandLogoSource;
-  /* Restrict to these blocks; omit for every logo block in the document. */
+  /*
+    Restrict to these blocks; omit for every logo block in the document.
+  */
   blockIds?: BlockId[];
 }): LogoBlockUpdate[] {
   const allowed = blockIds === undefined ? null : new Set(blockIds);

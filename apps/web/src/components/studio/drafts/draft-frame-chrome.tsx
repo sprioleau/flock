@@ -9,52 +9,62 @@ import { cn } from "@/lib/utils";
 import { DraftBrandPill } from "../brand-kit/DraftBrandPill";
 import type { DraftListEntry } from "./use-canvas-drafts";
 
-/**
- * Shared chrome for the §10.2 draft frames — the pieces both frame flavors
- * (live editor frames in EditorDraftFrame.tsx, read-only preview frames in
- * DraftFramesCanvas.tsx) render: the Figma-style name label, the generation
- * glow + working overlay, and the shared sizing constants.
- */
+/*
+  Shared chrome for the §10.2 draft frames — the pieces both frame flavors
+  (live editor frames in EditorDraftFrame.tsx, read-only preview frames in
+  DraftFramesCanvas.tsx) render: the Figma-style name label, the generation
+  glow + working overlay, and the shared sizing constants.
+*/
 
-/** Live editor frame width (the email's natural desktop layout width). */
+/*
+  Live editor frame width (the email's natural desktop layout width).
+*/
 export const EDITOR_FRAME_DESKTOP_WIDTH_PX = 680;
-/** Live editor frame width under the mobile viewport toggle. */
+/*
+  Live editor frame width under the mobile viewport toggle.
+*/
 export const EDITOR_FRAME_MOBILE_WIDTH_PX = 375;
-/** Read-only sibling preview frame width (fit-zoom scales the 640px layout down). */
+/*
+  Read-only sibling preview frame width (fit-zoom scales the 640px layout down).
+*/
 export const PREVIEW_FRAME_WIDTH_PX = 384;
-/**
- * Min height for a frame whose document has NO root sections — 2× the h-40
- * (10rem) baseline the placeholder/loading frames use, so a freshly created
- * blank draft (the AI-generation flows create one and stream into it) reads
- * as a real frame instead of a short strip (owner feedback, item 28a).
- */
+/*
+  Min height for a frame whose document has NO root sections — 2× the h-40
+  (10rem) baseline the placeholder/loading frames use, so a freshly created
+  blank draft (the AI-generation flows create one and stream into it) reads
+  as a real frame instead of a short strip (owner feedback, item 28a).
+*/
 export const EMPTY_FRAME_MIN_HEIGHT_CLASS = "min-h-80";
 
-/** Whether `doc` has no top-level sections yet (a blank/just-created draft). */
+/*
+  Whether `doc` has no top-level sections yet (a blank/just-created draft).
+*/
 export function getIsDocEmpty(doc: EmailDocument): boolean {
   return (doc[ROOT_BLOCK_ID]?.childrenIds.length ?? 0) === 0;
 }
 
-/**
- * Rotating stage lines under the generation spinner — deliberately GENERIC
- * working words (honest presentation: no fake specific claims), cycled on a
- * timer until the first section lands and the overlay unmounts.
- */
+/*
+  Rotating stage lines under the generation spinner — deliberately GENERIC
+  working words (honest presentation: no fake specific claims), cycled on a
+  timer until the first section lands and the overlay unmounts.
+*/
 const GENERATION_STAGE_LINES = [
   "Finding relevant sections…",
   "Updating content…",
   "Adjusting the styles…",
 ] as const;
 
-/** How long each stage line holds before rotating to the next. */
+/*
+  How long each stage line holds before rotating to the next.
+*/
 const GENERATION_STAGE_ROTATION_MS = 2200;
 
-/**
- * The in-frame working state while a generation turn targets a still-empty
- * draft: centered spinner + message + rotating stage lines. Unmounts the
- * moment the first section lands (content takes over); the glow border and
- * the edit lock stay until the turn settles.
- */
+/*
+  The in-frame working state while a generation turn targets a still-empty
+  draft: centered spinner + message + rotating stage lines. Unmounts the
+  moment the first section lands (content takes over); the glow border and
+  the edit lock stay until the turn settles.
+*/
 export function GenerationWorkingOverlay() {
   const [stageIndex, setStageIndex] = useState(0);
   useEffect(() => {
@@ -77,14 +87,14 @@ export function GenerationWorkingOverlay() {
   );
 }
 
-/**
- * EXPERIMENTAL (owner explicitly wants to try it): an animated glowing
- * border around the frame a generation turn streams into — a rotating
- * conic-gradient ring (crisp layer) plus a blurred halo, pulsing softly.
- * Vivid mid-scale colors read on both themes; keyframes in globals.css
- * (`generation-glow`). Rendered BEFORE the content box, which is positioned
- * and opaque, so only the ring around its edges shows.
- */
+/*
+  EXPERIMENTAL (owner explicitly wants to try it): an animated glowing
+  border around the frame a generation turn streams into — a rotating
+  conic-gradient ring (crisp layer) plus a blurred halo, pulsing softly.
+  Vivid mid-scale colors read on both themes; keyframes in globals.css
+  (`generation-glow`). Rendered BEFORE the content box, which is positioned
+  and opaque, so only the ring around its edges shows.
+*/
 export function GenerationGlowBorder() {
   return (
     <>
@@ -101,12 +111,12 @@ export function GenerationGlowBorder() {
   );
 }
 
-/**
- * The Figma-frame-style name label above a frame. Active label is visually
- * distinct and renames inline on double-click (writes `documents.name` —
- * user-facing half of the §10.2 dual naming; `agentName` stays read-only in
- * the selector menu). Inactive labels activate their frame on click.
- */
+/*
+  The Figma-frame-style name label above a frame. Active label is visually
+  distinct and renames inline on double-click (writes `documents.name` —
+  user-facing half of the §10.2 dual naming; `agentName` stays read-only in
+  the selector menu). Inactive labels activate their frame on click.
+*/
 export function DraftFrameLabel({
   draft,
   isActive,

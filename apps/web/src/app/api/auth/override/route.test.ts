@@ -5,20 +5,20 @@ import {
 } from "@/lib/auth/owner-override";
 import { GET } from "./route";
 
-/**
- * GET /api/auth/override — "does this browser already hold an override?"
- *
- * Only the GET handler is covered here. POST and DELETE both write cookies
- * through `next/headers`, which needs a request context this runner does not
- * provide; their compare logic lives in lib/auth/owner-override.ts and is
- * exercised there. GET is deliberately pure over the Cookie header, so it
- * tests against a plain `Request` with no Next runtime at all.
- *
- * The properties worth pinning are the security-shaped ones: a false is
- * indistinguishable between "wrong cookie" and "feature not configured", the
- * answer is never cacheable, and reading the status does NOT consume attempts
- * from the POST limiter.
- */
+/*
+  GET /api/auth/override — "does this browser already hold an override?"
+
+  Only the GET handler is covered here. POST and DELETE both write cookies
+  through `next/headers`, which needs a request context this runner does not
+  provide; their compare logic lives in lib/auth/owner-override.ts and is
+  exercised there. GET is deliberately pure over the Cookie header, so it
+  tests against a plain `Request` with no Next runtime at all.
+
+  The properties worth pinning are the security-shaped ones: a false is
+  indistinguishable between "wrong cookie" and "feature not configured", the
+  answer is never cacheable, and reading the status does NOT consume attempts
+  from the POST limiter.
+*/
 
 const PASSWORD = "correct-horse-battery-staple";
 
@@ -73,8 +73,10 @@ describe("GET /api/auth/override", () => {
     delete process.env.FLOCK_OWNER_OVERRIDE_PASSWORD;
     const disabledResponse = GET(makeRequest(validCookie(PASSWORD)));
 
-    // Same status, same body. A probe cannot learn from this endpoint whether
-    // an override exists on this deployment.
+    /*
+      Same status, same body. A probe cannot learn from this endpoint whether
+      an override exists on this deployment.
+    */
     expect(disabledResponse.status).toBe(badCookieResponse.status);
     expect(await disabledResponse.json()).toEqual(badCookieBody);
   });
@@ -85,8 +87,10 @@ describe("GET /api/auth/override", () => {
   });
 
   it("is not metered by the POST attempt limiter", async () => {
-    // Five attempts per minute is the POST budget. A status read is not an
-    // attempt: reloading a page must never lock the owner out of their own UI.
+    /*
+      Five attempts per minute is the POST budget. A status read is not an
+      attempt: reloading a page must never lock the owner out of their own UI.
+    */
     const request = makeRequest(validCookie(PASSWORD));
     for (let index = 0; index < 25; index += 1) {
       const response = GET(request);

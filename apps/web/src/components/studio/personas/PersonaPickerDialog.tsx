@@ -34,33 +34,33 @@ import {
 import { getOrCreateSessionId } from "@/lib/session";
 import { cn } from "@/lib/utils";
 
-/**
- * Multi-agent canvas — the persona picker: a dialog (opened from the
- * settings FAB's "Agents" entry) listing every registry persona with an
- * enable toggle. Enablement is browser-session-scoped localStorage
- * (enabled-personas.ts); enabled personas join the open document's facepile
- * and review settled edits (use-persona-advisors.ts).
- *
- * v1 (proposal §6 item 9, owner-directed shape): personas are edited through
- * a STRUCTURED FORM — labeled fields over the markdown, never raw markdown
- * in the UI. parse-persona-markdown.ts owns the lossless markdown ⇄ form
- * mapping; markdown stays the storage/interchange format. Built-ins are
- * copy-on-edit — saving forks a session copy (`user/<sessionId>/<base>`)
- * that shadows the built-in in this session's picker; "Reset to default"
- * deletes the copy. Either way the enabled slug follows the row that defines
- * the persona (replaceEnabledPersonaSlug), so the runner's next turn reads
- * the saved markdown straight from the registry.
- *
- * Create-from-scratch: the "Create agent" affordance opens the SAME
- * structured form, blank, with placeholder guidance teaching the format's
- * spirit ("What you watch for" / "How you respond"). Creating inserts a
- * session-owned advisory row (slug `user/<sessionId>/<slugified-name>`,
- * server-side collision handling) and enables it for this browser
- * immediately. Created personas are ordinary registry rows — they join the
- * facepile, runner, findings, and watch scopes with zero persona-conditional
- * code — and carry a Delete affordance instead of Reset (no built-in behind
- * them).
- */
+/*
+  Multi-agent canvas — the persona picker: a dialog (opened from the
+  settings FAB's "Agents" entry) listing every registry persona with an
+  enable toggle. Enablement is browser-session-scoped localStorage
+  (enabled-personas.ts); enabled personas join the open document's facepile
+  and review settled edits (use-persona-advisors.ts).
+
+  v1 (proposal §6 item 9, owner-directed shape): personas are edited through
+  a STRUCTURED FORM — labeled fields over the markdown, never raw markdown
+  in the UI. parse-persona-markdown.ts owns the lossless markdown ⇄ form
+  mapping; markdown stays the storage/interchange format. Built-ins are
+  copy-on-edit — saving forks a session copy (`user/<sessionId>/<base>`)
+  that shadows the built-in in this session's picker; "Reset to default"
+  deletes the copy. Either way the enabled slug follows the row that defines
+  the persona (replaceEnabledPersonaSlug), so the runner's next turn reads
+  the saved markdown straight from the registry.
+
+  Create-from-scratch: the "Create agent" affordance opens the SAME
+  structured form, blank, with placeholder guidance teaching the format's
+  spirit ("What you watch for" / "How you respond"). Creating inserts a
+  session-owned advisory row (slug `user/<sessionId>/<slugified-name>`,
+  server-side collision handling) and enables it for this browser
+  immediately. Created personas are ordinary registry rows — they join the
+  facepile, runner, findings, and watch scopes with zero persona-conditional
+  code — and carry a Delete affordance instead of Reset (no built-in behind
+  them).
+*/
 
 export interface PersonaPickerDialogProps {
   isOpen: boolean;
@@ -68,9 +68,11 @@ export interface PersonaPickerDialogProps {
 }
 
 export function PersonaPickerDialog({ isOpen, onOpenChange }: PersonaPickerDialogProps) {
-  // Anonymous session id (localStorage). Read only while the dialog is open
-  // — opening is a user gesture, so this never runs during SSR/hydration
-  // (window is always live here; the presence provider's pattern).
+  /*
+    Anonymous session id (localStorage). Read only while the dialog is open
+    — opening is a user gesture, so this never runs during SSR/hydration
+    (window is always live here; the presence provider's pattern).
+  */
   const sessionId = isOpen ? getOrCreateSessionId() : null;
 
   const personas = useQuery(
@@ -81,7 +83,9 @@ export function PersonaPickerDialog({ isOpen, onOpenChange }: PersonaPickerDialo
   const enabledSlugs = useEnabledPersonaSlugs();
   const [isCreateFormOpen, setIsCreateFormOpen] = useState(false);
 
-  // Idempotent built-in seed on first open (insert-if-missing; never overwrites).
+  /*
+    Idempotent built-in seed on first open (insert-if-missing; never overwrites).
+  */
   useEffect(() => {
     if (isOpen) {
       seedBuiltInPersonas({}).catch((error: unknown) => {
@@ -138,13 +142,13 @@ export function PersonaPickerDialog({ isOpen, onOpenChange }: PersonaPickerDialo
   );
 }
 
-/**
- * The credit-conservation pause: stops the persona watcher from calling
- * /api/personas at all (zero Gemini spend — for demos especially) WITHOUT
- * disabling any personas. Enablement, open findings, and editing stay fully
- * functional; presence just goes idle. Persisted per browser beside the
- * enablement list.
- */
+/*
+  The credit-conservation pause: stops the persona watcher from calling
+  /api/personas at all (zero Gemini spend — for demos especially) WITHOUT
+  disabling any personas. Enablement, open findings, and editing stay fully
+  functional; presence just goes idle. Persisted per browser beside the
+  enablement list.
+*/
 function PersonasPausedToggle() {
   const arePersonasPaused = useArePersonasPaused();
   return (
@@ -186,9 +190,13 @@ interface PersonaPayload {
   capabilityMode: "advisory";
   personaMarkdown: string;
   cooldownSeconds: number;
-  /** Optional in the payload (see convex/personas.ts); undefined ⇒ built-in. */
+  /*
+    Optional in the payload (see convex/personas.ts); undefined ⇒ built-in.
+  */
   isBuiltIn?: boolean;
-  /** True ⇒ created from scratch by this session (deletable, no built-in behind it). */
+  /*
+    True ⇒ created from scratch by this session (deletable, no built-in behind it).
+  */
   isUserCreated?: boolean;
 }
 
@@ -263,13 +271,13 @@ interface PersonaDefinitionProps {
   sessionId: string;
 }
 
-/**
- * The expanded definition. Read mode renders the parsed behavior text as
- * labeled prose (no frontmatter or fences on screen); edit mode is the
- * structured form. Reset to default (copies of built-ins only) deletes the
- * session copy and swaps enablement back to the pristine built-in; created
- * personas get Delete instead (there is no built-in to fall back to).
- */
+/*
+  The expanded definition. Read mode renders the parsed behavior text as
+  labeled prose (no frontmatter or fences on screen); edit mode is the
+  structured form. Reset to default (copies of built-ins only) deletes the
+  session copy and swaps enablement back to the pristine built-in; created
+  personas get Delete instead (there is no built-in to fall back to).
+*/
 function PersonaDefinition({ persona, sessionId }: PersonaDefinitionProps) {
   const resetPersonaToBuiltIn = useMutation(api.personas.resetPersonaToBuiltIn);
   const deletePersona = useMutation(api.personas.deletePersona);
@@ -296,7 +304,9 @@ function PersonaDefinition({ persona, sessionId }: PersonaDefinitionProps) {
       setErrorMessage("Could not reset this persona. Please try again.");
       setIsRemoving(false);
     }
-    // On success this row unmounts (the built-in un-shadows) — no state to restore.
+    /*
+      On success this row unmounts (the built-in un-shadows) — no state to restore.
+    */
   };
 
   const handleDelete = async () => {
@@ -310,7 +320,9 @@ function PersonaDefinition({ persona, sessionId }: PersonaDefinitionProps) {
       setErrorMessage("Could not delete this agent. Please try again.");
       setIsRemoving(false);
     }
-    // On success this row unmounts (the row is gone) — no state to restore.
+    /*
+      On success this row unmounts (the row is gone) — no state to restore.
+    */
   };
 
   if (isEditing) {
@@ -372,7 +384,9 @@ function PersonaDefinition({ persona, sessionId }: PersonaDefinitionProps) {
   );
 }
 
-/** Read mode: the behavior text as labeled prose — never raw markdown. */
+/*
+  Read mode: the behavior text as labeled prose — never raw markdown.
+*/
 function PersonaDefinitionView({
   persona,
   model,
@@ -381,8 +395,10 @@ function PersonaDefinitionView({
   model: PersonaFormModel;
 }) {
   if (!model.isStructured) {
-    // Structurally unparseable (hand-authored exotic content): the raw text
-    // is the only faithful rendering.
+    /*
+      Structurally unparseable (hand-authored exotic content): the raw text
+      is the only faithful rendering.
+    */
     return (
       <pre className="max-h-48 overflow-y-auto rounded-md bg-muted/50 p-2 text-[11px] leading-relaxed whitespace-pre-wrap text-muted-foreground">
         {persona.personaMarkdown}
@@ -412,28 +428,32 @@ function PersonaDefinitionView({
   );
 }
 
-/** Accent colors offered by the swatch picker (distinct from the human hue wheel). */
+/*
+  Accent colors offered by the swatch picker (distinct from the human hue wheel).
+*/
 const PERSONA_COLOR_PALETTE = [
-  "#e11d48", // rose (Tone Police default)
-  "#0d9488", // teal (Styling Recommender default)
-  "#d97706", // amber
-  "#16a34a", // green
-  "#c026d3", // fuchsia
-  "#475569", // slate
+  "#e11d48", /* rose (Tone Police default) */
+  "#0d9488", /* teal (Styling Recommender default) */
+  "#d97706", /* amber */
+  "#16a34a", /* green */
+  "#c026d3", /* fuchsia */
+  "#475569", /* slate */
 ];
 
-/**
- * Eagerness ⟷ cooldown mapping. The user-facing control is an EAGERNESS
- * slider (more eager = reviews more often); what persists is still
- * `cooldownSeconds` (the Gemini budget guard), so the mapping is INVERSE and
- * floors at 20s. Stops run left (most relaxed, 180s) → right (most eager,
- * 20s). Values that aren't a stop (hand-edited frontmatter) display at the
- * nearest stop and are only rewritten when the user actually moves the
- * slider — an untouched form stays byte-stable on save.
- */
+/*
+  Eagerness ⟷ cooldown mapping. The user-facing control is an EAGERNESS
+  slider (more eager = reviews more often); what persists is still
+  `cooldownSeconds` (the Gemini budget guard), so the mapping is INVERSE and
+  floors at 20s. Stops run left (most relaxed, 180s) → right (most eager,
+  20s). Values that aren't a stop (hand-edited frontmatter) display at the
+  nearest stop and are only rewritten when the user actually moves the
+  slider — an untouched form stays byte-stable on save.
+*/
 const EAGERNESS_COOLDOWN_STOPS_SECONDS: readonly number[] = [180, 120, 90, 60, 45, 30, 20];
 
-/** Slider position (0 = most relaxed) for a cooldown — nearest stop wins. */
+/*
+  Slider position (0 = most relaxed) for a cooldown — nearest stop wins.
+*/
 function getEagernessPosition(cooldownSeconds: number): number {
   let nearestIndex = 0;
   let nearestDistance = Number.POSITIVE_INFINITY;
@@ -447,7 +467,9 @@ function getEagernessPosition(cooldownSeconds: number): number {
   return nearestIndex;
 }
 
-/** Human eagerness word for the read view (mirrors the slider's framing). */
+/*
+  Human eagerness word for the read view (mirrors the slider's framing).
+*/
 function getEagernessLabel(cooldownSeconds: number): string {
   if (cooldownSeconds <= 30) {
     return "Eager";
@@ -466,13 +488,13 @@ interface PersonaEditFormProps {
   onClose: () => void;
 }
 
-/**
- * The structured editor: labeled form fields over the markdown. On save the
- * model serializes deterministically back to canonical markdown
- * (serializePersonaForm — byte-stable when nothing changed), passes the
- * existing validation, and lands via updatePersonaMarkdown, which also syncs
- * the row's typed name/color/cooldown fields.
- */
+/*
+  The structured editor: labeled form fields over the markdown. On save the
+  model serializes deterministically back to canonical markdown
+  (serializePersonaForm — byte-stable when nothing changed), passes the
+  existing validation, and lands via updatePersonaMarkdown, which also syncs
+  the row's typed name/color/cooldown fields.
+*/
 function PersonaEditForm({
   persona,
   initialModel,
@@ -491,8 +513,10 @@ function PersonaEditForm({
 
   const serialized = useMemo(() => serializePersonaForm(model), [model]);
 
-  // Effective values: form fields fall back to the row's typed fields when
-  // the markdown carries no frontmatter value of its own.
+  /*
+    Effective values: form fields fall back to the row's typed fields when
+    the markdown carries no frontmatter value of its own.
+  */
   const effectiveName = model.name ?? persona.name;
   const effectiveColor = model.color ?? persona.color;
   const effectiveCooldownSeconds = model.cooldownSeconds ?? persona.cooldownSeconds;
@@ -504,8 +528,10 @@ function PersonaEditForm({
       setErrorMessage("Give the persona a display name.");
       return;
     }
-    // Headings alone serialize to non-empty text, so require actual behavior
-    // prose here — validatePersonaMarkdown can only see the serialized bytes.
+    /*
+      Headings alone serialize to non-empty text, so require actual behavior
+      prose here — validatePersonaMarkdown can only see the serialized bytes.
+    */
     const hasBehaviorText = model.isStructured
       ? model.intro.trim().length > 0 ||
         model.sections.some((section) => section.content.trim().length > 0)
@@ -528,7 +554,9 @@ function PersonaEditForm({
       !hasColorChange &&
       !hasCooldownChange
     ) {
-      // Byte-identical round trip and no typed-field changes: nothing to save.
+      /*
+        Byte-identical round trip and no typed-field changes: nothing to save.
+      */
       onClose();
       return;
     }
@@ -543,8 +571,10 @@ function PersonaEditForm({
         ...(hasColorChange ? { color: effectiveColor } : {}),
         ...(hasCooldownChange ? { cooldownSeconds: effectiveCooldownSeconds } : {}),
       });
-      // Copy-on-edit: a built-in's save lands on the session copy — move the
-      // enablement with it so the next persona run uses the new definition.
+      /*
+        Copy-on-edit: a built-in's save lands on the session copy — move the
+        enablement with it so the next persona run uses the new definition.
+      */
       if (savedSlug !== persona.slug) {
         replaceEnabledPersonaSlug({ fromSlug: persona.slug, toSlug: savedSlug });
       }
@@ -635,11 +665,11 @@ function PersonaEditForm({
   );
 }
 
-/**
- * Placeholder guidance for the create form's blank fields — teaches the
- * format's spirit (concrete watch items, concrete response style) without
- * pre-filling text the user would have to delete.
- */
+/*
+  Placeholder guidance for the create form's blank fields — teaches the
+  format's spirit (concrete watch items, concrete response style) without
+  pre-filling text the user would have to delete.
+*/
 const PERSONA_SECTION_PLACEHOLDERS: Record<string, string> = {
   "What you watch for":
     "The concrete, spottable problems this agent scans the email for — e.g. meaningful images missing alt text; link text that just says 'click here'; text too low-contrast to read.",
@@ -656,15 +686,17 @@ interface StructuredPersonaFieldsProps {
   effectiveName: string;
   effectiveColor: string;
   effectiveCooldownSeconds: number;
-  /** Persona slug for edits, "new" for the create form (field ids + testids). */
+  /*
+    Persona slug for edits, "new" for the create form (field ids + testids).
+  */
   testIdSuffix: string;
 }
 
-/**
- * The structured form's field set — shared verbatim between editing an
- * existing persona and creating one from scratch (the owner's "same form,
- * blank" shape). Purely controlled; save semantics live in the caller.
- */
+/*
+  The structured form's field set — shared verbatim between editing an
+  existing persona and creating one from scratch (the owner's "same form,
+  blank" shape). Purely controlled; save semantics live in the caller.
+*/
 function StructuredPersonaFields({
   model,
   patchModel,
@@ -824,15 +856,17 @@ function StructuredPersonaFields({
   );
 }
 
-/** Defaults for a persona created from scratch. */
-const CREATED_PERSONA_DEFAULT_COLOR = "#c026d3"; // fuchsia — no built-in uses it
-const CREATED_PERSONA_DEFAULT_COOLDOWN_SECONDS = 60; // "Balanced" on the slider
+/*
+  Defaults for a persona created from scratch.
+*/
+const CREATED_PERSONA_DEFAULT_COLOR = "#c026d3"; /* fuchsia — no built-in uses it */
+const CREATED_PERSONA_DEFAULT_COOLDOWN_SECONDS = 60; /* "Balanced" on the slider */
 
-/**
- * The blank form model behind "Create agent": the built-ins' own structure
- * (intro + "What you watch for" / "How you respond"), empty, so placeholders
- * teach the format and the serialized markdown matches the seeded shape.
- */
+/*
+  The blank form model behind "Create agent": the built-ins' own structure
+  (intro + "What you watch for" / "How you respond"), empty, so placeholders
+  teach the format and the serialized markdown matches the seeded shape.
+*/
 function buildBlankPersonaFormModel(): PersonaFormModel {
   return {
     name: "",
@@ -856,13 +890,13 @@ interface PersonaCreateFormProps {
   onClose: () => void;
 }
 
-/**
- * Create-from-scratch: the same structured form, blank. Creating inserts a
- * session-owned advisory row via personas.createPersona (server generates the
- * `user/<sessionId>/<slugified-name>` slug, collision-suffixed) and enables
- * it for this browser immediately, so it joins the facepile and the runner's
- * next pass without any further clicks.
- */
+/*
+  Create-from-scratch: the same structured form, blank. Creating inserts a
+  session-owned advisory row via personas.createPersona (server generates the
+  `user/<sessionId>/<slugified-name>` slug, collision-suffixed) and enables
+  it for this browser immediately, so it joins the facepile and the runner's
+  next pass without any further clicks.
+*/
 function PersonaCreateForm({ sessionId, onClose }: PersonaCreateFormProps) {
   const createPersona = useMutation(api.personas.createPersona);
   const [model, setModel] = useState<PersonaFormModel>(buildBlankPersonaFormModel);
@@ -910,8 +944,10 @@ function PersonaCreateForm({ sessionId, onClose }: PersonaCreateFormProps) {
         cooldownSeconds: effectiveCooldownSeconds,
         personaMarkdown: serialized,
       });
-      // New agents start enabled for this browser — they join the open
-      // document's facepile and review passes right away.
+      /*
+        New agents start enabled for this browser — they join the open
+        document's facepile and review passes right away.
+      */
       setPersonaEnabled({ slug, isEnabled: true });
       onClose();
     } catch (error: unknown) {
@@ -975,7 +1011,9 @@ function PersonaCreateForm({ sessionId, onClose }: PersonaCreateFormProps) {
   );
 }
 
-/** A small switch (no shadcn switch in this repo — a minimal, accessible one). */
+/*
+  A small switch (no shadcn switch in this repo — a minimal, accessible one).
+*/
 function PersonaToggle({
   slug,
   name,

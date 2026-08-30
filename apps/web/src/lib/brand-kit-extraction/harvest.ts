@@ -1,39 +1,45 @@
-/**
- * Deterministic brand-signal harvesting — no LLM, no rendering. Regex-scale
- * scanning of the fetched HTML (plus a bounded number of same-origin
- * stylesheets) for candidate brand signals:
- *
- * - site identity: <title>, og:site_name
- * - <meta name="theme-color">
- * - font families: Google Fonts <link>s + font-family declarations in CSS
- * - colors: hex/rgb() tokens across inline styles, <style> blocks and
- *   fetched CSS, frequency-ranked, near-white/near-black noise filtered
- * - logo candidates: header/nav <img> with logo-ish hints, favicons,
- *   apple-touch-icon, og:image
- *
- * This is honest signal harvesting for the LLM step — every color and URL in
- * the output was literally present in the page's markup/CSS. Nothing here is
- * invented.
- */
+/*
+  Deterministic brand-signal harvesting — no LLM, no rendering. Regex-scale
+  scanning of the fetched HTML (plus a bounded number of same-origin
+  stylesheets) for candidate brand signals:
+
+  - site identity: <title>, og:site_name
+  - <meta name="theme-color">
+  - font families: Google Fonts <link>s + font-family declarations in CSS
+  - colors: hex/rgb() tokens across inline styles, <style> blocks and
+    fetched CSS, frequency-ranked, near-white/near-black noise filtered
+  - logo candidates: header/nav <img> with logo-ish hints, favicons,
+    apple-touch-icon, og:image
+
+  This is honest signal harvesting for the LLM step — every color and URL in
+  the output was literally present in the page's markup/CSS. Nothing here is
+  invented.
+*/
 
 import { getChroma, isNearBlack, isNearWhite, normalizeCssColor } from "./color-utils";
 import { findMetaContent, findPageTitle, findTags, getAttribute, resolveUrl } from "./html-utils";
 
 export interface LogoCandidate {
-  /** Absolute URL. */
+  /*
+    Absolute URL.
+  */
   url: string;
-  /** Where it came from ("header img alt=…", "apple-touch-icon", …). */
+  /*
+    Where it came from ("header img alt=…", "apple-touch-icon", …).
+  */
   hint: string;
 }
 
 export interface RankedColor {
   color: string;
-  /** Effective usage count: raw occurrences + var(--…) references. */
+  /*
+    Effective usage count: raw occurrences + var(--…) references.
+  */
   count: number;
-  /**
-   * The CSS custom property this color was declared as (e.g. "--ui-accent-1"),
-   * when it was — a strong brand-role hint passed through to the model.
-   */
+  /*
+    The CSS custom property this color was declared as (e.g. "--ui-accent-1"),
+    when it was — a strong brand-role hint passed through to the model.
+  */
   variableName: string | null;
 }
 
@@ -41,17 +47,19 @@ export interface BrandSignals {
   siteName: string | null;
   pageTitle: string | null;
   themeColor: string | null;
-  /** Distinct font family names seen in CSS / Google Fonts links. */
+  /*
+    Distinct font family names seen in CSS / Google Fonts links.
+  */
   fontFamilies: string[];
-  /**
-   * Normalized #rrggbb colors, noise filtered, ordered by a vibrancy-boosted
-   * usage score (NOT raw frequency — signature accents are used sparingly).
-   */
+  /*
+    Normalized #rrggbb colors, noise filtered, ordered by a vibrancy-boosted
+    usage score (NOT raw frequency — signature accents are used sparingly).
+  */
   rankedColors: RankedColor[];
-  /**
-   * The high-chroma subset of rankedColors — likely signature accents. Kept
-   * as a separate list so the model is explicitly pointed at them.
-   */
+  /*
+    The high-chroma subset of rankedColors — likely signature accents. Kept
+    as a separate list so the model is explicitly pointed at them.
+  */
   accentCandidates: RankedColor[];
   logoCandidates: LogoCandidate[];
 }
@@ -61,15 +69,21 @@ const MAX_RANKED_COLORS = 24;
 const MAX_FONT_FAMILIES = 12;
 const MAX_LOGO_CANDIDATES = 8;
 
-/** Injectable stylesheet fetcher so fixture tests never hit the network. */
+/*
+  Injectable stylesheet fetcher so fixture tests never hit the network.
+*/
 export type CssFetcher = (url: string) => Promise<string | null>;
 
-// HTML scanning helpers (findTags/getAttribute/findMetaContent/…) live in
-// html-utils.ts — shared with the deterministic site-identity extractor.
+/*
+  HTML scanning helpers (findTags/getAttribute/findMetaContent/…) live in
+  html-utils.ts — shared with the deterministic site-identity extractor.
+*/
 
-// ---------------------------------------------------------------------------
-// Fonts
-// ---------------------------------------------------------------------------
+/*
+  ---------------------------------------------------------------------------
+  Fonts
+  ---------------------------------------------------------------------------
+*/
 
 const GENERIC_FONT_KEYWORDS = new Set([
   "sans-serif",
@@ -124,7 +138,9 @@ function harvestGoogleFontFamilies({ html, baseUrl }: { html: string; baseUrl: s
         }
       }
     } catch {
-      // Malformed URL — skip.
+      /*
+        Malformed URL — skip.
+      */
     }
   }
   return families;
@@ -135,7 +151,9 @@ function harvestFontFamiliesFromCss(cssText: string): string[] {
   const declarations = cssText.match(/font-family\s*:\s*[^;}"']{0,200}[^;}]*/gi) ?? [];
   for (const declaration of declarations) {
     const value = declaration.replace(/font-family\s*:\s*/i, "");
-    // First family in the stack is the intent; the rest are fallbacks.
+    /*
+      First family in the stack is the intent; the rest are fallbacks.
+    */
     const first = value.split(",")[0].trim().replace(/^["']|["']$/g, "");
     if (first.length > 1 && first.length < 50 && !isIconOrSystemFont(first)) {
       families.push(first);
@@ -144,9 +162,11 @@ function harvestFontFamiliesFromCss(cssText: string): string[] {
   return families;
 }
 
-// ---------------------------------------------------------------------------
-// Colors
-// ---------------------------------------------------------------------------
+/*
+  ---------------------------------------------------------------------------
+  Colors
+  ---------------------------------------------------------------------------
+*/
 
 function harvestColorTokens(cssOrHtml: string): string[] {
   const tokens =
@@ -166,20 +186,22 @@ function harvestColorTokens(cssOrHtml: string): string[] {
 interface CustomPropertyColor {
   variableName: string;
   color: string;
-  /** How many times `var(--name)` is used across the scanned text. */
+  /*
+    How many times `var(--name)` is used across the scanned text.
+  */
   referenceCount: number;
 }
 
 const MAX_CUSTOM_PROPERTIES = 200;
 
-/**
- * CSS custom properties that hold a color, with their var() reference counts.
- * This is how design-system sites actually express their palette: the brand
- * accent is DECLARED once (`--ui-accent-1: #ffc400`) and referenced dozens of
- * times via var() — invisible to raw color-token frequency. The reference
- * count restores the color's true weight, and the variable name itself
- * ("accent", "brand", …) is a role hint for the model.
- */
+/*
+  CSS custom properties that hold a color, with their var() reference counts.
+  This is how design-system sites actually express their palette: the brand
+  accent is DECLARED once (`--ui-accent-1: #ffc400`) and referenced dozens of
+  times via var() — invisible to raw color-token frequency. The reference
+  count restores the color's true weight, and the variable name itself
+  ("accent", "brand", …) is a role hint for the model.
+*/
 function harvestCustomPropertyColors(text: string): CustomPropertyColor[] {
   const definitions =
     text.match(
@@ -195,7 +217,9 @@ function harvestCustomPropertyColors(text: string): CustomPropertyColor[] {
       continue;
     }
     seenNames.add(variableName);
-    // Bounded count of `var(--name)` / `var(--name,` occurrences.
+    /*
+      Bounded count of `var(--name)` / `var(--name,` occurrences.
+    */
     const referencePattern = new RegExp(
       `var\\(\\s*${variableName.replace(/[.*+?^${}()|[\]\\-]/g, "\\$&")}\\s*[,)]`,
       "g",
@@ -206,18 +230,20 @@ function harvestCustomPropertyColors(text: string): CustomPropertyColor[] {
   return results;
 }
 
-/** Chroma at or above this marks a color as a potential signature accent. */
+/*
+  Chroma at or above this marks a color as a potential signature accent.
+*/
 export const ACCENT_CHROMA_THRESHOLD = 0.35;
 const MAX_ACCENT_CANDIDATES = 6;
 
-/**
- * Rank colors by a vibrancy-boosted usage score. Two deliberate departures
- * from raw frequency (both learned from real sites):
- * - custom-property var() references count as uses (see above);
- * - score = count × (1 + 2 × chroma): brand accents are low-frequency,
- *   high-saturation colors, so a vivid yellow seen 3× outranks a gray
- *   seen 40×. Raw frequency buried exactly the colors that matter.
- */
+/*
+  Rank colors by a vibrancy-boosted usage score. Two deliberate departures
+  from raw frequency (both learned from real sites):
+  - custom-property var() references count as uses (see above);
+  - score = count × (1 + 2 × chroma): brand accents are low-frequency,
+    high-saturation colors, so a vivid yellow seen 3× outranks a gray
+    seen 40×. Raw frequency buried exactly the colors that matter.
+*/
 function rankColors({
   colors,
   customPropertyColors,
@@ -232,7 +258,9 @@ function rankColors({
   const variableNames = new Map<string, string>();
   for (const { variableName, color, referenceCount } of customPropertyColors) {
     counts.set(color, (counts.get(color) ?? 0) + referenceCount);
-    // Keep the most-referenced variable name per color.
+    /*
+      Keep the most-referenced variable name per color.
+    */
     const existing = customPropertyColors.find(
       (candidate) => candidate.variableName === variableNames.get(color),
     );
@@ -263,9 +291,11 @@ function rankColors({
   return { rankedColors, accentCandidates };
 }
 
-// ---------------------------------------------------------------------------
-// Logos
-// ---------------------------------------------------------------------------
+/*
+  ---------------------------------------------------------------------------
+  Logos
+  ---------------------------------------------------------------------------
+*/
 
 function harvestLogoCandidates({
   html,
@@ -287,8 +317,10 @@ function harvestLogoCandidates({
     }
   };
 
-  // <img> with logo-ish src/class/id, or a SHORT alt naming the logo (long
-  // alt sentences that merely mention "logo" are photos, not logos).
+  /*
+    <img> with logo-ish src/class/id, or a SHORT alt naming the logo (long
+    alt sentences that merely mention "logo" are photos, not logos).
+  */
   for (const tag of findTags({ html, tagName: "img" })) {
     const src = getAttribute({ tag, name: "src" });
     const alt = getAttribute({ tag, name: "alt" }) ?? "";
@@ -302,7 +334,9 @@ function harvestLogoCandidates({
       push({ raw: src, hint: `img${alt.length > 0 ? ` alt="${alt.slice(0, 60)}"` : ""}` });
     }
   }
-  // Icon links (favicon / apple-touch-icon) and og:image as weaker fallbacks.
+  /*
+    Icon links (favicon / apple-touch-icon) and og:image as weaker fallbacks.
+  */
   for (const tag of findTags({ html, tagName: "link" })) {
     const rel = (getAttribute({ tag, name: "rel" }) ?? "").toLowerCase();
     if (rel.includes("icon")) {
@@ -314,16 +348,18 @@ function harvestLogoCandidates({
   return candidates.slice(0, MAX_LOGO_CANDIDATES);
 }
 
-// ---------------------------------------------------------------------------
-// Stylesheets
-// ---------------------------------------------------------------------------
+/*
+  ---------------------------------------------------------------------------
+  Stylesheets
+  ---------------------------------------------------------------------------
+*/
 
-/**
- * Linked stylesheet URLs, same-origin ones first (most likely to be the
- * site's own styles), then cross-origin (modern sites serve their CSS from
- * CDNs — e.g. stripe.com's styles live on b.stripecdn.com). Every fetch
- * still goes through the SSRF guard and byte caps in fetch-page.ts.
- */
+/*
+  Linked stylesheet URLs, same-origin ones first (most likely to be the
+  site's own styles), then cross-origin (modern sites serve their CSS from
+  CDNs — e.g. stripe.com's styles live on b.stripecdn.com). Every fetch
+  still goes through the SSRF guard and byte caps in fetch-page.ts.
+*/
 function findStylesheetUrls({ html, baseUrl }: { html: string; baseUrl: string }): string[] {
   const pageOrigin = new URL(baseUrl).origin;
   const sameOriginUrls: string[] = [];
@@ -338,7 +374,9 @@ function findStylesheetUrls({ html, baseUrl }: { html: string; baseUrl: string }
       continue;
     }
     const resolved = resolveUrl({ raw: href, baseUrl });
-    // Google Fonts CSS is skipped — families are parsed from its URL instead.
+    /*
+      Google Fonts CSS is skipped — families are parsed from its URL instead.
+    */
     if (resolved === null || resolved.includes("fonts.googleapis.com")) {
       continue;
     }
@@ -353,15 +391,17 @@ function extractInlineCss(html: string): string {
   return `${styleBlocks.join("\n")}\n${styleAttributes.join("\n")}`;
 }
 
-// ---------------------------------------------------------------------------
-// Entry point
-// ---------------------------------------------------------------------------
+/*
+  ---------------------------------------------------------------------------
+  Entry point
+  ---------------------------------------------------------------------------
+*/
 
-/**
- * Harvest brand signals from a fetched page. `fetchCss` is injected by the
- * caller (the pipeline passes the guarded `fetchTextResource`; tests pass a
- * stub) — pass `null` to skip stylesheet fetching entirely.
- */
+/*
+  Harvest brand signals from a fetched page. `fetchCss` is injected by the
+  caller (the pipeline passes the guarded `fetchTextResource`; tests pass a
+  stub) — pass `null` to skip stylesheet fetching entirely.
+*/
 export async function harvestBrandSignals({
   html,
   finalUrl,
@@ -393,9 +433,11 @@ export async function harvestBrandSignals({
   const themeColorRaw = findMetaContent({ html, key: "theme-color" });
   const themeColor = themeColorRaw === null ? null : normalizeCssColor(themeColorRaw);
 
-  // Colors are scanned across the WHOLE document plus external CSS — brand
-  // colors frequently live outside <style> blocks (inline SVG fills, style
-  // attributes, framework-inlined props). <style> blocks are part of html.
+  /*
+    Colors are scanned across the WHOLE document plus external CSS — brand
+    colors frequently live outside <style> blocks (inline SVG fills, style
+    attributes, framework-inlined props). <style> blocks are part of html.
+  */
   const documentAndCss = [html, ...externalCssTexts].join("\n");
   const { rankedColors, accentCandidates } = rankColors({
     colors: [

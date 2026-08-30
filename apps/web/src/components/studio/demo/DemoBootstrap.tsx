@@ -12,31 +12,31 @@ import { ensureAnonymousIdentity } from "@/lib/auth/ensure-anonymous-identity";
 import { beginDemoSession } from "@/lib/demo/demo-session";
 import { getOrCreateSessionId } from "@/lib/session";
 
-/**
- * What /demo actually does: provision a scratch document, write the demo
- * preset into this browser, and hand over to the real studio.
- *
- * A PRESET OVER THE REAL STUDIO, not a second application (demo-mode.md §C).
- * Every surface the demo wants — the two agents on the canvas, time-travel
- * replay, the op inspector — is already gated on localStorage keys that the
- * settings FAB owns, so writing those keys buys the whole demo without a
- * single "…or we're in demo mode" branch anywhere in the studio. The demo is
- * honest about being the real product because it literally is the real route.
- *
- * A FRESH DOCUMENT PER VISIT, which is also the isolation story: presence
- * rooms are keyed per document, so two strangers arriving at the same moment
- * get two documents, two rooms and two sets of agent presence rows, and never
- * see each other. A single shared demo document would have made every visitor
- * an editor of the next visitor's demo. Nothing is added to the cleanup cron:
- * these are ordinary session documents that the existing 30-day sweep already
- * collects, and that cron has a data-loss history that makes new cleverness in
- * it a bad trade for tidiness.
- *
- * THE COST, stated plainly: after the redirect the address bar reads
- * /studio?doc=…, not /demo. Keeping the URL would mean teaching StudioShell's
- * ?doc= bookkeeping about a second route — a change to the most load-bearing
- * component in the app for a cosmetic gain.
- */
+/*
+  What /demo actually does: provision a scratch document, write the demo
+  preset into this browser, and hand over to the real studio.
+
+  A PRESET OVER THE REAL STUDIO, not a second application (demo-mode.md §C).
+  Every surface the demo wants — the two agents on the canvas, time-travel
+  replay, the op inspector — is already gated on localStorage keys that the
+  settings FAB owns, so writing those keys buys the whole demo without a
+  single "…or we're in demo mode" branch anywhere in the studio. The demo is
+  honest about being the real product because it literally is the real route.
+
+  A FRESH DOCUMENT PER VISIT, which is also the isolation story: presence
+  rooms are keyed per document, so two strangers arriving at the same moment
+  get two documents, two rooms and two sets of agent presence rows, and never
+  see each other. A single shared demo document would have made every visitor
+  an editor of the next visitor's demo. Nothing is added to the cleanup cron:
+  these are ordinary session documents that the existing 30-day sweep already
+  collects, and that cron has a data-loss history that makes new cleverness in
+  it a bad trade for tidiness.
+
+  THE COST, stated plainly: after the redirect the address bar reads
+  /studio?doc=…, not /demo. Keeping the URL would mean teaching StudioShell's
+  ?doc= bookkeeping about a second route — a change to the most load-bearing
+  component in the app for a cosmetic gain.
+*/
 export function DemoBootstrap() {
   const router = useRouter();
   const convexClient = useConvex();
@@ -49,26 +49,28 @@ export function DemoBootstrap() {
       return;
     }
     isProvisionRequestedRef.current = true;
-    /* IDENTITY FIRST, and sequenced rather than raced. A signed-out visitor
-       arriving here has no session, and /demo never shows them a login page
-       that could have asked for one. EditorEntrySignIn (lib/auth/
-       FlockAuthProvider.tsx) applies the same rule to this route, but it is
-       fire-and-forget — it starts an identity, it does not hold the demo back
-       until there is one. Awaiting it HERE is what guarantees the session
-       cookie exists while the visitor is still reading step 1, so the Convex
-       client is attaching a token long before step 3 asks it to write a
-       comment — the one demo beat whose mutation derives its owner from a
-       verified identity and refuses without one.
+    /*
+      IDENTITY FIRST, and sequenced rather than raced. A signed-out visitor
+      arriving here has no session, and /demo never shows them a login page
+      that could have asked for one. EditorEntrySignIn (lib/auth/
+      FlockAuthProvider.tsx) applies the same rule to this route, but it is
+      fire-and-forget — it starts an identity, it does not hold the demo back
+      until there is one. Awaiting it HERE is what guarantees the session
+      cookie exists while the visitor is still reading step 1, so the Convex
+      client is attaching a token long before step 3 asks it to write a
+      comment — the one demo beat whose mutation derives its owner from a
+      verified identity and refuses without one.
 
-       Both callers can fire in the same tick, and that is safe by design
-       rather than by luck: `ensureAnonymousIdentity` shares one in-flight
-       attempt, so the second caller awaits the first instead of minting a
-       rival anonymous user that would strand this document's owner.
+      Both callers can fire in the same tick, and that is safe by design
+      rather than by luck: `ensureAnonymousIdentity` shares one in-flight
+      attempt, so the second caller awaits the first instead of minting a
+      rival anonymous user that would strand this document's owner.
 
-       It never rejects: an unreachable auth flow resolves to "unavailable" and
-       the demo provisions anyway, because steps 1 and 2 need no identity. That
-       is what keeps the `.catch` below meaning "provisioning failed" and
-       nothing else — sign-in trouble must not raise the error screen. */
+      It never rejects: an unreachable auth flow resolves to "unavailable" and
+      the demo provisions anyway, because steps 1 and 2 need no identity. That
+      is what keeps the `.catch` below meaning "provisioning failed" and
+      nothing else — sign-in trouble must not raise the error screen.
+    */
     ensureAnonymousIdentity({
       isAuthEnabled: isAuthEnabled(),
       getSession: () => authClient.getSession(),
@@ -81,22 +83,26 @@ export function DemoBootstrap() {
           sessionId: getOrCreateSessionId(),
           name: "Demo draft",
           canvasTitle: "Flock demo",
-          /* The one flag that makes this route public-safe. It seeds the demo
-             email — the one with the two planted problems the agents are here
-             to find — and stamps `isDemo` on the row, which is what /api/chat
-             and /api/personas read to force the deterministic mock. The
-             authority is the ROW, deliberately: this browser can ask for a
-             demo document, but it cannot ask a demo document to spend real
-             inference. */
+          /*
+            The one flag that makes this route public-safe. It seeds the demo
+            email — the one with the two planted problems the agents are here
+            to find — and stamps `isDemo` on the row, which is what /api/chat
+            and /api/personas read to force the deterministic mock. The
+            authority is the ROW, deliberately: this browser can ask for a
+            demo document, but it cannot ask a demo document to spend real
+            inference.
+          */
           isDemo: true,
         }),
       )
       .then(({ documentId }) => {
-        /* Preset BEFORE the navigation: /studio mounts once, and it has to
-           mount with the two agents already enabled and the first-run tour
-           already suppressed — a studio that mounted first and was configured
-           afterwards would show a tour card over the demo and an empty
-           facepile for a beat. */
+        /*
+          Preset BEFORE the navigation: /studio mounts once, and it has to
+          mount with the two agents already enabled and the first-run tour
+          already suppressed — a studio that mounted first and was configured
+          afterwards would show a tour card over the demo and an empty
+          facepile for a beat.
+        */
         beginDemoSession({ documentId });
         router.replace(`/studio?doc=${documentId}`);
       })

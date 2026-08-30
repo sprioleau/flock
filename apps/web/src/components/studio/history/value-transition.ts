@@ -6,23 +6,23 @@ import {
 } from "@flock/email-sdk";
 import { humanizePropertyKey } from "./property-phrases";
 
-/**
- * Before/after glanceability for op-log rows: given one log entry's op and its
- * stored exact inverse, derive a compact typed transition the UI can render as
- * a chip (two color circles, "24 → 12px", "left → center", or a theme swatch
- * pair) — or null when a glance can't summarize the change (rich text edits,
- * structural ops, many-property updates).
- *
- * Direction convention: applying `op` took the document from state A to state
- * B and `inverse` takes it back, so BEFORE values come from the inverse
- * payload and AFTER values from the op payload. Undo/redo entries store their
- * own op/inverse pair (an undo's op IS the original edit's inverse), which
- * means the reversed display — undo of red→blue reads blue→red — falls out of
- * the same rule with no special-casing.
- *
- * Pure and framework-free on purpose: unit-tested directly, no React, no
- * Convex, no presence imports.
- */
+/*
+  Before/after glanceability for op-log rows: given one log entry's op and its
+  stored exact inverse, derive a compact typed transition the UI can render as
+  a chip (two color circles, "24 → 12px", "left → center", or a theme swatch
+  pair) — or null when a glance can't summarize the change (rich text edits,
+  structural ops, many-property updates).
+
+  Direction convention: applying `op` took the document from state A to state
+  B and `inverse` takes it back, so BEFORE values come from the inverse
+  payload and AFTER values from the op payload. Undo/redo entries store their
+  own op/inverse pair (an undo's op IS the original edit's inverse), which
+  means the reversed display — undo of red→blue reads blue→red — falls out of
+  the same rule with no special-casing.
+
+  Pure and framework-free on purpose: unit-tested directly, no React, no
+  Convex, no presence imports.
+*/
 
 export type ValueTransition =
   | { kind: "color"; property: string; before: string; after: string }
@@ -31,16 +31,22 @@ export type ValueTransition =
       property: string;
       before: number;
       after: number;
-      /** Display unit implied by the property ("" when it has none). */
+      /*
+        Display unit implied by the property ("" when it has none).
+      */
       unit: "px" | "%" | "";
     }
   | { kind: "text"; property: string; before: string; after: string }
   | { kind: "theme"; before: Required<GlobalStyles>; after: Required<GlobalStyles> };
 
-/** Longest string still readable at a glance ("left", "Shop now", a hex). */
+/*
+  Longest string still readable at a glance ("left", "Shop now", a hex).
+*/
 const MAX_GLANCEABLE_TEXT_LENGTH = 24;
 
-/** Properties whose numbers are pixel values. */
+/*
+  Properties whose numbers are pixel values.
+*/
 const PIXEL_PROPERTY_KEYS = new Set([
   "paddingTop",
   "paddingBottom",
@@ -63,13 +69,15 @@ const PIXEL_PROPERTY_KEYS = new Set([
   "imageBorderRadius",
 ]);
 
-/** Properties whose numbers are percentages. */
+/*
+  Properties whose numbers are percentages.
+*/
 const PERCENT_PROPERTY_KEYS = new Set(["widthPercent"]);
 
-/**
- * Above this many changed global-style keys, a root-properties swap reads as
- * a theme change and gets the swatch-pair treatment instead of per-key chips.
- */
+/*
+  Above this many changed global-style keys, a root-properties swap reads as
+  a theme change and gets the swatch-pair treatment instead of per-key chips.
+*/
 const THEME_LIKE_CHANGED_KEY_THRESHOLD = 3;
 
 function getNumberUnit(key: string): "px" | "%" | "" {
@@ -82,7 +90,9 @@ function getNumberUnit(key: string): "px" | "%" | "" {
   return "";
 }
 
-/** Cheap color check: hex, rgb()/rgba(), hsl()/hsla(). */
+/*
+  Cheap color check: hex, rgb()/rgba(), hsl()/hsla().
+*/
 function looksLikeColorValue(value: string): boolean {
   return (
     /^#(?:[0-9a-f]{3,4}|[0-9a-f]{6}|[0-9a-f]{8})$/i.test(value.trim()) ||
@@ -90,7 +100,9 @@ function looksLikeColorValue(value: string): boolean {
   );
 }
 
-/** Property names ending in Color are the cheap signal ("color" itself too). */
+/*
+  Property names ending in Color are the cheap signal ("color" itself too).
+*/
 function isColorPropertyKey(key: string): boolean {
   return /color$/i.test(key);
 }
@@ -105,15 +117,19 @@ function areValuesEqual(a: unknown, b: unknown): boolean {
   if (Object.is(a, b)) {
     return true;
   }
-  // Structured values (e.g. nested objects) count as changed keys but are
-  // never glanceable; a cheap JSON compare is enough to not overcount.
+  /*
+    Structured values (e.g. nested objects) count as changed keys but are
+    never glanceable; a cheap JSON compare is enough to not overcount.
+  */
   if (typeof a === "object" && typeof b === "object" && a !== null && b !== null) {
     return JSON.stringify(a) === JSON.stringify(b);
   }
   return false;
 }
 
-/** Union-key diff of two flat records, before/after per changed key. */
+/*
+  Union-key diff of two flat records, before/after per changed key.
+*/
 function diffRecords({
   before,
   after,
@@ -131,7 +147,9 @@ function diffRecords({
   return pairs;
 }
 
-/** Classify one changed pair as a glanceable transition, or null. */
+/*
+  Classify one changed pair as a glanceable transition, or null.
+*/
 function classifyPair(pair: ChangedPair): ValueTransition | null {
   const { key, before, after } = pair;
   const property = humanizePropertyKey(key);
@@ -156,12 +174,12 @@ function classifyPair(pair: ChangedPair): ValueTransition | null {
   return isShortText ? { kind: "text", property, before, after } : null;
 }
 
-/**
- * Chip policy over a set of changed keys: a single changed key shows its
- * transition when glanceable; a multi-key change stays with its text summary
- * UNLESS exactly one of the changed keys is a color — the one glance that
- * still pays for itself ("Updated padding and background color" + circles).
- */
+/*
+  Chip policy over a set of changed keys: a single changed key shows its
+  transition when glanceable; a multi-key change stays with its text summary
+  UNLESS exactly one of the changed keys is a color — the one glance that
+  still pays for itself ("Updated padding and background color" + circles).
+*/
 function pickTransition(pairs: ChangedPair[]): ValueTransition | null {
   if (pairs.length === 0) {
     return null;
@@ -182,7 +200,9 @@ function withGlobalDefaults(globals: GlobalStyles | undefined): Required<GlobalS
   return { ...DEFAULT_GLOBAL_STYLES, ...(globals ?? {}) };
 }
 
-/** Loosely-shaped op accessors (log payloads arrive as unknown from Convex). */
+/*
+  Loosely-shaped op accessors (log payloads arrive as unknown from Convex).
+*/
 function asOperation(raw: unknown): (Operation & Record<string, unknown>) | null {
   if (typeof raw !== "object" || raw === null || !("name" in raw)) {
     return null;
@@ -197,8 +217,10 @@ function getProperties(op: Record<string, unknown>): Record<string, unknown> | n
     : null;
 }
 
-/** Globals diff with renderer defaults filled in on BOTH sides, so a key
- *  going absent reads as "back to the default value", not a blank. */
+/*
+  Globals diff with renderer defaults filled in on BOTH sides, so a key
+   going absent reads as "back to the default value", not a blank.
+*/
 function diffGlobals({
   before,
   after,
@@ -212,7 +234,9 @@ function diffGlobals({
   });
 }
 
-/** Root-vs-root properties swap: compare the globals, theme-style when big. */
+/*
+  Root-vs-root properties swap: compare the globals, theme-style when big.
+*/
 function describeRootPropertiesSwap({
   beforeProperties,
   afterProperties,
@@ -233,12 +257,12 @@ function describeRootPropertiesSwap({
   return pickTransition(pairs);
 }
 
-/**
- * The glanceable before→after summary of one op-log entry, or null when the
- * change doesn't reduce to a glance. `op`/`inverse` are the entry's OWN
- * payloads — pass an undo entry's own pair to get the correctly reversed
- * display.
- */
+/*
+  The glanceable before→after summary of one op-log entry, or null when the
+  change doesn't reduce to a glance. `op`/`inverse` are the entry's OWN
+  payloads — pass an undo entry's own pair to get the correctly reversed
+  display.
+*/
 export function describeValueTransition({
   op: rawOp,
   inverse: rawInverse,
@@ -252,7 +276,9 @@ export function describeValueTransition({
     return null;
   }
 
-  // A theme apply (or its inverse re-applied by undo/redo): swatch pair.
+  /*
+    A theme apply (or its inverse re-applied by undo/redo): swatch pair.
+  */
   if (op.name === "applyTheme") {
     const beforeGlobals =
       inverse.name === "applyTheme"
@@ -270,8 +296,10 @@ export function describeValueTransition({
     };
   }
 
-  // Partial global-styles merge: before = inverse's root snapshot (or the
-  // renderer default when the key wasn't set), after = the op's values.
+  /*
+    Partial global-styles merge: before = inverse's root snapshot (or the
+    renderer default when the key wasn't set), after = the op's values.
+  */
   if (op.name === "updateDocumentSettings") {
     if (inverse.name !== "replaceBlockProperties") {
       return null;
@@ -288,9 +316,11 @@ export function describeValueTransition({
     return pickTransition(pairs);
   }
 
-  // Partial block-properties merge: before values live in the inverse's full
-  // property snapshot. Keys the block didn't have before (before undefined)
-  // have no glanceable "from" — classifyPair drops them.
+  /*
+    Partial block-properties merge: before values live in the inverse's full
+    property snapshot. Keys the block didn't have before (before undefined)
+    have no glanceable "from" — classifyPair drops them.
+  */
   if (op.name === "updateBlockProperties") {
     if (inverse.name !== "replaceBlockProperties" || inverse.blockId !== op.blockId) {
       return null;
@@ -308,9 +338,11 @@ export function describeValueTransition({
     return pickTransition(pairs);
   }
 
-  // Full property swaps — the shape undo/redo entries carry (an undo's op is
-  // the original edit's replaceBlockProperties inverse). Diff the two
-  // snapshots; on the root the diff is over globals and may be theme-sized.
+  /*
+    Full property swaps — the shape undo/redo entries carry (an undo's op is
+    the original edit's replaceBlockProperties inverse). Diff the two
+    snapshots; on the root the diff is over globals and may be theme-sized.
+  */
   if (op.name === "replaceBlockProperties") {
     if (inverse.name !== "replaceBlockProperties" || inverse.blockId !== op.blockId) {
       return null;
@@ -326,11 +358,15 @@ export function describeValueTransition({
     return pickTransition(diffRecords({ before: beforeProperties, after: afterProperties }));
   }
 
-  // Structural ops, text edits, unknown ops: no glanceable pair.
+  /*
+    Structural ops, text edits, unknown ops: no glanceable pair.
+  */
   return null;
 }
 
-/** Raw-value tooltip text for a chip ("background color: #ff0000 → #0000ff"). */
+/*
+  Raw-value tooltip text for a chip ("background color: #ff0000 → #0000ff").
+*/
 export function formatTransitionTooltip(transition: ValueTransition): string {
   if (transition.kind === "theme") {
     return `Theme: email ${transition.before.emailBackgroundColor} / content ${transition.before.contentBackgroundColor} → email ${transition.after.emailBackgroundColor} / content ${transition.after.contentBackgroundColor}`;

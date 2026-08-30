@@ -1,13 +1,13 @@
 import { describe, expect, it } from "vitest";
 import { FLOCK_USER_AGENT_TOKEN, isPathAllowedByRules, parseRobotsTxt } from "../robots";
 
-/**
- * robots.txt is one of the three named reasons a §7.4 fetch may not happen
- * (alongside paywalls and outright blocks), so its parsing and precedence get
- * the same scrutiny as the extractor: a wrong "allowed" reads a page we were
- * asked not to read, and a wrong "disallowed" refuses a page we could have
- * used honestly.
- */
+/*
+  robots.txt is one of the three named reasons a §7.4 fetch may not happen
+  (alongside paywalls and outright blocks), so its parsing and precedence get
+  the same scrutiny as the extractor: a wrong "allowed" reads a page we were
+  asked not to read, and a wrong "disallowed" refuses a page we could have
+  used honestly.
+*/
 
 function isAllowed({ body, path }: { body: string; path: string }): boolean {
   return isPathAllowedByRules({ groups: parseRobotsTxt(body), path });

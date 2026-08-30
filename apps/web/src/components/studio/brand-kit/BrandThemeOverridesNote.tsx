@@ -24,7 +24,9 @@
 export function BrandThemeOverridesNote({
   drafts,
 }: {
-  /* Structurally the query's draft rows, narrowed to what the note reads. */
+  /*
+    Structurally the query's draft rows, narrowed to what the note reads.
+  */
   drafts: readonly {
     name: string;
     parentVariation: { id: string; name: string } | null;

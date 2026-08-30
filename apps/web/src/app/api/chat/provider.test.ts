@@ -7,17 +7,17 @@ import {
 } from "./constants";
 import { resolveChatModel, selectChatProvider, type ResolveChatModelArgs } from "./provider";
 
-/**
- * Provider selection, rule by rule.
- *
- * The one that MUST NOT regress is "an unprivileged request cannot pick the
- * provider": `providerId` arrives from the browser, and honouring it without
- * the owner override would let any anonymous visitor choose which of the
- * owner's API keys their turn spends. It is asserted in BOTH directions —
- * ignored without the override, honoured with it — because a test that only
- * proves the deny path passes just as happily against code that denies
- * everyone.
- */
+/*
+  Provider selection, rule by rule.
+
+  The one that MUST NOT regress is "an unprivileged request cannot pick the
+  provider": `providerId` arrives from the browser, and honouring it without
+  the owner override would let any anonymous visitor choose which of the
+  owner's API keys their turn spends. It is asserted in BOTH directions —
+  ignored without the override, honoured with it — because a test that only
+  proves the deny path passes just as happily against code that denies
+  everyone.
+*/
 
 const PROVIDER_ENV_NAMES = [
   "FLOCK_CHAT_PROVIDER",
@@ -30,11 +30,11 @@ const originalEnv = new Map(
   PROVIDER_ENV_NAMES.map((name) => [name, process.env[name]] as const),
 );
 
-/**
- * A real `.env.local` on the developer's machine has both keys in it, so the
- * suite has to start from a KNOWN-empty environment rather than inherit one —
- * otherwise "no key configured" quietly becomes "the owner's key configured".
- */
+/*
+  A real `.env.local` on the developer's machine has both keys in it, so the
+  suite has to start from a KNOWN-empty environment rather than inherit one —
+  otherwise "no key configured" quietly becomes "the owner's key configured".
+*/
 beforeEach(() => {
   for (const name of PROVIDER_ENV_NAMES) {
     delete process.env[name];
@@ -51,7 +51,9 @@ afterEach(() => {
   }
 });
 
-/** Stands in for the deterministic mock model; identity is what we assert on. */
+/*
+  Stands in for the deterministic mock model; identity is what we assert on.
+*/
 const STUB_MOCK_MODEL = {
   specificationVersion: "v3",
   provider: "flock-test",
@@ -140,7 +142,9 @@ describe("a client-supplied providerId is a request, not a decision", () => {
     expect(select({ requestedProviderId: "gemini", hasOwnerOverride: true }).providerId).toBe(
       "gemini",
     );
-    // …and without the override the deployment default still stands.
+    /*
+      …and without the override the deployment default still stands.
+    */
     expect(select({ requestedProviderId: "gemini", hasOwnerOverride: false }).providerId).toBe(
       "openrouter",
     );
@@ -181,8 +185,10 @@ describe("a provider with no key cannot be selected", () => {
 
     const resolved = resolve({ requestedProviderId: "openrouter", hasOwnerOverride: true });
 
-    // Not "openrouter with an empty-string key" — that provider is simply not
-    // on the table, so no client is built for it at all.
+    /*
+      Not "openrouter with an empty-string key" — that provider is simply not
+      on the table, so no client is built for it at all.
+    */
     expect(resolved.providerId).toBe("gemini");
     expect(resolved.modelId).toBe(DEFAULT_GEMINI_MODEL_ID);
     expect(resolved.isUsingMockModel).toBe(false);
@@ -191,7 +197,9 @@ describe("a provider with no key cannot be selected", () => {
 
   it("falls back to OpenRouter when the deployment default has no key", () => {
     process.env.OPENROUTER_API_KEY = "test-openrouter-key";
-    // FLOCK_CHAT_PROVIDER unset → Gemini preferred, but Gemini has no key.
+    /*
+      FLOCK_CHAT_PROVIDER unset → Gemini preferred, but Gemini has no key.
+    */
     expect(select().providerId).toBe("openrouter");
   });
 
@@ -236,11 +244,11 @@ describe("the OpenRouter model id", () => {
 });
 
 describe("modelId is always the real id in play", () => {
-  /**
-   * The pipeline's latency log line is the only record of which model ran, so
-   * an empty string there is worse than a wrong one — the spike shipped `""`
-   * on every turn. Sweep every branch this module can take.
-   */
+  /*
+    The pipeline's latency log line is the only record of which model ran, so
+    an empty string there is worse than a wrong one — the spike shipped `""`
+    on every turn. Sweep every branch this module can take.
+  */
   it("is never empty, in any combination of env, override and request", () => {
     const keyCombinations = [
       {},

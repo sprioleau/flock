@@ -8,19 +8,19 @@ import schema from "@convex/schema";
 import { MOCK_BRAND_KIT } from "@/lib/brand-kit";
 import { DEFAULT_BRAND_KIT_NAME } from "@/lib/brand-kit-default";
 
-/**
- * THE STARTER KIT (docs/proposals/brand-kit-user-control.md §14.5c), end to end.
- *
- * The problem it exists for: every manual editor in `BrandKitPanel` is gated
- * behind a saved kit row, and the only way to get one was a successful website
- * scrape — so a bot-protected site (or no site) meant no colors, no fonts, no
- * tone of voice, no themes, no logo, and no way to bind a brand to the canvas.
- *
- * What only this file can prove is that the seeded row is a REAL kit rather
- * than a nicer-looking mock: that every editor the panel gates actually works
- * against it without a scrape, that a scrape then replaces it cleanly rather
- * than merging into it, and that seeding restyles nobody.
- */
+/*
+  THE STARTER KIT (docs/proposals/brand-kit-user-control.md §14.5c), end to end.
+
+  The problem it exists for: every manual editor in `BrandKitPanel` is gated
+  behind a saved kit row, and the only way to get one was a successful website
+  scrape — so a bot-protected site (or no site) meant no colors, no fonts, no
+  tone of voice, no themes, no logo, and no way to bind a brand to the canvas.
+
+  What only this file can prove is that the seeded row is a REAL kit rather
+  than a nicer-looking mock: that every editor the panel gates actually works
+  against it without a scrape, that a scrape then replaces it cleanly rather
+  than merging into it, and that seeding restyles nobody.
+*/
 
 const modules = import.meta.glob([
   "../../../../../../convex/**/*.{ts,js}",
@@ -55,7 +55,9 @@ async function getRootGlobals(
   return root?.properties.globals ?? {};
 }
 
-/** A scraped kit arriving over the same mutation the generate route uses. */
+/*
+  A scraped kit arriving over the same mutation the generate route uses.
+*/
 function buildScrapedKit() {
   return {
     name: "Acme Corp",
@@ -93,8 +95,10 @@ describe("startDefaultBrandKit — a way in without a scrape", () => {
     expect(kit.variations.map((variation) => variation.name)).toContain("Midnight");
     expect(kit.colors?.map((color) => color.name)).toEqual(["Black", "Charcoal", "White"]);
     expect(kit.toneOfVoice?.descriptors.length).toBeGreaterThan(0);
-    /* The logo is a SUGGESTION — unconfirmed, so nothing may write it into a
-       document until the user runs the confirm flow (owner decision 4). */
+    /*
+      The logo is a SUGGESTION — unconfirmed, so nothing may write it into a
+      document until the user runs the confirm flow (owner decision 4).
+    */
     expect(kit.logoUrl?.startsWith("data:image/svg+xml")).toBe(true);
     expect(kit.logoConfirmedAtMs).toBeUndefined();
   });
@@ -168,7 +172,9 @@ describe("the starter kit is fully editable without ever scraping a site", () =>
     expect(edited.toneOfVoice?.descriptors).toEqual(["warm"]);
     expect(edited.logoUrl).toBe("https://example.com/my-logo.png");
     expect(edited.variations.map((variation) => variation.id)).toContain("mine");
-    /* Renaming is one of the two gestures that make the kit the user's own. */
+    /*
+      Renaming is one of the two gestures that make the kit the user's own.
+    */
     expect(edited.isStarterKit).toBeUndefined();
   });
 
@@ -181,7 +187,9 @@ describe("the starter kit is fully editable without ever scraping a site", () =>
     await t.mutation(api.brandKits.bindSessionKitToCanvas, { canvasId, sessionId: SESSION_ID });
     const status = await t.query(api.brandKits.getCanvasBrandStatus, { canvasId });
     expect(status.binding?.name).toBe(DEFAULT_BRAND_KIT_NAME);
-    /* Binding still restyles nothing — the draft is offered an update, not given one. */
+    /*
+      Binding still restyles nothing — the draft is offered an update, not given one.
+    */
     expect(status.drafts.find((draft) => draft.documentId === documentId)).toBeDefined();
   });
 

@@ -27,7 +27,9 @@ import { internalMutation, mutation, query, type MutationCtx } from "./_generate
 
 export const presence = new Presence(components.presence);
 
-/** Resolve a roomId string to a live document id; throw otherwise. */
+/*
+  Resolve a roomId string to a live document id; throw otherwise.
+*/
 async function assertRoomIsLiveDocument(
   ctx: MutationCtx,
   roomId: string,
@@ -64,12 +66,16 @@ export const list = query({
       userId: v.string(),
       online: v.boolean(),
       lastDisconnected: v.number(),
-      /** PresenceData payload (client contract in apps/web/src/lib/presence.tsx). */
+      /*
+        PresenceData payload (client contract in apps/web/src/lib/presence.tsx).
+      */
       data: v.optional(v.any()),
     }),
   ),
   handler: async (ctx, { roomToken }) => {
-    // No per-user reads here, so every room member shares one cached query.
+    /*
+      No per-user reads here, so every room member shares one cached query.
+    */
     return await presence.list(ctx, roomToken);
   },
 });
@@ -78,7 +84,9 @@ export const disconnect = mutation({
   args: { sessionToken: v.string() },
   returns: v.null(),
   handler: async (ctx, { sessionToken }) => {
-    // Unauthenticated on purpose: called via navigator.sendBeacon (see above).
+    /*
+      Unauthenticated on purpose: called via navigator.sendBeacon (see above).
+    */
     return await presence.disconnect(ctx, sessionToken);
   },
 });
@@ -92,22 +100,30 @@ export const updateRoomUser = mutation({
   },
 });
 
-// ---------------------------------------------------------------------------
-// Agent presence (the "agent is editing…" indicator)
-// ---------------------------------------------------------------------------
+/*
+  ---------------------------------------------------------------------------
+  Agent presence (the "agent is editing…" indicator)
+  ---------------------------------------------------------------------------
+*/
 
-/** The agent's fixed presence userId — a first-class roster member. */
+/*
+  The agent's fixed presence userId — a first-class roster member.
+*/
 export const AGENT_PRESENCE_USER_ID = "agent";
-/** The agent's avatar/border color (violet — distinct from the human hue wheel). */
+/*
+  The agent's avatar/border color (violet — distinct from the human hue wheel).
+*/
 const AGENT_PRESENCE_COLOR = "#8b5cf6";
-/**
- * Agent heartbeat interval: the component marks a user offline 2.5× the
- * interval after its last heartbeat, so the agent avatar lingers ~12s after
- * its last edit and then drops off the facepile naturally — no explicit
- * disconnect needed.
- */
+/*
+  Agent heartbeat interval: the component marks a user offline 2.5× the
+  interval after its last heartbeat, so the agent avatar lingers ~12s after
+  its last edit and then drops off the facepile naturally — no explicit
+  disconnect needed.
+*/
 const AGENT_HEARTBEAT_INTERVAL_MS = 5000;
-/** How long the block-level "agent is editing…" pulse stays lit. */
+/*
+  How long the block-level "agent is editing…" pulse stays lit.
+*/
 const AGENT_EDIT_INDICATOR_MS = 2000;
 
 /**

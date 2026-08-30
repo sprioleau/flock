@@ -3,13 +3,13 @@ import type { TextMark } from "../../schema/text";
 import { createSectionComposer, paragraphNode, textDocOf, textRun } from "../build-helpers";
 import { defineSectionTemplate } from "../types";
 
-/**
- * `footer` — legal footing over a divider: secondary links, company line,
- * and an unsubscribe link, centered in small print. Reference:
- * react.email/components "footer-with-one-column" / "footer-with-two-columns"
- * (flattened). Small print is a fontSize-only textStyle mark — themes own all
- * colors and fonts, so the footer stays theme-native.
- */
+/*
+  `footer` — legal footing over a divider: secondary links, company line,
+  and an unsubscribe link, centered in small print. Reference:
+  react.email/components "footer-with-one-column" / "footer-with-two-columns"
+  (flattened). Small print is a fontSize-only textStyle mark — themes own all
+  colors and fonts, so the footer stays theme-native.
+*/
 
 const FOOTER_FONT_SIZE_MARK: TextMark = { type: "textStyle", attrs: { fontSize: "12px" } };
 
@@ -68,7 +68,9 @@ export const footerTemplate = defineSectionTemplate({
     listParams: [],
     imageCount: 0,
   },
-  /* The gallery shows a complete legal footing; a real one says only what it was told. */
+  /*
+    The gallery shows a complete legal footing; a real one says only what it was told.
+  */
   previewParams: {
     address: "123 Market Street, Suite 400, San Francisco, CA",
     links: [

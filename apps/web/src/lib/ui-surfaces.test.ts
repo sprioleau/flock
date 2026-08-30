@@ -1,17 +1,17 @@
 import { describe, expect, it, vi } from "vitest";
 import { createUiIntentChannel, getShouldHandleUiIntent } from "./ui-surfaces";
 
-/**
- * The named-intent seam, checked where it can be checked. vitest pins
- * `environment: "node"` for src/**, so the subscribing hook cannot be
- * rendered — but everything the hook is a thin wrapper around is either a
- * plain channel object or a pure predicate, and between them they hold the
- * two properties that would actually break callers:
- *
- * - a request FIRES EVERY TIME, including a repeat of the same name (the
- *   /demo bug was a press that produced nothing on the second try);
- * - a request reaches ONLY the host it names, and only once.
- */
+/*
+  The named-intent seam, checked where it can be checked. vitest pins
+  `environment: "node"` for src/**, so the subscribing hook cannot be
+  rendered — but everything the hook is a thin wrapper around is either a
+  plain channel object or a pure predicate, and between them they hold the
+  two properties that would actually break callers:
+
+  - a request FIRES EVERY TIME, including a repeat of the same name (the
+    /demo bug was a press that produced nothing on the second try);
+  - a request reaches ONLY the host it names, and only once.
+*/
 
 describe("an intent channel", () => {
   it("hands subscribers the name that was requested", () => {
@@ -74,8 +74,10 @@ describe("an intent channel", () => {
   });
 
   it("reports nothing requested during SSR", () => {
-    /* The live value here would be a hydration mismatch: the server never
-       issued the request the client is mid-way through handling. */
+    /*
+      The live value here would be a hydration mismatch: the server never
+      issued the request the client is mid-way through handling.
+    */
     const channel = createUiIntentChannel<"suggestions">();
     channel.request("suggestions");
 
@@ -95,8 +97,10 @@ describe("deciding whether a request is mine", () => {
   });
 
   it("ignores a request it has already run", () => {
-    /* Hosts re-render for reasons that have nothing to do with this seam; a
-       request must not be replayed on each one. */
+    /*
+      Hosts re-render for reasons that have nothing to do with this seam; a
+      request must not be replayed on each one.
+    */
     expect(
       getShouldHandleUiIntent({
         request: { name: "suggestions", requestId: 3 },

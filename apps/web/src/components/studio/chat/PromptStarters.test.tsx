@@ -62,7 +62,9 @@ function collectElements(node: ReactNode): ElementWithProps[] {
   return found;
 }
 
-/* The chips as a user meets them: buttons, named by the text they show. */
+/*
+  The chips as a user meets them: buttons, named by the text they show.
+*/
 function collectChips(node: ReactNode): { label: string; element: ElementWithProps }[] {
   return collectElements(node)
     .filter((element) => element.type === "button")
@@ -86,9 +88,11 @@ describe("clicking a starter", () => {
     clickChipLabelled(PromptStarters(), "Rewrite the opening");
 
     expect(handOffPromptToComposer).toHaveBeenCalledTimes(1);
-    /* The SEND seam exists on the same module and is deliberately unused here:
-       these prompts carry specifics the user is meant to replace, so firing one
-       unread would be asking the model to guess. */
+    /*
+      The SEND seam exists on the same module and is deliberately unused here:
+      these prompts carry specifics the user is meant to replace, so firing one
+      unread would be asking the model to guess.
+    */
     expect(sendPromptThroughComposer).not.toHaveBeenCalled();
   });
 
@@ -108,14 +112,18 @@ describe("the chips", () => {
     const labelsWithKit = collectChips(PromptStarters()).map((chip) => chip.label);
 
     expect(labelsWithoutKit).toContain(brandStarter!.label);
-    /* Proves the hook actually reaches the pure selection — a component that
-       ignored it would show the same four chips for ever. */
+    /*
+      Proves the hook actually reaches the pure selection — a component that
+      ignored it would show the same four chips for ever.
+    */
     expect(labelsWithKit).not.toContain(brandStarter!.label);
   });
 
   it("uses plain buttons, never a Base UI control", () => {
-    /* Base UI warnings are thrown errors in production; the sibling chat
-       surfaces hold the same line. */
+    /*
+      Base UI warnings are thrown errors in production; the sibling chat
+      surfaces hold the same line.
+    */
     for (const chip of collectChips(PromptStarters())) {
       expect(chip.element.type).toBe("button");
       expect(chip.element.props.type).toBe("button");

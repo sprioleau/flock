@@ -7,55 +7,89 @@ import {
 } from "../schema/ids";
 import type { EmailDocument } from "./document";
 
-/**
- * Referential-integrity checker for the flat document.
- *
- * Per-block SHAPE validation is Zod's job (blockSchema / emailDocumentSchema).
- * This checker validates the relationships BETWEEN blocks — things a
- * per-block schema cannot see — and is deliberately defensive: it re-checks
- * a few invariants the schemas already enforce (e.g. leaves having no
- * children) so it stays trustworthy on data that skipped schema validation.
- *
- * It returns structured errors rather than throwing; an empty error list
- * means the document is structurally sound and safe to inflate/render.
- */
+/*
+  Referential-integrity checker for the flat document.
+
+  Per-block SHAPE validation is Zod's job (blockSchema / emailDocumentSchema).
+  This checker validates the relationships BETWEEN blocks — things a
+  per-block schema cannot see — and is deliberately defensive: it re-checks
+  a few invariants the schemas already enforce (e.g. leaves having no
+  children) so it stays trustworthy on data that skipped schema validation.
+
+  It returns structured errors rather than throwing; an empty error list
+  means the document is structurally sound and safe to inflate/render.
+*/
 
 export type IntegrityErrorCode =
-  /** No block of type "root" exists. */
+  /*
+    No block of type "root" exists.
+  */
   | "missing_root"
-  /** More than one block of type "root" exists. */
+  /*
+    More than one block of type "root" exists.
+  */
   | "multiple_roots"
-  /** A root block has a non-null parentId. */
+  /*
+    A root block has a non-null parentId.
+  */
   | "root_has_parent"
-  /** A non-root block has a null/undefined parentId. */
+  /*
+    A non-root block has a null/undefined parentId.
+  */
   | "missing_parent"
-  /** A record key differs from the id of the block stored under it. */
+  /*
+    A record key differs from the id of the block stored under it.
+  */
   | "block_key_mismatch"
-  /** A block's parentId references an id not present in the document. */
+  /*
+    A block's parentId references an id not present in the document.
+  */
   | "parent_not_found"
-  /** A childrenIds entry references an id not present in the document. */
+  /*
+    A childrenIds entry references an id not present in the document.
+  */
   | "child_not_found"
-  /** child.parentId and the parent's childrenIds disagree. */
+  /*
+    child.parentId and the parent's childrenIds disagree.
+  */
   | "parent_child_mismatch"
-  /** A block appears more than once across childrenIds lists. */
+  /*
+    A block appears more than once across childrenIds lists.
+  */
   | "child_multiply_referenced"
-  /** A block is its own ancestor. */
+  /*
+    A block is its own ancestor.
+  */
   | "cycle_detected"
-  /** A block is not reachable from the root (an orphan or orphan island). */
+  /*
+    A block is not reachable from the root (an orphan or orphan island).
+  */
   | "unreachable_block"
-  /** A child's type is not allowed under its parent's type. */
+  /*
+    A child's type is not allowed under its parent's type.
+  */
   | "invalid_nesting"
-  /** A leaf block (text, button, image, divider) lists children. */
+  /*
+    A leaf block (text, button, image, divider) lists children.
+  */
   | "leaf_has_children";
 
-/** One structured integrity violation. */
+/*
+  One structured integrity violation.
+*/
 export interface IntegrityError {
   code: IntegrityErrorCode;
-  /** Human-readable explanation, safe to feed back to an LLM as a repair hint. */
+  /*
+    Human-readable explanation, safe to feed back to an LLM as a repair hint.
+  */
   message: string;
-  /** The primary offending block (when one exists). */
+  /*
+    The primary offending block (when one exists).
+  */
   blockId?: BlockId;
-  /** A second involved block (e.g. the parent in a pointer disagreement). */
+  /*
+    A second involved block (e.g. the parent in a pointer disagreement).
+  */
   relatedBlockId?: BlockId;
 }
 
@@ -64,10 +98,10 @@ export interface IntegrityCheckResult {
   errors: IntegrityError[];
 }
 
-/**
- * Which child block types each container type accepts.
- * root > section > (row | leaf) · row > column > leaf · leaves: none.
- */
+/*
+  Which child block types each container type accepts.
+  root > section > (row | leaf) · row > column > leaf · leaves: none.
+*/
 export const ALLOWED_CHILD_TYPES: Record<BlockType, readonly BlockType[]> = {
   root: ["section"],
   section: ["row", ...LEAF_BLOCK_TYPES],
@@ -86,12 +120,16 @@ function isLeafType(type: BlockType): type is LeafBlockType {
   return (LEAF_BLOCK_TYPES as readonly BlockType[]).includes(type);
 }
 
-/** Check every referential-integrity rule; never throws. */
+/*
+  Check every referential-integrity rule; never throws.
+*/
 export function checkDocumentIntegrity(document: EmailDocument): IntegrityCheckResult {
   const errors: IntegrityError[] = [];
   const entries = Object.entries(document) as [BlockId, Block][];
 
-  // --- Record keys must match block ids -----------------------------------
+  /*
+    --- Record keys must match block ids -----------------------------------
+  */
   for (const [key, block] of entries) {
     if (key !== block.id) {
       errors.push({
@@ -102,7 +140,9 @@ export function checkDocumentIntegrity(document: EmailDocument): IntegrityCheckR
     }
   }
 
-  // --- Exactly one root ----------------------------------------------------
+  /*
+    --- Exactly one root ----------------------------------------------------
+  */
   const rootBlocks = entries.map(([, block]) => block).filter((block) => block.type === "root");
   if (rootBlocks.length === 0) {
     errors.push({ code: "missing_root", message: "Document has no root block." });
@@ -117,11 +157,15 @@ export function checkDocumentIntegrity(document: EmailDocument): IntegrityCheckR
   }
   const root = rootBlocks.length === 1 ? rootBlocks[0] : undefined;
 
-  // --- Parent pointer presence ---------------------------------------------
+  /*
+    --- Parent pointer presence ---------------------------------------------
+  */
   for (const [, block] of entries) {
     if (block.type === "root") {
-      // Widen: the schema types say a root's parentId is always null, but
-      // this checker is deliberately defensive about unvalidated runtime data.
+      /*
+        Widen: the schema types say a root's parentId is always null, but
+        this checker is deliberately defensive about unvalidated runtime data.
+      */
       const rootParentId = block.parentId as BlockId | null;
       if (rootParentId !== null) {
         errors.push({
@@ -132,8 +176,10 @@ export function checkDocumentIntegrity(document: EmailDocument): IntegrityCheckR
       }
       continue;
     }
-    // Widen: the schema types say non-root parentId is always a string, but
-    // this checker is deliberately defensive about unvalidated runtime data.
+    /*
+      Widen: the schema types say non-root parentId is always a string, but
+      this checker is deliberately defensive about unvalidated runtime data.
+    */
     const parentId = block.parentId as BlockId | null | undefined;
     if (parentId === null || parentId === undefined) {
       errors.push({
@@ -153,7 +199,9 @@ export function checkDocumentIntegrity(document: EmailDocument): IntegrityCheckR
     }
   }
 
-  // --- Children: existence, exclusivity, agreement, nesting, leaf rule -----
+  /*
+    --- Children: existence, exclusivity, agreement, nesting, leaf rule -----
+  */
   const referenceCountByChildId = new Map<BlockId, number>();
 
   for (const [, block] of entries) {
@@ -213,7 +261,9 @@ export function checkDocumentIntegrity(document: EmailDocument): IntegrityCheckR
     }
   }
 
-  // A child referenced by more than one parent (cross-parent duplicates).
+  /*
+    A child referenced by more than one parent (cross-parent duplicates).
+  */
   for (const [childId, referenceCount] of referenceCountByChildId) {
     if (referenceCount > 1 && document[childId] !== undefined) {
       const listingParentIds = entries
@@ -229,7 +279,9 @@ export function checkDocumentIntegrity(document: EmailDocument): IntegrityCheckR
     }
   }
 
-  // A non-root block whose parent exists must be listed by that parent.
+  /*
+    A non-root block whose parent exists must be listed by that parent.
+  */
   for (const [, block] of entries) {
     if (block.type === "root" || block.parentId === null || block.parentId === undefined) {
       continue;
@@ -245,7 +297,9 @@ export function checkDocumentIntegrity(document: EmailDocument): IntegrityCheckR
     }
   }
 
-  // --- Cycles (walk each block's parent chain) ------------------------------
+  /*
+    --- Cycles (walk each block's parent chain) ------------------------------
+  */
   const knownCyclicIds = new Set<BlockId>();
   for (const [, block] of entries) {
     if (knownCyclicIds.has(block.id)) {
@@ -270,7 +324,9 @@ export function checkDocumentIntegrity(document: EmailDocument): IntegrityCheckR
     }
   }
 
-  // --- Reachability from the root ------------------------------------------
+  /*
+    --- Reachability from the root ------------------------------------------
+  */
   if (root !== undefined) {
     const reachableIds = new Set<BlockId>();
     const queue: BlockId[] = [root.id];

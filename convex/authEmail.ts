@@ -1,21 +1,23 @@
-/**
- * The one email auth sends: "here's your sign-in link."
- *
- * Delivered through Resend's REST API with plain `fetch` rather than the
- * `resend` SDK — this module is bundled into the Convex deployment, and a
- * two-field JSON POST is not worth pulling a Node-shaped dependency into that
- * bundle. The web app keeps using the SDK for test sends; nothing is shared
- * between the two paths except the API key.
- *
- * Failure policy: THROW. Better Auth surfaces a failed `sendMagicLink` to the
- * caller, and a silent success would leave someone staring at an inbox that
- * will never receive anything. A missing API key throws for the same reason —
- * it is a misconfiguration, not a runtime condition to paper over.
- */
+/*
+  The one email auth sends: "here's your sign-in link."
+
+  Delivered through Resend's REST API with plain `fetch` rather than the
+  `resend` SDK — this module is bundled into the Convex deployment, and a
+  two-field JSON POST is not worth pulling a Node-shaped dependency into that
+  bundle. The web app keeps using the SDK for test sends; nothing is shared
+  between the two paths except the API key.
+
+  Failure policy: THROW. Better Auth surfaces a failed `sendMagicLink` to the
+  caller, and a silent success would leave someone staring at an inbox that
+  will never receive anything. A missing API key throws for the same reason —
+  it is a misconfiguration, not a runtime condition to paper over.
+*/
 
 const RESEND_SEND_ENDPOINT = "https://api.resend.com/emails";
 
-/** Displayed in the email; kept here so the copy lives with the template. */
+/*
+  Displayed in the email; kept here so the copy lives with the template.
+*/
 const PRODUCT_NAME = "Flock";
 
 export async function sendMagicLinkEmail(args: {
@@ -73,10 +75,10 @@ function renderMagicLinkText(url: string): string {
   ].join("\n");
 }
 
-/**
- * Inline styles only, table-free, no external assets: this has to render in
- * every mail client, including the ones that strip <style> blocks.
- */
+/*
+  Inline styles only, table-free, no external assets: this has to render in
+  every mail client, including the ones that strip <style> blocks.
+*/
 function renderMagicLinkHtml(url: string): string {
   const safeUrl = escapeHtmlAttribute(url);
   return `<!doctype html>
@@ -108,7 +110,9 @@ function renderMagicLinkHtml(url: string): string {
 </html>`;
 }
 
-/** Enough for an href: the URL is Better Auth&rsquo;s own, never user text. */
+/*
+  Enough for an href: the URL is Better Auth&rsquo;s own, never user text.
+*/
 function escapeHtmlAttribute(value: string): string {
   return value
     .replaceAll("&", "&amp;")

@@ -11,17 +11,19 @@ export interface TextareaFieldProps {
   value: string;
   placeholder?: string;
   helpText?: string;
-  /** Extra classes on the textarea (e.g. a monospace font for code). */
+  /*
+    Extra classes on the textarea (e.g. a monospace font for code).
+  */
   textareaClassName?: string;
   onCommit: (value: string) => void;
 }
 
-/**
- * Multiline sibling of fields.tsx's TextField, for content where newlines are
- * meaningful (the code block's source). Same live-draft + coalescing wiring:
- * every keystroke commits instantly, one undo entry per gesture. Emptying the
- * field keeps the last valid value (the schema requires non-empty content).
- */
+/*
+  Multiline sibling of fields.tsx's TextField, for content where newlines are
+  meaningful (the code block's source). Same live-draft + coalescing wiring:
+  every keystroke commits instantly, one undo entry per gesture. Emptying the
+  field keeps the last valid value (the schema requires non-empty content).
+*/
 export function TextareaField({
   label,
   value,

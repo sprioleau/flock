@@ -15,7 +15,9 @@ import {
   type ScaffoldSectionInput,
 } from "./scaffold-section";
 
-/** Deterministic LCG so generated ids are reproducible. */
+/*
+  Deterministic LCG so generated ids are reproducible.
+*/
 function createSeededRandom(seed = 11): RandomFn {
   let state = seed;
   return () => {
@@ -32,7 +34,9 @@ const agentContext: ActionContext = {
   threadId: "thread_1",
 };
 
-// The sample document's top-level sections, top to bottom.
+/*
+  The sample document's top-level sections, top to bottom.
+*/
 const SAMPLE_SECTION_IDS = ["sec_a1b2", "sec_c3d4", "sec_e5f6"];
 
 describe("scaffoldSectionInputSchema", () => {
@@ -60,7 +64,9 @@ describe("scaffoldSectionInputSchema", () => {
         position: "top",
       }).success,
     ).toBe(true);
-    // The bare prefix is not a valid saved id.
+    /*
+      The bare prefix is not a valid saved id.
+    */
     expect(
       scaffoldSectionInputSchema.safeParse({ name: "scaffoldSection", templateId: "saved:" })
         .success,
@@ -107,16 +113,22 @@ describe("scaffoldSectionInputSchema", () => {
     if (parsed.success) return;
 
     const message = parsed.error.issues.map((issue) => issue.message).join(" ");
-    // The real problem, named.
+    /*
+      The real problem, named.
+    */
     expect(message).toContain("subheadline");
     expect(message).toContain("brandName");
-    // The valid vocabulary, so the model can map subheadline -> body itself.
+    /*
+      The valid vocabulary, so the model can map subheadline -> body itself.
+    */
     expect(message).toContain("headline");
     expect(message).toContain("body");
     expect(message).toContain("imageAlt");
     expect(message).toContain("ctaLabel");
     expect(message).toContain("ctaHref");
-    // The fallback branch's complaint must never be what the model is told.
+    /*
+      The fallback branch's complaint must never be what the model is told.
+    */
     expect(message).not.toContain("saved:");
   });
 
@@ -278,8 +290,10 @@ describe("resolveScaffoldSectionOperation", () => {
   });
 
   it("returns a saved-section repair hint when a saved id reaches the catalog resolver", () => {
-    // Saved ids resolve in the HOST app (which owns the subtrees); reaching
-    // this resolver means the row is gone or the host intercept was skipped.
+    /*
+      Saved ids resolve in the HOST app (which owns the subtrees); reaching
+      this resolver means the row is gone or the host intercept was skipped.
+    */
     const result = resolveScaffoldSectionOperation({
       doc,
       input: { name: "scaffoldSection", templateId: "saved:gone123" } as ScaffoldSectionInput,
@@ -329,7 +343,9 @@ describe("resolveScaffoldSectionOperation", () => {
   });
 
   it("re-builds with fresh ids when a generated id already exists in the document", () => {
-    // First resolution against the sample doc, with a fixed seed.
+    /*
+      First resolution against the sample doc, with a fixed seed.
+    */
     const first = resolveScaffoldSectionOperation({
       doc,
       input: { name: "scaffoldSection", templateId: "testimonial" },
@@ -337,7 +353,9 @@ describe("resolveScaffoldSectionOperation", () => {
     });
     expect(first.isOk).toBe(true);
     if (!first.isOk) return;
-    // Poison the doc with the id the SAME seed would generate first.
+    /*
+      Poison the doc with the id the SAME seed would generate first.
+    */
     const poisonedDoc = {
       ...doc,
       [first.op.section.id]: {
@@ -384,7 +402,9 @@ describe("scaffoldSection dispatch (registry end to end)", () => {
     expect(result.isOk).toBe(true);
     if (!result.isOk) return;
 
-    // The dispatch result carries the RESOLVED plain operation, not the intent.
+    /*
+      The dispatch result carries the RESOLVED plain operation, not the intent.
+    */
     expect(result.op.name).toBe("addSection");
     expect(result.context.batchId).toBe("batch_1");
     expect(checkDocumentIntegrity(result.doc).errors).toEqual([]);
@@ -392,7 +412,9 @@ describe("scaffoldSection dispatch (registry end to end)", () => {
     expect(root.childrenIds).toHaveLength(4);
     expect(JSON.stringify(result.doc)).toContain("Launch day");
 
-    // One undo step: the standard removeBlock inverse restores the doc exactly.
+    /*
+      One undo step: the standard removeBlock inverse restores the doc exactly.
+    */
     expect(result.inverse.name).toBe("removeBlock");
     const undone = applyOperation(result.doc, result.inverse);
     expect(undone.isOk).toBe(true);

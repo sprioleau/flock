@@ -2,35 +2,43 @@ import type { FunctionReturnType } from "convex/server";
 import type { api } from "@convex/_generated/api";
 import { describeEntryHuman, type DescribeEntryContext } from "./op-author";
 
-/**
- * Pure presentation helpers for the History panel: turning the flat
- * `documents.getOperations` log into newest-first display groups, and
- * describing rows in human terms. No React, no I/O.
- */
+/*
+  Pure presentation helpers for the History panel: turning the flat
+  `documents.getOperations` log into newest-first display groups, and
+  describing rows in human terms. No React, no I/O.
+*/
 
-/** One row of the getOperations page payload (typed off the query itself). */
+/*
+  One row of the getOperations page payload (typed off the query itself).
+*/
 export type OperationEntry = FunctionReturnType<
   typeof api.documents.getOperations
 >["operations"][number];
 
-/**
- * One display row: a run of consecutive operations sharing a defined batchId
- * (an agent turn, a batch revert, a rollback), or a single unbatched op.
- */
+/*
+  One display row: a run of consecutive operations sharing a defined batchId
+  (an agent turn, a batch revert, a rollback), or a single unbatched op.
+*/
 export interface HistoryGroup {
-  /** Newest version in the group — the group's identity and its preview/restore target. */
+  /*
+    Newest version in the group — the group's identity and its preview/restore target.
+  */
   latestVersion: number;
-  /** Shared batchId, or null for a single unbatched op. */
+  /*
+    Shared batchId, or null for a single unbatched op.
+  */
   batchId: string | null;
-  /** The group's entries, newest first. */
+  /*
+    The group's entries, newest first.
+  */
   entries: OperationEntry[];
 }
 
-/**
- * Collapse an ASCENDING operation list into newest-first groups: consecutive
- * ops sharing the same defined batchId become one group; every other op is
- * its own group.
- */
+/*
+  Collapse an ASCENDING operation list into newest-first groups: consecutive
+  ops sharing the same defined batchId become one group; every other op is
+  its own group.
+*/
 export function buildHistoryGroups(operationsAscending: OperationEntry[]): HistoryGroup[] {
   const groups: HistoryGroup[] = [];
   for (let index = operationsAscending.length - 1; index >= 0; index -= 1) {
@@ -48,11 +56,11 @@ export function buildHistoryGroups(operationsAscending: OperationEntry[]): Histo
   return groups;
 }
 
-/**
- * Title for a group row: specially-named batches get their own phrasing;
- * single entries delegate to the shared human labeler (op-author.ts — the
- * single source of truth; no op names or block ids ever surface here).
- */
+/*
+  Title for a group row: specially-named batches get their own phrasing;
+  single entries delegate to the shared human labeler (op-author.ts — the
+  single source of truth; no op names or block ids ever surface here).
+*/
 export function describeGroup({
   group,
   context,
@@ -64,9 +72,11 @@ export function describeGroup({
     const targetVersion = group.batchId.slice("rollback:".length);
     return `Restored to version ${targetVersion}`;
   }
-  // Stage M brand propagation: `brand:<kitId>:r<revision>:<documentId>` —
-  // one batch per draft, authored by the confirming user (op-author shows
-  // You/User); the prefix is the machine-readable provenance.
+  /*
+    Stage M brand propagation: `brand:<kitId>:r<revision>:<documentId>` —
+    one batch per draft, authored by the confirming user (op-author shows
+    You/User); the prefix is the machine-readable provenance.
+  */
   if (group.batchId !== null && group.batchId.startsWith("revert:brand:")) {
     return "Reverted the brand update";
   }
@@ -82,7 +92,9 @@ export function describeGroup({
   return `${group.entries.length} edits`;
 }
 
-/** Author badge text for a group ("You" needs the viewer's own authorId). */
+/*
+  Author badge text for a group ("You" needs the viewer's own authorId).
+*/
 export function getGroupAuthorLabel({
   group,
   viewerAuthorId,
@@ -97,7 +109,9 @@ export function getGroupAuthorLabel({
   return viewerAuthorId !== null && newestEntry.authorId === viewerAuthorId ? "You" : "User";
 }
 
-/** Compact relative timestamp ("just now", "5m ago", "2h ago", "3d ago"). */
+/*
+  Compact relative timestamp ("just now", "5m ago", "2h ago", "3d ago").
+*/
 export function formatRelativeTime(timestampMs: number, nowMs: number = Date.now()): string {
   const elapsedMs = Math.max(0, nowMs - timestampMs);
   const seconds = Math.floor(elapsedMs / 1000);

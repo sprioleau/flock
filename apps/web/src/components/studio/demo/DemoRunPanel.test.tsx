@@ -16,27 +16,29 @@ import {
   type DemoRunState,
 } from "@/lib/demo/demo-turns";
 
-/**
- * The demo card's SHAPE, checked the way this app checks components: there is
- * no DOM here (vitest.config.ts pins `environment: "node"`), so each view is
- * called as a plain function over its props and the element tree it returns is
- * walked. Layout is CSS and belongs to the browser pass; what this suite can
- * prove is everything that would be a real bug in front of a stranger:
- *
- * - the flow is STEPPED and MANUAL — one step on screen, Next inert until that
- *   step's work is done, and no step advancing itself;
- * - the card docks away from the half of the canvas it is describing;
- * - step 2 POINTS at the real recommendation cards and grows no Accept button
- *   of its own (see the component's own note for why that is architectural);
- * - the comment beat is driven by the choice the visitor picked;
- * - the run is disclosed as scripted EXACTLY ONCE, on the last step, beside
- *   the hand-off into a real session — and nowhere the visitor is still
- *   watching it, which is the owner's call about placement, not about honesty
- *   (the server logs stay blunt).
- */
+/*
+  The demo card's SHAPE, checked the way this app checks components: there is
+  no DOM here (vitest.config.ts pins `environment: "node"`), so each view is
+  called as a plain function over its props and the element tree it returns is
+  walked. Layout is CSS and belongs to the browser pass; what this suite can
+  prove is everything that would be a real bug in front of a stranger:
 
-// The container half reaches Convex, the editor store and the router; none of
-// that has any bearing on the trees these views return.
+  - the flow is STEPPED and MANUAL — one step on screen, Next inert until that
+    step's work is done, and no step advancing itself;
+  - the card docks away from the half of the canvas it is describing;
+  - step 2 POINTS at the real recommendation cards and grows no Accept button
+    of its own (see the component's own note for why that is architectural);
+  - the comment beat is driven by the choice the visitor picked;
+  - the run is disclosed as scripted EXACTLY ONCE, on the last step, beside
+    the hand-off into a real session — and nowhere the visitor is still
+    watching it, which is the owner's call about placement, not about honesty
+    (the server logs stay blunt).
+*/
+
+/*
+  The container half reaches Convex, the editor store and the router; none of
+  that has any bearing on the trees these views return.
+*/
 vi.mock("next/navigation", () => ({ useRouter: () => ({ push: vi.fn(), replace: vi.fn() }) }));
 vi.mock("@/lib/editor-store", () => ({
   useEditorStore: (selector: (state: unknown) => unknown) => selector({ documentId: null }),
@@ -88,12 +90,14 @@ function collectElements(node: ReactNode): ElementWithProps[] {
     const element = current as ElementWithProps;
     found.push(element);
     visit(element.props.children as ReactNode);
-    /* Base UI composes a trigger by taking the real control as a `render`
-       PROP rather than as a child — `<TooltipTrigger render={<Button …/>} />`
-       is how every tooltipped icon button in the studio is built. A walker
-       that followed children alone would report those controls as absent,
-       which is worse than a miss: the test would read as "this button does
-       not exist" when it is on screen and working. */
+    /*
+      Base UI composes a trigger by taking the real control as a `render`
+      PROP rather than as a child — `<TooltipTrigger render={<Button …/>} />`
+      is how every tooltipped icon button in the studio is built. A walker
+      that followed children alone would report those controls as absent,
+      which is worse than a miss: the test would read as "this button does
+      not exist" when it is on screen and working.
+    */
     visit(element.props.render as ReactNode);
   };
   visit(node);
@@ -113,8 +117,10 @@ function collectTestIds(node: ReactNode): string[] {
 function visibleText(node: ReactNode): string {
   const parts: string[] = [];
   const visit = (current: ReactNode): void => {
-    /* Numbers count: the step counter interpolates one, and a walker that
-       dropped it would read "Step  of 3" and still pass. */
+    /*
+      Numbers count: the step counter interpolates one, and a walker that
+      dropped it would read "Step  of 3" and still pass.
+    */
     if (typeof current === "string" || typeof current === "number") {
       parts.push(String(current));
       return;
@@ -131,14 +137,18 @@ function visibleText(node: ReactNode): string {
     visit((current as ElementWithProps).props.children as ReactNode);
   };
   visit(node);
-  /* Collapse the seams: adjacent children are joined with a space, so an
-     interpolated counter would otherwise read "Step  1  of  3". */
+  /*
+    Collapse the seams: adjacent children are joined with a space, so an
+    interpolated counter would otherwise read "Step  1  of  3".
+  */
   return parts.join(" ").replace(/\s+/g, " ").trim();
 }
 
 const noop = (): void => {};
 
-/* The run states a visitor can catch step 1 in. */
+/*
+  The run states a visitor can catch step 1 in.
+*/
 const IDLE_RUN = createDemoRunState();
 const FIRST_TURN_RUNNING = startNextTurn(IDLE_RUN);
 const FIRST_TURN_LANDED = completeRunningTurn({ state: FIRST_TURN_RUNNING, outcome: "completed" });
@@ -227,8 +237,10 @@ describe("the card's shape", () => {
       expect(visibleText(findByTestId(tree, "demo-step-counter"))).toContain(
         `Step ${index + 1} of 3`,
       );
-      // Exactly one step body is mounted — the whole complaint about what this
-      // replaced was that every beat was on screen simultaneously.
+      /*
+        Exactly one step body is mounted — the whole complaint about what this
+        replaced was that every beat was on screen simultaneously.
+      */
       const mountedSteps = collectElements(tree).filter((element) =>
         STEP_COMPONENTS.some((stepComponent) => stepComponent === element.type),
       );
@@ -237,9 +249,11 @@ describe("the card's shape", () => {
   });
 
   it("docks away from the half of the canvas the step is describing", () => {
-    // The rule and its derivation live in demo-steps.ts; what matters here is
-    // that the card WEARS the answer rather than hard-coding a position, so a
-    // step whose subject moves moves the card with it.
+    /*
+      The rule and its derivation live in demo-steps.ts; what matters here is
+      that the card WEARS the answer rather than hard-coding a position, so a
+      step whose subject moves moves the card with it.
+    */
     for (const stepId of ALL_STEP_IDS) {
       expect(renderCard({ stepId }).props["data-demo-dock"]).toBe(
         selectDemoCardDock(findDemoStep(stepId)),
@@ -286,7 +300,9 @@ describe("advancing", () => {
     );
     expect(ready?.props.disabled).toBe(false);
     expect(ready?.props.variant).toBe("default");
-    // And it still takes a press: nothing on this card moves on its own.
+    /*
+      And it still takes a press: nothing on this card moves on its own.
+    */
     (ready?.props.onClick as () => void)();
     expect(onNext).toHaveBeenCalledTimes(1);
   });
@@ -384,8 +400,10 @@ describe("step 2 — the recommendations", () => {
   });
 
   it("says so plainly when the agents posted nothing", () => {
-    // Sending a visitor to an empty list without a word reads as the agents
-    // having failed rather than as having found nothing.
+    /*
+      Sending a visitor to an empty list without a word reads as the agents
+      having failed rather than as having found nothing.
+    */
     expect(
       findByTestId(renderRecommendationsStep([]), "demo-recommendations-empty"),
     ).toBeDefined();
@@ -418,8 +436,10 @@ describe("step 3 — the comment round trip", () => {
       chosenChoiceId: DEMO_COMMENT_CHOICES[0]!.id,
     });
     expect(visibleText(findByTestId(waiting, "demo-comment-status"))).not.toContain("answered");
-    // The rewind is about "what just happened", so it waits for something to
-    // have happened.
+    /*
+      The rewind is about "what just happened", so it waits for something to
+      have happened.
+    */
     expect(findByTestId(waiting, "demo-rewind")).toBeUndefined();
 
     const answered = renderCommentsStep({
@@ -456,11 +476,15 @@ describe("the canvas dim", () => {
     );
     const scrimClassName = String(scrim?.props.className ?? "");
     expect(scrimClassName).toContain("pointer-events-none");
-    /* And it passes UNDER the card it is pointing at: a card dimmed by its own
-       scrim would say the opposite of what it is asking for. */
+    /*
+      And it passes UNDER the card it is pointing at: a card dimmed by its own
+      scrim would say the opposite of what it is asking for.
+    */
     expect(scrimClassName).toContain("z-30");
     expect(String(renderCard({ stepId: "recommendations" }).props.className)).toContain("z-40");
-    /* Nothing at all on step 1 — the agents on the canvas are the show. */
+    /*
+      Nothing at all on step 1 — the agents on the canvas are the show.
+    */
     expect(DemoCanvasScrim({ stepId: "watch", progress: UNFINISHED_PROGRESS })).toBeNull();
   });
 });
@@ -470,9 +494,13 @@ describe("disclosing the script", () => {
     const disclosure = findByTestId(renderCommentsStep(), "demo-mock-disclosure");
     expect(visibleText(disclosure)).toContain("scripted");
     expect(visibleText(disclosure)).toContain("prepared in advance");
-    /* And it does not disown the half that was real, which is most of it. */
+    /*
+      And it does not disown the half that was real, which is most of it.
+    */
     expect(visibleText(disclosure)).toContain("real undo");
-    /* Exactly once: not on the steps the visitor is still watching. */
+    /*
+      Exactly once: not on the steps the visitor is still watching.
+    */
     expect(findByTestId(renderWatchStep(RUN_FINISHED), "demo-mock-disclosure")).toBeUndefined();
     expect(
       findByTestId(renderRecommendationsStep(), "demo-mock-disclosure"),
@@ -483,9 +511,11 @@ describe("disclosing the script", () => {
   });
 
   it("never calls anything a mock on a surface a stranger is judging", () => {
-    /* Owner decision 2026-08-17: the word belongs in the logs, not stamped
-       across a product surface. A visitor taught to read every recommendation
-       as fake learns nothing about what the agents actually say. */
+    /*
+      Owner decision 2026-08-17: the word belongs in the logs, not stamped
+      across a product surface. A visitor taught to read every recommendation
+      as fake learns nothing about what the agents actually say.
+    */
     const everything = [
       ...ALL_STEP_IDS.map((stepId) => visibleText(renderCard({ stepId }))),
       visibleText(renderWatchStep(FIRST_TURN_RUNNING)),

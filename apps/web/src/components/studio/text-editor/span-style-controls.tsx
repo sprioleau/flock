@@ -12,24 +12,28 @@ import { HighlighterIcon } from "lucide-react";
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { EMAIL_SAFE_FONT_OPTIONS } from "./email-safe-fonts";
 
-/**
- * Span-level typography controls for the inline-editor bubble menu: font
- * family, font size, text color, and highlight. The Resend BubbleMenu ships
- * no TextStyle-family selectors, so these compose its primitives
- * (BubbleMenuItem + the --re-* theme variables via classes in
- * inline-text-editor.css) around the official Tiptap extension commands
- * (setFontFamily / setFontSize / setColor / setHighlight).
- *
- * INVARIANT (session-close logic): every popover renders in place — NO
- * portal — so it stays inside the editor wrapper and an open dropdown never
- * trips InlineTextEditor's outside-pointerdown commit.
- */
+/*
+  Span-level typography controls for the inline-editor bubble menu: font
+  family, font size, text color, and highlight. The Resend BubbleMenu ships
+  no TextStyle-family selectors, so these compose its primitives
+  (BubbleMenuItem + the --re-* theme variables via classes in
+  inline-text-editor.css) around the official Tiptap extension commands
+  (setFontFamily / setFontSize / setColor / setHighlight).
 
-/** Font sizes offered for spans, in px. The block defaults (14px paragraphs,
- * 32/24/20px headings) come from the renderer; a span mark overrides them. */
+  INVARIANT (session-close logic): every popover renders in place — NO
+  portal — so it stays inside the editor wrapper and an open dropdown never
+  trips InlineTextEditor's outside-pointerdown commit.
+*/
+
+/*
+  Font sizes offered for spans, in px. The block defaults (14px paragraphs,
+  32/24/20px headings) come from the renderer; a span mark overrides them.
+*/
 const FONT_SIZE_OPTIONS = ["12px", "14px", "16px", "18px", "20px", "24px", "28px", "32px"] as const;
 
-/** Email-safe text colors (hex only — every client supports inline hex). */
+/*
+  Email-safe text colors (hex only — every client supports inline hex).
+*/
 const TEXT_COLOR_OPTIONS = [
   "#1a1a2e",
   "#6b7280",
@@ -43,7 +47,9 @@ const TEXT_COLOR_OPTIONS = [
   "#ffffff",
 ] as const;
 
-/** Soft background colors that keep dark text readable. */
+/*
+  Soft background colors that keep dark text readable.
+*/
 const HIGHLIGHT_COLOR_OPTIONS = [
   "#fff3a3",
   "#fecaca",
@@ -59,16 +65,18 @@ interface SpanControlShellProps {
   name: string;
   isActive: boolean;
   trigger: ReactNode;
-  /** Popover content; call `close` after applying a selection. */
+  /*
+    Popover content; call `close` after applying a selection.
+  */
   children: (close: () => void) => ReactNode;
 }
 
-/**
- * Trigger button (BubbleMenuItem, matching the B/I/U/S look) + in-place
- * popover. The popover closes on pointerdown outside the control and on
- * Escape (capture-phase, stopping propagation so an open popover swallows
- * the Escape instead of the editor committing the session).
- */
+/*
+  Trigger button (BubbleMenuItem, matching the B/I/U/S look) + in-place
+  popover. The popover closes on pointerdown outside the control and on
+  Escape (capture-phase, stopping propagation so an open popover swallows
+  the Escape instead of the editor committing the session).
+*/
 function SpanControlShell({ name, isActive, trigger, children }: SpanControlShellProps) {
   const [isOpen, setIsOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -103,7 +111,9 @@ function SpanControlShell({ name, isActive, trigger, children }: SpanControlShel
         name={name}
         isActive={isActive || isOpen}
         onCommand={() => setIsOpen((wasOpen) => !wasOpen)}
-        // Keep the editor's selection: never let the trigger steal focus.
+        /*
+          Keep the editor's selection: never let the trigger steal focus.
+        */
         onPointerDown={(event) => event.preventDefault()}
       >
         {trigger}
@@ -163,7 +173,9 @@ function SwatchGrid({ colors, activeColor, onSelect }: SwatchGridProps) {
   );
 }
 
-/** Reactive read of the selection's textStyle/highlight attrs. */
+/*
+  Reactive read of the selection's textStyle/highlight attrs.
+*/
 function useSpanStyleState(editor: Editor) {
   return useEditorState({
     editor,

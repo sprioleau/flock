@@ -16,7 +16,9 @@ import {
   type SectionTemplate,
 } from "./types";
 
-/** Deterministic LCG so ids (and therefore HTML snapshots) are stable. */
+/*
+  Deterministic LCG so ids (and therefore HTML snapshots) are stable.
+*/
 function createSeededRandom(seed = 7): RandomFn {
   let state = seed;
   return () => {
@@ -39,7 +41,9 @@ function parseDemoParams(
   return template.paramsSchema.parse({ ...getPreviewParams(template), ...overrides });
 }
 
-/** Build a template with default params into an empty document. */
+/*
+  Build a template with default params into an empty document.
+*/
 function scaffoldIntoEmptyDocument(template: SectionTemplate, seed = 7): EmailDocument {
   const params: unknown = parseDemoParams(template, {});
   const built = template.build({ params, random: createSeededRandom(seed) });
@@ -54,9 +58,11 @@ function scaffoldIntoEmptyDocument(template: SectionTemplate, seed = 7): EmailDo
   return result.doc;
 }
 
-// Theme fixtures mirroring the app's Classic Light / Midnight brand-kit
-// variations — the theme-native contract: the SAME scaffolded section must
-// take ALL its colors/fonts from whichever globals the document carries.
+/*
+  Theme fixtures mirroring the app's Classic Light / Midnight brand-kit
+  variations — the theme-native contract: the SAME scaffolded section must
+  take ALL its colors/fonts from whichever globals the document carries.
+*/
 const CLASSIC_LIGHT: GlobalStyles = {
   emailBackgroundColor: "#eef1f6",
   contentBackgroundColor: "#ffffff",
@@ -90,7 +96,9 @@ function withGlobals(doc: EmailDocument, globals: GlobalStyles): EmailDocument {
   return result.doc;
 }
 
-/** Property keys the templates must NEVER emit — themes own these. */
+/*
+  Property keys the templates must NEVER emit — themes own these.
+*/
 const THEME_OWNED_PROPERTY_KEYS = [
   "textColor",
   "backgroundColor",
@@ -138,7 +146,9 @@ describe("the section catalog", () => {
     for (const template of SECTION_TEMPLATES) {
       expect(SECTION_CATEGORIES).toContain(template.category);
       expect(template.useWhen.trim().length).toBeGreaterThan(20);
-      // One crisp sentence: a single terminal period.
+      /*
+        One crisp sentence: a single terminal period.
+      */
       expect(template.useWhen.trim().split(". ")).toHaveLength(1);
       expect(getSectionTemplate(template.id)).toBe(template);
     }
@@ -175,8 +185,10 @@ describe.each(SECTION_TEMPLATES.map((template) => [template.id, template] as con
             for (const inline of node.content ?? []) {
               if (inline.type !== "text") continue;
               for (const mark of inline.marks ?? []) {
-                // fontSize-only textStyle marks are allowed (structural small
-                // print); colors and font families belong to the theme.
+                /*
+                  fontSize-only textStyle marks are allowed (structural small
+                  print); colors and font families belong to the theme.
+                */
                 if (mark.type === "textStyle") {
                   expect(mark.attrs.color).toBeUndefined();
                   expect(mark.attrs.fontFamily).toBeUndefined();
@@ -209,8 +221,10 @@ describe.each(SECTION_TEMPLATES.map((template) => [template.id, template] as con
       const doc = scaffoldIntoEmptyDocument(template);
       const lightHtml = await renderToHTML(withGlobals(doc, CLASSIC_LIGHT));
       const darkHtml = await renderToHTML(withGlobals(doc, MIDNIGHT));
-      // The dark render must carry ZERO of the light theme's palette and
-      // vice versa — proof that no color was baked into the scaffold.
+      /*
+        The dark render must carry ZERO of the light theme's palette and
+        vice versa — proof that no color was baked into the scaffold.
+      */
       for (const lightColor of Object.values(CLASSIC_LIGHT)) {
         expect(darkHtml).not.toContain(String(lightColor));
       }
@@ -338,7 +352,9 @@ describe("template-specific structure", () => {
       params: parseDemoParams(featureList, {}),
       random: createSeededRandom(),
     });
-    // 3 default features → text, divider, text, divider, text.
+    /*
+      3 default features → text, divider, text, divider, text.
+    */
     expect(built.children.map((block) => block.type)).toEqual([
       "text",
       "divider",
@@ -545,7 +561,9 @@ describe("a section built from only the content its caller supplied", () => {
 });
 
 describe("chrome the caller did not supply is left out, not invented", () => {
-  /** Build one template from exactly these params, with stable ids. */
+  /*
+    Build one template from exactly these params, with stable ids.
+  */
   function buildFrom(templateId: string, params: Record<string, unknown>) {
     const template = getSectionTemplate(templateId)!;
     const parsed: unknown = template.paramsSchema.parse(params);
@@ -562,7 +580,9 @@ describe("chrome the caller did not supply is left out, not invented", () => {
   ] as const)("%s: no button at all when the plan named no call to action", (templateId, copy) => {
     const built = buildFrom(templateId, { ...copy });
     expect(built.children.some((block) => block.type === "button")).toBe(false);
-    /* …and the section is still worth having: its real copy is all there. */
+    /*
+      …and the section is still worth having: its real copy is all there.
+    */
     const serialized = JSON.stringify(built.children);
     for (const value of Object.values(copy)) {
       if (typeof value === "string") expect(serialized).toContain(value);
@@ -630,7 +650,9 @@ describe("chrome the caller did not supply is left out, not invented", () => {
     expect(serialized).not.toContain(SAMPLE_POSTAL_ADDRESS);
     expect(serialized).toContain("Wes Bos");
     expect(serialized).toContain("Courses");
-    /* The unsubscribe merge tag is legally required chrome and never dropped. */
+    /*
+      The unsubscribe merge tag is legally required chrome and never dropped.
+    */
     expect(serialized).toContain("*|UNSUB|*");
     expect(built.children.filter((block) => block.type === "column")).toHaveLength(2);
 
@@ -644,7 +666,9 @@ describe("chrome the caller did not supply is left out, not invented", () => {
     const serialized = JSON.stringify(buildFrom("footer", { companyName: "Wes Bos" }).children);
     expect(serialized).not.toContain("Privacy");
     expect(serialized).not.toContain("Terms");
-    /* The unsubscribe link is legally required chrome and never dropped. */
+    /*
+      The unsubscribe link is legally required chrome and never dropped.
+    */
     expect(serialized).toContain("*|UNSUB|*");
   });
 
@@ -660,13 +684,17 @@ describe("chrome the caller did not supply is left out, not invented", () => {
       const serialized = JSON.stringify(built.children);
       expect(serialized).toContain("Wes Bos logo");
       expect(serialized).not.toContain(SAMPLE_POSTAL_ADDRESS);
-      /* Every surviving destination is a nav link, and nothing else is. */
+      /*
+        Every surviving destination is a nav link, and nothing else is.
+      */
       const destinations = [...serialized.matchAll(/"href":"([^"]*)"/g)].map((match) => match[1]!);
       expect(destinations.length).toBeGreaterThan(0);
       expect(
         destinations.every((href) => href.startsWith(`https://${UNOWNED_DESTINATION_DOMAIN}/`)),
       ).toBe(true);
-      /* …and the caller can still ask for a header with no nav bar at all. */
+      /*
+        …and the caller can still ask for a header with no nav bar at all.
+      */
       expect(buildFrom(templateId, { brandName: "Wes Bos", navLinks: [] }).children).toHaveLength(1);
     },
   );

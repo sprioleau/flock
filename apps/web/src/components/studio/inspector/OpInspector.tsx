@@ -41,28 +41,32 @@ import {
 import { BeforeAfterChip } from "../history/BeforeAfterChip";
 import { describeValueTransition } from "../history/value-transition";
 
-/** Rows fetched per "load earlier" step (and the initial window). */
+/*
+  Rows fetched per "load earlier" step (and the initial window).
+*/
 const INSPECTOR_PAGE_SIZE = 100;
 
-/**
- * Size of the reactive head window (getOperations clamps to 200). Unlike the
- * History panel, the inspector RE-ANCHORS when the window saturates (see the
- * effect below), so it keeps streaming through arbitrarily long agent storms.
- */
+/*
+  Size of the reactive head window (getOperations clamps to 200). Unlike the
+  History panel, the inspector RE-ANCHORS when the window saturates (see the
+  effect below), so it keeps streaming through arbitrarily long agent storms.
+*/
 const HEAD_WINDOW_LIMIT = 200;
 
-/** Scrolling up further than this from the bottom pauses auto-follow. */
+/*
+  Scrolling up further than this from the bottom pauses auto-follow.
+*/
 const FOLLOW_PAUSE_THRESHOLD_PX = 48;
 
-/**
- * The "Op log" toolbar toggle + bottom console: the document's operation log,
- * live and technical. Oldest at top, newest at bottom, auto-following like a
- * terminal; scrolling up pauses the follow and new rows accrue behind a
- * "resume" pill. Rows are author-colored (agent / demo agent / suggestion /
- * ghost / per-user hues — the same identity hash presence uses) and clustered
- * by batchId; expanding a row reveals the raw op + inverse JSON. Read-only:
- * one reactive `getOperations` subscription, zero mutations.
- */
+/*
+  The "Op log" toolbar toggle + bottom console: the document's operation log,
+  live and technical. Oldest at top, newest at bottom, auto-following like a
+  terminal; scrolling up pauses the follow and new rows accrue behind a
+  "resume" pill. Rows are author-colored (agent / demo agent / suggestion /
+  ghost / per-user hues — the same identity hash presence uses) and clustered
+  by batchId; expanding a row reveals the raw op + inverse JSON. Read-only:
+  one reactive `getOperations` subscription, zero mutations.
+*/
 export function OpInspector() {
   const { isOpInspectorEnabled } = useAppSettings();
   const convexClient = useConvex();
@@ -71,11 +75,17 @@ export function OpInspector() {
   const serverHeadVersion = useEditorStore((state) => state.serverHeadVersion);
 
   const [isOpen, setIsOpen] = useState(false);
-  /** Lower bound of the reactive head window (re-anchored on saturation). */
+  /*
+    Lower bound of the reactive head window (re-anchored on saturation).
+  */
   const [anchorSinceVersion, setAnchorSinceVersion] = useState<number | null>(null);
-  /** Accumulated rows below the anchor (ascending): paged-back + re-anchored. */
+  /*
+    Accumulated rows below the anchor (ascending): paged-back + re-anchored.
+  */
   const [olderOperations, setOlderOperations] = useState<OperationEntry[]>([]);
-  /** The version cursor "load earlier" pages back from. */
+  /*
+    The version cursor "load earlier" pages back from.
+  */
   const [oldestSinceVersion, setOldestSinceVersion] = useState(0);
   const [isLoadingOlder, setIsLoadingOlder] = useState(false);
   const [isFollowing, setIsFollowing] = useState(true);
@@ -84,7 +94,9 @@ export function OpInspector() {
 
   const scrollContainerRef = useRef<HTMLDivElement | null>(null);
   const lastSeenVersionRef = useRef(0);
-  /** Newest version already moved out of the head window (re-anchor guard). */
+  /*
+    Newest version already moved out of the head window (re-anchor guard).
+  */
   const lastReanchoredVersionRef = useRef(0);
 
   useEffect(() => {
@@ -110,7 +122,9 @@ export function OpInspector() {
     }
   };
 
-  // The live feed: fixed lower bound, reactive — new ops stream in.
+  /*
+    The live feed: fixed lower bound, reactive — new ops stream in.
+  */
   const headPage = useQuery(
     api.documents.getOperations,
     isOpen && documentId !== null && anchorSinceVersion !== null
@@ -118,9 +132,11 @@ export function OpInspector() {
       : "skip",
   );
 
-  // Saturation re-anchor: when the head window fills its 200-row clamp, move
-  // its rows into the accumulated list and re-anchor at the newest version,
-  // so a long-running storm keeps streaming instead of silently capping.
+  /*
+    Saturation re-anchor: when the head window fills its 200-row clamp, move
+    its rows into the accumulated list and re-anchor at the newest version,
+    so a long-running storm keeps streaming instead of silently capping.
+  */
   useEffect(() => {
     if (headPage === undefined || headPage.operations.length < HEAD_WINDOW_LIMIT) {
       return;
@@ -161,9 +177,11 @@ export function OpInspector() {
       ? operationsAscending[operationsAscending.length - 1]!.version
       : 0;
 
-  // Console follow: when a newer version lands, stick to the bottom if
-  // following, otherwise count it behind the resume pill. Keyed on the
-  // newest VERSION (not row count) so "load earlier" prepends never scroll.
+  /*
+    Console follow: when a newer version lands, stick to the bottom if
+    following, otherwise count it behind the resume pill. Keyed on the
+    newest VERSION (not row count) so "load earlier" prepends never scroll.
+  */
   useEffect(() => {
     if (!isOpen || latestVersion <= lastSeenVersionRef.current) {
       return;
@@ -204,28 +222,38 @@ export function OpInspector() {
     setUnseenCount(0);
   };
 
-  // buildHistoryGroups returns newest-first; the console reads oldest → newest.
+  /*
+    buildHistoryGroups returns newest-first; the console reads oldest → newest.
+  */
   const groupsAscending = buildHistoryGroups(operationsAscending)
     .reverse()
     .map((group) => ({ ...group, entries: [...group.entries].reverse() }));
-  // Version lookup so undo/redo row labels can name the change they reversed.
+  /*
+    Version lookup so undo/redo row labels can name the change they reversed.
+  */
   const entryByVersion = new Map(operationsAscending.map((entry) => [entry.version, entry]));
   const describeContext: DescribeEntryContext = {
     getEntryByVersion: (version) => entryByVersion.get(version),
   };
 
-  // Hidden unless enabled via the settings FAB (after the hooks above, per
-  // the rules of hooks). Unmounting also closes an open console on disable.
+  /*
+    Hidden unless enabled via the settings FAB (after the hooks above, per
+    the rules of hooks). Unmounting also closes an open console on disable.
+  */
   if (!isOpInspectorEnabled) {
     return null;
   }
 
   return (
-    // disablePointerDismissal: a console should keep streaming while the
-    // user edits the canvas — close is the header chevron or Escape.
+    /*
+      disablePointerDismissal: a console should keep streaming while the
+      user edits the canvas — close is the header chevron or Escape.
+    */
     <Sheet open={isOpen} onOpenChange={handleOpenChange} modal={false} disablePointerDismissal>
-      {/* Tooltip + sheet trigger on ONE element (base-ui render composition)
-          — icon-only, so hover must say what it opens. */}
+      {/*
+        Tooltip + sheet trigger on ONE element (base-ui render composition)
+        — icon-only, so hover must say what it opens.
+      */}
       <TooltipProvider>
         <Tooltip>
           <TooltipTrigger
@@ -248,8 +276,10 @@ export function OpInspector() {
         className="z-40 h-[320px] gap-0 p-0"
         data-testid="op-inspector-panel"
       >
-        {/* Content is centered in a max-w column so it stays readable in the
-            gap between the (z-50) side sheets when those are open too. */}
+        {/*
+          Content is centered in a max-w column so it stays readable in the
+          gap between the (z-50) side sheets when those are open too.
+        */}
         <div className="border-b px-3 py-1.5">
           <div className="mx-auto flex w-full max-w-3xl items-center gap-2">
           <SquareTerminalIcon className="size-3.5 text-muted-foreground" />
@@ -361,10 +391,10 @@ export function OpInspector() {
   );
 }
 
-/**
- * One batch cluster (or a single unbatched op): batched groups get a colored
- * left rail + a tiny header naming the batch kind and row count.
- */
+/*
+  One batch cluster (or a single unbatched op): batched groups get a colored
+  left rail + a tiny header naming the batch kind and row count.
+*/
 function InspectorGroup({
   group,
   describeContext,
@@ -420,7 +450,9 @@ function InspectorGroup({
   );
 }
 
-/** One op row: human label collapsed, raw op + inverse JSON when expanded. */
+/*
+  One op row: human label collapsed, raw op + inverse JSON when expanded.
+*/
 function InspectorRow({
   entry,
   describeContext,

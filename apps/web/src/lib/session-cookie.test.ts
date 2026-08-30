@@ -1,11 +1,11 @@
 import { describe, expect, it } from "vitest";
 import { getSessionIdFromCookieHeader, SESSION_COOKIE_NAME } from "./session-cookie";
 
-/**
- * The session cookie is how server-side API routes (the chat route's
- * generateImage executor) learn which anonymous session is calling — parsing
- * must survive multi-cookie headers, encoding, and absence.
- */
+/*
+  The session cookie is how server-side API routes (the chat route's
+  generateImage executor) learn which anonymous session is calling — parsing
+  must survive multi-cookie headers, encoding, and absence.
+*/
 describe("getSessionIdFromCookieHeader", () => {
   it("finds the session id among other cookies", () => {
     const header = `theme=dark; ${SESSION_COOKIE_NAME}=abc-123; other=x`;

@@ -1,16 +1,18 @@
-/**
- * Social profile link classification — shared by the brand-kit extraction
- * ladder (server), the kit card, and the footer fill affordance (client).
- * Pure string/URL logic: NO node imports (must stay client-safe).
- *
- * Canonicalization stance: scheme forced to https, host lowercased with a
- * leading "www." stripped, query/hash/trailing-slash dropped. The HOST the
- * site published is kept (twitter.com is not rewritten to x.com — we never
- * invent URLs the brand didn't publish); the PLATFORM key still classifies
- * both hosts as "x".
- */
+/*
+  Social profile link classification — shared by the brand-kit extraction
+  ladder (server), the kit card, and the footer fill affordance (client).
+  Pure string/URL logic: NO node imports (must stay client-safe).
 
-/** The platforms the brand kit recognizes (owner list, item 26). */
+  Canonicalization stance: scheme forced to https, host lowercased with a
+  leading "www." stripped, query/hash/trailing-slash dropped. The HOST the
+  site published is kept (twitter.com is not rewritten to x.com — we never
+  invent URLs the brand didn't publish); the PLATFORM key still classifies
+  both hosts as "x".
+*/
+
+/*
+  The platforms the brand kit recognizes (owner list, item 26).
+*/
 export type SocialPlatform =
   | "x"
   | "facebook"
@@ -20,13 +22,17 @@ export type SocialPlatform =
   | "github"
   | "tiktok";
 
-/** One brand social profile: platform key + canonical profile URL. */
+/*
+  One brand social profile: platform key + canonical profile URL.
+*/
 export interface BrandSocialLink {
   platform: SocialPlatform;
   url: string;
 }
 
-/** User-facing platform names (link labels/chips — never the raw keys). */
+/*
+  User-facing platform names (link labels/chips — never the raw keys).
+*/
 export const SOCIAL_PLATFORM_LABELS: Record<SocialPlatform, string> = {
   x: "X",
   facebook: "Facebook",
@@ -37,7 +43,9 @@ export const SOCIAL_PLATFORM_LABELS: Record<SocialPlatform, string> = {
   tiktok: "TikTok",
 };
 
-/** Display/priority order for chips, fills, and dedupe (owner's big three first). */
+/*
+  Display/priority order for chips, fills, and dedupe (owner's big three first).
+*/
 export const SOCIAL_PLATFORM_ORDER: readonly SocialPlatform[] = [
   "x",
   "facebook",
@@ -51,9 +59,13 @@ export const SOCIAL_PLATFORM_ORDER: readonly SocialPlatform[] = [
 interface PlatformRule {
   platform: SocialPlatform;
   hosts: string[];
-  /** Path prefixes that are share/intent chrome, never a profile. */
+  /*
+    Path prefixes that are share/intent chrome, never a profile.
+  */
   blockedPathPrefixes: string[];
-  /** When set, the first path segment must match to count as a profile. */
+  /*
+    When set, the first path segment must match to count as a profile.
+  */
   requiredFirstSegmentPattern?: RegExp;
 }
 
@@ -77,7 +89,9 @@ const PLATFORM_RULES: PlatformRule[] = [
     platform: "linkedin",
     hosts: ["linkedin.com"],
     blockedPathPrefixes: ["sharearticle", "sharing", "shareactive", "feed"],
-    // Profiles live under /company/, /in/, /school/ or /showcase/.
+    /*
+      Profiles live under /company/, /in/, /school/ or /showcase/.
+    */
     requiredFirstSegmentPattern: /^(company|in|school|showcase)$/,
   },
   {
@@ -97,11 +111,11 @@ const PLATFORM_RULES: PlatformRule[] = [
   },
 ];
 
-/**
- * Classify a URL as a social PROFILE link, canonicalized — or null for
- * anything else (share/intent chrome, posts, non-social hosts, bare
- * platform homepages).
- */
+/*
+  Classify a URL as a social PROFILE link, canonicalized — or null for
+  anything else (share/intent chrome, posts, non-social hosts, bare
+  platform homepages).
+*/
 export function classifySocialUrl(rawUrl: string): BrandSocialLink | null {
   let url: URL;
   try {
@@ -122,7 +136,7 @@ export function classifySocialUrl(rawUrl: string): BrandSocialLink | null {
   const pathSegments = url.pathname.split("/").filter((segment) => segment.length > 0);
   const [firstSegment] = pathSegments;
   if (firstSegment === undefined) {
-    return null; // a bare platform homepage is not the brand's profile
+    return null; /* a bare platform homepage is not the brand's profile */
   }
   if (rule.blockedPathPrefixes.includes(firstSegment.toLowerCase())) {
     return null;
@@ -137,10 +151,10 @@ export function classifySocialUrl(rawUrl: string): BrandSocialLink | null {
   return { platform: rule.platform, url: `https://${host}${canonicalPath}` };
 }
 
-/**
- * Dedupe to at most ONE link per platform (first occurrence wins — callers
- * order candidates by source authority), sorted in platform display order.
- */
+/*
+  Dedupe to at most ONE link per platform (first occurrence wins — callers
+  order candidates by source authority), sorted in platform display order.
+*/
 export function dedupeSocialLinks(links: BrandSocialLink[]): BrandSocialLink[] {
   const byPlatform = new Map<SocialPlatform, BrandSocialLink>();
   for (const link of links) {

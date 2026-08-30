@@ -57,7 +57,9 @@ export interface ForcedMockInputs {
     only — never a body field, never a header, never inferred from a referrer.
   */
   isDemoDocument: boolean;
-  /* Did the request carry `x-flock-mock: 1`? A request for less spend. */
+  /*
+    Did the request carry `x-flock-mock: 1`? A request for less spend.
+  */
   isMockRequestedByClient: boolean;
 }
 

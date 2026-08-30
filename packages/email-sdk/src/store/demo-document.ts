@@ -60,8 +60,10 @@ import type { EmailDocument } from "./document";
     └─ sec_foot → div_foot, txt_foot
 */
 
-/* The roaster's green, on the hero CTA. The second button's divergence from
-   it is measured against this exact value by the findings fixture. */
+/*
+  The roaster's green, on the hero CTA. The second button's divergence from
+  it is measured against this exact value by the findings fixture.
+*/
 const BRAND_GREEN = "#1f6f5c";
 
 export function createDemoDocument(): EmailDocument {
@@ -88,9 +90,11 @@ export function createDemoDocument(): EmailDocument {
       childrenIds: [],
       properties: {
         src: "https://placehold.co/280x80/1f6f5c/f8fafc.png?text=Harborlight",
-        /* "<Brand> logo" on the FIRST image in reading order is the convention
-           deriveDraftContentClues reads the brand name off — same rule as the
-           starter document. */
+        /*
+          "<Brand> logo" on the FIRST image in reading order is the convention
+          deriveDraftContentClues reads the brand name off — same rule as the
+          starter document.
+        */
         alt: "Harborlight Coffee logo",
         width: 140,
         align: "left",
@@ -169,8 +173,10 @@ export function createDemoDocument(): EmailDocument {
       parentId: "sec_urge",
       childrenIds: [],
       properties: {
-        /* THE TONE PLANT. Pressure, guilt and shouted urgency, dropped into a
-           letter that is otherwise written like a note to a regular. */
+        /*
+          THE TONE PLANT. Pressure, guilt and shouted urgency, dropped into a
+          letter that is otherwise written like a note to a regular.
+        */
         text: {
           type: "doc",
           content: [
@@ -317,9 +323,11 @@ export function createDemoDocument(): EmailDocument {
       type: "button",
       parentId: "sec_shop",
       childrenIds: [],
-      /* THE STYLING PLANT. Same kind of ask as `btn_prim`, three properties
-         adrift from it: an orange that is nowhere else in the email, a much
-         rounder corner, and a different alignment. */
+      /*
+        THE STYLING PLANT. Same kind of ask as `btn_prim`, three properties
+        adrift from it: an orange that is nowhere else in the email, a much
+        rounder corner, and a different alignment.
+      */
       properties: {
         label: "Shop the spring lineup",
         href: "https://harborlightcoffee.example.com/shop",

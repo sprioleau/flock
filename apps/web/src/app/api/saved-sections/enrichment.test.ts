@@ -8,11 +8,11 @@ import {
   savedSectionEnrichmentSchema,
 } from "./enrichment";
 
-/**
- * The DETERMINISTIC enrichment path (mock header / no API key / model
- * failure): pure structural analysis — the quota-free floor every saved row
- * gets. The model path shares the output schema pinned here.
- */
+/*
+  The DETERMINISTIC enrichment path (mock header / no API key / model
+  failure): pure structural analysis — the quota-free floor every saved row
+  gets. The model path shares the output schema pinned here.
+*/
 
 function buildFooterSubtree(): Block[] {
   return [
@@ -76,7 +76,9 @@ describe("analyzeSectionSubtree (pure structural read)", () => {
   it("reads rows/columns, headings, and button labels from a real section", () => {
     const doc = createSampleDocument();
     const root = doc[ROOT_BLOCK_ID]!;
-    // Analyze every sample section; at least one must show layout + a button.
+    /*
+      Analyze every sample section; at least one must show layout + a button.
+    */
     const inventories = root.childrenIds.map((sectionId) =>
       analyzeSectionSubtree(collectSectionSubtree({ doc, sectionId })!),
     );
@@ -90,7 +92,9 @@ describe("buildDeterministicEnrichment", () => {
     const enrichment = buildDeterministicEnrichment(buildFooterSubtree());
     expect(enrichment.useWhen).toContain("closing footer");
     expect(enrichment.description).toContain("legal/unsubscribe");
-    // Output shape matches the model path's schema.
+    /*
+      Output shape matches the model path's schema.
+    */
     expect(savedSectionEnrichmentSchema.safeParse(enrichment).success).toBe(true);
   });
 

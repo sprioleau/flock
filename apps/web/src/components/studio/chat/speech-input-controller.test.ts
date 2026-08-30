@@ -6,11 +6,11 @@ import {
   type SpeechRecognitionLike,
 } from "./speech-input-controller";
 
-/**
- * Mock of the browser SpeechRecognition object: records configuration and
- * start/stop/abort calls, and lets tests drive the event handlers directly
- * (the vitest environment is node — there is no real Web Speech API here).
- */
+/*
+  Mock of the browser SpeechRecognition object: records configuration and
+  start/stop/abort calls, and lets tests drive the event handlers directly
+  (the vitest environment is node — there is no real Web Speech API here).
+*/
 class MockRecognition implements SpeechRecognitionLike {
   lang = "";
   continuous = true;
@@ -34,7 +34,9 @@ class MockRecognition implements SpeechRecognitionLike {
     this.abortCallCount += 1;
   }
 
-  /** Simulates a `result` event from (transcript, isFinal) segment pairs. */
+  /*
+    Simulates a `result` event from (transcript, isFinal) segment pairs.
+  */
   emitResults(segments: Array<{ transcript: string; isFinal: boolean }>): void {
     this.onresult?.({
       results: segments.map((segment) => ({
@@ -130,7 +132,9 @@ describe("createSpeechInputController", () => {
     controller.start("");
     recognitions[0].emitResults([{ transcript: "shrink the footer", isFinal: false }]);
     recognitions[0].onend?.();
-    // The interim text the user watched appear survives the end of session.
+    /*
+      The interim text the user watched appear survives the end of session.
+    */
     expect(transcriptUpdates).toEqual(["shrink the footer", "shrink the footer"]);
     expect(listeningUpdates).toEqual([true, false]);
     expect(controller.getIsListening()).toBe(false);
@@ -149,7 +153,9 @@ describe("createSpeechInputController", () => {
     controller.start("");
     controller.stop();
     expect(recognitions[0].stopCallCount).toBe(1);
-    // The real service fires `end` asynchronously after stop():
+    /*
+      The real service fires `end` asynchronously after stop():
+    */
     recognitions[0].onend?.();
     expect(listeningUpdates).toEqual([true, false]);
   });
@@ -188,7 +194,9 @@ describe("createSpeechInputController", () => {
     expect(recognitions[0].onend).toBeNull();
     expect(controller.getIsListening()).toBe(false);
     expect(listeningUpdates).toEqual([true, false]);
-    // No commit after abort — the owner is gone (unmount path).
+    /*
+      No commit after abort — the owner is gone (unmount path).
+    */
     expect(transcriptUpdates).toEqual(["half a sentence"]);
   });
 
@@ -213,7 +221,9 @@ describe("getSpeechErrorMessage", () => {
     "returns curated copy for %s",
     (code) => {
       const message = getSpeechErrorMessage(code);
-      // Full user-facing sentences — never the bare developer error code.
+      /*
+        Full user-facing sentences — never the bare developer error code.
+      */
       expect(message).not.toBe(code);
       expect(message).toMatch(/^[A-Z].*\.$/);
     },

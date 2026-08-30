@@ -253,7 +253,9 @@ describe("assets.remove", () => {
     });
     await seedDraftUsingImage(t, { sessionId: SESSION_ID, draftName: "Spring sale", url });
 
-    /* The user does what the refusal told them to: swap the image out. */
+    /*
+      The user does what the refusal told them to: swap the image out.
+    */
     await t.run(async (ctx) => {
       const blockRow = await ctx.db.query("blocks").first();
       if (blockRow !== null) {
@@ -338,7 +340,9 @@ describe("with verified identities, a quoted session id buys nothing", () => {
       name: "hero.png",
     });
 
-    /* Verbatim replay of the owner's published session id. */
+    /*
+      Verbatim replay of the owner's published session id.
+    */
     await expect(
       stranger.mutation(api.assets.rename, { sessionId: SESSION_ID, assetId, name: "mine now" }),
     ).rejects.toThrow(/different library/);

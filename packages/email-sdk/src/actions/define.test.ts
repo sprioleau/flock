@@ -193,15 +193,15 @@ describe("resolveNeedsApproval", () => {
   });
 });
 
-/**
- * The authorization gate. What each test here is pinning:
- *
- * The gate is composed INTO `run`, so these assertions are about the callable
- * every dispatch site reaches, not about a flag someone has to remember to
- * consult. The load-bearing assertion in the denial cases is `hasRunBody`
- * staying false — "an error came back" would also be true of a gate that ran
- * the body and complained afterwards, which is not a gate.
- */
+/*
+  The authorization gate. What each test here is pinning:
+
+  The gate is composed INTO `run`, so these assertions are about the callable
+  every dispatch site reaches, not about a flag someone has to remember to
+  consult. The load-bearing assertion in the denial cases is `hasRunBody`
+  staying false — "an error came back" would also be true of a gate that ran
+  the body and complained afterwards, which is not a gate.
+*/
 describe("authorize", () => {
   it("leaves an action with no authorize exactly as it was", () => {
     let hasRunBody = false;
@@ -388,15 +388,15 @@ describe("authorize", () => {
   });
 });
 
-/**
- * The DECLARED verified-caller requirement — the `resultSource`-shaped answer
- * to "who may call this".
- *
- * What each test pins: the requirement gates `run` on its own, with no
- * `authorize` hook anywhere; the three non-verified states are told apart
- * rather than collapsed; and the one state an action can legitimately choose
- * to run in has to be chosen, in the definition, out loud.
- */
+/*
+  The DECLARED verified-caller requirement — the `resultSource`-shaped answer
+  to "who may call this".
+
+  What each test pins: the requirement gates `run` on its own, with no
+  `authorize` hook anywhere; the three non-verified states are told apart
+  rather than collapsed; and the one state an action can legitimately choose
+  to run in has to be chosen, in the definition, out loud.
+*/
 describe("requiresVerifiedCaller", () => {
   function defineGuardedAction(requirement: VerifiedCallerRequirement) {
     return defineEmailAction({

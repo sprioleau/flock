@@ -35,30 +35,32 @@ import { BeforeAfterChip } from "./BeforeAfterChip";
 import { describeValueTransition } from "./value-transition";
 import { VersionPreview } from "./VersionPreview";
 
-/** Rows fetched per "load older" step (and the size of the initial window). */
+/*
+  Rows fetched per "load older" step (and the size of the initial window).
+*/
 const HISTORY_PAGE_SIZE = 50;
 
-/**
- * Headroom the reactive head window keeps above the page size, so edits made
- * while the panel is open keep streaming into the SAME query (its
- * sinceVersion anchor is fixed at open time; getOperations clamps limit to
- * 200).
- */
+/*
+  Headroom the reactive head window keeps above the page size, so edits made
+  while the panel is open keep streaming into the SAME query (its
+  sinceVersion anchor is fixed at open time; getOperations clamps limit to
+  200).
+*/
 const HEAD_WINDOW_LIMIT = 200;
 
-/**
- * The "History" toolbar button + right-side drawer: the document's version
- * log, newest first, grouped by batchId (agent turns / reverts / rollbacks
- * collapse into one row). Non-modal on purpose — the canvas and chat stay
- * interactive, and because the newest window is a live `useQuery`, an edit
- * made while the drawer is open appears at the top in real time.
- *
- * Paging: the reactive head window is anchored at (head - page) when the
- * drawer opens; older rows are pulled on demand with one-off queries using
- * the version cursor (`sinceVersion`), exploiting that versions are dense.
- * Clicking a row swaps the drawer body to a read-only preview of that
- * version (VersionPreview) with the restore affordance.
- */
+/*
+  The "History" toolbar button + right-side drawer: the document's version
+  log, newest first, grouped by batchId (agent turns / reverts / rollbacks
+  collapse into one row). Non-modal on purpose — the canvas and chat stay
+  interactive, and because the newest window is a live `useQuery`, an edit
+  made while the drawer is open appears at the top in real time.
+
+  Paging: the reactive head window is anchored at (head - page) when the
+  drawer opens; older rows are pulled on demand with one-off queries using
+  the version cursor (`sinceVersion`), exploiting that versions are dense.
+  Clicking a row swaps the drawer body to a read-only preview of that
+  version (VersionPreview) with the restore affordance.
+*/
 export function HistoryPanel() {
   const convexClient = useConvex();
   const documentId = useEditorStore((state) => state.documentId);
@@ -66,15 +68,23 @@ export function HistoryPanel() {
   const serverHeadVersion = useEditorStore((state) => state.serverHeadVersion);
 
   const [isOpen, setIsOpen] = useState(false);
-  /** Fixed lower bound of the reactive head window (set when the drawer opens). */
+  /*
+    Fixed lower bound of the reactive head window (set when the drawer opens).
+  */
   const [anchorSinceVersion, setAnchorSinceVersion] = useState<number | null>(null);
-  /** Accumulated older rows (ascending), fetched imperatively below the anchor. */
+  /*
+    Accumulated older rows (ascending), fetched imperatively below the anchor.
+  */
   const [olderOperations, setOlderOperations] = useState<OperationEntry[]>([]);
-  /** The version cursor the next "load older" pages back from. */
+  /*
+    The version cursor the next "load older" pages back from.
+  */
   const [oldestSinceVersion, setOldestSinceVersion] = useState(0);
   const [isLoadingOlder, setIsLoadingOlder] = useState(false);
   const [selectedVersion, setSelectedVersion] = useState<number | null>(null);
-  // Keep relative timestamps fresh while the drawer sits open.
+  /*
+    Keep relative timestamps fresh while the drawer sits open.
+  */
   const [nowMs, setNowMs] = useState(() => Date.now());
 
   useEffect(() => {
@@ -97,11 +107,15 @@ export function HistoryPanel() {
     }
   };
 
-  // Agent-parity: the chat's openPanel("history") command opens this drawer
-  // through the same anchor-on-open path as a human click.
+  /*
+    Agent-parity: the chat's openPanel("history") command opens this drawer
+    through the same anchor-on-open path as a human click.
+  */
   useUiSurfaceOpenRequest("history", () => handleOpenChange(true));
 
-  // The live newest-first feed: fixed anchor, reactive — new ops stream in.
+  /*
+    The live newest-first feed: fixed anchor, reactive — new ops stream in.
+  */
   const headPage = useQuery(
     api.documents.getOperations,
     isOpen && documentId !== null && anchorSinceVersion !== null
@@ -118,8 +132,10 @@ export function HistoryPanel() {
     setIsLoadingOlder(true);
     try {
       const nextSinceVersion = Math.max(0, oldestSinceVersion - HISTORY_PAGE_SIZE);
-      // Versions are dense, so this exact limit returns precisely the rows
-      // (nextSinceVersion, oldestSinceVersion] — no overlap with what's loaded.
+      /*
+        Versions are dense, so this exact limit returns precisely the rows
+        (nextSinceVersion, oldestSinceVersion] — no overlap with what's loaded.
+      */
       const page = await convexClient.query(api.documents.getOperations, {
         documentId,
         sinceVersion: nextSinceVersion,
@@ -135,7 +151,9 @@ export function HistoryPanel() {
   const isListLoading = headPage === undefined;
   const operationsAscending = [...olderOperations, ...(headPage?.operations ?? [])];
   const groups = buildHistoryGroups(operationsAscending);
-  // Version lookup so undo/redo rows can name the change they reversed.
+  /*
+    Version lookup so undo/redo rows can name the change they reversed.
+  */
   const entryByVersion = new Map(operationsAscending.map((entry) => [entry.version, entry]));
   const describeContext: DescribeEntryContext = {
     getEntryByVersion: (version) => entryByVersion.get(version),
@@ -143,8 +161,10 @@ export function HistoryPanel() {
 
   return (
     <Sheet open={isOpen} onOpenChange={handleOpenChange} modal={false}>
-      {/* Tooltip + sheet trigger on ONE element (base-ui render composition)
-          — full header hover coverage (item 32). */}
+      {/*
+        Tooltip + sheet trigger on ONE element (base-ui render composition)
+        — full header hover coverage (item 32).
+      */}
       <TooltipProvider>
         <Tooltip>
           <TooltipTrigger
@@ -236,7 +256,9 @@ function HistoryGroupRow({
   const authorLabel = getGroupAuthorLabel({ group, viewerAuthorId });
   const isBatch = group.entries.length > 1;
   const isFullyUndone = group.entries.every((entry) => entry.isUndone === true);
-  // Before → after glance for single-op rows; batch sub-rows get their own.
+  /*
+    Before → after glance for single-op rows; batch sub-rows get their own.
+  */
   const titleTransition = isBatch
     ? null
     : describeValueTransition({ op: newestEntry.op, inverse: newestEntry.inverse });

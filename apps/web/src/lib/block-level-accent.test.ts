@@ -62,7 +62,9 @@ describe("levels", () => {
     expect(getBlockLevel({ block: { type: "section" } })).toBe("section");
     expect(getBlockLevel({ block: { type: "row" } })).toBe("row");
     expect(getBlockLevel({ block: { type: "column" } })).toBe("column");
-    /* A row is not folded in with columns: each layout level owns a hue. */
+    /*
+      A row is not folded in with columns: each layout level owns a hue.
+    */
     expect(getBlockLevel({ block: { type: "row" } })).not.toBe(
       getBlockLevel({ block: { type: "column" } }),
     );

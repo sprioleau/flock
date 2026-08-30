@@ -2,38 +2,46 @@ import type { Block, RootBlock } from "../schema/blocks";
 import type { BlockId } from "../schema/ids";
 import type { EmailDocument } from "./document";
 
-/**
- * Tree derivation — the nested view of the flat document.
- *
- * The flat map is the sole source of truth; the tree is ephemeral and exists
- * only for render-time traversal (Phase 1.4) and structural manipulation
- * convenience. `deflate` treats the tree SHAPE as authoritative: it rewrites
- * every block's parentId/childrenIds from the actual nesting, so
- * deflate(inflate(doc)) round-trips exactly and a hand-edited tree is
- * normalized back into a consistent flat map.
- */
+/*
+  Tree derivation — the nested view of the flat document.
 
-/** A node in the derived tree: the block plus its resolved children, in order. */
+  The flat map is the sole source of truth; the tree is ephemeral and exists
+  only for render-time traversal (Phase 1.4) and structural manipulation
+  convenience. `deflate` treats the tree SHAPE as authoritative: it rewrites
+  every block's parentId/childrenIds from the actual nesting, so
+  deflate(inflate(doc)) round-trips exactly and a hand-edited tree is
+  normalized back into a consistent flat map.
+*/
+
+/*
+  A node in the derived tree: the block plus its resolved children, in order.
+*/
 export interface EmailTreeNode {
-  /** The underlying flat-map block (pointers included, unchanged). */
+  /*
+    The underlying flat-map block (pointers included, unchanged).
+  */
   block: Block;
-  /** Child nodes in childrenIds order. Empty for leaves. */
+  /*
+    Child nodes in childrenIds order. Empty for leaves.
+  */
   children: EmailTreeNode[];
 }
 
-/** The tree root — same shape, but the block is guaranteed to be the root block. */
+/*
+  The tree root — same shape, but the block is guaranteed to be the root block.
+*/
 export interface EmailTree extends EmailTreeNode {
   block: RootBlock;
 }
 
-/**
- * Build the nested tree from a flat document.
- *
- * Assumes a document that passes checkDocumentIntegrity; throws (rather than
- * returning errors) on structural impossibilities — missing root, multiple
- * roots, dangling child ids, or cycles — since callers are expected to have
- * validated first.
- */
+/*
+  Build the nested tree from a flat document.
+
+  Assumes a document that passes checkDocumentIntegrity; throws (rather than
+  returning errors) on structural impossibilities — missing root, multiple
+  roots, dangling child ids, or cycles — since callers are expected to have
+  validated first.
+*/
 export function inflate(document: EmailDocument): EmailTree {
   const rootBlocks = Object.values(document).filter(
     (block): block is RootBlock => block.type === "root",
@@ -68,14 +76,14 @@ export function inflate(document: EmailDocument): EmailTree {
   return buildNode(root.id, new Set()) as EmailTree;
 }
 
-/**
- * Flatten a tree back into a flat document.
- *
- * The tree shape is authoritative: each emitted block's parentId is set to
- * its actual parent in the tree and its childrenIds to its actual children,
- * in order — regardless of what the embedded blocks' pointers said. Throws
- * on duplicate block ids (the same id appearing at two tree positions).
- */
+/*
+  Flatten a tree back into a flat document.
+
+  The tree shape is authoritative: each emitted block's parentId is set to
+  its actual parent in the tree and its childrenIds to its actual children,
+  in order — regardless of what the embedded blocks' pointers said. Throws
+  on duplicate block ids (the same id appearing at two tree positions).
+*/
 export function deflate(tree: EmailTree): EmailDocument {
   const document: EmailDocument = {};
 

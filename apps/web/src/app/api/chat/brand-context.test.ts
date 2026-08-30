@@ -31,7 +31,9 @@ describe("buildSystemContext brand line placement", () => {
     const withoutLine = buildSystemContext({ doc });
     expect(withLine.documentContext).toContain("Brand social links: x=https://x.com/cnn");
     expect(withoutLine.documentContext).not.toContain("Brand social links");
-    // The cached static prefix must be byte-identical with and without it.
+    /*
+      The cached static prefix must be byte-identical with and without it.
+    */
     expect(withLine.staticInstructions).toBe(withoutLine.staticInstructions);
     expect(withLine.staticInstructions).not.toContain("x.com/cnn");
   });

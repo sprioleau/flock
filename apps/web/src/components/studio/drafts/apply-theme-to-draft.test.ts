@@ -68,7 +68,9 @@ const KIT_THEMES: NamedTheme[] = [
   },
 ];
 
-/** One canvas with two drafts, both on the shared defaults. */
+/*
+  One canvas with two drafts, both on the shared defaults.
+*/
 async function seedTwoDraftCanvas(t: Backend): Promise<{
   canvasId: Id<"canvases">;
   currentDocumentId: Id<"documents">;
@@ -138,15 +140,15 @@ function run({
 type ListDocumentsByCanvas = typeof api.documents.listDocumentsByCanvas;
 type GetDocument = typeof api.documents.getDocument;
 
-/**
- * A client whose canvas listing OFFERS a document the canvas does not hold:
- * the real rows, plus the real rows of `staleCanvasId`.
- *
- * Spelled out with the same two overloads the production interface declares,
- * so the stub satisfies it without a cast — and so this stays a stub of that
- * exact contract rather than of a looser one that would let a real mismatch
- * through unnoticed.
- */
+/*
+  A client whose canvas listing OFFERS a document the canvas does not hold:
+  the real rows, plus the real rows of `staleCanvasId`.
+
+  Spelled out with the same two overloads the production interface declares,
+  so the stub satisfies it without a cast — and so this stays a stub of that
+  exact contract rather than of a looser one that would let a real mismatch
+  through unnoticed.
+*/
 async function createStaleListingClient({
   t,
   staleCanvasId,
@@ -251,7 +253,9 @@ describe("targeting a draft the user is not looking at", () => {
     expect(outcome.kind).toBe("draft-unresolved");
     expect(await readStoredGlobals({ t, documentId: foreign.documentId })).toEqual({});
     expect(await readStoredGlobals({ t, documentId: currentDocumentId })).toEqual({});
-    /* And it does not quietly fall back to the draft the user IS on. */
+    /*
+      And it does not quietly fall back to the draft the user IS on.
+    */
     expect(toApplyThemeToolOutput(outcome).isApplied).toBe(false);
   });
 
@@ -418,7 +422,9 @@ describe("a draft that is already wearing the theme", () => {
     const second = await run({ t, canvasId, currentDocumentId, command });
 
     expect(second).toMatchObject({ kind: "already-applied", draftName: "Spring sale" });
-    /* No op was written: the draft's history is exactly where it was. */
+    /*
+      No op was written: the draft's history is exactly where it was.
+    */
     const versionAfterSecond = (await t.query(api.documents.getDocument, {
       documentId: currentDocumentId,
     }))!.headVersion;

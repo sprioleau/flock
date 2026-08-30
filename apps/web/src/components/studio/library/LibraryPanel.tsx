@@ -39,32 +39,32 @@ import {
 } from "./library-management";
 import { useUploadImageAsset } from "./use-upload-image-asset";
 
-/**
- * Content Studio Stage S — the session's asset library (proposal §8; the
- * USER-FACING name is "Asset Library", "Library" as the compact button
- * label — "Content Studio" is the internal stage name and never appears in
- * UI): a header "Library" button beside the Brand kit trigger (both are
- * USER-level surfaces, not draft-level) opening the standard centered modal. Every
- * image the session uploads, generates, or confirms from a brand kit lands
- * here automatically at upload time (assets.register — the one seam), so
- * "the image I uploaded yesterday" is one click away in any canvas.
- *
- * Stage S scope: reactive grid (thumbnail, name, kind chip, relative time),
- * kind filter chips, and insert-into-draft — a src swap on the selected image
- * block, else a new image block per the add-blocks placement rules (see
- * library-insert.ts).
- *
- * Stage M adds LIBRARY MANAGEMENT, so a library can be corrected rather than
- * only appended to: inline rename on the card (no confirmation — it touches
- * nothing but a string, and a wrong name is fixed by renaming again) and
- * delete behind the app's standard destructive-confirm dialog (the
- * DraftSelector "Delete this draft?" precedent: title asks the question,
- * description names the thing and says it can't be undone, footer is
- * Cancel + a destructive button). Delete is REFUSED by the server while any
- * draft still renders the image; the same dialog then shows which drafts, so
- * the refusal is actionable — see convex/assets.ts `remove` for the whole
- * deletion argument.
- */
+/*
+  Content Studio Stage S — the session's asset library (proposal §8; the
+  USER-FACING name is "Asset Library", "Library" as the compact button
+  label — "Content Studio" is the internal stage name and never appears in
+  UI): a header "Library" button beside the Brand kit trigger (both are
+  USER-level surfaces, not draft-level) opening the standard centered modal. Every
+  image the session uploads, generates, or confirms from a brand kit lands
+  here automatically at upload time (assets.register — the one seam), so
+  "the image I uploaded yesterday" is one click away in any canvas.
+
+  Stage S scope: reactive grid (thumbnail, name, kind chip, relative time),
+  kind filter chips, and insert-into-draft — a src swap on the selected image
+  block, else a new image block per the add-blocks placement rules (see
+  library-insert.ts).
+
+  Stage M adds LIBRARY MANAGEMENT, so a library can be corrected rather than
+  only appended to: inline rename on the card (no confirmation — it touches
+  nothing but a string, and a wrong name is fixed by renaming again) and
+  delete behind the app's standard destructive-confirm dialog (the
+  DraftSelector "Delete this draft?" precedent: title asks the question,
+  description names the thing and says it can't be undone, footer is
+  Cancel + a destructive button). Delete is REFUSED by the server while any
+  draft still renders the image; the same dialog then shows which drafts, so
+  the refusal is actionable — see convex/assets.ts `remove` for the whole
+  deletion argument.
+*/
 
 type LibraryAsset = Doc<"assets">;
 type AssetKind = LibraryAsset["kind"];
@@ -85,7 +85,9 @@ const FILTER_CHIPS: readonly { value: KindFilter; label: string }[] = [
   { value: "social-card", label: "Social cards" },
 ];
 
-/** "84 KB" / "1.2 MB" — compact size for the selection summary. */
+/*
+  "84 KB" / "1.2 MB" — compact size for the selection summary.
+*/
 function formatFileSize(sizeBytes: number): string {
   if (sizeBytes < 1024 * 1024) {
     return `${Math.max(1, Math.round(sizeBytes / 1024))} KB`;
@@ -113,7 +115,9 @@ export function LibraryPanel() {
   const removeAsset = useMutation(api.assets.remove);
   const [renamingAssetId, setRenamingAssetId] = useState<Id<"assets"> | null>(null);
   const [renameDraft, setRenameDraft] = useState("");
-  /* The asset the confirm dialog is asking about; null closes it. */
+  /*
+    The asset the confirm dialog is asking about; null closes it.
+  */
   const [assetPendingDelete, setAssetPendingDelete] = useState<LibraryAsset | null>(null);
   const [isDeletePending, setIsDeletePending] = useState(false);
   /*
@@ -122,7 +126,9 @@ export function LibraryPanel() {
   */
   const [deleteRefusalMessage, setDeleteRefusalMessage] = useState<string | null>(null);
 
-  // Reactive: an upload/generation/confirm in any tab appears here live.
+  /*
+    Reactive: an upload/generation/confirm in any tab appears here live.
+  */
   const assets = useQuery(
     api.assets.listForSession,
     sessionId === null ? "skip" : { sessionId },
@@ -144,8 +150,10 @@ export function LibraryPanel() {
     }
   };
 
-  // Agent-parity: the chat's openPanel("library") command opens this dialog
-  // through the same reset-on-open path as a human click.
+  /*
+    Agent-parity: the chat's openPanel("library") command opens this dialog
+    through the same reset-on-open path as a human click.
+  */
   useUiSurfaceOpenRequest("library", () => handleOpenChange(true));
 
   const insertAsset = (asset: LibraryAsset): void => {
@@ -166,7 +174,9 @@ export function LibraryPanel() {
       editorStore.selectBlock(plan.targetBlockId);
       scrollBlockIntoView(plan.targetBlockId);
     }
-    // Close so the draft (and the fresh image) is immediately visible.
+    /*
+      Close so the draft (and the fresh image) is immediately visible.
+    */
     setIsOpen(false);
   };
 
@@ -237,10 +247,12 @@ export function LibraryPanel() {
     }
   };
 
-  // Pure library add — the shared upload path registers the asset and
-  // Convex reactivity lands it in the grid. Deliberately NO block mutation:
-  // even in pick mode (image block selected) an upload only fills the
-  // library; inserting stays a separate, explicit click.
+  /*
+    Pure library add — the shared upload path registers the asset and
+    Convex reactivity lands it in the grid. Deliberately NO block mutation:
+    even in pick mode (image block selected) an upload only fills the
+    library; inserting stays a separate, explicit click.
+  */
   const uploadFilesToLibrary = async (files: readonly File[]): Promise<void> => {
     let uploadedCount = 0;
     for (const file of files) {
@@ -256,8 +268,10 @@ export function LibraryPanel() {
     if (uploadedCount === 0) {
       return;
     }
-    // A filter that would hide the fresh upload defeats "it appears right
-    // away" — widen to All so the new asset is visible immediately.
+    /*
+      A filter that would hide the fresh upload defeats "it appears right
+      away" — widen to All so the new asset is visible immediately.
+    */
     setKindFilter((current) => (current === "all" || current === "uploaded" ? current : "all"));
     toast.success(
       uploadedCount === 1
@@ -266,10 +280,12 @@ export function LibraryPanel() {
     );
   };
 
-  // "From URL": the /api/library/import-image route fetches the external
-  // image SERVER-side (client fetch = CORS), rehosts the bytes into Convex
-  // storage, and registers the asset — the grid row's src is OUR durable
-  // Convex URL, never the external one. Reactivity lands it in the grid.
+  /*
+    "From URL": the /api/library/import-image route fetches the external
+    image SERVER-side (client fetch = CORS), rehosts the bytes into Convex
+    storage, and registers the asset — the grid row's src is OUR durable
+    Convex URL, never the external one. Reactivity lands it in the grid.
+  */
   const importImageFromUrl = async (): Promise<void> => {
     const trimmedUrl = importUrlDraft.trim();
     if (trimmedUrl === "" || sessionId === null || isImporting) {
@@ -308,8 +324,10 @@ export function LibraryPanel() {
   return (
     <>
       <Dialog open={isOpen} onOpenChange={handleOpenChange}>
-        {/* Tooltip + dialog trigger on ONE element (base-ui render composition)
-            — below xl the trigger is icon-only, so hover carries the label. */}
+        {/*
+          Tooltip + dialog trigger on ONE element (base-ui render composition)
+          — below xl the trigger is icon-only, so hover carries the label.
+        */}
         <TooltipProvider>
           <Tooltip>
             <TooltipTrigger
@@ -321,8 +339,10 @@ export function LibraryPanel() {
                   data-testid="library-open-button"
                 >
                   <ImagesIcon className="size-4" />
-                  {/* Narrow-width degradation: icon-only below xl, matching
-                      Brand kit. */}
+                  {/*
+                    Narrow-width degradation: icon-only below xl, matching
+                    Brand kit.
+                  */}
                   <span className="hidden xl:inline">Library</span>
                 </DialogTrigger>
               }
@@ -338,10 +358,12 @@ export function LibraryPanel() {
             </DialogDescription>
           </DialogHeader>
 
-          {/* One header row over the grid: kind filters on the left, Upload on
-              the right — the library's own way in for new images (same shared
-              upload path as the property panel, but a pure library add: no
-              block's src is touched). */}
+          {/*
+            One header row over the grid: kind filters on the left, Upload on
+            the right — the library's own way in for new images (same shared
+            upload path as the property panel, but a pure library add: no
+            block's src is touched).
+          */}
           <div className="flex flex-wrap items-center gap-1">
             <div
               className="flex flex-wrap items-center gap-1"
@@ -373,7 +395,9 @@ export function LibraryPanel() {
               data-testid="library-upload-file-input"
               onChange={(event) => {
                 const files = Array.from(event.target.files ?? []);
-                // Allow re-selecting the same file(s) later.
+                /*
+                  Allow re-selecting the same file(s) later.
+                */
                 event.target.value = "";
                 if (files.length > 0) {
                   void uploadFilesToLibrary(files);
@@ -526,10 +550,12 @@ export function LibraryPanel() {
         </DialogContent>
       </Dialog>
 
-      {/* The destructive confirm, a SIBLING dialog (BrandKitPanel's structure)
-          rather than one nested inside the library's content — it stacks over
-          the open library, and the library stays put underneath so the user
-          lands back in the grid either way. */}
+      {/*
+        The destructive confirm, a SIBLING dialog (BrandKitPanel's structure)
+        rather than one nested inside the library's content — it stacks over
+        the open library, and the library stays put underneath so the user
+        lands back in the grid either way.
+      */}
       <Dialog
         open={assetPendingDelete !== null}
         onOpenChange={(nextIsOpen) => {
@@ -634,8 +660,10 @@ function LibraryAssetCard({
           className="block w-full cursor-pointer transition-opacity hover:opacity-90"
           data-testid={`library-asset-${asset._id}`}
         >
-          {/* Plain <img>: Convex storage serving URLs — next/image
-              can't optimize them, and the file IS the thumbnail. */}
+          {/*
+            Plain <img>: Convex storage serving URLs — next/image
+            can't optimize them, and the file IS the thumbnail.
+          */}
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
             src={asset.url}
@@ -681,7 +709,9 @@ function LibraryAssetCard({
               variant="ghost"
               size="icon-sm"
               aria-label="Save name"
-              /* onMouseDown so the click wins over the input's blur-commit. */
+              /*
+                onMouseDown so the click wins over the input's blur-commit.
+              */
               onMouseDown={(event) => {
                 event.preventDefault();
                 onCommitRename();

@@ -11,27 +11,27 @@ import {
   releaseOwnerOverride,
 } from "./override-client";
 
-/**
- * The redemption form.
- *
- * Shaped after the front door's LoginPanel (app/LoginPanel.tsx) on purpose:
- * one field, one button, a single line of plain result copy. A page that asks
- * for a password should look like the other page that asks for a password.
- *
- * WHAT IS DELIBERATELY NOT HERE:
- * - No hint about whether an override exists on this deployment. The server
- *   answers a wrong password and an unconfigured deployment identically, and
- *   this page must not undo that by phrasing them differently. See
- *   ./override-client.ts.
- * - No mention of the secret's name, the cookie, or the endpoint anywhere a
- *   user can read.
- * - No client-side validation of the password's shape. Length, charset and
- *   "looks like ours" checks are all disclosure.
- *
- * The empty-field check IS client-side, and is the one exception worth making:
- * submitting nothing spends one of five attempts per minute against a limiter
- * whose whole job is to bound guessing, and an empty box was never a guess.
- */
+/*
+  The redemption form.
+
+  Shaped after the front door's LoginPanel (app/LoginPanel.tsx) on purpose:
+  one field, one button, a single line of plain result copy. A page that asks
+  for a password should look like the other page that asks for a password.
+
+  WHAT IS DELIBERATELY NOT HERE:
+  - No hint about whether an override exists on this deployment. The server
+    answers a wrong password and an unconfigured deployment identically, and
+    this page must not undo that by phrasing them differently. See
+    ./override-client.ts.
+  - No mention of the secret's name, the cookie, or the endpoint anywhere a
+    user can read.
+  - No client-side validation of the password's shape. Length, charset and
+    "looks like ours" checks are all disclosure.
+
+  The empty-field check IS client-side, and is the one exception worth making:
+  submitting nothing spends one of five attempts per minute against a limiter
+  whose whole job is to bound guessing, and an empty box was never a guess.
+*/
 export function OverridePanel() {
   const { isChecking, isUnlocked, setUnlocked } = useOwnerOverride();
   const [password, setPassword] = useState("");
@@ -52,16 +52,20 @@ export function OverridePanel() {
     void redeemOwnerOverride(password)
       .then((outcome) => {
         if (outcome.status === "unlocked") {
-          // Clear the field first: the value is spent, and leaving it sitting
-          // in a form on a screen someone else may see is careless.
+          /*
+            Clear the field first: the value is spent, and leaving it sitting
+            in a form on a screen someone else may see is careless.
+          */
           setPassword("");
           setUnlocked(true);
           setNotice({ tone: "success", message: outcome.message });
           return;
         }
-        // Rejected, throttled and failed all render the same way — the server's
-        // own words, unedited. Only the wording differs, and that is the
-        // server's call, not this component's.
+        /*
+          Rejected, throttled and failed all render the same way — the server's
+          own words, unedited. Only the wording differs, and that is the
+          server's call, not this component's.
+        */
         setNotice({ tone: "error", message: outcome.message });
       })
       .finally(() => {
@@ -96,9 +100,11 @@ export function OverridePanel() {
       notice={notice}
       onPasswordChange={(value) => {
         setPassword(value);
-        // Owner law: instant feedback. A stale "that didn't match" sitting
-        // under a field the user is already retyping is feedback about the
-        // past, so it goes the moment the input changes.
+        /*
+          Owner law: instant feedback. A stale "that didn't match" sitting
+          under a field the user is already retyping is feedback about the
+          past, so it goes the moment the input changes.
+        */
         setNotice(null);
       }}
       onSubmit={handleSubmit}
@@ -108,7 +114,9 @@ export function OverridePanel() {
 }
 
 export interface OverridePanelViewProps {
-  /** No answer yet about this browser — distinct from "answered: locked". */
+  /*
+    No answer yet about this browser — distinct from "answered: locked".
+  */
   isChecking: boolean;
   isUnlocked: boolean;
   isBusy: boolean;
@@ -119,11 +127,11 @@ export interface OverridePanelViewProps {
   onRelease: () => void;
 }
 
-/**
- * Every visible state, as a pure function of props — the reason the stateful
- * shell above delegates rather than rendering inline. It is what the tests
- * render, so what the tests assert is literally what ships.
- */
+/*
+  Every visible state, as a pure function of props — the reason the stateful
+  shell above delegates rather than rendering inline. It is what the tests
+  render, so what the tests assert is literally what ships.
+*/
 export function OverridePanelView(props: OverridePanelViewProps) {
   if (props.isChecking) {
     return (

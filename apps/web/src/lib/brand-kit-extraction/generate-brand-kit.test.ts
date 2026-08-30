@@ -1,11 +1,11 @@
-/**
- * Pipeline-glue tests for generateBrandKit's asset verification (Gatorade
- * bug): a suggested logo/social-card URL that doesn't actually serve an
- * image must come back as an ABSENT field while the rest of the kit ships.
- *
- * Everything nondeterministic is mocked — the Gemini call ("ai"), the page
- * fetch and the asset probes ("./fetch-page"). No network, no model quota.
- */
+/*
+  Pipeline-glue tests for generateBrandKit's asset verification (Gatorade
+  bug): a suggested logo/social-card URL that doesn't actually serve an
+  image must come back as an ABSENT field while the rest of the kit ships.
+
+  Everything nondeterministic is mocked — the Gemini call ("ai"), the page
+  fetch and the asset probes ("./fetch-page"). No network, no model quota.
+*/
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { AssetProbeMethod, AssetProbeResult } from "./fetch-page";
 
@@ -65,7 +65,9 @@ const MODEL_OUTPUT = {
   variations: [semanticVariation("Clean"), semanticVariation("Tint"), semanticVariation("Deep")],
 };
 
-/** Map of url → canned probe result (both methods); anything else 404s. */
+/*
+  Map of url → canned probe result (both methods); anything else 404s.
+*/
 function stubProbes(liveImageUrls: string[]) {
   probeAssetUrlMock.mockImplementation(
     async ({ url }: { url: string; method: AssetProbeMethod }): Promise<AssetProbeResult> =>
@@ -93,7 +95,7 @@ describe("generateBrandKit asset verification", () => {
   });
 
   it("drops a dead social card but ships the rest of the kit (the Gatorade bug)", async () => {
-    stubProbes([LOGO_URL]); // social card 404s, like the datocms CDN URL did
+    stubProbes([LOGO_URL]); /* social card 404s, like the datocms CDN URL did */
     const result = await generateBrandKit({ url: "acme.test" });
     expect(result.isOk).toBe(true);
     if (!result.isOk) return;
@@ -115,8 +117,10 @@ describe("generateBrandKit asset verification", () => {
   });
 
   it("falls back to the model's harvested logo pick when the head logo is dead", async () => {
-    // The head's apple-touch-icon 404s; the model picked a harvested
-    // candidate (og:image is also a harvest candidate) that DOES render.
+    /*
+      The head's apple-touch-icon 404s; the model picked a harvested
+      candidate (og:image is also a harvest candidate) that DOES render.
+    */
     generateObjectMock.mockResolvedValue({
       object: { ...MODEL_OUTPUT, logoUrl: SOCIAL_CARD_URL },
     });
@@ -128,11 +132,11 @@ describe("generateBrandKit asset verification", () => {
   });
 });
 
-/**
- * The authored palette and tone of voice reaching the kit
- * (brand-kit-user-control §3 and §5) — the pipeline wiring, as opposed to
- * buildBrandColors/extractCopySignals in isolation.
- */
+/*
+  The authored palette and tone of voice reaching the kit
+  (brand-kit-user-control §3 and §5) — the pipeline wiring, as opposed to
+  buildBrandColors/extractCopySignals in isolation.
+*/
 describe("generateBrandKit authored palette + tone of voice", () => {
   it("ships a named, categorized palette carrying the --banana provenance", async () => {
     stubProbes([LOGO_URL, SOCIAL_CARD_URL]);
@@ -171,7 +175,9 @@ describe("generateBrandKit authored palette + tone of voice", () => {
     expect(result.isOk).toBe(true);
     if (!result.isOk) return;
     expect(result.brandKit.toneOfVoice).toBeUndefined();
-    // The palette still ships: the two features fail independently.
+    /*
+      The palette still ships: the two features fail independently.
+    */
     expect(result.brandKit.colors?.length).toBeGreaterThan(0);
   });
 
@@ -184,7 +190,9 @@ describe("generateBrandKit authored palette + tone of voice", () => {
     expect(result.isOk).toBe(true);
     if (!result.isOk) return;
     const banana = result.brandKit.colors?.find((color) => color.hex === "#e0592a");
-    // Named from the CSS custom property, with no model help at all.
+    /*
+      Named from the CSS custom property, with no model help at all.
+    */
     expect(banana?.name).toBe("Banana");
     expect(banana?.origin).toBe("scraped");
   });

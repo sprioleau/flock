@@ -5,18 +5,18 @@ import { CheckIcon, MessageCircleQuestionIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { sendPromptThroughComposer } from "../composer-handoff";
 
-/**
- * The clarification widget (generative UI): one short question plus 2-4
- * clickable answers, rendered from the askForClarification tool call. The
- * tool has NO server execute — the turn ended on the call — so a click sends
- * the chosen answer as a NORMAL user message through the composer-handoff
- * send seam (queueing behind a busy agent exactly like a composer submit).
- *
- * Locking: after a click (instant local state) or once ANY later user
- * message exists in the transcript (`hasBeenAnswered` — the user may answer
- * by typing instead), the options stop being live controls. A question from
- * three turns ago must never silently steer the current conversation.
- */
+/*
+  The clarification widget (generative UI): one short question plus 2-4
+  clickable answers, rendered from the askForClarification tool call. The
+  tool has NO server execute — the turn ended on the call — so a click sends
+  the chosen answer as a NORMAL user message through the composer-handoff
+  send seam (queueing behind a busy agent exactly like a composer submit).
+
+  Locking: after a click (instant local state) or once ANY later user
+  message exists in the transcript (`hasBeenAnswered` — the user may answer
+  by typing instead), the options stop being live controls. A question from
+  three turns ago must never silently steer the current conversation.
+*/
 export function ClarificationWidget({
   question,
   options,

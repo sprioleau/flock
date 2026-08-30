@@ -6,36 +6,36 @@ import {
 } from "./contract";
 import { toPreSendReviewFinding } from "./review-copy";
 
-/**
- * POST /api/pre-send-review — the deterministic email QA pass, run before a
- * send rather than after one.
- *
- * Body: { "document": EmailDocument }.
- * 200 → { isChecked: true, findings, checkedClientLabels }
- *     → { isChecked: false, message }   (document could not be rendered)
- * 400 → invalid_json | invalid_document
- *
- * ZERO MODEL CALLS, which is why this route exists as its own endpoint rather
- * than as more work for the persona runner. The QA Reviewer persona spends
- * Gemini free-tier quota — 15 requests a minute, shared with production — to
- * form an opinion about renderability. This answers a strictly larger version
- * of that question from Can I Email's dataset, in single-digit milliseconds,
- * for nothing, and gives the same answer twice for the same document.
- *
- * NO IDENTITY GATE, following /api/render rather than /api/send-test-email.
- * The gate on the send route protects a real asset: a stranger with curl could
- * otherwise put arbitrary content in an arbitrary inbox over this project's
- * DKIM-signed domain. Nothing leaves the building here. The route renders the
- * caller's own document, reads it, and returns prose about it — it has no side
- * effects, writes nothing, and sends nothing, exactly like the preview
- * renderer the studio already calls on every preview.
- *
- * ADVISORY BY CONSTRUCTION. This route cannot block a send because it has no
- * connection to one: /api/send-test-email neither calls it nor waits for it,
- * and a client that never asks for a review sends exactly as it did before
- * this existed. The strongest form of "advisory, not autocratic" is a design
- * in which refusing is not expressible.
- */
+/*
+  POST /api/pre-send-review — the deterministic email QA pass, run before a
+  send rather than after one.
+
+  Body: { "document": EmailDocument }.
+  200 → { isChecked: true, findings, checkedClientLabels }
+      → { isChecked: false, message }   (document could not be rendered)
+  400 → invalid_json | invalid_document
+
+  ZERO MODEL CALLS, which is why this route exists as its own endpoint rather
+  than as more work for the persona runner. The QA Reviewer persona spends
+  Gemini free-tier quota — 15 requests a minute, shared with production — to
+  form an opinion about renderability. This answers a strictly larger version
+  of that question from Can I Email's dataset, in single-digit milliseconds,
+  for nothing, and gives the same answer twice for the same document.
+
+  NO IDENTITY GATE, following /api/render rather than /api/send-test-email.
+  The gate on the send route protects a real asset: a stranger with curl could
+  otherwise put arbitrary content in an arbitrary inbox over this project's
+  DKIM-signed domain. Nothing leaves the building here. The route renders the
+  caller's own document, reads it, and returns prose about it — it has no side
+  effects, writes nothing, and sends nothing, exactly like the preview
+  renderer the studio already calls on every preview.
+
+  ADVISORY BY CONSTRUCTION. This route cannot block a send because it has no
+  connection to one: /api/send-test-email neither calls it nor waits for it,
+  and a client that never asks for a review sends exactly as it did before
+  this existed. The strongest form of "advisory, not autocratic" is a design
+  in which refusing is not expressible.
+*/
 export async function POST(request: Request): Promise<Response> {
   let payload: unknown;
   try {

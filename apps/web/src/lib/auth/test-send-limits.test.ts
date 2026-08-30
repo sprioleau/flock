@@ -32,9 +32,11 @@ import { buildTestSendRefusalMessage, describeRetryDelay } from "@convex/authTes
   one under attack, and the claimed tier only ever RELAXES the meter.
 */
 
-// NOTE: convex-test's documented `!(*.*.*)` extglob matches nothing under
-// vitest 4 (tinyglobby has no extglob support) — the array form with negative
-// patterns is the equivalent that works.
+/*
+  NOTE: convex-test's documented `!(*.*.*)` extglob matches nothing under
+  vitest 4 (tinyglobby has no extglob support) — the array form with negative
+  patterns is the equivalent that works.
+*/
 const modules = import.meta.glob([
   "../../../../../convex/**/*.{ts,js}",
   "!**/*.d.ts",
@@ -57,11 +59,15 @@ const ALL_FLAGS = [
   STRICT_FLAG,
 ] as const;
 
-/* The shape `deriveOriginKey` produces: a salted digest, never an address. */
+/*
+  The shape `deriveOriginKey` produces: a salted digest, never an address.
+*/
 const HOME_ORIGIN = "a1b2c3d4e5f60718293a4b5c6d7e8f90";
 const OTHER_ORIGIN = "0f9e8d7c6b5a49382716f5e4d3c2b1a0";
 
-/* The shape `deriveRecipientKey` produces: a salted digest, never an email. */
+/*
+  The shape `deriveRecipientKey` produces: a salted digest, never an email.
+*/
 const RECIPIENT = "11223344556677889900aabbccddeeff";
 const OTHER_RECIPIENT = "ffeeddccbbaa00998877665544332211";
 
@@ -105,7 +111,9 @@ async function attemptSend(
     identity?: string;
     originKey?: string;
     recipientKey?: string;
-    /* A multi-recipient send. Takes precedence over `recipientKey` when given. */
+    /*
+      A multi-recipient send. Takes precedence over `recipientKey` when given.
+    */
     recipientKeys?: string[];
   },
 ): Promise<SendAttempt> {
@@ -119,7 +127,9 @@ async function attemptSend(
   });
 }
 
-/** Every bucket row, so "which bucket got charged" is directly assertable. */
+/*
+  Every bucket row, so "which bucket got charged" is directly assertable.
+*/
 async function readBuckets(t: Backend): Promise<{ bucketKey: string; sentCount: number }[]> {
   return await t.run(async (ctx) => {
     const rows = await ctx.db.query("authTestSends").collect();
@@ -131,7 +141,9 @@ async function readBuckets(t: Backend): Promise<{ bucketKey: string; sentCount: 
 
 describe("minting a fresh anonymous session does not buy more sends", () => {
   beforeEach(() => {
-    /* Two per identity, three per network — small enough to walk in one test. */
+    /*
+      Two per identity, three per network — small enough to walk in one test.
+    */
     process.env[ANONYMOUS_FLAG] = "2";
     process.env[ORIGIN_FLAG] = "3";
     process.env[RECIPIENT_FLAG] = "99";
@@ -146,7 +158,9 @@ describe("minting a fresh anonymous session does not buy more sends", () => {
   it("stops the loop, because the origin bucket is not reset by a new identity", async () => {
     const t = createBackend();
 
-    /* The first session spends its own small allowance. */
+    /*
+      The first session spends its own small allowance.
+    */
     expect((await attemptSend(t, { identity: "user_1", originKey: HOME_ORIGIN })).isAllowed).toBe(
       true,
     );
@@ -156,11 +170,15 @@ describe("minting a fresh anonymous session does not buy more sends", () => {
     const ownerExhausted = await attemptSend(t, { identity: "user_1", originKey: HOME_ORIGIN });
     expect(ownerExhausted.isAllowed).toBe(false);
 
-    /* Clear storage, reload, get a brand-new anonymous user. Same network. */
+    /*
+      Clear storage, reload, get a brand-new anonymous user. Same network.
+    */
     const freshSession = await attemptSend(t, { identity: "user_2", originKey: HOME_ORIGIN });
     expect(freshSession.isAllowed).toBe(true);
 
-    /* And that is the last one this network gets, however many more it mints. */
+    /*
+      And that is the last one this network gets, however many more it mints.
+    */
     const secondFresh = await attemptSend(t, { identity: "user_3", originKey: HOME_ORIGIN });
     expect(secondFresh.isAllowed).toBe(false);
     expect(secondFresh.refusalMessage).toContain("from this connection");
@@ -168,7 +186,9 @@ describe("minting a fresh anonymous session does not buy more sends", () => {
     const thirdFresh = await attemptSend(t, { identity: "user_4", originKey: HOME_ORIGIN });
     expect(thirdFresh.isAllowed).toBe(false);
 
-    /* Four identities, three sends. Without the origin bucket it would be six. */
+    /*
+      Four identities, three sends. Without the origin bucket it would be six.
+    */
     const buckets = await readBuckets(t);
     expect(buckets.find((row) => row.bucketKey === `origin:${HOME_ORIGIN}`)).toEqual({
       bucketKey: `origin:${HOME_ORIGIN}`,
@@ -225,7 +245,9 @@ describe("one identity's own allowance", () => {
     const refused = await attemptSend(t, { identity: "user_1", originKey: HOME_ORIGIN });
     expect(refused.isAllowed).toBe(false);
     expect(refused.refusalMessage).toContain("today's test sends");
-    /* The one useful fact in a refusal: when it stops being true. */
+    /*
+      The one useful fact in a refusal: when it stops being true.
+    */
     expect(refused.refusalMessage).toMatch(/refills in about/);
     expect(refused.retryAtMs).toBeGreaterThan(Date.now());
   });
@@ -247,7 +269,9 @@ describe("one identity's own allowance", () => {
     }
     expect((await attemptSend(t, { identity: "user_1" })).isAllowed).toBe(false);
 
-    /* Back-date the window rather than wait a day for it. */
+    /*
+      Back-date the window rather than wait a day for it.
+    */
     await t.run(async (ctx) => {
       const row = await ctx.db
         .query("authTestSends")
@@ -259,7 +283,9 @@ describe("one identity's own allowance", () => {
 
     const afterRollover = await attemptSend(t, { identity: "user_1" });
     expect(afterRollover.isAllowed).toBe(true);
-    /* The window restarted rather than resumed — the count is 1, not 4. */
+    /*
+      The window restarted rather than resumed — the count is 1, not 4.
+    */
     const buckets = await readBuckets(t);
     expect(buckets.find((row) => row.bucketKey === "owner:user_1")?.sentCount).toBe(1);
   });
@@ -328,7 +354,9 @@ const FIVE_RECIPIENTS = [
 
 describe("one send addressed to several inboxes", () => {
   beforeEach(() => {
-    /* Headroom everywhere, so the counts below come only from this one send. */
+    /*
+      Headroom everywhere, so the counts below come only from this one send.
+    */
     process.env[ANONYMOUS_FLAG] = "99";
     process.env[ORIGIN_FLAG] = "99";
     process.env[RECIPIENT_FLAG] = "99";
@@ -347,18 +375,24 @@ describe("one send addressed to several inboxes", () => {
     const buckets = await readBuckets(t);
     const byKey = new Map(buckets.map((row) => [row.bucketKey, row.sentCount]));
 
-    /* One increment per DISTINCT recipient — five buckets, each at 1. */
+    /*
+      One increment per DISTINCT recipient — five buckets, each at 1.
+    */
     for (const recipientKey of FIVE_RECIPIENTS) {
       expect(byKey.get(`recipient:${recipientKey}`)).toBe(1);
     }
-    /* The sender is charged ONCE, however many people the one send addressed. */
+    /*
+      The sender is charged ONCE, however many people the one send addressed.
+    */
     expect(byKey.get("owner:user_1")).toBe(1);
     expect(byKey.get(`origin:${HOME_ORIGIN}`)).toBe(1);
   });
 
   it("counts a repeated address in one send as a single recipient", async () => {
-    // Dedupe first: listing the same inbox twice cannot charge it twice, and it
-    // cannot dodge the cap by not being counted either.
+    /*
+      Dedupe first: listing the same inbox twice cannot charge it twice, and it
+      cannot dodge the cap by not being counted either.
+    */
     const t = createBackend();
     const [victim] = FIVE_RECIPIENTS;
 
@@ -383,7 +417,9 @@ describe("one send addressed to several inboxes", () => {
     const t = createBackend();
     const [capped, ...others] = FIVE_RECIPIENTS;
 
-    /* Fill the victim's bucket with a send addressed only to them. */
+    /*
+      Fill the victim's bucket with a send addressed only to them.
+    */
     const first = await attemptSend(t, {
       identity: "user_filler",
       originKey: OTHER_ORIGIN,
@@ -391,24 +427,32 @@ describe("one send addressed to several inboxes", () => {
     });
     expect(first.isAllowed).toBe(true);
 
-    /* A brand-new identity, a different origin — both with headroom to spare. */
+    /*
+      A brand-new identity, a different origin — both with headroom to spare.
+    */
     const refused = await attemptSend(t, {
       identity: "user_fresh",
       originKey: HOME_ORIGIN,
-      /* The capped address sits AFTER a healthy one on purpose. */
+      /*
+        The capped address sits AFTER a healthy one on purpose.
+      */
       recipientKeys: [others[0], capped, others[1]],
     });
     expect(refused.isAllowed).toBe(false);
     expect(refused.refusalMessage).toContain("That address has had a lot of test emails");
 
-    /* All-or-nothing: nothing about the refused send was charged. */
+    /*
+      All-or-nothing: nothing about the refused send was charged.
+    */
     const buckets = await readBuckets(t);
     const keys = buckets.map((row) => row.bucketKey);
     expect(keys).not.toContain("owner:user_fresh");
     expect(keys).not.toContain(`origin:${HOME_ORIGIN}`);
     expect(keys).not.toContain(`recipient:${others[0]}`);
     expect(keys).not.toContain(`recipient:${others[1]}`);
-    /* The victim's own bucket stays exactly where the first send left it. */
+    /*
+      The victim's own bucket stays exactly where the first send left it.
+    */
     expect(buckets.find((row) => row.bucketKey === `recipient:${capped}`)?.sentCount).toBe(1);
   });
 });
@@ -504,12 +548,18 @@ describe("what the person is actually told", () => {
 
     for (const message of [ownerRefusal, originRefusal, recipientRefusal]) {
       expect(message).toContain("in about 3 hours");
-      /* A cap is a state of an allowance, not an accusation. */
+      /*
+        A cap is a state of an allowance, not an accusation.
+      */
       expect(message).not.toMatch(/abuse|blocked|banned|spam|violat|suspicious/i);
     }
-    /* The origin bucket pools strangers, so it must not say "you did this". */
+    /*
+      The origin bucket pools strangers, so it must not say "you did this".
+    */
     expect(originRefusal).toContain("from this connection");
-    /* An anonymous caller is told the thing that actually raises their cap. */
+    /*
+      An anonymous caller is told the thing that actually raises their cap.
+    */
     expect(ownerRefusal).toContain("Adding your email");
     expect(
       buildTestSendRefusalMessage({

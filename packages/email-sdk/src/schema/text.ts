@@ -1,60 +1,68 @@
 import { z } from "zod";
 import { textAlignSchema } from "./globals";
 
-/**
- * Rich-text content schema — a typed, deliberately PERMISSIVE-IN-SHAPE but
- * STRICT-IN-VOCABULARY subset of Tiptap/ProseMirror JSON.
- *
- * Per docs/decisions/text-block-model.md:
- * - One text block's doc may mix headings AND paragraphs (a heading is not
- *   its own flat-map block).
- * - The doc holds text content and inline marks. Block-level styling
- *   (alignment, colors, spacing) lives on the flat-map block's properties;
- *   the ONE node-level exception is the optional per-paragraph/heading
- *   `attrs.textAlign` override (see nodeTextAlign below).
- *
- * Email-safety: every object is strict — unknown node types, unknown mark
- * types, and unknown/extra attributes FAIL validation. This is intentional:
- * anything we cannot render to email-safe HTML must be rejected at the
- * boundary, not silently passed through. (E.g. Tiptap's `title` attr on link
- * marks is rejected; normalize it away before validating.)
- */
+/*
+  Rich-text content schema — a typed, deliberately PERMISSIVE-IN-SHAPE but
+  STRICT-IN-VOCABULARY subset of Tiptap/ProseMirror JSON.
 
-/** Bold (strong) mark. No attributes allowed. */
+  Per docs/decisions/text-block-model.md:
+  - One text block's doc may mix headings AND paragraphs (a heading is not
+    its own flat-map block).
+  - The doc holds text content and inline marks. Block-level styling
+    (alignment, colors, spacing) lives on the flat-map block's properties;
+    the ONE node-level exception is the optional per-paragraph/heading
+    `attrs.textAlign` override (see nodeTextAlign below).
+
+  Email-safety: every object is strict — unknown node types, unknown mark
+  types, and unknown/extra attributes FAIL validation. This is intentional:
+  anything we cannot render to email-safe HTML must be rejected at the
+  boundary, not silently passed through. (E.g. Tiptap's `title` attr on link
+  marks is rejected; normalize it away before validating.)
+*/
+
+/*
+  Bold (strong) mark. No attributes allowed.
+*/
 export const boldMarkSchema = z
   .strictObject({
     type: z.literal("bold").describe("Bold (strong emphasis) mark."),
   })
   .describe("Renders the covered text bold. Carries no attributes.");
 
-/** Italic (emphasis) mark. No attributes allowed. */
+/*
+  Italic (emphasis) mark. No attributes allowed.
+*/
 export const italicMarkSchema = z
   .strictObject({
     type: z.literal("italic").describe("Italic (emphasis) mark."),
   })
   .describe("Renders the covered text italic. Carries no attributes.");
 
-/** Underline mark. No attributes allowed. */
+/*
+  Underline mark. No attributes allowed.
+*/
 export const underlineMarkSchema = z
   .strictObject({
     type: z.literal("underline").describe("Underline mark."),
   })
   .describe("Renders the covered text underlined. Carries no attributes.");
 
-/** Strikethrough mark. No attributes allowed. */
+/*
+  Strikethrough mark. No attributes allowed.
+*/
 export const strikeMarkSchema = z
   .strictObject({
     type: z.literal("strike").describe("Strikethrough mark."),
   })
   .describe("Renders the covered text struck through. Carries no attributes.");
 
-/**
- * Text-style mark — mirrors Tiptap's TextStyle model: ONE mark type carrying
- * span-level typography attributes (font family, text color, font size), so
- * editor JSON round-trips 1:1. Every attribute renders as plain inline CSS on
- * a <span> (email-safe). At least one attribute must be present — an empty
- * textStyle mark is meaningless and is normalized away before validation.
- */
+/*
+  Text-style mark — mirrors Tiptap's TextStyle model: ONE mark type carrying
+  span-level typography attributes (font family, text color, font size), so
+  editor JSON round-trips 1:1. Every attribute renders as plain inline CSS on
+  a <span> (email-safe). At least one attribute must be present — an empty
+  textStyle mark is meaningless and is normalized away before validation.
+*/
 export const textStyleMarkSchema = z
   .strictObject({
     type: z.literal("textStyle").describe("Span-level typography mark."),
@@ -91,7 +99,9 @@ export const textStyleMarkSchema = z
     "Styles the covered text with inline typography: font family, text color, and/or font size. One mark carries all three attributes (Tiptap TextStyle model).",
   );
 
-/** Highlight (background color) mark. `color` is required. */
+/*
+  Highlight (background color) mark. `color` is required.
+*/
 export const highlightMarkSchema = z
   .strictObject({
     type: z.literal("highlight").describe("Background-color highlight mark."),
@@ -110,7 +120,9 @@ export const highlightMarkSchema = z
     "Paints a background color behind the covered text. Renders as an inline background-color span.",
   );
 
-/** Link mark. `href` is the only allowed attribute. */
+/*
+  Link mark. `href` is the only allowed attribute.
+*/
 export const linkMarkSchema = z
   .strictObject({
     type: z.literal("link").describe("Hyperlink mark."),
@@ -129,10 +141,10 @@ export const linkMarkSchema = z
     "Turns the covered text into a hyperlink. Link color comes from globals.linkTextColor at render time.",
   );
 
-/**
- * Any inline mark. Unknown mark types (e.g. code, subscript) fail
- * validation — the email renderer only supports this exact set.
- */
+/*
+  Any inline mark. Unknown mark types (e.g. code, subscript) fail
+  validation — the email renderer only supports this exact set.
+*/
 export const textMarkSchema = z
   .discriminatedUnion("type", [
     boldMarkSchema,
@@ -149,7 +161,9 @@ export const textMarkSchema = z
 
 export type TextMark = z.infer<typeof textMarkSchema>;
 
-/** A run of text with optional marks. */
+/*
+  A run of text with optional marks.
+*/
 export const textNodeSchema = z
   .strictObject({
     type: z.literal("text").describe("A run of plain text."),
@@ -163,7 +177,9 @@ export const textNodeSchema = z
 
 export type TextNode = z.infer<typeof textNodeSchema>;
 
-/** A hard line break within a paragraph or heading. */
+/*
+  A hard line break within a paragraph or heading.
+*/
 export const hardBreakNodeSchema = z
   .strictObject({
     type: z.literal("hardBreak").describe("A hard line break (<br>) within the parent node."),
@@ -172,28 +188,32 @@ export const hardBreakNodeSchema = z
 
 export type HardBreakNode = z.infer<typeof hardBreakNodeSchema>;
 
-/** Any inline node: a text run or a hard break. */
+/*
+  Any inline node: a text run or a hard break.
+*/
 export const inlineNodeSchema = z
   .discriminatedUnion("type", [textNodeSchema, hardBreakNodeSchema])
   .describe("Inline content: a text run or a hard line break.");
 
 export type InlineNode = z.infer<typeof inlineNodeSchema>;
 
-/**
- * Per-node alignment override — the ONLY node-level style attribute
- * (an amendment to text-block-model §2: the flat-map block still owns the
- * block-level default; a node carrying this attr overrides it for that
- * paragraph/heading alone). Optional and defaulted by omission: a node
- * without it inherits the block's alignment — pre-existing docs never
- * carry it and need no migration. Mirrors Tiptap's TextAlign extension
- * (attr name `textAlign` on paragraph/heading nodes) 1:1.
- */
+/*
+  Per-node alignment override — the ONLY node-level style attribute
+  (an amendment to text-block-model §2: the flat-map block still owns the
+  block-level default; a node carrying this attr overrides it for that
+  paragraph/heading alone). Optional and defaulted by omission: a node
+  without it inherits the block's alignment — pre-existing docs never
+  carry it and need no migration. Mirrors Tiptap's TextAlign extension
+  (attr name `textAlign` on paragraph/heading nodes) 1:1.
+*/
 const nodeTextAlign = textAlignSchema
   .describe(
     'Alignment override for THIS node only: "left", "center", or "right". Omit to inherit the text block\'s alignment.',
   );
 
-/** A paragraph of inline content. */
+/*
+  A paragraph of inline content.
+*/
 export const paragraphNodeSchema = z
   .strictObject({
     type: z.literal("paragraph").describe("A paragraph."),
@@ -216,7 +236,9 @@ export const paragraphNodeSchema = z
 
 export type ParagraphNode = z.infer<typeof paragraphNodeSchema>;
 
-/** A heading (levels 1–3) of inline content. */
+/*
+  A heading (levels 1–3) of inline content.
+*/
 export const headingNodeSchema = z
   .strictObject({
     type: z.literal("heading").describe("A heading."),
@@ -239,17 +261,19 @@ export const headingNodeSchema = z
 
 export type HeadingNode = z.infer<typeof headingNodeSchema>;
 
-/** Any block-level node inside a text doc: heading or paragraph. */
+/*
+  Any block-level node inside a text doc: heading or paragraph.
+*/
 export const textBlockNodeSchema = z
   .discriminatedUnion("type", [headingNodeSchema, paragraphNodeSchema])
   .describe("A block-level rich-text node: heading or paragraph.");
 
 export type TextBlockNode = z.infer<typeof textBlockNodeSchema>;
 
-/**
- * The full rich-text document stored in a text block's `properties.text`.
- * One doc per text block; may freely mix headings and paragraphs.
- */
+/*
+  The full rich-text document stored in a text block's `properties.text`.
+  One doc per text block; may freely mix headings and paragraphs.
+*/
 export const textDocSchema = z
   .strictObject({
     type: z.literal("doc").describe("Tiptap document wrapper. Always the literal \"doc\"."),
@@ -266,7 +290,9 @@ export const textDocSchema = z
 
 export type TextDoc = z.infer<typeof textDocSchema>;
 
-/** A minimal valid text doc: one paragraph containing the given text (or empty). */
+/*
+  A minimal valid text doc: one paragraph containing the given text (or empty).
+*/
 export function createTextDoc(text?: string): TextDoc {
   return {
     type: "doc",

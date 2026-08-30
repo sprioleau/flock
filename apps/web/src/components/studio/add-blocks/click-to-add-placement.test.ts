@@ -14,10 +14,10 @@ import {
 import { buildClickToAddPlan } from "./click-to-add-placement";
 import type { PaletteItem } from "./palette-items";
 
-/**
- * The click-to-add placement rules (proposal §4.3): selection-aware targets,
- * and ONE op per click even on an empty document (composite addSection).
- */
+/*
+  The click-to-add placement rules (proposal §4.3): selection-aware targets,
+  and ONE op per click even on an empty document (composite addSection).
+*/
 
 const id = (value: string) => value as BlockId;
 
@@ -29,7 +29,9 @@ function apply(doc: EmailDocument, op: Operation): EmailDocument {
   return result.doc;
 }
 
-/** root > sec_aaaa [txt_aaaa, row(2 cols)] , sec_bbbb [btn_bbbb] */
+/*
+  root > sec_aaaa [txt_aaaa, row(2 cols)] , sec_bbbb [btn_bbbb]
+*/
 function buildFixtureDoc(): { doc: EmailDocument; rowId: BlockId; firstColumnId: BlockId } {
   let doc = createEmptyDocument();
   doc = apply(doc, { name: "addSection", section: createDefaultSection(id("sec_aaaa")), index: 0 });
@@ -164,7 +166,7 @@ describe("buildClickToAddPlan: section items", () => {
       templateId: "hero",
       position: { afterSectionId: "sec_bbbb" },
     });
-    expect(plan!.newBlockId).toBeNull(); // id known only after dispatch
+    expect(plan!.newBlockId).toBeNull(); /* id known only after dispatch */
   });
 
   it("template click with no selection scaffolds at the bottom", () => {

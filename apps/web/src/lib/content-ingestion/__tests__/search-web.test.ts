@@ -1,15 +1,15 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { isWebSearchEnabled, searchPublicWeb, toAttributedClaims } from "../search-web";
 
-/**
- * Two things are pinned here.
- *
- * 1. QUOTA: a live grounded search costs a model call, so it must not happen
- *    unless it was explicitly switched on — and never on a mock run.
- * 2. ATTRIBUTION: only sentences the provider actually GROUNDED survive, each
- *    bound to the page that supports it. Ungrounded model prose is dropped,
- *    which is what keeps unsourced claims out of a person's spotlight.
- */
+/*
+  Two things are pinned here.
+
+  1. QUOTA: a live grounded search costs a model call, so it must not happen
+     unless it was explicitly switched on — and never on a mock run.
+  2. ATTRIBUTION: only sentences the provider actually GROUNDED survive, each
+     bound to the page that supports it. Ungrounded model prose is dropped,
+     which is what keeps unsourced claims out of a person's spotlight.
+*/
 
 const originalEnv = { ...process.env };
 

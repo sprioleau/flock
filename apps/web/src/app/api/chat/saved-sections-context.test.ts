@@ -2,12 +2,12 @@ import { describe, expect, it } from "vitest";
 import type { Doc } from "@convex/_generated/dataModel";
 import { formatSavedSectionsContext } from "./saved-sections-context";
 
-/**
- * The saved-sections FRESH-layer context block (owner V2 items 3+4): one
- * line per saved row advertising its scaffoldSection `saved:<id>`
- * templateId, guidance falling back useWhen → description → block count,
- * and the usage stat with TIEBREAKER-ONLY wording pinned.
- */
+/*
+  The saved-sections FRESH-layer context block (owner V2 items 3+4): one
+  line per saved row advertising its scaffoldSection `saved:<id>`
+  templateId, guidance falling back useWhen → description → block count,
+  and the usage stat with TIEBREAKER-ONLY wording pinned.
+*/
 
 type SavedSectionRow = Parameters<typeof formatSavedSectionsContext>[0][number];
 
@@ -55,11 +55,15 @@ describe("formatSavedSectionsContext", () => {
   it("appends the usage stat and pins the tiebreaker-only wording", () => {
     const context = formatSavedSectionsContext([buildRow({ useCount: 12 })]);
     expect(context).toContain("(used 12×)");
-    // Usage may TIEBREAK equivalent options, never outrank content fit.
+    /*
+      Usage may TIEBREAK equivalent options, never outrank content fit.
+    */
     expect(context).toMatch(
       /Prefer frequently-used saved sections only when options are otherwise equivalent[\s\S]*tiebreaker, never a substitute for content fit/,
     );
-    // Zero/absent counts show no stat.
+    /*
+      Zero/absent counts show no stat.
+    */
     expect(formatSavedSectionsContext([buildRow({ useCount: 0 })])).not.toContain("used 0");
   });
 });

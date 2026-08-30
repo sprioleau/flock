@@ -15,11 +15,11 @@ import { getMissingSendConfigKeys, sendTestEmailWithResend } from "./send-test-e
 
 const DOCUMENT = createEmptyDocument();
 
-/**
- * Records the arguments the module passes Resend and reports success, so a test
- * can assert on the resolved subject, the rendered html and the idempotency key
- * without a network call. Hoisted so the `vi.mock` factory can close over it.
- */
+/*
+  Records the arguments the module passes Resend and reports success, so a test
+  can assert on the resolved subject, the rendered html and the idempotency key
+  without a network call. Hoisted so the `vi.mock` factory can close over it.
+*/
 const resendSendMock = vi.hoisted(() =>
   vi.fn<
     (
@@ -34,13 +34,17 @@ vi.mock("resend", () => ({
   },
 }));
 
-/** A server that CAN send, so the module runs all the way to the (stubbed) call. */
+/*
+  A server that CAN send, so the module runs all the way to the (stubbed) call.
+*/
 const CONFIGURED_ENV = {
   RESEND_API_KEY: "re_live_key",
   RESEND_FROM_EMAIL: "Flock <hello@flockto.email>",
 };
 
-/** The payload + idempotency options captured from the most recent stubbed send. */
+/*
+  The payload + idempotency options captured from the most recent stubbed send.
+*/
 function lastSendCall(): {
   payload: { to: string[]; subject: string; html: string };
   options: { idempotencyKey: string };
@@ -92,8 +96,10 @@ describe("sendTestEmailWithResend", () => {
   });
 
   it("fails the whole send when ANY address in the array is malformed", async () => {
-    // One bad entry among good ones is rejected as a unit — the same verdict
-    // Resend would return — rather than the module quietly dropping it.
+    /*
+      One bad entry among good ones is rejected as a unit — the same verdict
+      Resend would return — rather than the module quietly dropping it.
+    */
     const outcome = await sendTestEmailWithResend({
       doc: DOCUMENT,
       to: ["good@example.com", "nope"],
@@ -118,7 +124,9 @@ describe("sendTestEmailWithResend", () => {
     expect(outcome).toMatchObject({ isSent: false, reason: "not_configured" });
     expect(outcome).not.toMatchObject({ message: expect.stringContaining("RESEND") });
 
-    // The operator still gets the specifics — in the server log.
+    /*
+      The operator still gets the specifics — in the server log.
+    */
     const loggedLine = errorLog.mock.calls[0]?.[0] as string;
     expect(JSON.parse(loggedLine)).toEqual({
       tag: "flock.sendTestEmail.notConfigured",
@@ -139,8 +147,10 @@ describe("sendTestEmailWithResend", () => {
 
 describe("the subject the recipient sees", () => {
   it("derives the subject from the document's first heading when none is given", async () => {
-    // The agent path (and any caller that omits `subject`) keeps the behaviour
-    // it has always had: the lead heading becomes the subject.
+    /*
+      The agent path (and any caller that omits `subject`) keeps the behaviour
+      it has always had: the lead heading becomes the subject.
+    */
     const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
     const outcome = await sendTestEmailWithResend({
       doc: createStarterDocument(),
@@ -150,7 +160,9 @@ describe("the subject the recipient sees", () => {
     logSpy.mockRestore();
 
     expect(outcome).toMatchObject({ isSent: true });
-    // The starter document's first heading.
+    /*
+      The starter document's first heading.
+    */
     expect(lastSendCall().payload.subject).toBe("Welcome to Flock.");
   });
 
@@ -171,8 +183,10 @@ describe("the subject the recipient sees", () => {
 
 describe("subject and preview text reach the rendered html", () => {
   it("stamps a provided subject into <title> and preview text through <Preview>", async () => {
-    // The point of threading these into the render is that the email actually
-    // carries them; assert on the html the module hands the provider.
+    /*
+      The point of threading these into the render is that the email actually
+      carries them; assert on the html the module hands the provider.
+    */
     const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
     const outcome = await sendTestEmailWithResend({
       doc: createEmptyDocument(),
@@ -186,7 +200,9 @@ describe("subject and preview text reach the rendered html", () => {
     expect(outcome).toMatchObject({ isSent: true });
     const { html } = lastSendCall().payload;
     expect(html).toContain("<title>Quarterly update</title>");
-    // React Email's <Preview> emits the preheader text into a hidden div.
+    /*
+      React Email's <Preview> emits the preheader text into a hidden div.
+    */
     expect(html).toContain("The three things that changed this quarter");
   });
 });
@@ -223,8 +239,10 @@ describe("the idempotency key is independent of recipient order", () => {
   });
 
   it("produces a DIFFERENT key when the recipient set actually differs", async () => {
-    // The order-independence must not collapse genuinely different sends into
-    // one — a different recipient set is a different key.
+    /*
+      The order-independence must not collapse genuinely different sends into
+      one — a different recipient set is a different key.
+    */
     const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
     const doc = createEmptyDocument();
 

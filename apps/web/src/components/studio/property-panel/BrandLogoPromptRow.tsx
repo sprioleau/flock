@@ -77,14 +77,18 @@ export function BrandLogoPromptRow({ blockId }: { blockId: BlockId }) {
   const state = getLogoBlockPromptState({
     hasSavedKit,
     logoUrl: hasSavedKit ? brandKit.logoUrl : undefined,
-    /* Session-scoped confirm: only the viewer's own kit row can be confirmed. */
+    /*
+      Session-scoped confirm: only the viewer's own kit row can be confirmed.
+    */
     isViewerOwnKit: sessionId !== null && kitId !== null && kitId === sessionKitId,
     confirmedLogo,
     doc,
     blockId,
   });
 
-  /* Apply the confirmed logo to one block or to every logo block, in one gesture. */
+  /*
+    Apply the confirmed logo to one block or to every logo block, in one gesture.
+  */
   const applyLogo = (blockIds: BlockId[] | undefined): void => {
     if (confirmedLogo === null) {
       return;
@@ -122,7 +126,9 @@ export function BrandLogoPromptRow({ blockId }: { blockId: BlockId }) {
     if (outcome.isOk) {
       setStatusMessage("Saved to your brand kit — you can use it here now.");
     } else {
-      /* The route's own words: it saw the failure, this panel did not. */
+      /*
+        The route's own words: it saw the failure, this panel did not.
+      */
       setConfirmErrorMessage(outcome.message);
     }
     setIsConfirming(false);
@@ -169,10 +175,12 @@ export function BrandLogoPromptRow({ blockId }: { blockId: BlockId }) {
       )}
       {state.kind === "unconfirmed" && (
         <>
-          {/* Deliberately not offered as "use it anyway": an unconfirmed logo is
-              still a third-party URL that has not been rehosted into our
-              storage, so it may never enter a document (owner decision 4).
-              Confirming is what changes that, and it is one press away below. */}
+          {/*
+            Deliberately not offered as "use it anyway": an unconfirmed logo is
+            still a third-party URL that has not been rehosted into our
+            storage, so it may never enter a document (owner decision 4).
+            Confirming is what changes that, and it is one press away below.
+          */}
           <p className="text-xs text-muted-foreground">
             Your brand kit has a suggested logo that isn&apos;t saved yet. Confirm it and it becomes
             usable here.
@@ -187,8 +195,10 @@ export function BrandLogoPromptRow({ blockId }: { blockId: BlockId }) {
               </span>
             ) : (
               <span className="flex size-14 shrink-0 items-center justify-center overflow-hidden rounded-md border bg-muted p-1.5">
-                {/* Plain <img>: the source is an arbitrary external host (or a
-                    data:image/svg+xml URI) and next/image can optimize neither. */}
+                {/*
+                  Plain <img>: the source is an arbitrary external host (or a
+                  data:image/svg+xml URI) and next/image can optimize neither.
+                */}
                 {/* eslint-disable-next-line @next/next/no-img-element */}
                 <img
                   src={state.suggestedLogoUrl}
@@ -219,9 +229,11 @@ export function BrandLogoPromptRow({ blockId }: { blockId: BlockId }) {
                 {isConfirming ? "Saving…" : "Confirm this logo"}
               </Button>
             ) : (
-              /* Somebody else's kit is on screen: confirming from here would
-                 act on the viewer's own row, so the honest offer is the panel
-                 where the kit's owner-facing controls live. */
+              /*
+                Somebody else's kit is on screen: confirming from here would
+                act on the viewer's own row, so the honest offer is the panel
+                where the kit's owner-facing controls live.
+              */
               <Button
                 type="button"
                 variant="outline"
@@ -233,11 +245,13 @@ export function BrandLogoPromptRow({ blockId }: { blockId: BlockId }) {
                 Confirm it in the brand kit
               </Button>
             )}
-            {/* Demoted, never removed: replacing the suggestion, removing it, or
-                typing a different address all still live in the full panel.
-                Held shut mid-rehost because the panel carries its own confirm
-                button behind its own in-flight flag — the two surfaces would
-                otherwise be able to fire the same rehost twice. */}
+            {/*
+              Demoted, never removed: replacing the suggestion, removing it, or
+              typing a different address all still live in the full panel.
+              Held shut mid-rehost because the panel carries its own confirm
+              button behind its own in-flight flag — the two surfaces would
+              otherwise be able to fire the same rehost twice.
+            */}
             <Button
               type="button"
               variant="ghost"
@@ -275,7 +289,9 @@ export function BrandLogoPromptRow({ blockId }: { blockId: BlockId }) {
               Use brand logo
             </Button>
           )}
-          {/* Only worth its own button when it would reach past this block. */}
+          {/*
+            Only worth its own button when it would reach past this block.
+          */}
           {(state.staleBlockCount > 1 || state.isBlockUsingLogo) && (
             <Button
               type="button"

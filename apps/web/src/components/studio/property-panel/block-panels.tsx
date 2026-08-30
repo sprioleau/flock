@@ -37,30 +37,34 @@ import { TextareaField } from "./TextareaField";
 import { getBlockPropertyHelp, type DescribableBlockType } from "./schema-help";
 import { useCommitBlockProperties, useResolvedGlobals } from "./usePanelDispatch";
 
-/**
- * Per-block property editors. Every control dispatches
- * `updateBlockProperties` on each input event (the canvas tracks live); the
- * store's undo-stack coalescing keeps undo at one entry per gesture. Optional
- * style fields are clearable overrides: clearing dispatches
- * `{ key: undefined }`, which the SDK's shallow merge removes so the
- * global/renderer default applies again.
- *
- * The text panel edits ONLY block-level fields (padding / color / alignment
- * overrides); rich-text content editing lives inline on the canvas.
- */
+/*
+  Per-block property editors. Every control dispatches
+  `updateBlockProperties` on each input event (the canvas tracks live); the
+  store's undo-stack coalescing keeps undo at one entry per gesture. Optional
+  style fields are clearable overrides: clearing dispatches
+  `{ key: undefined }`, which the SDK's shallow merge removes so the
+  global/renderer default applies again.
+
+  The text panel edits ONLY block-level fields (padding / color / alignment
+  overrides); rich-text content editing lives inline on the canvas.
+*/
 
 const help = (blockType: DescribableBlockType) => (propertyKey: string) =>
   getBlockPropertyHelp({ blockType, propertyKey });
 
-/** Sentence-case labels for the SDK's border-style vocabulary. */
+/*
+  Sentence-case labels for the SDK's border-style vocabulary.
+*/
 const BORDER_STYLE_OPTIONS: ReadonlyArray<{ value: BorderStyle; label: string }> = BORDER_STYLES.map(
   (style) => ({ value: style, label: `${style[0]!.toUpperCase()}${style.slice(1)}` }),
 );
 
 
-// ---------------------------------------------------------------------------
-// Button
-// ---------------------------------------------------------------------------
+/*
+  ---------------------------------------------------------------------------
+  Button
+  ---------------------------------------------------------------------------
+*/
 
 export function ButtonPanel({ block }: { block: ButtonBlock }) {
   const commit = useCommitBlockProperties(block.id);
@@ -171,9 +175,11 @@ export function ButtonPanel({ block }: { block: ButtonBlock }) {
   );
 }
 
-// ---------------------------------------------------------------------------
-// Image
-// ---------------------------------------------------------------------------
+/*
+  ---------------------------------------------------------------------------
+  Image
+  ---------------------------------------------------------------------------
+*/
 
 export function ImagePanel({ block }: { block: ImageBlock }) {
   const commit = useCommitBlockProperties(block.id);
@@ -203,12 +209,14 @@ export function ImagePanel({ block }: { block: ImageBlock }) {
         helpText={helpFor("alt")}
         onCommit={(value) => commit({ alt: value ?? "" })}
       />
-      {/* Width as a SCALE slider: the stored property stays pixels (the
-          schema's `width`), but the control reads/writes it as a percent of
-          the RESOLVED contentWidth — the same mapping new images use (60% at
-          creation). Every movement commits instantly (never debounced); the
-          exact px value stays visible in the readout, and clearing restores
-          "natural" via the replaceBlockProperties clear path. */}
+      {/*
+        Width as a SCALE slider: the stored property stays pixels (the
+        schema's `width`), but the control reads/writes it as a percent of
+        the RESOLVED contentWidth — the same mapping new images use (60% at
+        creation). Every movement commits instantly (never debounced); the
+        exact px value stays visible in the readout, and clearing restores
+        "natural" via the replaceBlockProperties clear path.
+      */}
       <PercentSliderField
         label="Width"
         valuePercent={
@@ -241,8 +249,10 @@ export function ImagePanel({ block }: { block: ImageBlock }) {
       <ColorField
         label="Background"
         value={properties.backgroundColor}
-        // Unset image backgrounds are transparent — the content background
-        // shows through, so it is the value the user actually sees.
+        /*
+          Unset image backgrounds are transparent — the content background
+          shows through, so it is the value the user actually sees.
+        */
         fallbackColor={globals.contentBackgroundColor}
         isClearable
         helpText={helpFor("backgroundColor")}
@@ -256,10 +266,12 @@ export function ImagePanel({ block }: { block: ImageBlock }) {
         helpText={helpFor("href")}
         onCommit={(value) => commit({ href: value })}
       />
-      {/* Border group. Corner radius is a theme-able property (it falls back
-          to globals.imageBorderRadius, the image counterpart of the button's
-          radius global), so its placeholder shows the inherited value; width,
-          style, and color are per-image only. */}
+      {/*
+        Border group. Corner radius is a theme-able property (it falls back
+        to globals.imageBorderRadius, the image counterpart of the button's
+        radius global), so its placeholder shows the inherited value; width,
+        style, and color are per-image only.
+      */}
       <div className="space-y-2">
         <p className="text-xs font-medium text-muted-foreground">Border</p>
         <div className="grid grid-cols-2 gap-2">
@@ -303,9 +315,11 @@ export function ImagePanel({ block }: { block: ImageBlock }) {
   );
 }
 
-// ---------------------------------------------------------------------------
-// Section
-// ---------------------------------------------------------------------------
+/*
+  ---------------------------------------------------------------------------
+  Section
+  ---------------------------------------------------------------------------
+*/
 
 export function SectionPanel({ block }: { block: SectionBlock }) {
   const commit = useCommitBlockProperties(block.id);
@@ -333,16 +347,20 @@ export function SectionPanel({ block }: { block: SectionBlock }) {
         onCommit={(value) => commit({ outerBackgroundColor: value })}
       />
       <PaddingFields blockType="section" properties={properties} resolvedPadding={resolved} onCommitPadding={commit} />
-      {/* Item 26: fill this section's social row from the brand kit (renders
-          only when the section has social links and the kit carries some). */}
+      {/*
+        Item 26: fill this section's social row from the brand kit (renders
+        only when the section has social links and the kit carries some).
+      */}
       <BrandSocialFillRow sectionId={block.id} />
     </div>
   );
 }
 
-// ---------------------------------------------------------------------------
-// Row
-// ---------------------------------------------------------------------------
+/*
+  ---------------------------------------------------------------------------
+  Row
+  ---------------------------------------------------------------------------
+*/
 
 export function RowPanel({ block }: { block: RowBlock }) {
   const commit = useCommitBlockProperties(block.id);
@@ -356,8 +374,10 @@ export function RowPanel({ block }: { block: RowBlock }) {
       <ColorField
         label="Background"
         value={properties.backgroundColor}
-        // Unset row backgrounds are transparent — the section background shows
-        // through, so it is the value the user actually sees.
+        /*
+          Unset row backgrounds are transparent — the section background shows
+          through, so it is the value the user actually sees.
+        */
         fallbackColor={globals.contentBackgroundColor}
         isClearable
         helpText={helpFor("backgroundColor")}
@@ -368,9 +388,11 @@ export function RowPanel({ block }: { block: RowBlock }) {
   );
 }
 
-// ---------------------------------------------------------------------------
-// Column
-// ---------------------------------------------------------------------------
+/*
+  ---------------------------------------------------------------------------
+  Column
+  ---------------------------------------------------------------------------
+*/
 
 type ColumnVerticalAlign = NonNullable<ColumnBlock["properties"]["verticalAlign"]>;
 
@@ -410,8 +432,10 @@ export function ColumnPanel({ block }: { block: ColumnBlock }) {
       <ColorField
         label="Background"
         value={properties.backgroundColor}
-        // Unset column backgrounds are transparent — the content background
-        // shows through, so it is the value the user actually sees.
+        /*
+          Unset column backgrounds are transparent — the content background
+          shows through, so it is the value the user actually sees.
+        */
         fallbackColor={globals.contentBackgroundColor}
         isClearable
         helpText={helpFor("backgroundColor")}
@@ -422,9 +446,11 @@ export function ColumnPanel({ block }: { block: ColumnBlock }) {
   );
 }
 
-// ---------------------------------------------------------------------------
-// Divider
-// ---------------------------------------------------------------------------
+/*
+  ---------------------------------------------------------------------------
+  Divider
+  ---------------------------------------------------------------------------
+*/
 
 export function DividerPanel({ block }: { block: DividerBlock }) {
   const commit = useCommitBlockProperties(block.id);
@@ -457,9 +483,11 @@ export function DividerPanel({ block }: { block: DividerBlock }) {
   );
 }
 
-// ---------------------------------------------------------------------------
-// Text (block-level fields only — content editing is inline on the canvas)
-// ---------------------------------------------------------------------------
+/*
+  ---------------------------------------------------------------------------
+  Text (block-level fields only — content editing is inline on the canvas)
+  ---------------------------------------------------------------------------
+*/
 
 export function TextPanel({ block }: { block: TextBlock }) {
   const commit = useCommitBlockProperties(block.id);
@@ -473,9 +501,11 @@ export function TextPanel({ block }: { block: TextBlock }) {
       <ColorField
         label="Text color"
         value={properties.textColor}
-        // No single resolved value exists (headings and paragraphs differ);
-        // body text color is the honest representative so the field always
-        // shows the doc's current effective value instead of a blank input.
+        /*
+          No single resolved value exists (headings and paragraphs differ);
+          body text color is the honest representative so the field always
+          shows the doc's current effective value instead of a blank input.
+        */
         fallbackColor={globals.paragraphTextColor}
         isClearable
         helpText={helpFor("textColor")}
@@ -484,8 +514,10 @@ export function TextPanel({ block }: { block: TextBlock }) {
       <ColorField
         label="Background"
         value={properties.backgroundColor}
-        // Unset text backgrounds are transparent — the content background
-        // shows through, so it is the value the user actually sees.
+        /*
+          Unset text backgrounds are transparent — the content background
+          shows through, so it is the value the user actually sees.
+        */
         fallbackColor={globals.contentBackgroundColor}
         isClearable
         helpText={helpFor("backgroundColor")}
@@ -506,9 +538,11 @@ export function TextPanel({ block }: { block: TextBlock }) {
   );
 }
 
-// ---------------------------------------------------------------------------
-// Link
-// ---------------------------------------------------------------------------
+/*
+  ---------------------------------------------------------------------------
+  Link
+  ---------------------------------------------------------------------------
+*/
 
 const LINK_UNDERLINE_OPTIONS: ReadonlyArray<{ value: "underlined" | "plain"; label: string }> = [
   { value: "underlined", label: "Underlined" },
@@ -584,9 +618,11 @@ export function LinkPanel({ block }: { block: LinkBlock }) {
   );
 }
 
-// ---------------------------------------------------------------------------
-// Code
-// ---------------------------------------------------------------------------
+/*
+  ---------------------------------------------------------------------------
+  Code
+  ---------------------------------------------------------------------------
+*/
 
 const CODE_LANGUAGE_OPTIONS: ReadonlyArray<{ value: CodeBlockLanguage; label: string }> =
   CODE_BLOCK_LANGUAGES.map((language) => ({ value: language, label: language }));
@@ -652,9 +688,11 @@ export function CodePanel({ block }: { block: CodeBlock }) {
   );
 }
 
-// ---------------------------------------------------------------------------
-// Spacer
-// ---------------------------------------------------------------------------
+/*
+  ---------------------------------------------------------------------------
+  Spacer
+  ---------------------------------------------------------------------------
+*/
 
 export function SpacerPanel({ block }: { block: SpacerBlock }) {
   const commit = useCommitBlockProperties(block.id);

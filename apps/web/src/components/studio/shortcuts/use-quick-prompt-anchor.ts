@@ -7,28 +7,30 @@ import { buildCommentAnchorContext } from "../comments/comment-context";
 import { useCommentsModeStore } from "../comments/comments-mode-store";
 import type { PointerPosition } from "../dnd/drop-target";
 
-/**
- * The quick prompt's CURSOR BINDING: where the "/" card opens, and which block
- * the prompt it carries is about.
- *
- * The binding is one line of substance and no new plumbing. Selecting the
- * block through the editor store is the WHOLE transport — use-flock-chat
- * already puts `selectedBlockId` on every turn — so "make this bigger" typed
- * over a button resolves against that button with nothing new on the wire.
- *
- * The card then SHOWS the block it resolved to (the ancestor trail comments
- * mode already builds), because a prompt silently bound to the wrong block is
- * worse than one bound to nothing: the user can see what "this" means before
- * they commit a turn to it.
- *
- * No block under the pointer — off-canvas, over the page chrome, over the
- * email's own background between sections (the root renders no
- * `[data-block-id]` wrapper) — resolves to null, and null is the CENTERED card
- * exactly as before. Unbound is the honest state there: there is nothing for
- * "this" to mean.
- */
+/*
+  The quick prompt's CURSOR BINDING: where the "/" card opens, and which block
+  the prompt it carries is about.
 
-/** Viewport rect of the bound block — only the edges placement reads. */
+  The binding is one line of substance and no new plumbing. Selecting the
+  block through the editor store is the WHOLE transport — use-flock-chat
+  already puts `selectedBlockId` on every turn — so "make this bigger" typed
+  over a button resolves against that button with nothing new on the wire.
+
+  The card then SHOWS the block it resolved to (the ancestor trail comments
+  mode already builds), because a prompt silently bound to the wrong block is
+  worse than one bound to nothing: the user can see what "this" means before
+  they commit a turn to it.
+
+  No block under the pointer — off-canvas, over the page chrome, over the
+  email's own background between sections (the root renders no
+  `[data-block-id]` wrapper) — resolves to null, and null is the CENTERED card
+  exactly as before. Unbound is the honest state there: there is nothing for
+  "this" to mean.
+*/
+
+/*
+  Viewport rect of the bound block — only the edges placement reads.
+*/
 export interface AnchorRect {
   left: number;
   top: number;
@@ -36,22 +38,36 @@ export interface AnchorRect {
   bottom: number;
 }
 
-/** An open quick prompt bound to the block that was under the pointer. */
+/*
+  An open quick prompt bound to the block that was under the pointer.
+*/
 export interface QuickPromptAnchor {
-  /** Where "/" was pressed — the card's horizontal anchor. */
+  /*
+    Where "/" was pressed — the card's horizontal anchor.
+  */
   pointer: PointerPosition;
-  /** The bound block's rect, which the card dodges rather than covers. */
+  /*
+    The bound block's rect, which the card dodges rather than covers.
+  */
   blockRect: AnchorRect;
   blockId: BlockId;
-  /** "Section › Row › Button" — the trail shown as the resolved target. */
+  /*
+    "Section › Row › Button" — the trail shown as the resolved target.
+  */
   breadcrumb: string;
-  /** Full-word type label ("Button"), for the placeholder copy. */
+  /*
+    Full-word type label ("Button"), for the placeholder copy.
+  */
   blockType: string | undefined;
-  /** The block's visible text, when it has any. */
+  /*
+    The block's visible text, when it has any.
+  */
   textSnippet: string | undefined;
 }
 
-/** Card width the owner asked for; also what the placement maths reserves. */
+/*
+  Card width the owner asked for; also what the placement maths reserves.
+*/
 export const QUICK_PROMPT_CARD_WIDTH_PX = 450;
 
 /*
@@ -63,22 +79,24 @@ export const QUICK_PROMPT_CARD_WIDTH_PX = 450;
 */
 export const QUICK_PROMPT_CARD_MAX_HEIGHT_PX = 240;
 
-/** Keep-on-screen inset, and the breathing room left around the block. */
+/*
+  Keep-on-screen inset, and the breathing room left around the block.
+*/
 const VIEWPORT_MARGIN_PX = 8;
 const BLOCK_GAP_PX = 10;
 
-/**
- * Where the anchored card sits, in viewport coordinates — or null when there
- * is no anchor, which is the caller's signal to render the centered card.
- *
- * Horizontally the card centres on the pointer, so it reads as "at my
- * cursor", clamped to stay fully on screen. Vertically it prefers the gutter
- * BELOW the bound block, then the gutter above: the block the prompt is about
- * has to stay visible while the user describes it. When the block fills the
- * viewport so that neither gutter can hold the card, it falls back to the
- * pointer and accepts the overlap — at that point covering some of the block
- * is unavoidable, and being on screen matters more.
- */
+/*
+  Where the anchored card sits, in viewport coordinates — or null when there
+  is no anchor, which is the caller's signal to render the centered card.
+
+  Horizontally the card centres on the pointer, so it reads as "at my
+  cursor", clamped to stay fully on screen. Vertically it prefers the gutter
+  BELOW the bound block, then the gutter above: the block the prompt is about
+  has to stay visible while the user describes it. When the block fills the
+  viewport so that neither gutter can hold the card, it falls back to the
+  pointer and accepts the overlap — at that point covering some of the block
+  is unavoidable, and being on screen matters more.
+*/
 export function computeQuickPromptPlacement({
   anchor,
   cardWidth,
@@ -119,14 +137,14 @@ export function computeQuickPromptPlacement({
   };
 }
 
-/**
- * Bind the prompt to `blockId` and describe it for the card.
- *
- * Selecting is the binding: nothing else has to carry the block to the model.
- * Null when the id is not in that store's doc — a DOM block the store has
- * already dropped (mid-apply) — and the caller then opens the centered card
- * unbound rather than binding to an id the document cannot explain.
- */
+/*
+  Bind the prompt to `blockId` and describe it for the card.
+
+  Selecting is the binding: nothing else has to carry the block to the model.
+  Null when the id is not in that store's doc — a DOM block the store has
+  already dropped (mid-apply) — and the caller then opens the centered card
+  unbound rather than binding to an id the document cannot explain.
+*/
 export function bindQuickPromptToBlock({
   blockId,
   blockRect,
@@ -162,13 +180,13 @@ export function bindQuickPromptToBlock({
 
 const CANVAS_ROOT_SELECTOR = "[data-dnd-canvas-root]";
 
-/**
- * Pointer → the innermost canvas block under it, scoped to the ACTIVE frame's
- * canvas — the same rule drop resolution uses. Under multi-frame editing block
- * ids repeat across forked sibling drafts while the chat turn carries the
- * ACTIVE store's document, so a block sitting in another frame's canvas must
- * never become "this".
- */
+/*
+  Pointer → the innermost canvas block under it, scoped to the ACTIVE frame's
+  canvas — the same rule drop resolution uses. Under multi-frame editing block
+  ids repeat across forked sibling drafts while the chat turn carries the
+  ACTIVE store's document, so a block sitting in another frame's canvas must
+  never become "this".
+*/
 function findBlockAtPointer({
   pointer,
   documentId,
@@ -187,7 +205,9 @@ function findBlockAtPointer({
   if (canvasRoot === null) {
     return null;
   }
-  /* Before the store connects there is no id to scope by — any canvas will do. */
+  /*
+    Before the store connects there is no id to scope by — any canvas will do.
+  */
   if (documentId !== null && canvasRoot.dataset.canvasDocumentId !== documentId) {
     return null;
   }
@@ -198,11 +218,11 @@ function findBlockAtPointer({
   };
 }
 
-/**
- * Tracks the pointer over the app and returns the resolver the "/" binding
- * calls at press time. Kept as a callback rather than state: the pointer moves
- * constantly and nothing renders from it until a key is pressed.
- */
+/*
+  Tracks the pointer over the app and returns the resolver the "/" binding
+  calls at press time. Kept as a callback rather than state: the pointer moves
+  constantly and nothing renders from it until a key is pressed.
+*/
 export function useQuickPromptAnchor(): () => QuickPromptAnchor | null {
   const pointerRef = useRef<PointerPosition | null>(null);
 

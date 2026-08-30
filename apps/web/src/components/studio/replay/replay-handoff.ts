@@ -21,7 +21,9 @@
 
 let openReplayPanel: (() => void) | null = null;
 
-/** ReplayPanel's registration (one replay drawer per studio). */
+/*
+  ReplayPanel's registration (one replay drawer per studio).
+*/
 export function registerReplayPanelOpener(open: () => void): () => void {
   openReplayPanel = open;
   return () => {
@@ -31,11 +33,11 @@ export function registerReplayPanelOpener(open: () => void): () => void {
   };
 }
 
-/**
- * Open the time-travel replay drawer. Returns whether a panel was mounted to
- * receive it, so a caller can hide its own affordance rather than offering a
- * button that does nothing.
- */
+/*
+  Open the time-travel replay drawer. Returns whether a panel was mounted to
+  receive it, so a caller can hide its own affordance rather than offering a
+  button that does nothing.
+*/
 export function openTimeTravelReplay(): boolean {
   if (openReplayPanel === null) {
     return false;

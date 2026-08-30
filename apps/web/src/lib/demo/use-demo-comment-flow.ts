@@ -51,7 +51,9 @@ import {
 export interface DemoCommentFlowController {
   phase: DemoCommentPhase;
   chosenChoiceId: string | null;
-  /** Pick a scripted comment, place it, and dispatch it for a fix. */
+  /*
+    Pick a scripted comment, place it, and dispatch it for a fix.
+  */
   chooseComment: (choiceId: string) => void;
 }
 
@@ -60,7 +62,9 @@ export function useDemoCommentFlow({
   isStepActive,
 }: {
   documentId: Id<"documents"> | null;
-  /** True while step 3 is the step on screen. */
+  /*
+    True while step 3 is the step on screen.
+  */
   isStepActive: boolean;
 }): DemoCommentFlowController {
   const createComment = useMutation(api.comments.createComment);
@@ -86,7 +90,9 @@ export function useDemoCommentFlow({
     };
   }, [isStepActive]);
 
-  /* The pins feed, subscribed only once there is a comment of ours in it. */
+  /*
+    The pins feed, subscribed only once there is a comment of ours in it.
+  */
   const openComments = useQuery(
     api.comments.listOpenCommentsForDocument,
     documentId !== null && commentId !== null ? { documentId } : "skip",
@@ -132,8 +138,10 @@ export function useDemoCommentFlow({
       blockId: DEMO_COMMENT_TARGET_BLOCK_ID,
     });
     if (context === null) {
-      /* The hero CTA is gone (the visitor deleted it). Better to offer
-         nothing than to anchor the beat to a block that is not there. */
+      /*
+        The hero CTA is gone (the visitor deleted it). Better to offer
+        nothing than to anchor the beat to a block that is not there.
+      */
       return;
     }
     editorState.selectBlock(DEMO_COMMENT_TARGET_BLOCK_ID);
@@ -142,21 +150,27 @@ export function useDemoCommentFlow({
       documentId,
       sessionId,
       authorName: getLocalCommentAuthorName(sessionId),
-      /* Centre of the block's own rect — the same 0..1 fraction model a
-         hit-tested click produces (comment-context.ts §toAnchorFraction). */
+      /*
+        Centre of the block's own rect — the same 0..1 fraction model a
+        hit-tested click produces (comment-context.ts §toAnchorFraction).
+      */
       anchor: { blockId: DEMO_COMMENT_TARGET_BLOCK_ID, x: 0.5, y: 0.5 },
       context,
       text: choice.commentText,
     })
       .then((createdCommentId) => {
         setCommentId(createdCommentId);
-        /* Open the thread the visitor just started, so they watch the agent's
-           reply land in it rather than being told it did. */
+        /*
+          Open the thread the visitor just started, so they watch the agent's
+          reply land in it rather than being told it did.
+        */
         useCommentsModeStore.getState().setOpenThreadCommentId(createdCommentId);
       })
       .catch((error: unknown) => {
         console.error("[demo] could not place the scripted comment", error);
-        /* Back to the choices — a beat that failed must be retryable. */
+        /*
+          Back to the choices — a beat that failed must be retryable.
+        */
         setChosenChoiceId(null);
       });
   };

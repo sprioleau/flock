@@ -49,10 +49,12 @@ describe("composeFindingOps — copy rewrites", () => {
   });
 
   it("reverts exactly: the op's inverse restores the original words", () => {
-    /* Apply → revert is the promise behind every persona card (the finding's
-       batch is reverted through history.revertBatch, which replays the stored
-       inverses). A rewrite whose inverse does not restore the block byte for
-       byte would leave the user unable to get their copy back. */
+    /*
+      Apply → revert is the promise behind every persona card (the finding's
+      batch is reverted through history.revertBatch, which replays the stored
+      inverses). A rewrite whose inverse does not restore the block byte for
+      byte would leave the user unable to get their copy back.
+    */
     const doc = createDemoDocument();
     const before = textOf({ doc, blockId: SHOUTING_PARAGRAPH_BLOCK });
     const ops = composeFindingOps({
@@ -73,9 +75,11 @@ describe("composeFindingOps — copy rewrites", () => {
   });
 
   it("keeps the block's structure: a heading stays a heading at its level", () => {
-    /* The model writes words, never document structure — so the heading/
-       paragraph shape has to come from the block being rewritten. If it did
-       not, a tone fix on a hero would silently demote its h1 to body copy. */
+    /*
+      The model writes words, never document structure — so the heading/
+      paragraph shape has to come from the block being rewritten. If it did
+      not, a tone fix on a hero would silently demote its h1 to body copy.
+    */
     const doc = createDemoDocument();
     const ops = composeFindingOps({
       doc,
@@ -108,10 +112,12 @@ describe("composeFindingOps — copy rewrites", () => {
   });
 
   it("accepts the outline's own ' | ' separator between a block's pieces", () => {
-    /* The outline a persona reads joins a text block's nodes with " | ", so a
-       model that echoes that separator back has understood the instruction and
-       typed the wrong character. Repairing it is deterministic; refusing it
-       would cost a good rewrite. */
+    /*
+      The outline a persona reads joins a text block's nodes with " | ", so a
+      model that echoes that separator back has understood the instruction and
+      typed the wrong character. Repairing it is deterministic; refusing it
+      would cost a good rewrite.
+    */
     const doc = createDemoDocument();
     const ops = composeFindingOps({
       doc,
@@ -134,8 +140,10 @@ describe("composeFindingOps — copy rewrites", () => {
 
 describe("composeFindingOps — refusals (a fix that would destroy content is not offered)", () => {
   it("refuses a rewrite with fewer lines than the block has paragraphs", () => {
-    /* One line for a two-piece block would drop the trailing paragraph — a
-       deletion the persona never proposed and the user never saw coming. */
+    /*
+      One line for a two-piece block would drop the trailing paragraph — a
+      deletion the persona never proposed and the user never saw coming.
+    */
     expect(
       composeFindingOps({
         doc: createDemoDocument(),
@@ -147,10 +155,12 @@ describe("composeFindingOps — refusals (a fix that would destroy content is no
   });
 
   it("refuses a rewrite of a block whose formatting varies run to run", () => {
-    /* The demo footer's first paragraph is two hyperlinks around a separator.
-       A whole-doc replacement cannot carry marks the rewritten words no longer
-       align with, and dropping two live links out of a footer under the banner
-       of a "copy fix" is not an acceptable trade. */
+    /*
+      The demo footer's first paragraph is two hyperlinks around a separator.
+      A whole-doc replacement cannot carry marks the rewritten words no longer
+      align with, and dropping two live links out of a footer under the banner
+      of a "copy fix" is not an acceptable trade.
+    */
     expect(
       composeFindingOps({
         doc: createDemoDocument(),
@@ -165,8 +175,10 @@ describe("composeFindingOps — refusals (a fix that would destroy content is no
   });
 
   it("refuses a rewrite aimed at a block that is not text", () => {
-    /* A button's label is a property. Nothing is written on the way to
-       discovering that — the batch never leaves this module. */
+    /*
+      A button's label is a property. Nothing is written on the way to
+      discovering that — the batch never leaves this module.
+    */
     expect(
       composeFindingOps({
         doc: createDemoDocument(),
@@ -234,8 +246,10 @@ describe("composeFindingOps — property edits (unchanged by the copy-edit work)
   });
 
   it("carries a property edit and a copy rewrite in ONE batch", () => {
-    /* One press, one op-log batch, one revert — a finding that recolors a
-       block and rewrites the words above it must not become two half-fixes. */
+    /*
+      One press, one op-log batch, one revert — a finding that recolors a
+      block and rewrites the words above it must not become two half-fixes.
+    */
     const doc = createDemoDocument();
     const ops = composeFindingOps({
       doc,

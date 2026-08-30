@@ -1,9 +1,9 @@
-/**
- * Copy-signal extraction (brand-kit-user-control §5.4) — the deterministic
- * raw material behind tone of voice. The failure stance is the point: a page
- * with no readable copy reports `hasAnySignal: false`, and the pipeline turns
- * that into an ABSENT tone field rather than an invented voice.
- */
+/*
+  Copy-signal extraction (brand-kit-user-control §5.4) — the deterministic
+  raw material behind tone of voice. The failure stance is the point: a page
+  with no readable copy reports `hasAnySignal: false`, and the pipeline turns
+  that into an ABSENT tone field rather than an invented voice.
+*/
 import { describe, expect, it } from "vitest";
 import { describeCopySignals, extractCopySignals } from "./extract-copy-signals";
 
@@ -25,7 +25,9 @@ describe("extractCopySignals", () => {
     const signals = extractCopySignals(PAGE);
     expect(signals.description).toBe("We build robots that get out of your way.");
     expect(signals.headline).toBe("Robots, minus the drama");
-    // "Tiny." is a caption, not the brand's prose — too short to carry voice.
+    /*
+      "Tiny." is a caption, not the brand's prose — too short to carry voice.
+    */
     expect(signals.firstParagraph).toContain("We ship one robot at a time");
   });
 

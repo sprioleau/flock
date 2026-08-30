@@ -2,25 +2,27 @@ import { z } from "zod";
 import { blockSchema, type Block } from "../schema/blocks";
 import { blockIdSchema, ROOT_BLOCK_ID, type BlockId } from "../schema/ids";
 
-/**
- * The flat, normalized email document: blocks keyed by id. This is the sole
- * source of truth; the nested tree is derived, ephemeral, and render-time
- * only (see inflate/deflate in ./tree.ts).
- */
+/*
+  The flat, normalized email document: blocks keyed by id. This is the sole
+  source of truth; the nested tree is derived, ephemeral, and render-time
+  only (see inflate/deflate in ./tree.ts).
+*/
 export type EmailDocument = Record<BlockId, Block>;
 
-/**
- * Schema for a whole flat document. Validates each block's shape and that
- * keys are well-formed ids — referential integrity (pointer agreement,
- * nesting, reachability) is checked separately by checkDocumentIntegrity.
- */
+/*
+  Schema for a whole flat document. Validates each block's shape and that
+  keys are well-formed ids — referential integrity (pointer agreement,
+  nesting, reachability) is checked separately by checkDocumentIntegrity.
+*/
 export const emailDocumentSchema = z
   .record(blockIdSchema, blockSchema)
   .describe(
     "A flat email document: every block keyed by its id. Structure is expressed through parentId/childrenIds pointers, never nesting.",
   );
 
-/** A new document: just a root block with no sections and empty globals. */
+/*
+  A new document: just a root block with no sections and empty globals.
+*/
 export function createEmptyDocument(): EmailDocument {
   return {
     [ROOT_BLOCK_ID]: {
@@ -33,45 +35,45 @@ export function createEmptyDocument(): EmailDocument {
   };
 }
 
-/**
- * The designed starter document seeded into every NEW document and NEW draft
- * (convex createDocument's default). It is deliberately a WHOLE email rather
- * than a stub: a new draft should open on something that already looks like a
- * finished send, so the first move is editing a real email instead of filling
- * a blank page. The copy does double duty — it reads as a welcome email, and
- * it points a first-time user at the three things worth knowing on day one
- * (the theme, the section gallery, and sending yourself a test).
- *
- *   root
- *   ├─ sec_hdr1 (header)  → img_lg01 (logo placeholder)
- *   ├─ sec_hero (hero)    → txt_wc01 (h1 + intro), img_hr01, btn_ct01 (primary CTA)
- *   ├─ sec_ways (2-up)    → row_fr01
- *   │                         ├─ col_fc01 → txt_fc01 (h3 + line)
- *   │                         └─ col_fc02 → txt_fc02 (h3 + line)
- *   ├─ sec_step (how-to)  → div_st01, txt_st01 (h2 + three bold-led steps), lnk_sg01
- *   └─ sec_ftr1 (footer)  → div_ft01, txt_ft01 (small-print links/address/unsubscribe)
- *
- * DELIBERATELY SHORT. This document is also what the chat pipeline sends the
- * model on every turn, so each sentence here is paid for on every message of
- * every conversation started from a fresh draft. Prose earns its place or it
- * comes out — prefer cutting words over cutting the visual variety (the
- * two-column row, the images, the divider) that makes a new draft look like a
- * real email.
- *
- * Design discipline (same as the section templates): structural knobs only —
- * no colors, fonts, or padding overrides — so the whole email inherits
- * DEFAULT_GLOBAL_STYLES and restyles cleanly on a theme switch. QA-clean by
- * construction: every image has alt text, every link/button href is a real
- * absolute URL or merge tag, and the footer carries address + unsubscribe.
- * Ids are stable across calls (each document owns its id namespace).
- *
- * LOAD-BEARING DETAILS, do not casually reorder:
- * - `img_lg01`'s alt follows the "<Brand> logo" convention and is the FIRST
- *   image in reading order, so deriveDraftContentClues reads the brand from it.
- * - `txt_wc01` holds the first heading and the first paragraph, and `btn_ct01`
- *   is the first button — those are the headline/body/CTA clues a composed
- *   draft continues from.
- */
+/*
+  The designed starter document seeded into every NEW document and NEW draft
+  (convex createDocument's default). It is deliberately a WHOLE email rather
+  than a stub: a new draft should open on something that already looks like a
+  finished send, so the first move is editing a real email instead of filling
+  a blank page. The copy does double duty — it reads as a welcome email, and
+  it points a first-time user at the three things worth knowing on day one
+  (the theme, the section gallery, and sending yourself a test).
+
+    root
+    ├─ sec_hdr1 (header)  → img_lg01 (logo placeholder)
+    ├─ sec_hero (hero)    → txt_wc01 (h1 + intro), img_hr01, btn_ct01 (primary CTA)
+    ├─ sec_ways (2-up)    → row_fr01
+    │                         ├─ col_fc01 → txt_fc01 (h3 + line)
+    │                         └─ col_fc02 → txt_fc02 (h3 + line)
+    ├─ sec_step (how-to)  → div_st01, txt_st01 (h2 + three bold-led steps), lnk_sg01
+    └─ sec_ftr1 (footer)  → div_ft01, txt_ft01 (small-print links/address/unsubscribe)
+
+  DELIBERATELY SHORT. This document is also what the chat pipeline sends the
+  model on every turn, so each sentence here is paid for on every message of
+  every conversation started from a fresh draft. Prose earns its place or it
+  comes out — prefer cutting words over cutting the visual variety (the
+  two-column row, the images, the divider) that makes a new draft look like a
+  real email.
+
+  Design discipline (same as the section templates): structural knobs only —
+  no colors, fonts, or padding overrides — so the whole email inherits
+  DEFAULT_GLOBAL_STYLES and restyles cleanly on a theme switch. QA-clean by
+  construction: every image has alt text, every link/button href is a real
+  absolute URL or merge tag, and the footer carries address + unsubscribe.
+  Ids are stable across calls (each document owns its id namespace).
+
+  LOAD-BEARING DETAILS, do not casually reorder:
+  - `img_lg01`'s alt follows the "<Brand> logo" convention and is the FIRST
+    image in reading order, so deriveDraftContentClues reads the brand from it.
+  - `txt_wc01` holds the first heading and the first paragraph, and `btn_ct01`
+    is the first button — those are the headline/body/CTA clues a composed
+    draft continues from.
+*/
 export function createStarterDocument(): EmailDocument {
   const footerFontSize = { type: "textStyle" as const, attrs: { fontSize: "12px" } };
   return {
@@ -185,9 +187,11 @@ export function createStarterDocument(): EmailDocument {
       parentId: "col_fc01",
       childrenIds: [],
       properties: {
-        // Column content is centered, the same treatment the feature-columns
-        // catalog template uses: side-by-side columns carry no gutter of their
-        // own, so centering is what keeps the two blurbs visually apart.
+        /*
+          Column content is centered, the same treatment the feature-columns
+          catalog template uses: side-by-side columns carry no gutter of their
+          own, so centering is what keeps the two blurbs visually apart.
+        */
         textAlign: "center",
         text: {
           type: "doc",
@@ -390,26 +394,26 @@ export function createStarterDocument(): EmailDocument {
   };
 }
 
-/**
- * A small, deterministic sample document exercising every block type:
- *
- *   root
- *   ├─ sec_a1b2 (hero)
- *   │   ├─ txt_e5f6 (heading + marked-up paragraph)
- *   │   ├─ img_g7h8
- *   │   └─ div_i9j0
- *   ├─ sec_c3d4 (two-column)
- *   │   └─ row_k1l2
- *   │       ├─ col_m3n4 → txt_r7s8
- *   │       └─ col_p5q6 → btn_t9u0
- *   └─ sec_e5f6 (developer digest)
- *       ├─ txt_v1w2 (heading-only text)
- *       ├─ cod_x3y4 (code snippet)
- *       ├─ spc_z5a6 (spacer)
- *       └─ lnk_b7c8 (standalone link)
- *
- * Intended for tests and demos; ids are stable across calls.
- */
+/*
+  A small, deterministic sample document exercising every block type:
+
+    root
+    ├─ sec_a1b2 (hero)
+    │   ├─ txt_e5f6 (heading + marked-up paragraph)
+    │   ├─ img_g7h8
+    │   └─ div_i9j0
+    ├─ sec_c3d4 (two-column)
+    │   └─ row_k1l2
+    │       ├─ col_m3n4 → txt_r7s8
+    │       └─ col_p5q6 → btn_t9u0
+    └─ sec_e5f6 (developer digest)
+        ├─ txt_v1w2 (heading-only text)
+        ├─ cod_x3y4 (code snippet)
+        ├─ spc_z5a6 (spacer)
+        └─ lnk_b7c8 (standalone link)
+
+  Intended for tests and demos; ids are stable across calls.
+*/
 export function createSampleDocument(): EmailDocument {
   return {
     root: {

@@ -65,18 +65,20 @@ import {
 import { computeNextDraftName, computeVariationDraftName } from "./draft-naming";
 import { useCanvasDrafts, type DraftListEntry } from "./use-canvas-drafts";
 
-/** The two agent-composed draft actions in the menu. */
+/*
+  The two agent-composed draft actions in the menu.
+*/
 type GenerationMode = "ideate" | "designVariation";
 
-/**
- * Per-mode wording for the shared direction dialog. Only the words differ —
- * the field, the cap, and the send path are identical — so this is a lookup
- * rather than two dialogs.
- *
- * The placeholders are examples of the ONE thing the field is for in each
- * mode: for a variation, the look (it is the only channel that can release the
- * pre-applied theme); for an ideation, the angle.
- */
+/*
+  Per-mode wording for the shared direction dialog. Only the words differ —
+  the field, the cap, and the send path are identical — so this is a lookup
+  rather than two dialogs.
+
+  The placeholders are examples of the ONE thing the field is for in each
+  mode: for a variation, the look (it is the only channel that can release the
+  pre-applied theme); for an ideation, the angle.
+*/
 const GENERATION_DIALOG_COPY: Readonly<
   Record<
     GenerationMode,
@@ -97,15 +99,15 @@ const GENERATION_DIALOG_COPY: Readonly<
   },
 };
 
-/**
- * §10.2 frames UX — the compact toolbar control that replaced the v1 chip
- * row: [prev] [current draft name ▾] [next]. The menu lists every draft on
- * the canvas (click = activate; dual naming surfaced as a read-only secondary
- * line: agent-authored `agentName` + fork lineage) and keeps all v1
- * management actions — rename (inline, swaps the trigger for an input),
- * duplicate, copy link, new blank draft. Activation is delegated upward
- * (shallow ?doc= pushState in StudioShell).
- */
+/*
+  §10.2 frames UX — the compact toolbar control that replaced the v1 chip
+  row: [prev] [current draft name ▾] [next]. The menu lists every draft on
+  the canvas (click = activate; dual naming surfaced as a read-only secondary
+  line: agent-authored `agentName` + fork lineage) and keeps all v1
+  management actions — rename (inline, swaps the trigger for an input),
+  duplicate, copy link, new blank draft. Activation is delegated upward
+  (shallow ?doc= pushState in StudioShell).
+*/
 export function DraftSelector({
   onActivateDraft,
 }: {
@@ -141,26 +143,34 @@ export function DraftSelector({
     read by the model, never pattern-matched here.
   */
   const [generationDirection, setGenerationDirection] = useState("");
-  // An AI generation waiting for its freshly created draft to become ACTIVE
-  // (store-connected). The prompt must not send earlier: the chat pins each
-  // turn to the document that is active at send time, so sending before the
-  // switch completes would stream the sections into the SOURCE draft. A ref,
-  // not state — it never drives rendering, only the activation effect below.
+  /*
+    An AI generation waiting for its freshly created draft to become ACTIVE
+    (store-connected). The prompt must not send earlier: the chat pins each
+    turn to the document that is active at send time, so sending before the
+    switch completes would stream the sections into the SOURCE draft. A ref,
+    not state — it never drives rendering, only the activation effect below.
+  */
   const pendingGenerationSendRef = useRef<{
     sourceDocumentId: Id<"documents">;
     targetDocumentId: Id<"documents">;
-    /** The sentence the person sees in the thread. */
+    /*
+      The sentence the person sees in the thread.
+    */
     prompt: string;
-    /** The machine half the server expands into the targeted brief. */
+    /*
+      The machine half the server expands into the targeted brief.
+    */
     generationRequest: GenerationRequestDataPart;
   } | null>(null);
   const isAgentBusy = useIsAgentBusy();
 
-  // Fire the held prompt the moment the generated draft is active — through
-  // the chat panel's own send path (composer-handoff SEND), so the request is
-  // visible in the thread and the turn pins to the NEW draft (ops keep
-  // landing there even if the user switches away mid-stream). Activating any
-  // OTHER draft first cancels the handoff — never surprise-send later.
+  /*
+    Fire the held prompt the moment the generated draft is active — through
+    the chat panel's own send path (composer-handoff SEND), so the request is
+    visible in the thread and the turn pins to the NEW draft (ops keep
+    landing there even if the user switches away mid-stream). Activating any
+    OTHER draft first cancels the handoff — never surprise-send later.
+  */
   useEffect(() => {
     const pendingSend = pendingGenerationSendRef.current;
     if (pendingSend === null || activeDocumentId === null) {
@@ -168,15 +178,19 @@ export function DraftSelector({
     }
     if (activeDocumentId === pendingSend.targetDocumentId) {
       pendingGenerationSendRef.current = null;
-      // Mark the frame the generation streams into BEFORE the send, so the
-      // working state (spinner/glow/lock in DraftFramesCanvas) is up the
-      // moment the turn starts. agent-status clears it when the turn
-      // settles; an unmounted composer means nothing was sent — clear now.
+      /*
+        Mark the frame the generation streams into BEFORE the send, so the
+        working state (spinner/glow/lock in DraftFramesCanvas) is up the
+        moment the turn starts. agent-status clears it when the turn
+        settles; an unmounted composer means nothing was sent — clear now.
+      */
       publishGenerationTargetDocument(pendingSend.targetDocumentId);
-      // Arm the machine half FIRST: sendUserMessage claims it as it builds the
-      // message, so it has to be in place before the send, and it must be
-      // disarmed again if no composer was mounted to receive it — otherwise it
-      // would attach to whatever the person types next.
+      /*
+        Arm the machine half FIRST: sendUserMessage claims it as it builds the
+        message, so it has to be in place before the send, and it must be
+        disarmed again if no composer was mounted to receive it — otherwise it
+        would attach to whatever the person types next.
+      */
       stashGenerationRequest(pendingSend.generationRequest);
       if (!sendPromptThroughComposer(pendingSend.prompt)) {
         clearGenerationRequest();
@@ -197,7 +211,9 @@ export function DraftSelector({
   const previousDraft = activeIndex > 0 ? drafts[activeIndex - 1]! : null;
   const nextDraft =
     activeIndex >= 0 && activeIndex < drafts.length - 1 ? drafts[activeIndex + 1]! : null;
-  /** Delete and promote both need a sibling: a canvas always keeps ≥ 1 draft. */
+  /*
+    Delete and promote both need a sibling: a canvas always keeps ≥ 1 draft.
+  */
   const hasSiblingDrafts = drafts.length > 1;
 
   const beginRename = (): void => {
@@ -250,7 +266,9 @@ export function DraftSelector({
     });
   };
 
-  /** Whole-canvas share link: opens the canvas's latest draft, drafts bar shows all. */
+  /*
+    Whole-canvas share link: opens the canvas's latest draft, drafts bar shows all.
+  */
   const copyCanvasLink = (): void => {
     if (activeDraft === null) {
       return;
@@ -261,7 +279,9 @@ export function DraftSelector({
     });
   };
 
-  /** §10.2 promote: MOVE the active draft to a freshly created canvas of its own. */
+  /*
+    §10.2 promote: MOVE the active draft to a freshly created canvas of its own.
+  */
   const promoteActiveDraft = (): void => {
     if (activeDraft === null || isPromotePending) {
       return;
@@ -279,9 +299,11 @@ export function DraftSelector({
           );
           return;
         }
-        // Same document id, new canvas: re-point the store's canvas so the
-        // drafts bar and canvas link follow the move. The ?doc= URL is
-        // unchanged and stays authoritative.
+        /*
+          Same document id, new canvas: re-point the store's canvas so the
+          drafts bar and canvas link follow the move. The ?doc= URL is
+          unchanged and stays authoritative.
+        */
         if (store.documentId === activeDraft._id) {
           store.connectDocument({
             convexClient,
@@ -301,18 +323,20 @@ export function DraftSelector({
       });
   };
 
-  /**
-   * Confirmed delete of the ACTIVE draft: hand the frame to a sibling first
-   * (so the live subscription never lands on a deleted document), then run
-   * the server-side cascade.
-   */
+  /*
+    Confirmed delete of the ACTIVE draft: hand the frame to a sibling first
+    (so the live subscription never lands on a deleted document), then run
+    the server-side cascade.
+  */
   const confirmDeleteActiveDraft = (): void => {
     if (activeDraft === null || isDeletePending) {
       return;
     }
     const fallbackDraft = nextDraft ?? previousDraft;
     if (fallbackDraft === null) {
-      // Last draft on the canvas — the menu item is disabled; backstop only.
+      /*
+        Last draft on the canvas — the menu item is disabled; backstop only.
+      */
       setIsDeleteDialogOpen(false);
       return;
     }
@@ -341,44 +365,44 @@ export function DraftSelector({
       });
   };
 
-  /**
-   * The AI generation actions: create an EMPTY sibling draft, activate it,
-   * and hand a composed prompt to the chat (sent by the effect above once the
-   * new draft is store-connected). The request body only ever describes the
-   * new blank draft, so everything the model learns about the source travels
-   * in the prompt text.
-   *
-   * "ideate" asks for a fresh concept from a deliberately lossy outline, and
-   * leaves the theme to the agent.
-   *
-   * A design variation is the opposite contract: same email, new shape, AND A
-   * NEW THEME. Its theme is not left to the agent either way — exactly one
-   * `applyTheme` op is written into the new draft BEFORE it is activated, so
-   * the variation opens already wearing its theme instead of hoping the model
-   * picks one. (Routing this through the SDK's composed `createDraft` path was
-   * the alternative; it needs a complete section plan up front, which only the
-   * model can produce, and it would cost the per-section streaming the drafts
-   * menu deliberately shows. Seeding the theme keeps the streaming and makes
-   * the guarantee deterministic.)
-   *
-   * WHICH theme is the part that changed. It used to be the source's own, and
-   * a "design variation" that never changed colour was a layout variation
-   * wearing the wrong name. It is now one of the BOUND KIT's OTHER live themes
-   * (`pickVariationTheme` — filtered before offering, never the one already on
-   * screen, never a soft-deleted one, never a generated one, so the new draft
-   * is a real instance of a real theme and no model call is spent). Applying
-   * it records the same advisory brand pointer the theme menu records, which
-   * is what keeps the draft reading "current" rather than never-applied.
-   *
-   * THE HONEST FALLBACK. A kit whose only live theme is the one on screen has
-   * nothing to vary to. Rather than silently reusing it and calling the result
-   * a design variation, the source theme is carried as before AND a notice
-   * says why — the layout variation is still worth having; pretending is not.
-   *
-   * Only THIS action diverges. The plain "New draft" below is untouched, and
-   * the person's own words still outrank whatever theme was seeded — they ride
-   * verbatim into the prompt for the model to weigh.
-   */
+  /*
+    The AI generation actions: create an EMPTY sibling draft, activate it,
+    and hand a composed prompt to the chat (sent by the effect above once the
+    new draft is store-connected). The request body only ever describes the
+    new blank draft, so everything the model learns about the source travels
+    in the prompt text.
+
+    "ideate" asks for a fresh concept from a deliberately lossy outline, and
+    leaves the theme to the agent.
+
+    A design variation is the opposite contract: same email, new shape, AND A
+    NEW THEME. Its theme is not left to the agent either way — exactly one
+    `applyTheme` op is written into the new draft BEFORE it is activated, so
+    the variation opens already wearing its theme instead of hoping the model
+    picks one. (Routing this through the SDK's composed `createDraft` path was
+    the alternative; it needs a complete section plan up front, which only the
+    model can produce, and it would cost the per-section streaming the drafts
+    menu deliberately shows. Seeding the theme keeps the streaming and makes
+    the guarantee deterministic.)
+
+    WHICH theme is the part that changed. It used to be the source's own, and
+    a "design variation" that never changed colour was a layout variation
+    wearing the wrong name. It is now one of the BOUND KIT's OTHER live themes
+    (`pickVariationTheme` — filtered before offering, never the one already on
+    screen, never a soft-deleted one, never a generated one, so the new draft
+    is a real instance of a real theme and no model call is spent). Applying
+    it records the same advisory brand pointer the theme menu records, which
+    is what keeps the draft reading "current" rather than never-applied.
+
+    THE HONEST FALLBACK. A kit whose only live theme is the one on screen has
+    nothing to vary to. Rather than silently reusing it and calling the result
+    a design variation, the source theme is carried as before AND a notice
+    says why — the layout variation is still worth having; pretending is not.
+
+    Only THIS action diverges. The plain "New draft" below is untouched, and
+    the person's own words still outrank whatever theme was seeded — they ride
+    verbatim into the prompt for the model to weigh.
+  */
   const startAiGeneration = ({
     mode,
     direction = "",
@@ -391,9 +415,11 @@ export function DraftSelector({
     }
     const sourceDoc = useEditorStore.getState().doc;
     const sourceGlobals = readSourceThemeGlobals(sourceDoc);
-    // Naming rules live in draft-naming.ts: variations carry exactly ONE
-    // "(variation N)" marker (a marked source increments, never stacks) and
-    // both paths dedupe against the live canvas draft list.
+    /*
+      Naming rules live in draft-naming.ts: variations carry exactly ONE
+      "(variation N)" marker (a marked source increments, never stacks) and
+      both paths dedupe against the live canvas draft list.
+    */
     const existingNames = drafts.map((draft) => draft.name);
     const name =
       mode === "designVariation"
@@ -476,9 +502,11 @@ export function DraftSelector({
         sourceDocumentId: activeDraft._id,
         targetDocumentId: documentId,
         prompt,
-        // The machine half of this send. It is stashed (not sent) until the new
-        // draft is active, because the send itself waits for that — see the
-        // activation effect.
+        /*
+          The machine half of this send. It is stashed (not sent) until the new
+          draft is active, because the send itself waits for that — see the
+          activation effect.
+        */
         generationRequest: {
           kind: mode,
           sourceDocumentId: activeDraft._id,
@@ -498,7 +526,9 @@ export function DraftSelector({
       });
   };
 
-  /** Send whichever generation the dialog was opened for, with what was typed. */
+  /*
+    Send whichever generation the dialog was opened for, with what was typed.
+  */
   const confirmGeneration = (): void => {
     if (generationDialogMode === null) {
       return;
@@ -509,7 +539,9 @@ export function DraftSelector({
     setGenerationDirection("");
   };
 
-  /** Open the direction dialog, deferred past the menu's close/focus-return. */
+  /*
+    Open the direction dialog, deferred past the menu's close/focus-return.
+  */
   const openGenerationDialog = (mode: GenerationMode): void => {
     setGenerationDirection("");
     setTimeout(() => setGenerationDialogMode(mode), 0);
@@ -557,10 +589,12 @@ export function DraftSelector({
                 size="icon-sm"
                 aria-label="Previous draft"
                 disabled={previousDraft === null}
-                // On the first draft this must READ disabled at a glance (owner
-                // emphasis) — the base button's 50%-opacity alone is too subtle
-                // for a bare ghost chevron, so drop to washed-out muted (same
-                // below).
+                /*
+                  On the first draft this must READ disabled at a glance (owner
+                  emphasis) — the base button's 50%-opacity alone is too subtle
+                  for a bare ghost chevron, so drop to washed-out muted (same
+                  below).
+                */
                 className="disabled:text-muted-foreground disabled:opacity-30"
                 onClick={() => previousDraft !== null && onActivateDraft(previousDraft._id)}
                 data-testid="draft-selector-prev"
@@ -629,8 +663,10 @@ export function DraftSelector({
             <DropdownMenuSeparator />
             <DropdownMenuItem
               onClick={() => {
-                // Defer past the menu's close/focus-return so the rename
-                // input keeps focus once it mounts.
+                /*
+                  Defer past the menu's close/focus-return so the rename
+                  input keeps focus once it mounts.
+                */
                 setTimeout(beginRename, 0);
               }}
             >
@@ -667,7 +703,9 @@ export function DraftSelector({
                   variant="destructive"
                   disabled={!hasSiblingDrafts}
                   onClick={() => {
-                    // Defer past the menu's close/focus-return, same as rename.
+                    /*
+                      Defer past the menu's close/focus-return, same as rename.
+                    */
                     setTimeout(() => setIsDeleteDialogOpen(true), 0);
                   }}
                   data-testid="draft-menu-delete"
@@ -847,11 +885,11 @@ export function DraftSelector({
   );
 }
 
-/**
- * Wraps a disabled menu item in a tooltip explaining WHY it is disabled
- * (disabled items are pointer-events-none, so the wrapping span catches the
- * hover). Enabled items render bare — no tooltip noise on the happy path.
- */
+/*
+  Wraps a disabled menu item in a tooltip explaining WHY it is disabled
+  (disabled items are pointer-events-none, so the wrapping span catches the
+  hover). Enabled items render bare — no tooltip noise on the happy path.
+*/
 function MaybeDisabledTooltip({
   isDisabled,
   message,
@@ -872,7 +910,9 @@ function MaybeDisabledTooltip({
   );
 }
 
-/** One draft row in the menu: name + read-only dual-naming/lineage secondary line. */
+/*
+  One draft row in the menu: name + read-only dual-naming/lineage secondary line.
+*/
 function DraftMenuEntry({
   draft,
   isActive,

@@ -10,16 +10,16 @@ import {
   type NamedTheme,
 } from "./theme-target";
 
-/**
- * The reference vocabulary: a NAME on the wire, real globals on the other
- * side, and a refusal that says what would have worked.
- *
- * The two failures these tests exist to make impossible are the two the owner
- * named: a theme that does not actually change, and a theme that lands on the
- * WRONG draft. Both are the shape that passes for free if you assert only
- * "something resolved", so every case here pins the payload or the target,
- * never the fact of a result.
- */
+/*
+  The reference vocabulary: a NAME on the wire, real globals on the other
+  side, and a refusal that says what would have worked.
+
+  The two failures these tests exist to make impossible are the two the owner
+  named: a theme that does not actually change, and a theme that lands on the
+  WRONG draft. Both are the shape that passes for free if you assert only
+  "something resolved", so every case here pins the payload or the target,
+  never the fact of a result.
+*/
 
 const PAGE_GLOBALS: GlobalStyles = {
   emailBackgroundColor: "#ffffff",
@@ -314,7 +314,9 @@ describe("the model-facing schemas", () => {
   */
   it("keeps the reference a plain bounded string — no regex reaches the wire", () => {
     const jsonSchema = themeReferenceSchema.toJSONSchema();
-    /* Pinned so the "no pattern" assertion below can never pass vacuously. */
+    /*
+      Pinned so the "no pattern" assertion below can never pass vacuously.
+    */
     expect(jsonSchema.type).toBe("string");
     expect(jsonSchema.maxLength).toBe(60);
     expect(Object.keys(jsonSchema)).not.toContain("pattern");

@@ -18,7 +18,9 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-/* One fetch stub, recording exactly what went over the wire. */
+/*
+  One fetch stub, recording exactly what went over the wire.
+*/
 function stubFetch(respond: () => Promise<Response> | Response) {
   const fetchMock = vi.fn(async () => respond());
   vi.stubGlobal("fetch", fetchMock);
@@ -53,7 +55,9 @@ describe("the outcome", () => {
   });
 
   it("keeps the route's refusal verbatim — it saw the failure, the browser didn't", async () => {
-    /* A refusal is a 4xx that still carries copy: the status must not eat it. */
+    /*
+      A refusal is a 4xx that still carries copy: the status must not eat it.
+    */
     stubFetch(() =>
       jsonResponse({ isOk: false, message: "That address didn't give us an image." }, 422),
     );
@@ -70,7 +74,9 @@ describe("the outcome", () => {
   });
 
   it("refuses to read a success out of a body it cannot parse", async () => {
-    /* An HTML error page from a proxy must not become `{ isOk: true, url: undefined }`. */
+    /*
+      An HTML error page from a proxy must not become `{ isOk: true, url: undefined }`.
+    */
     stubFetch(() => new Response("<html>gateway timeout</html>", { status: 504 }));
     const outcome = await confirmBrandAsset({ sessionId: "session_me", kind: "logo" });
     expect(outcome.isOk).toBe(false);

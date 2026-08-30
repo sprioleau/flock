@@ -6,24 +6,24 @@ import { Button } from "@/components/ui/button";
 import { requestUiSurfaceOpen } from "@/lib/ui-surfaces";
 import { useUploadImageAsset } from "../library/use-upload-image-asset";
 
-/**
- * The image block's `src` control — two buttons, no raw URL text field
- * (owner decision: the editable src input is gone; every source flows
- * through storage-backed paths, and arbitrary-URL entry lives in the Asset
- * Library's "From URL" import, which rehosts into Convex):
- *
- * - Upload: the shared upload path (library/use-upload-image-asset.ts —
- *   upload + assets.register in one hook), then → onCommitSrc(url). Blocks
- *   store the plain URL string — no Convex coupling in the SDK.
- *
- * - "From library": opens the asset library through the agent-parity
- *   ui-surfaces seam (requestUiSurfaceOpen("library") — the same path as
- *   the chat's openPanel command). Because this image block is the current
- *   selection, the library's insert flow is already in pick-for-this-block
- *   mode: its button reads "Insert into selected image" and dispatches ONE
- *   updateBlockProperties { src, alt } — the normal property spine, a
- *   single undo step.
- */
+/*
+  The image block's `src` control — two buttons, no raw URL text field
+  (owner decision: the editable src input is gone; every source flows
+  through storage-backed paths, and arbitrary-URL entry lives in the Asset
+  Library's "From URL" import, which rehosts into Convex):
+
+  - Upload: the shared upload path (library/use-upload-image-asset.ts —
+    upload + assets.register in one hook), then → onCommitSrc(url). Blocks
+    store the plain URL string — no Convex coupling in the SDK.
+
+  - "From library": opens the asset library through the agent-parity
+    ui-surfaces seam (requestUiSurfaceOpen("library") — the same path as
+    the chat's openPanel command). Because this image block is the current
+    selection, the library's insert flow is already in pick-for-this-block
+    mode: its button reads "Insert into selected image" and dispatches ONE
+    updateBlockProperties { src, alt } — the normal property spine, a
+    single undo step.
+*/
 
 export interface ImageSourceFieldProps {
   helpText?: string;
@@ -60,7 +60,9 @@ export function ImageSourceField({ helpText, onCommitSrc }: ImageSourceFieldProp
         className="hidden"
         onChange={(event) => {
           const file = event.target.files?.[0];
-          // Allow re-selecting the same file later.
+          /*
+            Allow re-selecting the same file later.
+          */
           event.target.value = "";
           if (file !== undefined) {
             void uploadFile(file);

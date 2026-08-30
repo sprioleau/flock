@@ -41,7 +41,9 @@ describe("the stop list", () => {
   });
 
   it("points each stop at a different element", () => {
-    /* Two cards on one icon is a content mistake no type can catch. */
+    /*
+      Two cards on one icon is a content mistake no type can catch.
+    */
     const anchors = TOUR_STOPS.map((stop) => stop.anchorTestId);
     expect(new Set(anchors).size).toBe(anchors.length);
   });

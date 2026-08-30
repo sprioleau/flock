@@ -1,28 +1,28 @@
 import type { Block } from "@flock/email-sdk";
 
-/**
- * Staleness-baseline serialization, shared by BOTH sides of the persona
- * findings pipeline:
- *
- * - client (use-suggestions.ts, use-persona-advisors.ts): serialize a target
- *   block from the rendered doc and compare against the snapshot taken when
- *   the suggestion/finding was generated — any mismatch invalidates it.
- * - server (/api/personas): serialize each target block of a finding from
- *   the SAME doc snapshot its ops were dry-run against, and persist those
- *   strings in `personaFindings.targetSnapshots` so every tab shares one
- *   staleness baseline.
- *
- * Deliberately NOT a "use client" module: the API route imports it too, and
- * both sides MUST produce byte-identical output for the comparison to mean
- * anything — this file is the single implementation.
- */
+/*
+  Staleness-baseline serialization, shared by BOTH sides of the persona
+  findings pipeline:
 
-/**
- * Key-order-insensitive serialization for staleness comparison. The locally
- * applied doc and its server-snapshot rebase hold semantically identical
- * blocks whose object key ORDER can differ (Convex normalizes field order on
- * write), so plain JSON.stringify would false-positive every snapshot.
- */
+  - client (use-suggestions.ts, use-persona-advisors.ts): serialize a target
+    block from the rendered doc and compare against the snapshot taken when
+    the suggestion/finding was generated — any mismatch invalidates it.
+  - server (/api/personas): serialize each target block of a finding from
+    the SAME doc snapshot its ops were dry-run against, and persist those
+    strings in `personaFindings.targetSnapshots` so every tab shares one
+    staleness baseline.
+
+  Deliberately NOT a "use client" module: the API route imports it too, and
+  both sides MUST produce byte-identical output for the comparison to mean
+  anything — this file is the single implementation.
+*/
+
+/*
+  Key-order-insensitive serialization for staleness comparison. The locally
+  applied doc and its server-snapshot rebase hold semantically identical
+  blocks whose object key ORDER can differ (Convex normalizes field order on
+  write), so plain JSON.stringify would false-positive every snapshot.
+*/
 export function stableStringify(value: unknown): string {
   if (Array.isArray(value)) {
     return `[${value.map(stableStringify).join(",")}]`;
@@ -36,6 +36,8 @@ export function stableStringify(value: unknown): string {
   return JSON.stringify(value) ?? "undefined";
 }
 
-/** Staleness baseline serialization of one block (undefined = block missing). */
+/*
+  Staleness baseline serialization of one block (undefined = block missing).
+*/
 export const serializeBlock = (block: Block | undefined): string | undefined =>
   block === undefined ? undefined : stableStringify(block);

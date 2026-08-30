@@ -3,12 +3,12 @@ import type { TextMark } from "../../schema/text";
 import { createSectionComposer, paragraphNode, textDocOf, textRun } from "../build-helpers";
 import { defineSectionTemplate } from "../types";
 
-/**
- * `footer-social` — social-first footer over a divider: follow links, the
- * company line, and a standalone unsubscribe link block, all centered in
- * small print. Reference: react.email/components "footer-with-social-icons"
- * (icons rendered as text links — no image assets to break in dark mode).
- */
+/*
+  `footer-social` — social-first footer over a divider: follow links, the
+  company line, and a standalone unsubscribe link block, all centered in
+  small print. Reference: react.email/components "footer-with-social-icons"
+  (icons rendered as text links — no image assets to break in dark mode).
+*/
 
 const FOOTER_FONT_SIZE_MARK: TextMark = { type: "textStyle", attrs: { fontSize: "12px" } };
 
@@ -66,7 +66,9 @@ export const footerSocialTemplate = defineSectionTemplate({
     listParams: [{ param: "socialLinks", minimumCount: 1 }],
     imageCount: 0,
   },
-  /* As `footer`: the gallery shows the address line, a real footer states only a real one. */
+  /*
+    As `footer`: the gallery shows the address line, a real footer states only a real one.
+  */
   previewParams: { address: "123 Market Street, Suite 400, San Francisco, CA" },
   build: ({ params, random }) => {
     const composer = createSectionComposer(random);

@@ -47,58 +47,60 @@ import { requestUiSurfaceAttention } from "@/lib/ui-surfaces";
 import { cn } from "@/lib/utils";
 import { getRecommendationOutcome } from "../personas/recommendation-outcome";
 
-/**
- * The /demo card: a PORTRAIT card docked beside the canvas that walks a
- * visitor through three steps — watch the agents work, decide what to keep,
- * then answer one back — and ends by handing them a real, unmocked session.
- *
- * WHAT THIS REPLACED, AND WHY (owner, verbatim): "way too crowded looking…
- * way too wide, and all of the information is shoved into it. Make this more
- * like a card that's more in a portrait orientation. Maybe make it more of a
- * stepped flow as well." What was here before was one landscape strip carrying
- * a badge, a status line, two persona chips, four controls and a full-width
- * call to action simultaneously — every beat of the demo on screen at once,
- * which is the same as none of them being on screen.
- *
- * THE FOUR THINGS IT STILL HAS TO DO are unchanged; they are now spread over
- * three steps instead of stacked in one strip:
- *
- * 1. SAY THAT THE RUN IS SCRIPTED — ONCE, AT THE EXIT. A scripted demo
- *    labelled as one is honest; the same demo unlabelled is a claim about live
- *    inference that this route does not make. But the label used to sit across
- *    the top of the bar and inside the recommendations themselves, which
- *    taught a stranger to discount everything on screen — including the
- *    product's actual judgement. So the disclosure lives on the LAST STEP and
- *    nowhere else, beside the hand-off into a real session, where "that was
- *    scripted, this next one is not" is the sentence that matters. Nothing
- *    about what actually RUNS changed: the mock is forced server-side off the
- *    document row, and the server logs say so.
- * 2. PACE THE TURNS VISIBLY (step 1). One agent takes its turn while the other
- *    waits, so the sequencing reads as a decision rather than as latency
- *    (lib/demo/demo-turns.ts for why the boundary is the scheduler).
- * 3. HAND OFF TO THE RECOMMENDATIONS (step 2) — see the note on
- *    `onOpenRecommendations` for why this card POINTS at the real cards rather
- *    than growing its own Accept button.
- * 4. END SOMEWHERE REAL (step 3). The last beat is a comment the visitor
- *    leaves and an agent answers — the product's actual review loop — followed
- *    by a real, unmocked session with their prior settings put back.
- *
- * MANUALLY ADVANCED, AND NO CLOCK ANYWHERE (owner decision). Nothing on this
- * card moves on its own: `stepId` changes only in `onNext`/`onBack`, both of
- * which are click handlers. The gating rules live in lib/demo/demo-steps.ts
- * and take no time input at all, which is the same discipline demo-turns.ts
- * holds for the agent turns themselves.
- *
- * Renders nothing unless the connected document IS the demo's scratch document
- * (demo-preset.ts §selectIsDemoDocument), so a stale session record can never
- * put this card over somebody's real draft.
- */
+/*
+  The /demo card: a PORTRAIT card docked beside the canvas that walks a
+  visitor through three steps — watch the agents work, decide what to keep,
+  then answer one back — and ends by handing them a real, unmocked session.
+
+  WHAT THIS REPLACED, AND WHY (owner, verbatim): "way too crowded looking…
+  way too wide, and all of the information is shoved into it. Make this more
+  like a card that's more in a portrait orientation. Maybe make it more of a
+  stepped flow as well." What was here before was one landscape strip carrying
+  a badge, a status line, two persona chips, four controls and a full-width
+  call to action simultaneously — every beat of the demo on screen at once,
+  which is the same as none of them being on screen.
+
+  THE FOUR THINGS IT STILL HAS TO DO are unchanged; they are now spread over
+  three steps instead of stacked in one strip:
+
+  1. SAY THAT THE RUN IS SCRIPTED — ONCE, AT THE EXIT. A scripted demo
+     labelled as one is honest; the same demo unlabelled is a claim about live
+     inference that this route does not make. But the label used to sit across
+     the top of the bar and inside the recommendations themselves, which
+     taught a stranger to discount everything on screen — including the
+     product's actual judgement. So the disclosure lives on the LAST STEP and
+     nowhere else, beside the hand-off into a real session, where "that was
+     scripted, this next one is not" is the sentence that matters. Nothing
+     about what actually RUNS changed: the mock is forced server-side off the
+     document row, and the server logs say so.
+  2. PACE THE TURNS VISIBLY (step 1). One agent takes its turn while the other
+     waits, so the sequencing reads as a decision rather than as latency
+     (lib/demo/demo-turns.ts for why the boundary is the scheduler).
+  3. HAND OFF TO THE RECOMMENDATIONS (step 2) — see the note on
+     `onOpenRecommendations` for why this card POINTS at the real cards rather
+     than growing its own Accept button.
+  4. END SOMEWHERE REAL (step 3). The last beat is a comment the visitor
+     leaves and an agent answers — the product's actual review loop — followed
+     by a real, unmocked session with their prior settings put back.
+
+  MANUALLY ADVANCED, AND NO CLOCK ANYWHERE (owner decision). Nothing on this
+  card moves on its own: `stepId` changes only in `onNext`/`onBack`, both of
+  which are click handlers. The gating rules live in lib/demo/demo-steps.ts
+  and take no time input at all, which is the same discipline demo-turns.ts
+  holds for the agent turns themselves.
+
+  Renders nothing unless the connected document IS the demo's scratch document
+  (demo-preset.ts §selectIsDemoDocument), so a stale session record can never
+  put this card over somebody's real draft.
+*/
 export function DemoRunPanel() {
   const router = useRouter();
   const session = useDemoSession();
   const documentId = useEditorStore((state) => state.documentId);
   const isDemoDocument = selectIsDemoDocument({ session, documentId });
-  /* Passing null keeps the sequencer dormant on every other document. */
+  /*
+    Passing null keeps the sequencer dormant on every other document.
+  */
   const { runState } = useDemoRun({ documentId: isDemoDocument ? documentId : null });
   const [stepId, setStepId] = useState<DemoStepId>(FIRST_DEMO_STEP_ID);
 
@@ -134,7 +136,9 @@ export function DemoRunPanel() {
     return null;
   }
 
-  /* Oldest first, so the two findings read in the order their turns ran. */
+  /*
+    Oldest first, so the two findings read in the order their turns ran.
+  */
   const recommendations: DemoRecommendationRow[] = [...(findingRows ?? [])]
     .sort((a, b) => a.createdAtMs - b.createdAtMs)
     .map((row) => ({
@@ -188,11 +192,13 @@ export function DemoRunPanel() {
           openTimeTravelReplay();
         }}
         onStartOver={() => {
-          /* A restart provisions a FRESH document rather than re-running the
-             turns on this one. Re-running would post the same findings the
-             persistence layer already de-duplicates by patternKey, so the
-             second run would visibly do nothing — and "replayable" has to mean
-             the demo starts clean, not that it looks broken the second time. */
+          /*
+            A restart provisions a FRESH document rather than re-running the
+            turns on this one. Re-running would post the same findings the
+            persistence layer already de-duplicates by patternKey, so the
+            second run would visibly do nothing — and "replayable" has to mean
+            the demo starts clean, not that it looks broken the second time.
+          */
           router.push("/demo");
         }}
         onExitToRealSession={() => {
@@ -204,69 +210,69 @@ export function DemoRunPanel() {
   );
 }
 
-/**
- * Step 2's "Show the agents' cards", as two named intents and nothing else.
- *
- * WHAT WAS WRONG WITH IT (owner, 2026-08-18): "when the chat panel is already
- * open, pressing it does nothing observable… it looks like nothing happened,
- * and that's not okay." The handler used to be the first line below on its own,
- * which is a no-op for every visitor who had already expanded the panel — and
- * arriving at step 2 expands it, so that was most of them. A button whose
- * label promises a reveal has to reveal something on every press, from every
- * starting state.
- *
- * The second line is what makes that true. It does NOT reach for the tray: the
- * rule this whole feature inherits (lib/tour/tour-intents.ts) is that a step
- * NAMES AN INTENT THE APP ALREADY SUPPORTS, never a DOM interaction — a
- * `document.querySelector(...).click()` here would need a selector that can go
- * stale, would race the panel's own re-render, and would diverge from what a
- * real press does the moment either end changes. So this asks, and
- * SuggestionCard answers in whatever way it currently knows how: uncollapse
- * its tray if the visitor collapsed it, scroll itself into view, take focus,
- * and flash a ring. Focus is part of the answer rather than a nicety — a cue
- * made only of animation is nothing at all to a screen reader.
- *
- * Still clock-free, which is the standing rule for everything hanging off the
- * demo sequencer: both calls are synchronous store writes, and the highlight's
- * lifetime is CSS inside the component that owns it.
- */
+/*
+  Step 2's "Show the agents' cards", as two named intents and nothing else.
+
+  WHAT WAS WRONG WITH IT (owner, 2026-08-18): "when the chat panel is already
+  open, pressing it does nothing observable… it looks like nothing happened,
+  and that's not okay." The handler used to be the first line below on its own,
+  which is a no-op for every visitor who had already expanded the panel — and
+  arriving at step 2 expands it, so that was most of them. A button whose
+  label promises a reveal has to reveal something on every press, from every
+  starting state.
+
+  The second line is what makes that true. It does NOT reach for the tray: the
+  rule this whole feature inherits (lib/tour/tour-intents.ts) is that a step
+  NAMES AN INTENT THE APP ALREADY SUPPORTS, never a DOM interaction — a
+  `document.querySelector(...).click()` here would need a selector that can go
+  stale, would race the panel's own re-render, and would diverge from what a
+  real press does the moment either end changes. So this asks, and
+  SuggestionCard answers in whatever way it currently knows how: uncollapse
+  its tray if the visitor collapsed it, scroll itself into view, take focus,
+  and flash a ring. Focus is part of the answer rather than a nicety — a cue
+  made only of animation is nothing at all to a screen reader.
+
+  Still clock-free, which is the standing rule for everything hanging off the
+  demo sequencer: both calls are synchronous store writes, and the highlight's
+  lifetime is CSS inside the component that owns it.
+*/
 export function revealAgentCards(): void {
   updatePanelPreferences({ isChatPanelExpanded: true });
   requestUiSurfaceAttention("suggestions");
 }
 
-/**
- * The canvas dim, on for exactly the beats the demo is waiting on the VISITOR
- * (lib/demo/demo-steps.ts §selectIsDemoAwaitingVisitor holds the rule and the
- * reason step 1 is exempt — the agents moving on the canvas is the show, so it
- * is never dimmed).
- *
- * IT DIMS; IT DOES NOT BLOCK. `pointer-events-none` is the whole design and it
- * is not an oversight to be tidied up later: /demo is a PRESET OVER THE REAL
- * PRODUCT, not a second app, and step 3 deliberately arms real comment mode so
- * a visitor who would rather place their OWN comment than pick a scripted one
- * simply can (use-demo-comment-flow.ts says exactly that). A scrim that ate
- * clicks would take the product away at the precise moment the demo is showing
- * it off — the same "demo, not hostage situation" rule the exit button on this
- * card is here for. This is a HINT about where to look, and hints do not lock
- * doors.
- *
- * WHAT IT COVERS, and what it must never cover. It is mounted inside <main>
- * beside the card (StudioShell), so the chat panel and the property panel —
- * both siblings of <main> — are outside it by construction. That matters most
- * on step 2, where the Accept/Dismiss buttons the visitor has to press live in
- * the chat panel: dimming those would point at the wrong surface. `top-12`
- * clears the toolbar's own `h-12` header for the same reason.
- *
- * Z-INDEX. The card is `z-40`; this is `z-30`, so the scrim always passes
- * UNDER the card it is pointing at — a card dimmed by its own scrim would be
- * the exact opposite of the instruction it is giving. It still clears the
- * canvas chrome underneath it (the frames surface tops out at `z-20`).
- *
- * The fade is CSS on mount and nothing else: no timer, no interval, no
- * transition driven from JS. The demo sequencer is clock-free and every
- * surface hanging off it stays that way.
- */
+/*
+  The canvas dim, on for exactly the beats the demo is waiting on the VISITOR
+  (lib/demo/demo-steps.ts §selectIsDemoAwaitingVisitor holds the rule and the
+  reason step 1 is exempt — the agents moving on the canvas is the show, so it
+  is never dimmed).
+
+  IT DIMS; IT DOES NOT BLOCK. `pointer-events-none` is the whole design and it
+  is not an oversight to be tidied up later: /demo is a PRESET OVER THE REAL
+  PRODUCT, not a second app, and step 3 deliberately arms real comment mode so
+  a visitor who would rather place their OWN comment than pick a scripted one
+  simply can (use-demo-comment-flow.ts says exactly that). A scrim that ate
+  clicks would take the product away at the precise moment the demo is showing
+  it off — the same "demo, not hostage situation" rule the exit button on this
+  card is here for. This is a HINT about where to look, and hints do not lock
+  doors.
+
+  WHAT IT COVERS, and what it must never cover. It is mounted inside <main>
+  beside the card (StudioShell), so the chat panel and the property panel —
+  both siblings of <main> — are outside it by construction. That matters most
+  on step 2, where the Accept/Dismiss buttons the visitor has to press live in
+  the chat panel: dimming those would point at the wrong surface. `top-12`
+  clears the toolbar's own `h-12` header for the same reason.
+
+  Z-INDEX. The card is `z-40`; this is `z-30`, so the scrim always passes
+  UNDER the card it is pointing at — a card dimmed by its own scrim would be
+  the exact opposite of the instruction it is giving. It still clears the
+  canvas chrome underneath it (the frames surface tops out at `z-20`).
+
+  The fade is CSS on mount and nothing else: no timer, no interval, no
+  transition driven from JS. The demo sequencer is clock-free and every
+  surface hanging off it stays that way.
+*/
 export function DemoCanvasScrim({
   stepId,
   progress,
@@ -282,10 +288,12 @@ export function DemoCanvasScrim({
       aria-hidden
       className={cn(
         "pointer-events-none absolute inset-x-0 top-12 bottom-0 z-30",
-        /* Half the tour's `bg-black/45`, deliberately. That one is a MODAL
-           dim behind a surface that does take the screen; this one swallows
-           nothing, so it only has to be enough to make the card read as the
-           foreground. */
+        /*
+          Half the tour's `bg-black/45`, deliberately. That one is a MODAL
+          dim behind a surface that does take the screen; this one swallows
+          nothing, so it only has to be enough to make the card read as the
+          foreground.
+        */
         "bg-black/20 duration-200 animate-in fade-in-0",
       )}
       data-testid="demo-canvas-scrim"
@@ -293,7 +301,9 @@ export function DemoCanvasScrim({
   );
 }
 
-/** One recommendation, reduced to what this card shows about it. */
+/*
+  One recommendation, reduced to what this card shows about it.
+*/
 export interface DemoRecommendationRow {
   findingId: string;
   personaName: string;
@@ -311,10 +321,10 @@ export interface DemoRunCardViewProps {
   chosenChoiceId: string | null;
   onBack: () => void;
   onNext: () => void;
-  /**
-   * Reveal the suggestions tray, where the real Accept/Dismiss controls live —
-   * expand, focus and highlight it (revealAgentCards above).
-   */
+  /*
+    Reveal the suggestions tray, where the real Accept/Dismiss controls live —
+    expand, focus and highlight it (revealAgentCards above).
+  */
   onOpenRecommendations: () => void;
   onChooseComment: (choiceId: string) => void;
   onRewind: () => void;
@@ -322,7 +332,9 @@ export interface DemoRunCardViewProps {
   onExitToRealSession: () => void;
 }
 
-/** Status wording, in the visitor's terms rather than the state machine's. */
+/*
+  Status wording, in the visitor's terms rather than the state machine's.
+*/
 const TURN_STATUS_LABELS: Record<DemoTurnState["status"], string> = {
   pending: "waiting its turn",
   running: "reviewing now",
@@ -348,10 +360,10 @@ const DOCK_CLASS_NAMES: Record<DemoCardDock, string> = {
   "lower-right": "bottom-4 right-4",
 };
 
-/**
- * The card as a pure function of where the visitor is — every decision this
- * surface makes is testable without a DOM (vitest pins `environment: "node"`).
- */
+/*
+  The card as a pure function of where the visitor is — every decision this
+  surface makes is testable without a DOM (vitest pins `environment: "node"`).
+*/
 export function DemoRunCardView({
   stepId,
   runState,
@@ -385,16 +397,18 @@ export function DemoRunCardView({
       data-demo-dock={selectDemoCardDock(step)}
     >
       <div className="flex shrink-0 items-center justify-end">
-        {/* Reachable from every step — the difference between a demo and a
-            hostage situation (the tour's §3.3 rule, same reasoning).
+        {/*
+          Reachable from every step — the difference between a demo and a
+          hostage situation (the tour's §3.3 rule, same reasoning).
 
-            An icon needs an accessible name and a visible one, so it carries
-            both: `aria-label` for assistive tech and the hit test, a tooltip
-            for the sighted visitor who wants to know before pressing. Both
-            say "Exit the demo" rather than "Close", because the top-right ×
-            of a card normally just dismisses the card — this one ends the run
-            and hands the visitor to a real studio, and a control that does
-            more than its glyph implies has to say so. */}
+          An icon needs an accessible name and a visible one, so it carries
+          both: `aria-label` for assistive tech and the hit test, a tooltip
+          for the sighted visitor who wants to know before pressing. Both
+          say "Exit the demo" rather than "Close", because the top-right ×
+          of a card normally just dismisses the card — this one ends the run
+          and hands the visitor to a real studio, and a control that does
+          more than its glyph implies has to say so.
+        */}
         <TooltipProvider>
           <Tooltip>
             <TooltipTrigger
@@ -417,8 +431,10 @@ export function DemoRunCardView({
         </TooltipProvider>
       </div>
 
-      {/* The body scrolls, never the card: the footer must stay put, because
-          it is the only way forward. */}
+      {/*
+        The body scrolls, never the card: the footer must stay put, because
+        it is the only way forward.
+      */}
       <div className="flex min-h-0 flex-1 flex-col gap-3 overflow-y-auto">
         <div className="flex flex-col gap-1.5">
           <p className="font-heading text-sm font-semibold" data-testid="demo-step-title">
@@ -496,9 +512,11 @@ export function DemoRunCardView({
             </Button>
           )}
           {hasNextStep && (
-            /* Prominent the moment the step's work is done, and inert before
-               it: the next step would otherwise open on an empty list, which
-               reads as the agents having failed rather than as "not yet". */
+            /*
+              Prominent the moment the step's work is done, and inert before
+              it: the next step would otherwise open on an empty list, which
+              reads as the agents having failed rather than as "not yet".
+            */
             <Button
               type="button"
               size="sm"
@@ -516,7 +534,9 @@ export function DemoRunCardView({
   );
 }
 
-/** Step 1: the two agents, one taking its turn while the other waits. */
+/*
+  Step 1: the two agents, one taking its turn while the other waits.
+*/
 export function DemoWatchStep({ runState }: { runState: DemoRunState }) {
   const narration = selectActiveNarration(runState);
   return (
@@ -557,30 +577,30 @@ export function DemoWatchStep({ runState }: { runState: DemoRunState }) {
   );
 }
 
-/**
- * Step 2: what the agents found, and what happened to each.
- *
- * THIS CARD POINTS; IT DOES NOT HOST. The Accept/Dismiss controls stay on the
- * existing suggestion cards in the chat panel, and this step lists the
- * findings with their live status beside them. Three reasons, in the order
- * they decided it:
- *
- * 1. Applying a finding means calling `usePersonaAdvisors().applySuggestion`,
- *    and that hook must MOUNT EXACTLY ONCE — it hosts the persona presence
- *    heartbeat and the batched runner (ChatPanel owns it for precisely this
- *    reason). A second mount inside the demo card would double the heartbeat
- *    and give the demo its own runner. That is not a styling preference, it is
- *    the reason a second Accept button cannot exist.
- * 2. The real cards already carry everything the demo would have to rebuild:
- *    one-press apply of pre-validated ops, `persona:<slug>` op-log provenance,
- *    the post-apply "Applied — Revert" state, and cross-tab convergence.
- * 3. A visitor who accepts a recommendation ON THE PRODUCT'S OWN SURFACE has
- *    used the product. A visitor who accepts it on a demo widget has used the
- *    demo. The whole route exists to make the first thing happen.
- *
- * The statuses below come from the same reactive feed the recommendations
- * modal reads, so accepting or dismissing anywhere updates this list live.
- */
+/*
+  Step 2: what the agents found, and what happened to each.
+
+  THIS CARD POINTS; IT DOES NOT HOST. The Accept/Dismiss controls stay on the
+  existing suggestion cards in the chat panel, and this step lists the
+  findings with their live status beside them. Three reasons, in the order
+  they decided it:
+
+  1. Applying a finding means calling `usePersonaAdvisors().applySuggestion`,
+     and that hook must MOUNT EXACTLY ONCE — it hosts the persona presence
+     heartbeat and the batched runner (ChatPanel owns it for precisely this
+     reason). A second mount inside the demo card would double the heartbeat
+     and give the demo its own runner. That is not a styling preference, it is
+     the reason a second Accept button cannot exist.
+  2. The real cards already carry everything the demo would have to rebuild:
+     one-press apply of pre-validated ops, `persona:<slug>` op-log provenance,
+     the post-apply "Applied — Revert" state, and cross-tab convergence.
+  3. A visitor who accepts a recommendation ON THE PRODUCT'S OWN SURFACE has
+     used the product. A visitor who accepts it on a demo widget has used the
+     demo. The whole route exists to make the first thing happen.
+
+  The statuses below come from the same reactive feed the recommendations
+  modal reads, so accepting or dismissing anywhere updates this list live.
+*/
 export function DemoRecommendationsStep({
   recommendations,
   onOpenRecommendations,
@@ -588,9 +608,11 @@ export function DemoRecommendationsStep({
   recommendations: readonly DemoRecommendationRow[];
   onOpenRecommendations: () => void;
 }) {
-  /* "Open" is the same word the gate uses for a recommendation nobody has
-     accepted or dismissed yet (see `undecidedRecommendationCount`), so this
-     control and step 2's own Next go quiet on the same beat. */
+  /*
+    "Open" is the same word the gate uses for a recommendation nobody has
+    accepted or dismissed yet (see `undecidedRecommendationCount`), so this
+    control and step 2's own Next go quiet on the same beat.
+  */
   const hasUndecidedRecommendations = recommendations.some((row) => row.status === "open");
   return (
     <>
@@ -632,22 +654,26 @@ export function DemoRecommendationsStep({
           })}
         </div>
       )}
-      {/* The advisory boundary, stated as a feature rather than a caveat — it
-          is the most defensible claim the product makes. */}
+      {/*
+        The advisory boundary, stated as a feature rather than a caveat — it
+        is the most defensible claim the product makes.
+      */}
       <p className="text-[11px] text-muted-foreground" data-testid="demo-advisory-note">
         Agents recommend. Only you apply.
       </p>
-      {/* The panel is expanded on arrival at this step; this rescues the
-          visitor who collapsed it — or the tray inside it — again, and points
-          at the cards for the one who simply cannot find them
-          (revealAgentCards holds what the press actually does).
+      {/*
+        The panel is expanded on arrival at this step; this rescues the
+        visitor who collapsed it — or the tray inside it — again, and points
+        at the cards for the one who simply cannot find them
+        (revealAgentCards holds what the press actually does).
 
-          IT LEAVES ONCE THERE IS NOTHING LEFT TO REVEAL. A decided
-          recommendation is gone from the chat panel, so with none of them
-          still open this button would point at an empty tray. That is the
-          state a visitor lands in by stepping back from step 3. A control
-          that cannot do the thing its label promises is worse than one less
-          control on the card. */}
+        IT LEAVES ONCE THERE IS NOTHING LEFT TO REVEAL. A decided
+        recommendation is gone from the chat panel, so with none of them
+        still open this button would point at an empty tray. That is the
+        state a visitor lands in by stepping back from step 3. A control
+        that cannot do the thing its label promises is worse than one less
+        control on the card.
+      */}
       {hasUndecidedRecommendations && (
         <Button
           type="button"
@@ -663,13 +689,13 @@ export function DemoRecommendationsStep({
   );
 }
 
-/**
- * Step 3: the comment round trip, staged.
- *
- * The visitor picks a sentence; everything after that is the real thing (see
- * lib/demo/use-demo-comment-flow.ts). This card only shows what they picked
- * and where the round trip has got to.
- */
+/*
+  Step 3: the comment round trip, staged.
+
+  The visitor picks a sentence; everything after that is the real thing (see
+  lib/demo/use-demo-comment-flow.ts). This card only shows what they picked
+  and where the round trip has got to.
+*/
 export function DemoCommentsStep({
   phase,
   chosenChoiceId,
@@ -720,9 +746,11 @@ export function DemoCommentsStep({
       )}
 
       {phase === "answered" && (
-        /* Not a simulation of a rewind: the op log stores an exact inverse and
-           provenance for every change, so replay reconstructs the document the
-           visitor just edited, authored by name. */
+        /*
+          Not a simulation of a rewind: the op log stores an exact inverse and
+          provenance for every change, so replay reconstructs the document the
+          visitor just edited, authored by name.
+        */
         <Button type="button" variant="outline" size="sm" onClick={onRewind} data-testid="demo-rewind">
           <HistoryIcon className="size-3" />
           Rewind what just happened
@@ -746,12 +774,14 @@ export function DemoCommentsStep({
         just now. Everything around them was the real product — real validation, real
         database rows, real presence, real undo. The next one won&apos;t be scripted.
       </p>
-      {/* The contrast this hand-off exists to draw — that one was scripted,
-          this next one is not — lives in the disclosure above, NOT in the
-          label. A button carrying the whole sentence was wider than a 22rem
-          card and had to wrap to two lines to avoid being clipped; prose is
-          better at prose. What is left here is the press itself, short enough
-          to read as one. */}
+      {/*
+        The contrast this hand-off exists to draw — that one was scripted,
+        this next one is not — lives in the disclosure above, NOT in the
+        label. A button carrying the whole sentence was wider than a 22rem
+        card and had to wrap to two lines to avoid being clipped; prose is
+        better at prose. What is left here is the press itself, short enough
+        to read as one.
+      */}
       <Button
         type="button"
         size="sm"

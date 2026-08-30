@@ -7,12 +7,12 @@ import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import { XIcon } from "lucide-react"
 
-/**
- * shadcn Sheet on the Base UI Dialog primitive (same idiom as ui/dialog.tsx):
- * a side-anchored drawer. Pass `modal={false}` on <Sheet> and
- * `hasOverlay={false}` on <SheetContent> for a non-blocking panel that leaves
- * the rest of the app interactive while open.
- */
+/*
+  shadcn Sheet on the Base UI Dialog primitive (same idiom as ui/dialog.tsx):
+  a side-anchored drawer. Pass `modal={false}` on <Sheet> and
+  `hasOverlay={false}` on <SheetContent> for a non-blocking panel that leaves
+  the rest of the app interactive while open.
+*/
 
 function Sheet({ ...props }: SheetPrimitive.Root.Props) {
   return <SheetPrimitive.Root data-slot="sheet" {...props} />
@@ -61,7 +61,9 @@ function SheetContent({
   ...props
 }: SheetPrimitive.Popup.Props & {
   side?: keyof typeof SHEET_SIDE_CLASSES
-  /** Render the dimming backdrop (turn off for non-modal panels). */
+  /*
+    Render the dimming backdrop (turn off for non-modal panels).
+  */
   hasOverlay?: boolean
   showCloseButton?: boolean
 }) {

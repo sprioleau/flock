@@ -1,11 +1,11 @@
 import { describe, expect, it } from "vitest";
 import { buildNextCheckLabel } from "./persona-run-clock";
 
-/**
- * The facepile hover card's next-check line — the contract is USER-FACING
- * language for every internal state (owner principle: never raw ms or
- * internal names).
- */
+/*
+  The facepile hover card's next-check line — the contract is USER-FACING
+  language for every internal state (owner principle: never raw ms or
+  internal names).
+*/
 describe("buildNextCheckLabel", () => {
   const NOW_MS = 1_700_000_000_000;
 

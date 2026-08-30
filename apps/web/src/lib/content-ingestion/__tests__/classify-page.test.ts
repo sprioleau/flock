@@ -11,15 +11,15 @@ import {
 import { SECTION_TEMPLATES } from "@flock/email-sdk";
 import type { PageScrape } from "../page-scrape";
 
-/**
- * The reading step, held to two rules above all others.
- *
- * 1. The classifier never sees the user's message. Not "is told to ignore it"
- *    — it is not passed. The first describe block below is the enforcement.
- * 2. It never throws. A page that WAS fetched always yields a usable answer,
- *    because throwing puts a page we did read onto the error path, where the
- *    model is invited to retry a call that will fail the same way.
- */
+/*
+  The reading step, held to two rules above all others.
+
+  1. The classifier never sees the user's message. Not "is told to ignore it"
+     — it is not passed. The first describe block below is the enforcement.
+  2. It never throws. A page that WAS fetched always yields a usable answer,
+     because throwing puts a page we did read onto the error path, where the
+     model is invited to retry a call that will fail the same way.
+*/
 
 function makeScrape(overrides: Partial<PageScrape> = {}): PageScrape {
   return {
@@ -144,7 +144,9 @@ describe("buildClassificationPrompt — nothing about the asker can reach it", (
   it("offers images by id, and never as something the reader could copy", () => {
     const prompt = buildClassificationPrompt(makeScrape());
     expect(prompt).toContain("img_1");
-    /* The addresses themselves stay out: there is no syntax for inventing one. */
+    /*
+      The addresses themselves stay out: there is no syntax for inventing one.
+    */
     expect(prompt).not.toContain("https://studio.example/portrait.jpg");
   });
 });
@@ -377,7 +379,9 @@ describe("validateSections — coherence, and never the page kind", () => {
         rationale: "sweep",
       });
       expect(droppedParamNames, `${template.id} produced an unknown param`).toEqual([]);
-      /* And whatever it produced must actually satisfy the template. */
+      /*
+        And whatever it produced must actually satisfy the template.
+      */
       if (sections.length > 0) {
         const parsed = template.paramsSchema.safeParse(sections[0].params);
         expect(parsed.success, `${template.id} produced params its schema rejects`).toBe(true);
@@ -528,7 +532,9 @@ describe("buildDeterministicFloor", () => {
     expect(floor.pageType).toBe("other");
     expect(floor.confidence).toBe("low");
     expect(floor.isPlanUsable).toBe(false);
-    /* It must not invent a page kind it has no evidence for. */
+    /*
+      It must not invent a page kind it has no evidence for.
+    */
     expect(floor.pageTypeNote).toContain("not interpreted");
   });
 });

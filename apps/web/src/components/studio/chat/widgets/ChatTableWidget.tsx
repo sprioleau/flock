@@ -2,12 +2,12 @@
 
 import type { TableDataPart } from "@/lib/chat-contract";
 
-/**
- * The compact table part (generative UI): one small, read-only table in the
- * transcript — user-facing headers and string cells only (the server builds
- * them; nothing internal reaches this component). Row count is capped at the
- * contract level (CHAT_TABLE_MAX_ROWS); anything beyond shows as "+N more".
- */
+/*
+  The compact table part (generative UI): one small, read-only table in the
+  transcript — user-facing headers and string cells only (the server builds
+  them; nothing internal reaches this component). Row count is capped at the
+  contract level (CHAT_TABLE_MAX_ROWS); anything beyond shows as "+N more".
+*/
 export function ChatTableWidget({ data }: { data: TableDataPart }) {
   return (
     <div className="flex flex-col gap-1.5 rounded-lg border px-3 py-2" data-widget="table">

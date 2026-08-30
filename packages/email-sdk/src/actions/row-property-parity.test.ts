@@ -7,19 +7,19 @@ import { emailActionRegistry, updateBlockPropertiesAction } from "./builtins";
 import type { ActionContext } from "./context";
 import { dispatchContentAction } from "./registry";
 
-/**
- * Agent/human parity for the row block's style properties.
- *
- * The human panel writes these through `updateBlockProperties`; the agent
- * reaches the SAME action through the registry. This pins the three things a
- * new control has to do to be real: survive schema validation, produce an
- * inverse that restores the previous state (the undo spine), and resolve into
- * the styles the renderer actually reads.
- *
- * `row_k1l2` is the sample document's two-column row, and it starts with
- * empty properties — so every assertion below is about the property arriving,
- * not about a value that was already there.
- */
+/*
+  Agent/human parity for the row block's style properties.
+
+  The human panel writes these through `updateBlockProperties`; the agent
+  reaches the SAME action through the registry. This pins the three things a
+  new control has to do to be real: survive schema validation, produce an
+  inverse that restores the previous state (the undo spine), and resolve into
+  the styles the renderer actually reads.
+
+  `row_k1l2` is the sample document's two-column row, and it starts with
+  empty properties — so every assertion below is about the property arriving,
+  not about a value that was already there.
+*/
 
 const agentContext: ActionContext = {
   caller: "tool",
@@ -99,14 +99,18 @@ describe("row style properties are reachable by the agent", () => {
     if (!applied.isOk) return;
     expect(rowOf(applied.doc).properties.backgroundColor).toBe("#111827");
 
-    // The inverse of a property MERGE is a wholesale replace — that is how a
-    // cleared override is expressed. Undo replays it through applyOperation,
-    // the same generic path the history spine uses, so the test does too.
+    /*
+      The inverse of a property MERGE is a wholesale replace — that is how a
+      cleared override is expressed. Undo replays it through applyOperation,
+      the same generic path the history spine uses, so the test does too.
+    */
     expect(applied.inverse.name).toBe("replaceBlockProperties");
     const undone = applyOperation(applied.doc, applied.inverse);
     expect(undone.isOk).toBe(true);
     if (!undone.isOk) return;
-    // Back to a row with no overrides at all — not merely a different color.
+    /*
+      Back to a row with no overrides at all — not merely a different color.
+    */
     expect(rowOf(undone.doc).properties).toEqual({});
   });
 

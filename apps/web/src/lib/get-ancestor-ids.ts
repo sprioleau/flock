@@ -5,12 +5,12 @@ export interface GetAncestorIdsArgs {
   blockId: BlockId;
 }
 
-/**
- * Ancestor ids of a block, outermost-first (section → … → direct parent).
- * The root and the block itself are excluded, so a section returns [] and a
- * leaf inside a column returns [sectionId, rowId, columnId]. An unknown
- * blockId also returns [].
- */
+/*
+  Ancestor ids of a block, outermost-first (section → … → direct parent).
+  The root and the block itself are excluded, so a section returns [] and a
+  leaf inside a column returns [sectionId, rowId, columnId]. An unknown
+  blockId also returns [].
+*/
 export function getAncestorIds({ doc, blockId }: GetAncestorIdsArgs): BlockId[] {
   const ancestorIds: BlockId[] = [];
   let parentId = doc[blockId]?.parentId ?? null;

@@ -29,73 +29,73 @@ import {
   composeScrapedSection,
 } from "@/lib/content-ingestion/compose-scraped-section";
 
-/**
- * Deterministic mock chat model (no API key needed — CI/tests use this via
- * the x-flock-mock header; it is also the automatic fallback when
- * GOOGLE_GENERATIVE_AI_API_KEY is absent).
- *
- * It emits the SAME provider-spec (LanguageModelV4) chunk sequence a real
- * Gemini stream produces — text deltas, then tool-input-start, repeated
- * tool-input-delta, tool-input-end, and a tool-call — so everything downstream
- * (streamText input validation, UI-chunk
- * conversion, SSE transport, editor-action execute, client gate) is the real
- * pipeline. Chunk shapes copied from node_modules/ai/docs (v4 finishReason /
- * usage shapes), per the Spike C finding: do not write these from memory.
- *
- * Scripted behavior, keyed off the last user message:
- * - mentions "malformed tool calls" → the item-20 reliability probe: one
- *   tool call whose args arrive as a STRINGIFIED JSON envelope (the observed
- *   live Gemini mangle — must be silently recovered by the pre-validation
- *   unwrap) plus one with unparseable truncated args (must degrade to a
- *   single failure chip without killing the turn; the repair re-ask against
- *   this mock throws, exercising the repairer's never-throw path)
- * - mentions "schema-invalid tool call" → one addSection call whose args
- *   PARSE but fail the Zod schema, in the exact shape of the live production
- *   failure (see SCHEMA_INVALID_PROBE_REGEX). Exercises the observability
- *   records that carry validation issue codes and paths.
- * - mentions "reviewer comment(s)"  → updateBlockProperties acknowledging a
- *   comments-mode fix turn (the comment-dispatch prompts embed the phrase)
- * - mentions preview/mobile/desktop → showPreview editor tool call
- * - mentions "test email"           → sendTestEmail (exercises approval flow)
- * - contains a URL                  → readWebPage with that URL (the
- *   server then performs the REAL fetch + extraction — Phase 7.4a seam)
- * - contains a saved-section id ("saved:<rowId>") → scaffoldSection with
- *   that saved templateId (the owner-V2 saved-sections compose seam)
- * - asks for a "full email" (or whole/entire/complete email) → the
- *   per-section streaming script: FOUR sequential scaffoldSection calls
- *   (header, hero, feature-columns, footer), each streamed as its own
- *   tool-input-start → deltas → tool-call sequence with real inter-chunk
- *   delays — the probe that pins "section 1 is applied before section N is
- *   even generated" (see pipeline-streaming.test.ts)
- * - asks to add a section (e.g. "add a hero section") → scaffoldSection with
- *   the mentioned catalog templateId (exercises the Phase 7.2 scaffold seam)
- * - widget scripts (generative UI, one per widget): "clarify"/"make it pop" →
- *   askForClarification; "variations"/"alternatives" →
- *   proposeSectionVariations; "improve"/"suggestions"/"feedback"/"review" →
- *   proposeEdits; "what images…"/"my library" → listAssets
- * - otherwise → updateBlockProperties on the selected block (fallback
- *   btn_t9u0, the sample document's button), setting its label.
- *
- * The model is multi-step aware: the first doStream call emits the tool call;
- * any later call (e.g. the step after an editor tool executed) emits a short
- * closing text with finishReason "stop", so stopWhen loops terminate.
- */
+/*
+  Deterministic mock chat model (no API key needed — CI/tests use this via
+  the x-flock-mock header; it is also the automatic fallback when
+  GOOGLE_GENERATIVE_AI_API_KEY is absent).
+
+  It emits the SAME provider-spec (LanguageModelV4) chunk sequence a real
+  Gemini stream produces — text deltas, then tool-input-start, repeated
+  tool-input-delta, tool-input-end, and a tool-call — so everything downstream
+  (streamText input validation, UI-chunk
+  conversion, SSE transport, editor-action execute, client gate) is the real
+  pipeline. Chunk shapes copied from node_modules/ai/docs (v4 finishReason /
+  usage shapes), per the Spike C finding: do not write these from memory.
+
+  Scripted behavior, keyed off the last user message:
+  - mentions "malformed tool calls" → the item-20 reliability probe: one
+    tool call whose args arrive as a STRINGIFIED JSON envelope (the observed
+    live Gemini mangle — must be silently recovered by the pre-validation
+    unwrap) plus one with unparseable truncated args (must degrade to a
+    single failure chip without killing the turn; the repair re-ask against
+    this mock throws, exercising the repairer's never-throw path)
+  - mentions "schema-invalid tool call" → one addSection call whose args
+    PARSE but fail the Zod schema, in the exact shape of the live production
+    failure (see SCHEMA_INVALID_PROBE_REGEX). Exercises the observability
+    records that carry validation issue codes and paths.
+  - mentions "reviewer comment(s)"  → updateBlockProperties acknowledging a
+    comments-mode fix turn (the comment-dispatch prompts embed the phrase)
+  - mentions preview/mobile/desktop → showPreview editor tool call
+  - mentions "test email"           → sendTestEmail (exercises approval flow)
+  - contains a URL                  → readWebPage with that URL (the
+    server then performs the REAL fetch + extraction — Phase 7.4a seam)
+  - contains a saved-section id ("saved:<rowId>") → scaffoldSection with
+    that saved templateId (the owner-V2 saved-sections compose seam)
+  - asks for a "full email" (or whole/entire/complete email) → the
+    per-section streaming script: FOUR sequential scaffoldSection calls
+    (header, hero, feature-columns, footer), each streamed as its own
+    tool-input-start → deltas → tool-call sequence with real inter-chunk
+    delays — the probe that pins "section 1 is applied before section N is
+    even generated" (see pipeline-streaming.test.ts)
+  - asks to add a section (e.g. "add a hero section") → scaffoldSection with
+    the mentioned catalog templateId (exercises the Phase 7.2 scaffold seam)
+  - widget scripts (generative UI, one per widget): "clarify"/"make it pop" →
+    askForClarification; "variations"/"alternatives" →
+    proposeSectionVariations; "improve"/"suggestions"/"feedback"/"review" →
+    proposeEdits; "what images…"/"my library" → listAssets
+  - otherwise → updateBlockProperties on the selected block (fallback
+    btn_t9u0, the sample document's button), setting its label.
+
+  The model is multi-step aware: the first doStream call emits the tool call;
+  any later call (e.g. the step after an editor tool executed) emits a short
+  closing text with finishReason "stop", so stopWhen loops terminate.
+*/
 
 export interface CreateMockChatModelInput {
   lastUserText: string;
   selectedBlockId?: BlockId;
-  /**
-   * True when this request is an auto-continuation carrying tool results
-   * (the conversation already ends with an assistant message). The mock then
-   * emits ONLY the closing text — without this, every continuation round
-   * re-plans the same tool call and non-idempotent ops (scaffoldSection)
-   * would apply once per round.
-   */
+  /*
+    True when this request is an auto-continuation carrying tool results
+    (the conversation already ends with an assistant message). The mock then
+    emits ONLY the closing text — without this, every continuation round
+    re-plans the same tool call and non-idempotent ops (scaffoldSection)
+    would apply once per round.
+  */
   isContinuationRequest?: boolean;
-  /**
-   * How many sections the document already has — where a composed 7.4 section
-   * is appended. Absent means "append at the top" (an empty draft).
-   */
+  /*
+    How many sections the document already has — where a composed 7.4 section
+    is appended. Absent means "append at the top" (an empty draft).
+  */
   rootSectionCount?: number;
 }
 
@@ -120,16 +120,18 @@ interface MockToolCallPlan {
   acknowledgementText: string;
 }
 
-/**
- * openPanel keyword table for the scripted mock: first phrase found in the
- * user message wins (order matters — "recommendations history" must match
- * before "history"). Names mirror the human words for each surface.
- */
+/*
+  openPanel keyword table for the scripted mock: first phrase found in the
+  user message wins (order matters — "recommendations history" must match
+  before "history"). Names mirror the human words for each surface.
+*/
 const MOCK_PANEL_KEYWORDS: readonly { pattern: RegExp; panel: UiPanel; label: string }[] = [
   { pattern: /\btheme\b/i, panel: "theme", label: "theme picker" },
   { pattern: /\bbrand\b/i, panel: "brand-kit", label: "brand kit" },
-  // "content studio" stays as a MATCHED alias (the feature's old name) but
-  // the spoken label is the user-facing one: Asset Library.
+  /*
+    "content studio" stays as a MATCHED alias (the feature's old name) but
+    the spoken label is the user-facing one: Asset Library.
+  */
   { pattern: /\blibrary|content studio\b/i, panel: "library", label: "asset library" },
   { pattern: /\bpersonas?\b|\bagents?\b/i, panel: "agents", label: "agent personas" },
   { pattern: /\brecommendations?\b/i, panel: "recommendations", label: "recommendations history" },
@@ -139,7 +141,9 @@ const MOCK_PANEL_KEYWORDS: readonly { pattern: RegExp; panel: UiPanel; label: st
   { pattern: /\bsend[ -]?test\b|\btest email\b/i, panel: "send-test", label: "send-test dialog" },
 ];
 
-/** English count words the createDraft script understands, beyond digits. */
+/*
+  English count words the createDraft script understands, beyond digits.
+*/
 const MOCK_COUNT_WORDS: Readonly<Record<string, number>> = {
   one: 1,
   a: 1,
@@ -149,11 +153,11 @@ const MOCK_COUNT_WORDS: Readonly<Record<string, number>> = {
   five: 5,
 };
 
-/**
- * The createDraft composition script: section shapes the mock cycles through
- * so several drafts in one call differ the way the live model is told to make
- * them differ (a plain hero in one, a split hero in another).
- */
+/*
+  The createDraft composition script: section shapes the mock cycles through
+  so several drafts in one call differ the way the live model is told to make
+  them differ (a plain hero in one, a split hero in another).
+*/
 const MOCK_DRAFT_SHAPES: readonly string[][] = [
   ["header", "hero", "feature-columns", "cta", "footer"],
   ["header-centered", "hero-split", "article", "footer-social"],
@@ -162,7 +166,9 @@ const MOCK_DRAFT_SHAPES: readonly string[][] = [
   ["header", "hero", "testimonial-columns", "footer"],
 ];
 
-/** Draft names the mock gives its plans — the angle, not "Draft N". */
+/*
+  Draft names the mock gives its plans — the angle, not "Draft N".
+*/
 const MOCK_DRAFT_ANGLES = [
   "Bold and direct",
   "Story first",
@@ -171,11 +177,11 @@ const MOCK_DRAFT_ANGLES = [
   "Short and warm",
 ] as const;
 
-/**
- * Turn the user's own words into a subject line the composed drafts can talk
- * about ("Create a new draft about our spring sale" → "our spring sale"), so
- * the mock exercises the same copy-carrying path a live model would.
- */
+/*
+  Turn the user's own words into a subject line the composed drafts can talk
+  about ("Create a new draft about our spring sale" → "our spring sale"), so
+  the mock exercises the same copy-carrying path a live model would.
+*/
 function extractMockDraftSubject(lastUserText: string): string | null {
   const match = lastUserText.match(/\b(?:about|for|on)\s+([^.?!]{3,60})/i);
   return match?.[1]?.trim() ?? null;
@@ -205,7 +211,9 @@ function buildMockDraftPlans({
 
 
 
-/** Catalog templateIds the mock recognizes by keyword in the user message. */
+/*
+  Catalog templateIds the mock recognizes by keyword in the user message.
+*/
 const MOCK_SCAFFOLD_TEMPLATE_IDS = [
   "header",
   "hero",
@@ -255,7 +263,9 @@ const MOCK_COMMENT_FIX_EDITS: readonly {
   },
 ];
 
-/** The label + acknowledgement a comment-fix turn resolves to. */
+/*
+  The label + acknowledgement a comment-fix turn resolves to.
+*/
 export function planCommentFixEdit(lastUserText: string): {
   label: string;
   acknowledgementText: string;
@@ -281,10 +291,12 @@ export function planMockToolCall({
   lastUserText,
   selectedBlockId,
 }: CreateMockChatModelInput): MockToolCallPlan {
-  // Comments-mode fix dispatch (checked FIRST: the prompt embeds the
-  // reviewer's own words, which could otherwise trip any keyword below):
-  // both dispatch shapes contain "reviewer comment(s)" by construction
-  // (comment-dispatch.ts). One deterministic content op marks the turn.
+  /*
+    Comments-mode fix dispatch (checked FIRST: the prompt embeds the
+    reviewer's own words, which could otherwise trip any keyword below):
+    both dispatch shapes contain "reviewer comment(s)" by construction
+    (comment-dispatch.ts). One deterministic content op marks the turn.
+  */
   if (/\breviewer comments?\b/i.test(lastUserText)) {
     const commentFix = planCommentFixEdit(lastUserText);
     return {
@@ -297,8 +309,10 @@ export function planMockToolCall({
       acknowledgementText: commentFix.acknowledgementText,
     };
   }
-  // Agent-parity scripts (checked before the preview/test-email intents so
-  // "open the test email dialog" opens the dialog rather than sending):
+  /*
+    Agent-parity scripts (checked before the preview/test-email intents so
+    "open the test email dialog" opens the dialog rather than sending):
+  */
   const hasOpenIntent = /\bopen\b|\bshow me\b/i.test(lastUserText);
   if (hasOpenIntent) {
     const panelMatch = MOCK_PANEL_KEYWORDS.find(({ pattern }) => pattern.test(lastUserText));
@@ -335,9 +349,11 @@ export function planMockToolCall({
       acknowledgementText: `Restoring version ${version} — approve to continue.`,
     };
   }
-  // The qualifier run repeats: "3 drafts", "3 new drafts" and "3 new blank
-  // drafts" all have to resolve the same count. A single optional qualifier
-  // stops at the first word and silently falls through to count 1.
+  /*
+    The qualifier run repeats: "3 drafts", "3 new drafts" and "3 new blank
+    drafts" all have to resolve the same count. A single optional qualifier
+    stops at the first word and silently falls through to count 1.
+  */
   const draftMatch = lastUserText.match(
     /\b(?:create|make|start|new)\b[\s\S]*?\b(?:(\d+)|(\w+))?\s*(?:(?:new|blank|empty|starter)\s+)*drafts?\b/i,
   );
@@ -346,10 +362,12 @@ export function planMockToolCall({
       draftMatch[1] !== undefined
         ? Number(draftMatch[1])
         : (MOCK_COUNT_WORDS[draftMatch[2]?.toLowerCase() ?? ""] ?? 1);
-    // "blank"/"empty" keeps the bare count form (starter drafts to fill in).
-    // Anything else is a request for a real email, so the mock plans one the
-    // way the live model is instructed to: a complete header/body/footer
-    // email per draft, and genuinely different plans when asked for several.
+    /*
+      "blank"/"empty" keeps the bare count form (starter drafts to fill in).
+      Anything else is a request for a real email, so the mock plans one the
+      way the live model is instructed to: a complete header/body/footer
+      email per draft, and genuinely different plans when asked for several.
+    */
     if (/\bblank\b|\bempty\b|\bstarter\b/i.test(lastUserText)) {
       return {
         toolName: "createDraft",
@@ -381,8 +399,10 @@ export function planMockToolCall({
       acknowledgementText: `Creating the "${name}" persona.`,
     };
   }
-  // --- Generative-UI widget scripts (one per widget — quota-free QA) --------
-  // askForClarification: "clarify"-family words or the canonical vague ask.
+  /*
+    --- Generative-UI widget scripts (one per widget — quota-free QA) --------
+    askForClarification: "clarify"-family words or the canonical vague ask.
+  */
   if (/\bclarif\w*\b|\bmake it pop\b/i.test(lastUserText)) {
     return {
       toolName: "askForClarification",
@@ -398,7 +418,9 @@ export function planMockToolCall({
       acknowledgementText: "Happy to — quick question first.",
     };
   }
-  // proposeSectionVariations: variations/alternatives asks.
+  /*
+    proposeSectionVariations: variations/alternatives asks.
+  */
   if (/\bvariations?\b|\balternatives?\b|\bdifferent takes\b/i.test(lastUserText)) {
     return {
       toolName: "proposeSectionVariations",
@@ -421,8 +443,10 @@ export function planMockToolCall({
       acknowledgementText: "Here are a few directions — pick the one you like.",
     };
   }
-  // proposeEdits: improvement/feedback asks (no direct-change verb needed —
-  // the scripted mock keys off the review vocabulary alone).
+  /*
+    proposeEdits: improvement/feedback asks (no direct-change verb needed —
+    the scripted mock keys off the review vocabulary alone).
+  */
   if (/\bimprove\b|\bsuggestions?\b|\bfeedback\b|\breview\b/i.test(lastUserText)) {
     const suggestionBlockId = selectedBlockId ?? ("btn_t9u0" as BlockId);
     return {
@@ -448,7 +472,9 @@ export function planMockToolCall({
       acknowledgementText: "A couple of ways to strengthen this email.",
     };
   }
-  // listAssets: questions about the session's image library.
+  /*
+    listAssets: questions about the session's image library.
+  */
   if (
     /\b(?:what|which|list|show)\b[\s\S]*\b(?:images?|assets?|photos?)\b/i.test(lastUserText) ||
     /\bmy library\b/i.test(lastUserText)
@@ -469,8 +495,10 @@ export function planMockToolCall({
     };
   }
   if (/\btest email\b/i.test(lastUserText)) {
-    // Sends are REAL since Phase 8.1 — never invent a third-party address.
-    // Use the address in the message, else Resend's safe test inbox.
+    /*
+      Sends are REAL since Phase 8.1 — never invent a third-party address.
+      Use the address in the message, else Resend's safe test inbox.
+    */
     const to =
       lastUserText.match(/[\w.+-]+@[\w-]+(?:\.[\w-]+)+/)?.[0] ?? "delivered@resend.dev";
     return {
@@ -500,9 +528,11 @@ export function planMockToolCall({
       acknowledgementText: "Reading that page now.",
     };
   }
-  // A saved-section id in the message → scaffoldSection with the saved
-  // templateId (owner V2 item 3): exercises the widened schema through the
-  // server validation gate and the client's saved-scaffold intercept.
+  /*
+    A saved-section id in the message → scaffoldSection with the saved
+    templateId (owner V2 item 3): exercises the widened schema through the
+    server validation gate and the client's saved-scaffold intercept.
+  */
   const savedSectionIdMatch = lastUserText.match(/\bsaved:[a-z0-9]+\b/i);
   if (savedSectionIdMatch !== null) {
     return {
@@ -537,42 +567,44 @@ export function planMockToolCall({
       blockId,
       properties: { label: lastUserText.slice(0, 40) || "Updated" },
     },
-    // Block ids are never user-facing — keep the prose generic.
+    /*
+      Block ids are never user-facing — keep the prose generic.
+    */
     acknowledgementText: "Updating the selected block.",
   };
 }
 
-/**
- * Item-20 reliability probe (see the header): the EXACT malformed shapes from
- * the live failure, scripted. Call 1's raw argument text is a JSON-ENCODED
- * STRING of the whole envelope (name embedded) — the pre-validation unwrap
- * must recover it into a normally-applied op. Call 2's raw text is truncated
- * garbage — unrepairable by construction (this mock has no doGenerate, so the
- * repair re-ask throws), and must cost exactly one failure chip while the
- * turn survives.
- */
+/*
+  Item-20 reliability probe (see the header): the EXACT malformed shapes from
+  the live failure, scripted. Call 1's raw argument text is a JSON-ENCODED
+  STRING of the whole envelope (name embedded) — the pre-validation unwrap
+  must recover it into a normally-applied op. Call 2's raw text is truncated
+  garbage — unrepairable by construction (this mock has no doGenerate, so the
+  repair re-ask throws), and must cost exactly one failure chip while the
+  turn survives.
+*/
 const MALFORMED_PROBE_REGEX = /\bmalformed tool calls\b/i;
 
-/**
- * Schema-invalid probe: args that PARSE as JSON and then fail the tool's Zod
- * schema — the other half of the malformed space, and the one the malformed
- * probe above cannot reach (its two calls fail at JSON parse time, so they
- * produce no Zod issue list at all).
- *
- * The scripted payload is the real production failure, verbatim in shape: an
- * `addSection` call where the model wrapped `children[0].text` in a
- * `type: "text"` envelope instead of using `properties`, omitted `childrenIds`
- * and `properties`, and got the `name` discriminator wrong. It exists so the
- * observability records that carry Zod issue codes and paths
- * (flock.chat.toolInputRejected) can be exercised without a provider call.
- */
+/*
+  Schema-invalid probe: args that PARSE as JSON and then fail the tool's Zod
+  schema — the other half of the malformed space, and the one the malformed
+  probe above cannot reach (its two calls fail at JSON parse time, so they
+  produce no Zod issue list at all).
+
+  The scripted payload is the real production failure, verbatim in shape: an
+  `addSection` call where the model wrapped `children[0].text` in a
+  `type: "text"` envelope instead of using `properties`, omitted `childrenIds`
+  and `properties`, and got the `name` discriminator wrong. It exists so the
+  observability records that carry Zod issue codes and paths
+  (flock.chat.toolInputRejected) can be exercised without a provider call.
+*/
 const SCHEMA_INVALID_PROBE_REGEX = /\bschema-invalid tool call\b/i;
 
-/**
- * Full-email compose script: intent regex + the sections it streams, in
- * reading order. Checked BEFORE the single-section scaffold intent ("build
- * the whole email" must not degrade to one hero section).
- */
+/*
+  Full-email compose script: intent regex + the sections it streams, in
+  reading order. Checked BEFORE the single-section scaffold intent ("build
+  the whole email" must not degrade to one hero section).
+*/
 const COMPOSE_EMAIL_REGEX = /\b(?:full|whole|entire|complete)\s+email\b/i;
 
 /**
@@ -621,14 +653,14 @@ export const MOCK_COMPOSE_EMAIL_TEMPLATE_IDS = [
   "footer",
 ] as const;
 
-/**
- * The per-section streaming chunk sequence: one scaffoldSection call per
- * template, each with its own tool-input-start → 16-char deltas →
- * tool-input-end → tool-call. With simulateReadableStream's per-chunk delay
- * this reproduces the shape (and pacing) of a real model composing a full
- * email section by section — downstream, section 1's validated call reaches
- * the client while section N's input is still being generated.
- */
+/*
+  The per-section streaming chunk sequence: one scaffoldSection call per
+  template, each with its own tool-input-start → 16-char deltas →
+  tool-input-end → tool-call. With simulateReadableStream's per-chunk delay
+  this reproduces the shape (and pacing) of a real model composing a full
+  email section by section — downstream, section 1's validated call reaches
+  the client while section N's input is still being generated.
+*/
 function buildComposeEmailChunks() {
   const perSectionChunks = MOCK_COMPOSE_EMAIL_TEMPLATE_IDS.flatMap((templateId, index) => {
     const toolCallId = `call_${crypto.randomUUID()}`;
@@ -724,7 +756,9 @@ function buildMalformedProbeChunks(selectedBlockId: BlockId | undefined) {
 }
 
 function buildSchemaInvalidProbeChunks() {
-  // Parseable JSON, wrong SHAPE — see SCHEMA_INVALID_PROBE_REGEX.
+  /*
+    Parseable JSON, wrong SHAPE — see SCHEMA_INVALID_PROBE_REGEX.
+  */
   const schemaInvalidArgs = JSON.stringify({
     name: "section",
     section: { id: "sec_probe", type: "section", parentId: "root" },
@@ -756,21 +790,25 @@ function buildSchemaInvalidProbeChunks() {
   ];
 }
 
-// ---------------------------------------------------------------------------
-// Phase 7.4 compose step (the mock standing in for the model)
-// ---------------------------------------------------------------------------
+/*
+  ---------------------------------------------------------------------------
+  Phase 7.4 compose step (the mock standing in for the model)
+  ---------------------------------------------------------------------------
+*/
 
-/** The ingestion tool result this mock composes from. */
+/*
+  The ingestion tool result this mock composes from.
+*/
 interface IngestionToolResult {
   result: ReadWebPageResult;
 }
 
-/**
- * Find the newest ingestion tool result in the prompt the SDK just handed us.
- * Analysis tools execute server-side and their JSON output comes back as a
- * tool-result part on the NEXT step of the same request — so on step 2 the
- * mock is looking at the page the server really fetched.
- */
+/*
+  Find the newest ingestion tool result in the prompt the SDK just handed us.
+  Analysis tools execute server-side and their JSON output comes back as a
+  tool-result part on the NEXT step of the same request — so on step 2 the
+  mock is looking at the page the server really fetched.
+*/
 function findIngestionToolResult(prompt: unknown): IngestionToolResult | null {
   if (!Array.isArray(prompt)) {
     return null;
@@ -801,16 +839,16 @@ function findIngestionToolResult(prompt: unknown): IngestionToolResult | null {
   return null;
 }
 
-/**
- * The 7.4 compose step, scripted: turn the REAL fetched payload into one
- * addSection call — or, when the page could not be read, into a plain-language
- * relay of the refusal and NOTHING ELSE.
- *
- * That second branch is the deterministic proof of the plan's hardest rule:
- * a blocked, paywalled, or robots-disallowed URL costs the document zero
- * edits. The mock has the same information the model would have, and makes
- * the same choice the guidance demands of it.
- */
+/*
+  The 7.4 compose step, scripted: turn the REAL fetched payload into one
+  addSection call — or, when the page could not be read, into a plain-language
+  relay of the refusal and NOTHING ELSE.
+
+  That second branch is the deterministic proof of the plan's hardest rule:
+  a blocked, paywalled, or robots-disallowed URL costs the document zero
+  edits. The mock has the same information the model would have, and makes
+  the same choice the guidance demands of it.
+*/
 function buildIngestionComposeChunks({
   ingestion,
   rootSectionCount,
@@ -831,7 +869,9 @@ function buildIngestionComposeChunks({
       { type: "finish" as const, finishReason: { unified: "stop" as const, raw: undefined }, usage },
     ];
   }
-  /* Narrowed by refusalMessage === null above. */
+  /*
+    Narrowed by refusalMessage === null above.
+  */
   const operation = composeScrapedSection({
     page: (ingestion.result as { isOk: true; page: never }).page,
     index: rootSectionCount,
@@ -866,7 +906,9 @@ export function createMockChatModel(input: CreateMockChatModelInput) {
   const isComposeEmailProbe = COMPOSE_EMAIL_REGEX.test(input.lastUserText);
   const plan = planMockToolCall(input);
   const inputJson = JSON.stringify(plan.input);
-  // Unique per request — clients dedupe applied ops by toolCallId (Spike C).
+  /*
+    Unique per request — clients dedupe applied ops by toolCallId (Spike C).
+  */
   const toolCallId = `call_${crypto.randomUUID()}`;
   const inputDeltas: string[] = [];
   for (let index = 0; index < inputJson.length; index += 16) {
@@ -884,10 +926,12 @@ export function createMockChatModel(input: CreateMockChatModelInput) {
     doStream: async ({ prompt }) => {
       doStreamCallCount += 1;
       const isFirstStep = doStreamCallCount === 1 && !isContinuationRequest;
-      // Step 2 of a 7.4 turn: the server has really fetched the page and the
-      // payload is in the prompt. Compose from it, or relay the refusal.
-      // Continuation ROUNDS are excluded — the section was already composed in
-      // the round that fetched, and addSection is not idempotent.
+      /*
+        Step 2 of a 7.4 turn: the server has really fetched the page and the
+        payload is in the prompt. Compose from it, or relay the refusal.
+        Continuation ROUNDS are excluded — the section was already composed in
+        the round that fetched, and addSection is not idempotent.
+      */
       const ingestion = isContinuationRequest ? null : findIngestionToolResult(prompt);
       if (ingestion !== null) {
         return {
@@ -960,8 +1004,10 @@ export function createMockChatModel(input: CreateMockChatModelInput) {
           }),
         };
       }
-      // One array literal (conditional spreads) so TS infers a single chunk
-      // union for simulateReadableStream's generic across both step shapes.
+      /*
+        One array literal (conditional spreads) so TS infers a single chunk
+        union for simulateReadableStream's generic across both step shapes.
+      */
       return {
         stream: simulateReadableStream({
           chunkDelayInMs: 20,

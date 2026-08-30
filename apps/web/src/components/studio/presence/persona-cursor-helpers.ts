@@ -1,13 +1,15 @@
-/**
- * Pure helpers for PersonaCursorOverlay (multi-agent v1 persona cursors) —
- * kept dependency-free (beyond the lib-level finding-presentation timing
- * contract) so the deterministic-anchor contract is unit-testable (vitest
- * runs node-env, no DOM/Convex).
- */
+/*
+  Pure helpers for PersonaCursorOverlay (multi-agent v1 persona cursors) —
+  kept dependency-free (beyond the lib-level finding-presentation timing
+  contract) so the deterministic-anchor contract is unit-testable (vitest
+  runs node-env, no DOM/Convex).
+*/
 
 import { FINDING_DWELL_MS } from "@/lib/personas/finding-presentation";
 
-/** FNV-1a 32-bit — deterministic anchor jitter (same hash as presence identity). */
+/*
+  FNV-1a 32-bit — deterministic anchor jitter (same hash as presence identity).
+*/
 export function hashString(input: string): number {
   let hash = 0x811c9dc5;
   for (let index = 0; index < input.length; index += 1) {
@@ -17,12 +19,12 @@ export function hashString(input: string): number {
   return hash >>> 0;
 }
 
-/**
- * The persona slug inside a presence userId (`persona:<slug>:<documentId>`,
- * where the slug itself may contain slashes and NO colons — see
- * convex/personas.ts buildPersonaPresenceUserId), or null for non-persona
- * roster members.
- */
+/*
+  The persona slug inside a presence userId (`persona:<slug>:<documentId>`,
+  where the slug itself may contain slashes and NO colons — see
+  convex/personas.ts buildPersonaPresenceUserId), or null for non-persona
+  roster members.
+*/
 export function extractPersonaSlugFromPresenceUserId(userId: string): string | null {
   const prefix = "persona:";
   if (!userId.startsWith(prefix)) {
@@ -35,13 +37,13 @@ export function extractPersonaSlugFromPresenceUserId(userId: string): string | n
   return userId.slice(prefix.length, lastColonIndex);
 }
 
-/**
- * Deterministic hover anchor for a finding: block-rect fractions hashed from
- * the Convex finding id, biased toward the block's right half (over the
- * content, off the leading text). Every collaborator's tab computes the SAME
- * spot — that's what keeps the hover cross-collaborator-consistent with zero
- * presence writes.
- */
+/*
+  Deterministic hover anchor for a finding: block-rect fractions hashed from
+  the Convex finding id, biased toward the block's right half (over the
+  content, off the leading text). Every collaborator's tab computes the SAME
+  spot — that's what keeps the hover cross-collaborator-consistent with zero
+  presence writes.
+*/
 export function buildFindingHoverAnchor(findingId: string): { x: number; y: number } {
   const hash = hashString(findingId);
   return {
@@ -50,35 +52,35 @@ export function buildFindingHoverAnchor(findingId: string): { x: number; y: numb
   };
 }
 
-/**
- * Stable per-persona horizontal lane for the reading walk (block-rect x
- * fraction) so two personas walking at once don't stack on one point.
- */
+/*
+  Stable per-persona horizontal lane for the reading walk (block-rect x
+  fraction) so two personas walking at once don't stack on one point.
+*/
 export function buildReadingLaneX(slug: string): number {
   return 0.3 + ((hashString(slug) % 100) / 100) * 0.4;
 }
 
-/**
- * How long an idle persona cursor PRESENTS a fresh finding (hovers its
- * target block) before fading out. Owner rule (2026-07-31): cursors are
- * visible only while a persona is actively looking at something — a run's
- * reading/thinking phases, plus this bounded presentation beat right after a
- * finding lands — never camped indefinitely on an open finding.
- */
+/*
+  How long an idle persona cursor PRESENTS a fresh finding (hovers its
+  target block) before fading out. Owner rule (2026-07-31): cursors are
+  visible only while a persona is actively looking at something — a run's
+  reading/thinking phases, plus this bounded presentation beat right after a
+  finding lands — never camped indefinitely on an open finding.
+*/
 export const PRESENTATION_WINDOW_MS = 8_000;
 
-/**
- * Milliseconds of presentation left for a finding, measured from its
- * server-stamped createdAtMs. 0 ⇒ the window has passed (cursor fades).
- *
- * Cross-tab consistency argument: createdAtMs is written server-side
- * (personaFindings.recordFindings), so every collaborator's tab computes the
- * same window from the same timestamp — the fade stays client-side timing
- * with zero presence writes. Client-clock skew shifts the window by the skew
- * amount (bounded, cosmetic); a timestamp that reads as FUTURE on this
- * client's clock (clock behind the server) clamps to the full window rather
- * than extending it.
- */
+/*
+  Milliseconds of presentation left for a finding, measured from its
+  server-stamped createdAtMs. 0 ⇒ the window has passed (cursor fades).
+
+  Cross-tab consistency argument: createdAtMs is written server-side
+  (personaFindings.recordFindings), so every collaborator's tab computes the
+  same window from the same timestamp — the fade stays client-side timing
+  with zero presence writes. Client-clock skew shifts the window by the skew
+  amount (bounded, cosmetic); a timestamp that reads as FUTURE on this
+  client's clock (clock behind the server) clamps to the full window rather
+  than extending it.
+*/
 export function getPresentationRemainingMs({
   findingCreatedAtMs,
   nowMs,
@@ -88,23 +90,23 @@ export function getPresentationRemainingMs({
 }): number {
   const elapsedMs = nowMs - findingCreatedAtMs;
   if (elapsedMs <= 0) {
-    return PRESENTATION_WINDOW_MS; // future-stamped (clock skew): full window
+    return PRESENTATION_WINDOW_MS; /* future-stamped (clock skew): full window */
   }
   return Math.max(0, PRESENTATION_WINDOW_MS - elapsedMs);
 }
 
-/**
- * The two beats of a finding's presentation (owner feedback 2026-07-31 —
- * the legible wander → dwell → select → post flow), derived from the same
- * server-stamped `createdAtMs` clock as the window itself:
- *
- * - "dwell":  the first FINDING_DWELL_MS — the cursor hovers AROUND the
- *   found block ("it found something there") with no selection chrome yet;
- * - "select": the rest of the window — the cursor settles and the persona's
- *   presence-level selection reads on the block, right before the card posts
- *   (FINDING_CARD_REVEAL_MS ≥ FINDING_DWELL_MS in finding-presentation.ts);
- * - "closed": the window has passed (or there is no finding) — cursor fades.
- */
+/*
+  The two beats of a finding's presentation (owner feedback 2026-07-31 —
+  the legible wander → dwell → select → post flow), derived from the same
+  server-stamped `createdAtMs` clock as the window itself:
+
+  - "dwell":  the first FINDING_DWELL_MS — the cursor hovers AROUND the
+    found block ("it found something there") with no selection chrome yet;
+  - "select": the rest of the window — the cursor settles and the persona's
+    presence-level selection reads on the block, right before the card posts
+    (FINDING_CARD_REVEAL_MS ≥ FINDING_DWELL_MS in finding-presentation.ts);
+  - "closed": the window has passed (or there is no finding) — cursor fades.
+*/
 export type FindingPresentationPhase = "dwell" | "select" | "closed";
 
 export function getPresentationPhase({
@@ -115,22 +117,24 @@ export function getPresentationPhase({
   nowMs: number;
 }): FindingPresentationPhase {
   if (findingCreatedAtMs === 0) {
-    return "closed"; // 0 = no finding
+    return "closed"; /* 0 = no finding */
   }
   if (getPresentationRemainingMs({ findingCreatedAtMs, nowMs }) <= 0) {
     return "closed";
   }
   const elapsedMs = nowMs - findingCreatedAtMs;
-  // Future-stamped (clock skew, elapsed < 0) reads as the dwell beat — the
-  // whole presentation still plays once the local clock catches up.
+  /*
+    Future-stamped (clock skew, elapsed < 0) reads as the dwell beat — the
+    whole presentation still plays once the local clock catches up.
+  */
   return elapsedMs >= FINDING_DWELL_MS ? "select" : "dwell";
 }
 
-/**
- * Milliseconds until the presentation phase next changes (dwell → select, or
- * select → closed), or null when it never will (already closed). Feeds the
- * one-timeout-per-boundary subscription in the cursor overlay — no ticking.
- */
+/*
+  Milliseconds until the presentation phase next changes (dwell → select, or
+  select → closed), or null when it never will (already closed). Feeds the
+  one-timeout-per-boundary subscription in the cursor overlay — no ticking.
+*/
 export function getMsUntilPresentationPhaseChange({
   findingCreatedAtMs,
   nowMs,

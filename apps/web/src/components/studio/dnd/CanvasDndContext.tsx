@@ -45,30 +45,32 @@ export interface CanvasDndContextProps {
   children: ReactNode;
 }
 
-/**
- * Drag-and-drop for the studio. Mounted at the StudioShell level (NOT inside
- * the active frame's EditorCanvas) so the Blocks-tab palette in the right
- * rail and the canvas blocks share ONE DndContext. @dnd-kit provides the
- * pointer sensor (4px activation so handle/tile clicks stay clicks), the
- * lifted DragOverlay, and auto-scroll for existing-block drags; drop-target
- * resolution is our own, computed on the flat block map from the pointer's
- * DOM hit chain (see ./drop-target) so SDK nesting rules decide validity and
- * a completed drag dispatches exactly ONE store op:
- * - existing blocks → reorderChildren / moveBlock (unchanged behavior);
- * - palette items → addBlock / restoreBlocks / addSection with defaults
- *   (section-template tiles → one scaffoldSection intent, resolved to a
- *   single addSection inside dispatch), after which the new block is
- *   selected and scrolled into view.
- * Leaf blocks AND sections register via useDraggable in BlockShell with the
- * grab handle in the block action row as activator (sections resolve to
- * root-level gaps only — one root reorder per drop; the up/down arrows stay
- * as the keyboard path); palette tiles register whole-tile in PaletteTile.
- */
+/*
+  Drag-and-drop for the studio. Mounted at the StudioShell level (NOT inside
+  the active frame's EditorCanvas) so the Blocks-tab palette in the right
+  rail and the canvas blocks share ONE DndContext. @dnd-kit provides the
+  pointer sensor (4px activation so handle/tile clicks stay clicks), the
+  lifted DragOverlay, and auto-scroll for existing-block drags; drop-target
+  resolution is our own, computed on the flat block map from the pointer's
+  DOM hit chain (see ./drop-target) so SDK nesting rules decide validity and
+  a completed drag dispatches exactly ONE store op:
+  - existing blocks → reorderChildren / moveBlock (unchanged behavior);
+  - palette items → addBlock / restoreBlocks / addSection with defaults
+    (section-template tiles → one scaffoldSection intent, resolved to a
+    single addSection inside dispatch), after which the new block is
+    selected and scrolled into view.
+  Leaf blocks AND sections register via useDraggable in BlockShell with the
+  grab handle in the block action row as activator (sections resolve to
+  root-level gaps only — one root reorder per drop; the up/down arrows stay
+  as the keyboard path); palette tiles register whole-tile in PaletteTile.
+*/
 export function CanvasDndContext({ children }: CanvasDndContextProps) {
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 4 } }));
   const isDragActive = useCanvasDragStore((state) => state.dragSource !== null);
-  // The Logo preset's source for palette DROPS (owner decision 4: only the
-  // confirmed logo enters documents; null inserts the placeholder).
+  /*
+    The Logo preset's source for palette DROPS (owner decision 4: only the
+    confirmed logo enters documents; null inserts the placeholder).
+  */
   const brandLogo = useConfirmedBrandLogo();
   const pointerRef = useRef<PointerPosition | null>(null);
   const frameRef = useRef<number | null>(null);
@@ -80,17 +82,21 @@ export function CanvasDndContext({ children }: CanvasDndContextProps) {
     if (pointer === null || dragStore.dragSource === null) {
       return;
     }
-    // Palette tiles live outside the frames scroller, so dnd-kit's own
-    // auto-scroll (which walks the ACTIVE NODE's scroll ancestors) never
-    // reaches it for palette drags — nudge it ourselves. The resulting
-    // scroll event re-schedules this resolver, so holding the pointer at an
-    // edge keeps scrolling at rAF pace.
+    /*
+      Palette tiles live outside the frames scroller, so dnd-kit's own
+      auto-scroll (which walks the ACTIVE NODE's scroll ancestors) never
+      reaches it for palette drags — nudge it ourselves. The resulting
+      scroll event re-schedules this resolver, so holding the pointer at an
+      edge keeps scrolling at rAF pace.
+    */
     if (dragStore.dragSource.kind === "palette") {
       autoScrollFramesSurface(pointer);
     }
-    // Frame scoping (multi-frame editing): an existing block resolves against
-    // ITS document's store + frame; palette items insert into the ACTIVE
-    // frame (owner decision §8.3 — sibling frames reject drops).
+    /*
+      Frame scoping (multi-frame editing): an existing block resolves against
+      ITS document's store + frame; palette items insert into the ACTIVE
+      frame (owner decision §8.3 — sibling frames reject drops).
+    */
     const sourceStore = resolveSourceStore(dragStore.dragSource);
     const sourceState = sourceStore.getState();
     dragStore.setDropTarget(
@@ -109,9 +115,11 @@ export function CanvasDndContext({ children }: CanvasDndContextProps) {
     }
   }, [resolveAtPointer]);
 
-  // Track the pointer ourselves (dnd-kit's move delta drifts from the real
-  // pointer once auto-scroll kicks in) and re-resolve on scroll so the
-  // indicator tracks auto-scrolling under a stationary pointer.
+  /*
+    Track the pointer ourselves (dnd-kit's move delta drifts from the real
+    pointer once auto-scroll kicks in) and re-resolve on scroll so the
+    indicator tracks auto-scrolling under a stationary pointer.
+  */
   useEffect(() => {
     if (!isDragActive) {
       return;
@@ -143,8 +151,10 @@ export function CanvasDndContext({ children }: CanvasDndContextProps) {
     const source: DragSource =
       paletteItem !== undefined
         ? { kind: "palette", item: paletteItem }
-        : // Canvas draggables register document-qualified (several frames
-          // share one DndContext and forked drafts share block ids).
+        : /* Canvas draggables register document-qualified (several frames */
+          /*
+            share one DndContext and forked drafts share block ids).
+          */
           { kind: "existing-block", ...parseCanvasDraggableId(String(event.active.id)) };
     useCanvasDragStore.getState().startDrag(source);
     scheduleResolve();
@@ -153,17 +163,21 @@ export function CanvasDndContext({ children }: CanvasDndContextProps) {
   const handleDragEnd = () => {
     const dragStore = useCanvasDragStore.getState();
     const { dragSource, dropTarget } = dragStore;
-    // End the gesture BEFORE dispatch/select: the right rail's Blocks tab is
-    // sticky only while a drag is live, so the post-drop selection is what
-    // switches it to Properties (the add-then-tweak loop).
+    /*
+      End the gesture BEFORE dispatch/select: the right rail's Blocks tab is
+      sticky only while a drag is live, so the post-drop selection is what
+      switches it to Properties (the add-then-tweak loop).
+    */
     dragStore.endDrag();
     pointerRef.current = null;
     if (dragSource === null || dropTarget === null) {
       return;
     }
-    // The op lands in the store the drag was scoped to: an existing block's
-    // own frame store (which may be a non-active sibling), or the active
-    // store for palette insertions.
+    /*
+      The op lands in the store the drag was scoped to: an existing block's
+      own frame store (which may be a non-active sibling), or the active
+      store for palette insertions.
+    */
     const editorStore = resolveSourceStore(dragSource).getState();
     if (dragSource.kind === "existing-block") {
       const op = buildDropOperation({
@@ -189,9 +203,11 @@ export function CanvasDndContext({ children }: CanvasDndContextProps) {
     if (!result.isOk) {
       return;
     }
-    // scaffoldSection resolves to an addSection op inside dispatch — the new
-    // section's id is only known from the applied op in the result (the same
-    // contract as the click path in use-click-to-add).
+    /*
+      scaffoldSection resolves to an addSection op inside dispatch — the new
+      section's id is only known from the applied op in the result (the same
+      contract as the click path in use-click-to-add).
+    */
     const appliedOp = result.op;
     const newBlockId =
       insertion.newBlockId ??
@@ -210,9 +226,11 @@ export function CanvasDndContext({ children }: CanvasDndContextProps) {
   return (
     <DndContext
       sensors={sensors}
-      // Never auto-scroll the right rail: for palette drags dnd-kit would
-      // walk the TILE's scroll ancestors (the panel), which is useless and
-      // disorienting mid-drag. The frames surface is handled above.
+      /*
+        Never auto-scroll the right rail: for palette drags dnd-kit would
+        walk the TILE's scroll ancestors (the panel), which is useless and
+        disorienting mid-drag. The frames surface is handled above.
+      */
       autoScroll={{ canScroll: (element) => element.closest('[data-slot="right-rail"]') === null }}
       onDragStart={handleDragStart}
       onDragEnd={handleDragEnd}
@@ -224,12 +242,12 @@ export function CanvasDndContext({ children }: CanvasDndContextProps) {
   );
 }
 
-/**
- * The store a drag gesture is scoped to: an existing block's OWN document
- * store (retained by the frame that rendered it — may be a non-active sibling
- * editor), the active store otherwise (palette insertions target the active
- * frame; the fallback also covers a source frame torn down mid-drag).
- */
+/*
+  The store a drag gesture is scoped to: an existing block's OWN document
+  store (retained by the frame that rendered it — may be a non-active sibling
+  editor), the active store otherwise (palette insertions target the active
+  frame; the fallback also covers a source frame torn down mid-drag).
+*/
 function resolveSourceStore(dragSource: DragSource): EditorStoreApi {
   return dragSource.kind === "existing-block" && dragSource.documentId !== null
     ? (peekEditorStore(dragSource.documentId) ?? getActiveEditorStore())
@@ -237,12 +255,18 @@ function resolveSourceStore(dragSource: DragSource): EditorStoreApi {
 }
 
 const FRAMES_SCROLLER_SELECTOR = "[data-frames-scroller]";
-/** Distance from a frames-surface edge that starts edge-scrolling (px). */
+/*
+  Distance from a frames-surface edge that starts edge-scrolling (px).
+*/
 const AUTO_SCROLL_EDGE_PX = 56;
-/** Scroll step per resolver pass while inside an edge zone (px). */
+/*
+  Scroll step per resolver pass while inside an edge zone (px).
+*/
 const AUTO_SCROLL_STEP_PX = 14;
 
-/** Edge-scroll the frames surface toward the pointer during palette drags. */
+/*
+  Edge-scroll the frames surface toward the pointer during palette drags.
+*/
 function autoScrollFramesSurface(pointer: PointerPosition): void {
   const scroller = document.querySelector<HTMLElement>(FRAMES_SCROLLER_SELECTOR);
   if (scroller === null) {
@@ -266,20 +290,22 @@ function autoScrollFramesSurface(pointer: PointerPosition): void {
   }
 }
 
-/**
- * Body-portaled drag chrome: the lifted DragOverlay copy of the dragged
- * subtree (or the palette tile's chip) and the drop-position indicator line.
- * Portaled so the canvas's overflow/scroll clipping never cuts them off;
- * both ignore pointer events so document.elementFromPoint hit-testing sees
- * the canvas beneath.
- */
+/*
+  Body-portaled drag chrome: the lifted DragOverlay copy of the dragged
+  subtree (or the palette tile's chip) and the drop-position indicator line.
+  Portaled so the canvas's overflow/scroll clipping never cuts them off;
+  both ignore pointer events so document.elementFromPoint hit-testing sees
+  the canvas beneath.
+*/
 const emptySubscribe = () => () => {};
 const getIsClientSnapshot = () => true;
 const getIsServerSnapshot = () => false;
 
 function CanvasDragLayer() {
-  // Hydration-safe "is mounted on the client" — false on the server pass,
-  // true once React takes over — without an effect-driven setState.
+  /*
+    Hydration-safe "is mounted on the client" — false on the server pass,
+    true once React takes over — without an effect-driven setState.
+  */
   const isClientMounted = useSyncExternalStore(
     emptySubscribe,
     getIsClientSnapshot,
@@ -310,11 +336,11 @@ function CanvasDragOverlay() {
   );
 }
 
-/**
- * The lifted copy of a dragged existing block, rendered from ITS document's
- * store (the drag may originate in a non-active sibling frame). The store
- * identity is stable for the drag's lifetime — the source frame retains it.
- */
+/*
+  The lifted copy of a dragged existing block, rendered from ITS document's
+  store (the drag may originate in a non-active sibling frame). The store
+  identity is stable for the drag's lifetime — the source frame retains it.
+*/
 function ExistingBlockDragGhost({
   dragSource,
 }: {
@@ -337,11 +363,11 @@ function ExistingBlockDragGhost({
   );
 }
 
-/**
- * The lifted copy of a dragged palette tile: a compact icon+label chip. The
- * drop indicator line — not the chip — communicates placement; the chip only
- * says what is being carried.
- */
+/*
+  The lifted copy of a dragged palette tile: a compact icon+label chip. The
+  drop indicator line — not the chip — communicates placement; the chip only
+  says what is being carried.
+*/
 function PaletteDragChip({ item }: { item: PaletteItem }) {
   return (
     <div

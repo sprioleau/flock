@@ -4,29 +4,29 @@ import { useSyncExternalStore } from "react";
 import { MOCK_MODEL_HEADER } from "@/lib/chat-contract";
 import { recordPersonaRunStart } from "./persona-run-clock";
 
-/**
- * Manual persona sweep — "Check now" (owner ask, 2026-07-31): the human can
- * walk into a document and ask the enabled agents for a fresh review of the
- * CURRENT state, without waiting for a settled edit or a cooldown window.
- *
- * Semantics:
- * - Bypasses the client-side settled-edit trigger entirely (this module
- *   calls /api/personas directly) and sends `isManualSweep: true`, which
- *   tells the route to skip its cooldown + outline-unchanged backstops.
- * - LEGITIMATE WHILE PAUSED: pause stops the ambient watcher's spend; an
- *   explicit click is the user choosing to spend one call. The pause flag is
- *   not touched.
- * - Single-flight across every "Check now" button (module-level flag exposed
- *   via useIsPersonaSweepInFlight) — one batched Gemini call at most; the
- *   route's per-document in-flight guard is the server backstop.
- * - Stamps the run clock for the swept personas so the facepile popover's
- *   "checks again" countdown reflects the manual run too.
- *
- * Findings land in Convex exactly like an ambient run's (the route persists
- * them; reactive queries deliver them to every tab), and the status
- * choreography (reading → thinking → idle, cursor presentation) plays as
- * normal because the route writes the same presence statuses.
- */
+/*
+  Manual persona sweep — "Check now" (owner ask, 2026-07-31): the human can
+  walk into a document and ask the enabled agents for a fresh review of the
+  CURRENT state, without waiting for a settled edit or a cooldown window.
+
+  Semantics:
+  - Bypasses the client-side settled-edit trigger entirely (this module
+    calls /api/personas directly) and sends `isManualSweep: true`, which
+    tells the route to skip its cooldown + outline-unchanged backstops.
+  - LEGITIMATE WHILE PAUSED: pause stops the ambient watcher's spend; an
+    explicit click is the user choosing to spend one call. The pause flag is
+    not touched.
+  - Single-flight across every "Check now" button (module-level flag exposed
+    via useIsPersonaSweepInFlight) — one batched Gemini call at most; the
+    route's per-document in-flight guard is the server backstop.
+  - Stamps the run clock for the swept personas so the facepile popover's
+    "checks again" countdown reflects the manual run too.
+
+  Findings land in Convex exactly like an ambient run's (the route persists
+  them; reactive queries deliver them to every tab), and the status
+  choreography (reading → thinking → idle, cursor presentation) plays as
+  normal because the route writes the same presence statuses.
+*/
 
 let isSweepInFlight = false;
 
@@ -45,7 +45,9 @@ function subscribe(listener: () => void): () => void {
   };
 }
 
-/** Reactive: is a manual sweep currently running? (Disables the buttons.) */
+/*
+  Reactive: is a manual sweep currently running? (Disables the buttons.)
+*/
 export function useIsPersonaSweepInFlight(): boolean {
   return useSyncExternalStore(
     subscribe,
@@ -56,18 +58,22 @@ export function useIsPersonaSweepInFlight(): boolean {
 
 interface SweepResult {
   isOk: boolean;
-  /** Server-side skip (e.g. another run already in flight). */
+  /*
+    Server-side skip (e.g. another run already in flight).
+  */
   skippedReason?: string;
 }
 
-/** Fresh-tokens note the model sees for a manual sweep. */
+/*
+  Fresh-tokens note the model sees for a manual sweep.
+*/
 const MANUAL_SWEEP_TRIGGER_SUMMARY =
   "The user explicitly asked for a fresh review of the email as it is right now.";
 
-/**
- * Run one manual sweep for the given personas (all enabled ones for the
- * sweep-all button; a single slug for a persona popover's button).
- */
+/*
+  Run one manual sweep for the given personas (all enabled ones for the
+  sweep-all button; a single slug for a persona popover's button).
+*/
 export async function requestPersonaSweep({
   documentId,
   personaSlugs,

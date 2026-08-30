@@ -1,36 +1,46 @@
-/**
- * Deterministic COPY-signal extraction — the raw material for tone of voice
- * (docs/proposals/brand-kit-user-control.md §5.4). No LLM, no fetching: it
- * reads the page the pipeline already has, with the same bounded regex-scale
- * approach as harvest.ts and extract-site-identity.ts.
- *
- * Signals, in descending order of how reliably they carry voice:
- * - the meta/og description: author-written, one sentence, usually on-voice;
- * - the H1 and the first real body paragraph;
- * - button/CTA labels — a brand that says "Get started" is not the brand that
- *   says "Request a consultation".
- *
- * FAILURE STANCE (matching the rest of the pipeline): no copy found means no
- * tone of voice, not an invented one. `hasAnySignal` is what the caller gates
- * on, and the user types their own voice when it is false.
- *
- * Everything here is UNTRUSTED page text that will eventually sit in a model
- * prompt. It is length-bounded at extraction and delimiter-sanitized again at
- * the seam (lib/brand-voice.ts) — defense at both ends.
- */
+/*
+  Deterministic COPY-signal extraction — the raw material for tone of voice
+  (docs/proposals/brand-kit-user-control.md §5.4). No LLM, no fetching: it
+  reads the page the pipeline already has, with the same bounded regex-scale
+  approach as harvest.ts and extract-site-identity.ts.
+
+  Signals, in descending order of how reliably they carry voice:
+  - the meta/og description: author-written, one sentence, usually on-voice;
+  - the H1 and the first real body paragraph;
+  - button/CTA labels — a brand that says "Get started" is not the brand that
+    says "Request a consultation".
+
+  FAILURE STANCE (matching the rest of the pipeline): no copy found means no
+  tone of voice, not an invented one. `hasAnySignal` is what the caller gates
+  on, and the user types their own voice when it is false.
+
+  Everything here is UNTRUSTED page text that will eventually sit in a model
+  prompt. It is length-bounded at extraction and delimiter-sanitized again at
+  the seam (lib/brand-voice.ts) — defense at both ends.
+*/
 
 import { decodeBasicEntities, findMetaContent } from "./html-utils";
 
 export interface CopySignals {
-  /** og:description / <meta name="description">, entity-decoded. */
+  /*
+    og:description / <meta name="description">, entity-decoded.
+  */
   description: string | null;
-  /** The page's first <h1> text. */
+  /*
+    The page's first <h1> text.
+  */
   headline: string | null;
-  /** The first body paragraph long enough to carry a voice. */
+  /*
+    The first body paragraph long enough to carry a voice.
+  */
   firstParagraph: string | null;
-  /** Button/CTA label text, deduped and bounded. */
+  /*
+    Button/CTA label text, deduped and bounded.
+  */
   ctaLabels: string[];
-  /** False when the page gave us nothing to reason about. */
+  /*
+    False when the page gave us nothing to reason about.
+  */
   hasAnySignal: boolean;
 }
 
@@ -39,12 +49,18 @@ const MAX_HEADLINE_CHARS = 160;
 const MAX_PARAGRAPH_CHARS = 400;
 const MAX_CTA_LABELS = 8;
 const MAX_CTA_LABEL_CHARS = 40;
-/** Shorter than this and a <p> is a caption/label, not the brand's prose. */
+/*
+  Shorter than this and a <p> is a caption/label, not the brand's prose.
+*/
 const MIN_PARAGRAPH_CHARS = 40;
-/** Bound the region scanned for CTAs so huge pages stay cheap. */
+/*
+  Bound the region scanned for CTAs so huge pages stay cheap.
+*/
 const MAX_CTA_SCAN_CHARS = 200_000;
 
-/** Strip tags and collapse whitespace — inner HTML to readable text. */
+/*
+  Strip tags and collapse whitespace — inner HTML to readable text.
+*/
 function toPlainText(html: string): string {
   return decodeBasicEntities(
     html
@@ -53,7 +69,9 @@ function toPlainText(html: string): string {
   );
 }
 
-/** The inner text of the first matching element, or null. */
+/*
+  The inner text of the first matching element, or null.
+*/
 function findFirstElementText({
   html,
   tagName,
@@ -75,12 +93,12 @@ function findFirstElementText({
   return null;
 }
 
-/**
- * CTA labels: <button> text plus anchors whose class/id marks them as buttons.
- * Navigation words ("Home", "About") slip through occasionally and that is
- * fine — the model sees them as a sample of the site's label voice, not as a
- * list of calls to action.
- */
+/*
+  CTA labels: <button> text plus anchors whose class/id marks them as buttons.
+  Navigation words ("Home", "About") slip through occasionally and that is
+  fine — the model sees them as a sample of the site's label voice, not as a
+  list of calls to action.
+*/
 function extractCtaLabels(html: string): string[] {
   const region = html.slice(0, MAX_CTA_SCAN_CHARS);
   const labels: string[] = [];
@@ -105,7 +123,9 @@ function extractCtaLabels(html: string): string[] {
   return labels.slice(0, MAX_CTA_LABELS);
 }
 
-/** Read the page's copy signals. Pure; nothing here fetches anything. */
+/*
+  Read the page's copy signals. Pure; nothing here fetches anything.
+*/
 export function extractCopySignals(html: string): CopySignals {
   const rawDescription =
     findMetaContent({ html, key: "og:description" }) ??
@@ -135,7 +155,9 @@ export function extractCopySignals(html: string): CopySignals {
   };
 }
 
-/** The copy sample as prompt lines, or null when the page carried no copy. */
+/*
+  The copy sample as prompt lines, or null when the page carried no copy.
+*/
 export function describeCopySignals(signals: CopySignals): string | null {
   if (!signals.hasAnySignal) {
     return null;

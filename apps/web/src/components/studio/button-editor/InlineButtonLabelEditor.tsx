@@ -13,33 +13,35 @@ export interface InlineButtonLabelEditorProps {
   resolvedStyles: ResolvedButtonStyles;
 }
 
-/**
- * Point-and-edit for button labels (owner ask 2026-07-31): a single-line
- * ProseMirror (Tiptap) surface mounted IN the button while
- * `editingBlockId === block.id`, visually congruent with the rendered
- * React Email Button.
- *
- * Design verdict — property op, NOT a synced PM doc: a label is a plain
- * string consumed by the renderer, the outline, and the agent's
- * updateBlockProperties.label path. A per-label prosemirror-sync doc would
- * add a second write path (sync mirror alongside the property op) for a
- * ~20-character string. Instead the session is LOCAL-ONLY and commits AT
- * MOST ONE `updateBlockProperties { label }` op when it settles (Escape,
- * Enter, outside pointerdown, or unmount) — the same one-op-per-session law
- * as the rich-text editor, on the same history spine. Collaboration
- * degrades to last-write-wins on that op, which is acceptable for labels
- * (stated owner-approved trade-off); the agent's label edits keep flowing
- * through updateBlockProperties untouched.
- *
- * Single-line discipline: Enter commits instead of splitting (multiline
- * pastes flatten to spaces at commit), and an emptied editor keeps the
- * previous label — the schema requires a non-empty label.
- */
+/*
+  Point-and-edit for button labels (owner ask 2026-07-31): a single-line
+  ProseMirror (Tiptap) surface mounted IN the button while
+  `editingBlockId === block.id`, visually congruent with the rendered
+  React Email Button.
+
+  Design verdict — property op, NOT a synced PM doc: a label is a plain
+  string consumed by the renderer, the outline, and the agent's
+  updateBlockProperties.label path. A per-label prosemirror-sync doc would
+  add a second write path (sync mirror alongside the property op) for a
+  ~20-character string. Instead the session is LOCAL-ONLY and commits AT
+  MOST ONE `updateBlockProperties { label }` op when it settles (Escape,
+  Enter, outside pointerdown, or unmount) — the same one-op-per-session law
+  as the rich-text editor, on the same history spine. Collaboration
+  degrades to last-write-wins on that op, which is acceptable for labels
+  (stated owner-approved trade-off); the agent's label edits keep flowing
+  through updateBlockProperties untouched.
+
+  Single-line discipline: Enter commits instead of splitting (multiline
+  pastes flatten to spaces at commit), and an emptied editor keeps the
+  previous label — the schema requires a non-empty label.
+*/
 export function InlineButtonLabelEditor({ block, resolvedStyles }: InlineButtonLabelEditorProps) {
   const dispatch = useEditorStore((state) => state.dispatch);
   const stopTextEditing = useEditorStore((state) => state.stopTextEditing);
-  // The FRAME's store instance (not the active one): this editor may live in
-  // a non-active sibling frame, and the commit must check THAT document.
+  /*
+    The FRAME's store instance (not the active one): this editor may live in
+    a non-active sibling frame, and the commit must check THAT document.
+  */
   const editorStoreApi = useEditorStoreApi();
 
   const wrapperRef = useRef<HTMLDivElement | null>(null);
@@ -54,14 +56,18 @@ export function InlineButtonLabelEditor({ block, resolvedStyles }: InlineButtonL
     }
     hasCommittedRef.current = true;
     if (editorStoreApi.getState().doc[blockId] === undefined) {
-      // The block was removed mid-session; nothing to commit to.
+      /*
+        The block was removed mid-session; nothing to commit to.
+      */
       return;
     }
     const editor = editorRef.current;
     if (editor === null || editor.isDestroyed) {
       return;
     }
-    // Flatten to one line: paragraph breaks (multiline paste) become spaces.
+    /*
+      Flatten to one line: paragraph breaks (multiline paste) become spaces.
+    */
     const label = normalizeButtonLabel(editor.getText({ blockSeparator: " " }));
     if (label === "" || label === initialLabel) {
       return;
@@ -69,7 +75,9 @@ export function InlineButtonLabelEditor({ block, resolvedStyles }: InlineButtonL
     dispatch({ name: "updateBlockProperties", blockId, properties: { label } });
   }, [blockId, dispatch, editorStoreApi, initialLabel]);
 
-  // Commit-and-close on any pointerdown outside the button's wrapper.
+  /*
+    Commit-and-close on any pointerdown outside the button's wrapper.
+  */
   useEffect(() => {
     const handlePointerDown = (event: PointerEvent) => {
       const wrapper = wrapperRef.current;
@@ -85,16 +93,20 @@ export function InlineButtonLabelEditor({ block, resolvedStyles }: InlineButtonL
     return () => document.removeEventListener("pointerdown", handlePointerDown, true);
   }, [commitSession, stopTextEditing]);
 
-  // Safety net: whatever unmounts the editor commits the session exactly
-  // once (guard reset per mount for StrictMode's simulated cycle — a no-op
-  // commit, since the label hasn't changed by then).
+  /*
+    Safety net: whatever unmounts the editor commits the session exactly
+    once (guard reset per mount for StrictMode's simulated cycle — a no-op
+    commit, since the label hasn't changed by then).
+  */
   useEffect(() => {
     hasCommittedRef.current = false;
     return () => commitSession();
   }, [commitSession]);
 
-  // Plain single-line text: no marks, no headings, no lists, no PM history
-  // (the store's op spine is the single undo authority).
+  /*
+    Plain single-line text: no marks, no headings, no lists, no PM history
+    (the store's op spine is the single undo authority).
+  */
   const extensions = useMemo(
     () => [
       StarterKit.configure({
@@ -132,9 +144,11 @@ export function InlineButtonLabelEditor({ block, resolvedStyles }: InlineButtonL
         textAlign: resolvedStyles.align,
       }}
     >
-      {/* Visual replica of the SDK ButtonBlockView's anchor (same resolved
-          styles + React Email Button's inline-block/line-height chrome), so
-          the static-view → editor swap is seamless. */}
+      {/*
+        Visual replica of the SDK ButtonBlockView's anchor (same resolved
+        styles + React Email Button's inline-block/line-height chrome), so
+        the static-view → editor swap is seamless.
+      */}
       <div
         style={{
           display: "inline-block",

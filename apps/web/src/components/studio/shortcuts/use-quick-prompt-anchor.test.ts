@@ -7,21 +7,23 @@ import {
   type AnchorRect,
 } from "./use-quick-prompt-anchor";
 
-/**
- * The two halves of the cursor binding that can be proven without a browser:
- * the placement maths (pure), and the fact that opening over a block SELECTS
- * it — which is the entire reason the feature is worth having, since the chat
- * transport turns that selection into the model's referent for "this".
- *
- * Deliberately absent: anything about rendered position, focus, or textarea
- * height. These tests run in node, and asserting them here would prove only
- * that jsdom exists.
- */
+/*
+  The two halves of the cursor binding that can be proven without a browser:
+  the placement maths (pure), and the fact that opening over a block SELECTS
+  it — which is the entire reason the feature is worth having, since the chat
+  transport turns that selection into the model's referent for "this".
+
+  Deliberately absent: anything about rendered position, focus, or textarea
+  height. These tests run in node, and asserting them here would prove only
+  that jsdom exists.
+*/
 
 const VIEWPORT = { viewportWidth: 1200, viewportHeight: 800 };
 const CARD = { cardWidth: 450, cardHeight: 240 };
 
-/** A block sitting comfortably mid-canvas, with room above and below. */
+/*
+  A block sitting comfortably mid-canvas, with room above and below.
+*/
 const MID_CANVAS_BLOCK: AnchorRect = { left: 400, top: 300, right: 800, bottom: 360 };
 
 describe("computeQuickPromptPlacement", () => {
@@ -39,7 +41,9 @@ describe("computeQuickPromptPlacement", () => {
   });
 
   it("flips to the gutter above when the card would not fit below", () => {
-    /* Bottom-anchored block: only the space above it can hold the card. */
+    /*
+      Bottom-anchored block: only the space above it can hold the card.
+    */
     const lowBlock: AnchorRect = { left: 400, top: 600, right: 800, bottom: 700 };
     const placement = computeQuickPromptPlacement({
       anchor: { pointer: { x: 600, y: 650 }, blockRect: lowBlock },
@@ -68,7 +72,9 @@ describe("computeQuickPromptPlacement", () => {
   });
 
   it("keeps a card taller than both gutters fully on screen at a corner", () => {
-    /* A block filling the viewport: neither gutter fits, overlap is forced. */
+    /*
+      A block filling the viewport: neither gutter fits, overlap is forced.
+    */
     const fullBleedBlock: AnchorRect = { left: 0, top: 0, right: 1200, bottom: 800 };
     const placement = computeQuickPromptPlacement({
       anchor: { pointer: { x: 1198, y: 798 }, blockRect: fullBleedBlock },

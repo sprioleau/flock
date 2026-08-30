@@ -1,16 +1,16 @@
 import { describe, expect, it } from "vitest";
 import { collectProseBlocks, extractPage } from "../extract-page";
 
-/**
- * Regressions for five defects that only a corpus of REAL pages exposed.
- *
- * Every one of these passed against hand-written fixtures and failed against
- * live markup, which is the argument for the corpus: a fixture written by the
- * same person who wrote the rule tests the rule against itself.
- *
- * Each fixture below is distilled from the actual page named in its comment —
- * the markup shape is the site's, not invented for the test.
- */
+/*
+  Regressions for five defects that only a corpus of REAL pages exposed.
+
+  Every one of these passed against hand-written fixtures and failed against
+  live markup, which is the argument for the corpus: a fixture written by the
+  same person who wrote the rule tests the rule against itself.
+
+  Each fixture below is distilled from the actual page named in its comment —
+  the markup shape is the site's, not invented for the test.
+*/
 
 /*
   Minimum body text needed to clear the no-content gate, so a fixture can test

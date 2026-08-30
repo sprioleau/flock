@@ -7,19 +7,19 @@ import {
   type BlockSuggestionAnchor,
 } from "./suggestion-surface-store";
 
-/**
- * The canvas half of the suggestion surface, tested where all the decisions
- * actually live: which shell shows the pill, and what its × costs.
- *
- * The two rules worth breaking a build over:
- *
- * 1. THE PILL BELONGS TO ONE FRAME. Forked sibling drafts share block ids and
- *    several frames render live canvases at once, so a pill matched on block
- *    id alone would appear once per fork.
- * 2. HIDING IS NOT DISMISSING. The chat card's × writes a permanent
- *    per-document pattern dismissal to localStorage. A pill that just
- *    appeared under the cursor must never be able to do that.
- */
+/*
+  The canvas half of the suggestion surface, tested where all the decisions
+  actually live: which shell shows the pill, and what its × costs.
+
+  The two rules worth breaking a build over:
+
+  1. THE PILL BELONGS TO ONE FRAME. Forked sibling drafts share block ids and
+     several frames render live canvases at once, so a pill matched on block
+     id alone would appear once per fork.
+  2. HIDING IS NOT DISMISSING. The chat card's × writes a permanent
+     per-document pattern dismissal to localStorage. A pill that just
+     appeared under the cursor must never be able to do that.
+*/
 
 const docA = "doc_aaaa" as Id<"documents">;
 const docB = "doc_bbbb" as Id<"documents">;
@@ -72,8 +72,10 @@ describe("which shell shows the pill", () => {
   });
 
   it("shows nothing in a sibling draft frame that happens to share the block id", () => {
-    // The load-bearing case: forked drafts carry IDENTICAL block ids, so
-    // without the document check every fork would sprout the same pill.
+    /*
+      The load-bearing case: forked drafts carry IDENTICAL block ids, so
+      without the document check every fork would sprout the same pill.
+    */
     expect(select({ anchor: makeAnchor({ documentId: docA }), documentId: docB })).toBeNull();
   });
 
@@ -105,8 +107,10 @@ describe("the published anchor", () => {
   });
 
   it("keeps its identity when an equivalent offer is republished", () => {
-    // ChatPanel re-renders constantly while the agent streams; the canvas
-    // must not rerender with it.
+    /*
+      ChatPanel re-renders constantly while the agent streams; the canvas
+      must not rerender with it.
+    */
     const { publishAnchor } = useBlockSuggestionSurfaceStore.getState();
     publishAnchor(makeAnchor());
     const first = useBlockSuggestionSurfaceStore.getState().anchor;
@@ -147,8 +151,10 @@ describe("hiding a pill", () => {
   });
 
   it("touches no persistence at all — the pattern survives the click", () => {
-    // The chat card's × calls persistDismissedPatternKey; this path must not
-    // reach storage by ANY route.
+    /*
+      The chat card's × calls persistDismissedPatternKey; this path must not
+      reach storage by ANY route.
+    */
     const setItem = vi.fn();
     vi.stubGlobal("localStorage", { setItem, getItem: () => null, removeItem: vi.fn() });
     const store = useBlockSuggestionSurfaceStore.getState();

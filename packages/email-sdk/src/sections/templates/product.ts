@@ -11,11 +11,11 @@ import {
 } from "../build-helpers";
 import { defineSectionTemplate } from "../types";
 
-/**
- * `product` — one product for sale: photo on the left; name, one-line
- * description, price, and a buy button on the right (45/55, middle-aligned).
- * Reference: react.email/components ecommerce "one-product" card patterns.
- */
+/*
+  `product` — one product for sale: photo on the left; name, one-line
+  description, price, and a buy button on the right (45/55, middle-aligned).
+  Reference: react.email/components ecommerce "one-product" card patterns.
+*/
 
 export const productParamsSchema = z
   .strictObject({
@@ -72,7 +72,9 @@ export const productTemplate = defineSectionTemplate({
     listParams: [],
     imageCount: 1,
   },
-  /* The gallery shows the buy button; a real card only gets one you can buy from. */
+  /*
+    The gallery shows the buy button; a real card only gets one you can buy from.
+  */
   previewParams: { ctaLabel: "Shop now", ctaHref: "https://example.com/shop" },
   /*
     imageSrc is for programmatic callers only (a rehosted image URL from the
@@ -81,7 +83,9 @@ export const productTemplate = defineSectionTemplate({
   modelFacingParamsSchema: productParamsSchema.omit({ imageSrc: true }),
   build: ({ params, random }) => {
     const composer = createSectionComposer(random);
-    /* A buy button nobody can buy from is worse than no buy button. */
+    /*
+      A buy button nobody can buy from is worse than no buy button.
+    */
     const ctaLeaves: LeafSpec[] =
       params.ctaLabel !== undefined && params.ctaHref !== undefined
         ? [{ kind: "button", label: params.ctaLabel, href: params.ctaHref, align: "left" }]

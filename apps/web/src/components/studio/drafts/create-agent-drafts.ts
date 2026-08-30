@@ -15,54 +15,54 @@ import type { Id } from "@convex/_generated/dataModel";
 import type { CreateDraftOutcome, CreatedDraftSummary } from "@/lib/create-draft-report";
 import { computeNextDraftName } from "./draft-naming";
 
-/**
- * The agent's createDraft executor — the DRAFT-CREATION half of agent/human
- * parity, sitting next to the DraftSelector machinery it mirrors.
- *
- * Two shapes, one entry point:
- *
- * - COMPOSED (the command carries a `drafts` plan): create an EMPTY draft and
- *   apply the SDK-composed ops into it — one applyTheme (the theme the user is
- *   already looking at) plus one addSection per section. This is the same
- *   route the drafts menu's "Ideate with AI" takes (empty seed, sections
- *   added), so a composed draft has an ordinary op log, version history, and
- *   undo from birth. The ops are authored "agent" and share the turn's
- *   batchId, so the whole creation reverts as one AI batch.
- *
- * - EMPTY (no plan): the pre-composition behavior, byte for byte — N starter
- *   drafts through documents.createDocument.
- *
- * NEITHER shape activates the new drafts: the user stays exactly where they
- * are and the drafts bar updates reactively. That is the point — the agent
- * adds a draft beside the user's work instead of taking over the canvas.
- *
- * WHAT THIS FUNCTION RETURNS IS THE TOOL RESULT'S ONLY EVIDENCE. It is the
- * last place in the system that can see both what was asked for and what now
- * exists, so it reports both — real names as allocated, and per draft where
- * the copy came from (lib/create-draft-report.ts turns that into the sentence
- * the model is entitled to say). Before this, the model's confirmation was
- * assembled server-side from the plan it had sent, which is why "built
- * directly from your website" was said over sample copy.
- */
+/*
+  The agent's createDraft executor — the DRAFT-CREATION half of agent/human
+  parity, sitting next to the DraftSelector machinery it mirrors.
+
+  Two shapes, one entry point:
+
+  - COMPOSED (the command carries a `drafts` plan): create an EMPTY draft and
+    apply the SDK-composed ops into it — one applyTheme (the theme the user is
+    already looking at) plus one addSection per section. This is the same
+    route the drafts menu's "Ideate with AI" takes (empty seed, sections
+    added), so a composed draft has an ordinary op log, version history, and
+    undo from birth. The ops are authored "agent" and share the turn's
+    batchId, so the whole creation reverts as one AI batch.
+
+  - EMPTY (no plan): the pre-composition behavior, byte for byte — N starter
+    drafts through documents.createDocument.
+
+  NEITHER shape activates the new drafts: the user stays exactly where they
+  are and the drafts bar updates reactively. That is the point — the agent
+  adds a draft beside the user's work instead of taking over the canvas.
+
+  WHAT THIS FUNCTION RETURNS IS THE TOOL RESULT'S ONLY EVIDENCE. It is the
+  last place in the system that can see both what was asked for and what now
+  exists, so it reports both — real names as allocated, and per draft where
+  the copy came from (lib/create-draft-report.ts turns that into the sentence
+  the model is entitled to say). Before this, the model's confirmation was
+  assembled server-side from the plan it had sent, which is why "built
+  directly from your website" was said over sample copy.
+*/
 
 type ListDocumentsByCanvas = typeof api.documents.listDocumentsByCanvas;
 type CreateDocument = typeof api.documents.createDocument;
 type ApplyOperations = typeof api.documents.applyOperations;
 
-/**
- * The Convex surface this executor uses — spelled out as the THREE calls it
- * makes, and nothing wider.
- *
- * Narrower than `ConvexReactClient` on purpose. The browser passes the real
- * client, which satisfies this; so does convex-test's in-memory backend, whose
- * own `query`/`mutation` are generic over "a function reference OR an inline
- * handler" and therefore not assignable to the client's exact signatures. Both
- * ends being able to satisfy the same interface is what lets the regression
- * test drive this whole executor against real Convex functions — no stub that
- * only pretends to apply the ops, and no cast. The bug this file guards is
- * about what ends up IN the created document, so the test has to run the real
- * `applyOperations` and read the document back afterwards.
- */
+/*
+  The Convex surface this executor uses — spelled out as the THREE calls it
+  makes, and nothing wider.
+
+  Narrower than `ConvexReactClient` on purpose. The browser passes the real
+  client, which satisfies this; so does convex-test's in-memory backend, whose
+  own `query`/`mutation` are generic over "a function reference OR an inline
+  handler" and therefore not assignable to the client's exact signatures. Both
+  ends being able to satisfy the same interface is what lets the regression
+  test drive this whole executor against real Convex functions — no stub that
+  only pretends to apply the ops, and no cast. The bug this file guards is
+  about what ends up IN the created document, so the test has to run the real
+  `applyOperations` and read the document back afterwards.
+*/
 export interface AgentDraftsConvexClient {
   query(
     reference: ListDocumentsByCanvas,
@@ -80,35 +80,49 @@ export interface AgentDraftsConvexClient {
 
 export interface CreateAgentDraftsInput {
   convexClient: AgentDraftsConvexClient;
-  /** The canvas the new drafts join (the user's current canvas). */
+  /*
+    The canvas the new drafts join (the user's current canvas).
+  */
   canvasId: Id<"canvases">;
-  /** The browser's anonymous session id. */
+  /*
+    The browser's anonymous session id.
+  */
   sessionId: string;
-  /** The resolved command from the createDraft action. */
+  /*
+    The resolved command from the createDraft action.
+  */
   command: CreateDraftCommand;
-  /** The draft the user is on — the theme and content source for composition. */
+  /*
+    The draft the user is on — the theme and content source for composition.
+  */
   sourceDoc: EmailDocument;
-  /**
-   * True when THIS turn already read something outside the email — a fetched
-   * page, a looked-up person (lib/ingested-source.ts).
-   *
-   * It decides one thing: whether the composer may fall back to the source
-   * draft's own copy for params the model left out. Required rather than
-   * optional, because the failure it prevents is silent — a caller that
-   * forgets it gets the old, plausible-looking wrong answer rather than an
-   * error, and the compiler is the only thing that will notice.
-   */
+  /*
+    True when THIS turn already read something outside the email — a fetched
+    page, a looked-up person (lib/ingested-source.ts).
+
+    It decides one thing: whether the composer may fall back to the source
+    draft's own copy for params the model left out. Required rather than
+    optional, because the failure it prevents is silent — a caller that
+    forgets it gets the old, plausible-looking wrong answer rather than an
+    error, and the compiler is the only thing that will notice.
+  */
   hasIngestedSource: boolean;
-  /** Author id recorded on the composed ops (the chat thread). */
+  /*
+    Author id recorded on the composed ops (the chat thread).
+  */
   authorId: string;
-  /**
-   * The page theme this turn read, or null. Only ever consulted when the
-   * command NAMES it — reading a page does not silently restyle a draft.
-   */
+  /*
+    The page theme this turn read, or null. Only ever consulted when the
+    command NAMES it — reading a page does not silently restyle a draft.
+  */
   pageTheme: PageTheme | null;
-  /** This canvas's LIVE kit themes — soft-deleted variations must be absent. */
+  /*
+    This canvas's LIVE kit themes — soft-deleted variations must be absent.
+  */
   kitThemes: NamedTheme[];
-  /** The source draft's own globals, for a `theme: "current"` reference. */
+  /*
+    The source draft's own globals, for a `theme: "current"` reference.
+  */
   sourceGlobals: GlobalStyles | null;
 }
 
@@ -160,7 +174,9 @@ function resolveNewDraftTheme({
   });
 }
 
-/** One created draft's report line, from its name and its composition. */
+/*
+  One created draft's report line, from its name and its composition.
+*/
 function toCreatedDraftSummary({
   name,
   composed,
@@ -169,7 +185,9 @@ function toCreatedDraftSummary({
   composed: ComposedDraft | undefined;
 }): CreatedDraftSummary {
   if (composed === undefined) {
-    // An empty starter draft: no sections at all, so nothing to attribute.
+    /*
+      An empty starter draft: no sections at all, so nothing to attribute.
+    */
     return {
       name,
       plannedSectionCount: 0,
@@ -182,11 +200,11 @@ function toCreatedDraftSummary({
   return { name, ...composed.composition };
 }
 
-/**
- * Create the drafts the agent asked for. Never throws: a partial run keeps the
- * drafts it managed to create and reports one human sentence for the caller to
- * surface — a failed draft creation must not take down the chat turn.
- */
+/*
+  Create the drafts the agent asked for. Never throws: a partial run keeps the
+  drafts it managed to create and reports one human sentence for the caller to
+  surface — a failed draft creation must not take down the chat turn.
+*/
 export async function createAgentDrafts({
   convexClient,
   canvasId,
@@ -230,8 +248,10 @@ export async function createAgentDrafts({
 
     for (let index = 0; index < requestedCount; index += 1) {
       const composed = composedDrafts[index];
-      // The model's own name for the draft, deduped against the canvas the
-      // same way a human's new draft is; unnamed drafts just get "Draft N".
+      /*
+        The model's own name for the draft, deduped against the canvas the
+        same way a human's new draft is; unnamed drafts just get "Draft N".
+      */
       const name = computeNextDraftName({
         existingNames,
         ...(composed?.name === undefined ? {} : { preferredName: composed.name }),
@@ -241,15 +261,19 @@ export async function createAgentDrafts({
         sessionId,
         canvasId,
         name,
-        // A composed draft is built from its sections; seeding the starter
-        // email first would leave someone else's copy under the new one.
+        /*
+          A composed draft is built from its sections; seeding the starter
+          email first would leave someone else's copy under the new one.
+        */
         ...(composed === undefined ? {} : { shouldSeedEmpty: true }),
       });
       createdDocumentIds.push(documentId);
       if (composed !== undefined && composed.ops.length > 0) {
-        // One batch per draft: the composition is ONE agent action in the new
-        // draft's own history, so reverting it there empties the draft rather
-        // than peeling sections off one at a time.
+        /*
+          One batch per draft: the composition is ONE agent action in the new
+          draft's own history, so reverting it there empties the draft rather
+          than peeling sections off one at a time.
+        */
         const result = await convexClient.mutation(api.documents.applyOperations, {
           documentId,
           ops: composed.ops,

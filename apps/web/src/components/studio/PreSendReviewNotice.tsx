@@ -9,27 +9,29 @@ import {
   type PreSendReviewOutcome,
 } from "./pre-send-review-client";
 
-/**
- * The pre-send review, as the user meets it: a quiet block above the Send
- * button listing what will not render in the major email clients.
- *
- * IT NEVER STANDS IN THE WAY. It renders nothing at all while checking and
- * nothing at all if the check could not run, it disables no control, and the
- * submit button beside it does not read its state — a user can send in the
- * same click whether this says nothing, says the email is clean, or lists
- * eight problems. That is the owner's instruction twice over ("advisory, not
- * autocratic"), and it is enforced here by the component simply having no
- * mechanism to refuse.
- *
- * IT RUNS ONCE PER OPEN, not per keystroke. The check is deterministic and
- * costs one render plus a few milliseconds of analysis, but the document does
- * not change while a send dialog is open, so re-running it as the user types
- * their address would be work with no possible new answer.
- */
+/*
+  The pre-send review, as the user meets it: a quiet block above the Send
+  button listing what will not render in the major email clients.
+
+  IT NEVER STANDS IN THE WAY. It renders nothing at all while checking and
+  nothing at all if the check could not run, it disables no control, and the
+  submit button beside it does not read its state — a user can send in the
+  same click whether this says nothing, says the email is clean, or lists
+  eight problems. That is the owner's instruction twice over ("advisory, not
+  autocratic"), and it is enforced here by the component simply having no
+  mechanism to refuse.
+
+  IT RUNS ONCE PER OPEN, not per keystroke. The check is deterministic and
+  costs one render plus a few milliseconds of analysis, but the document does
+  not change while a send dialog is open, so re-running it as the user types
+  their address would be work with no possible new answer.
+*/
 export function PreSendReviewNotice() {
   const [outcome, setOutcome] = useState<PreSendReviewOutcome>({ status: "checking" });
-  /* Orphan a response that lands after the dialog closes, the same discipline
-     useSendTestEmail applies to an in-flight send. */
+  /*
+    Orphan a response that lands after the dialog closes, the same discipline
+    useSendTestEmail applies to an in-flight send.
+  */
   const isMountedRef = useRef(true);
 
   useEffect(() => {

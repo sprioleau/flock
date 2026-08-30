@@ -16,31 +16,31 @@ import { ClarificationWidget } from "./widgets/ClarificationWidget";
 import { EditSuggestionsWidget } from "./widgets/EditSuggestionsWidget";
 import { SectionVariationsWidget } from "./widgets/SectionVariationsWidget";
 
-/**
- * The scrollable transcript: user/assistant text bubbles, tool-call chips,
- * editor-command chips, interactive widget parts (clarification questions,
- * section-variation pickers, apply-able suggestions, compact tables), and a
- * distinct error bubble for terminal stream failures. Auto-scrolls to the
- * newest content.
- */
+/*
+  The scrollable transcript: user/assistant text bubbles, tool-call chips,
+  editor-command chips, interactive widget parts (clarification questions,
+  section-variation pickers, apply-able suggestions, compact tables), and a
+  distinct error bubble for terminal stream failures. Auto-scrolls to the
+  newest content.
+*/
 
-/**
- * Payload error codes whose message is a RAW wrapped Error.message (see the
- * route's toChatErrorText): provider/API dumps, Zod traces — never curated
- * copy, so never user-facing.
- */
+/*
+  Payload error codes whose message is a RAW wrapped Error.message (see the
+  route's toChatErrorText): provider/API dumps, Zod traces — never curated
+  copy, so never user-facing.
+*/
 const RAW_WRAPPED_ERROR_CODES: ReadonlySet<string> = new Set([
   "stream_error",
   "op_validation_failed",
 ]);
 
-/**
- * User-facing copy for a terminal turn failure. Structured payloads carry
- * curated messages EXCEPT for the raw-wrapped codes above; those — and
- * unstructured errors (raw provider/network failures) — are translated, so
- * internal details like API error dumps never render as the message. The raw
- * text stays available behind a collapsed "Details" disclosure.
- */
+/*
+  User-facing copy for a terminal turn failure. Structured payloads carry
+  curated messages EXCEPT for the raw-wrapped codes above; those — and
+  unstructured errors (raw provider/network failures) — are translated, so
+  internal details like API error dumps never render as the message. The raw
+  text stays available behind a collapsed "Details" disclosure.
+*/
 function getFriendlyErrorMessage(error: Error): { messageText: string; rawText?: string } {
   const payload = parseChatErrorText(error.message);
   const curatedMessages =
@@ -86,8 +86,10 @@ function getPartToolCallId(part: FlockChatMessage["parts"][number]): string | nu
   if (isStaticToolUIPart(part)) {
     return part.toolCallId;
   }
-  // Widget data parts carry their tool call's id so the LATEST part for a
-  // toolCallId — the widget, written after the chip's part — wins rendering.
+  /*
+    Widget data parts carry their tool call's id so the LATEST part for a
+    toolCallId — the widget, written after the chip's part — wins rendering.
+  */
   if (
     part.type === "data-editor-command" ||
     part.type === "data-section-variations" ||
@@ -99,12 +101,12 @@ function getPartToolCallId(part: FlockChatMessage["parts"][number]): string | nu
   return null;
 }
 
-/**
- * Continuation rounds (tool results, approval responses) can re-stream a
- * prior turn's tool parts under a new assistant message. Application is
- * already deduped by toolCallId; this dedupes RENDERING — for each
- * toolCallId only the latest occurrence (freshest state) draws a chip.
- */
+/*
+  Continuation rounds (tool results, approval responses) can re-stream a
+  prior turn's tool parts under a new assistant message. Application is
+  already deduped by toolCallId; this dedupes RENDERING — for each
+  toolCallId only the latest occurrence (freshest state) draws a chip.
+*/
 function buildLatestToolPartKeys(messages: FlockChatMessage[]): Map<string, string> {
   const latestKeyByToolCallId = new Map<string, string>();
   for (const message of messages) {
@@ -121,17 +123,17 @@ function buildLatestToolPartKeys(messages: FlockChatMessage[]): Map<string, stri
   return latestKeyByToolCallId;
 }
 
-/**
- * Keys of failed tool parts (output-error) SUPERSEDED by a later successful
- * call to the same tool in the same assistant message. A repaired/retried
- * call gets a fresh toolCallId, so the toolCallId dedupe never reconciles the
- * stale failure — this does: continuation rounds merge into the SAME
- * assistant message (the route streams with originalMessages), so a
- * same-message, same-tool success after a failure means the agent recovered
- * and the intermediate error is noise. Suppression is scoped to one message
- * on purpose — a genuinely failed edit must not be hidden by an unrelated
- * success in a later turn.
- */
+/*
+  Keys of failed tool parts (output-error) SUPERSEDED by a later successful
+  call to the same tool in the same assistant message. A repaired/retried
+  call gets a fresh toolCallId, so the toolCallId dedupe never reconciles the
+  stale failure — this does: continuation rounds merge into the SAME
+  assistant message (the route streams with originalMessages), so a
+  same-message, same-tool success after a failure means the agent recovered
+  and the intermediate error is noise. Suppression is scoped to one message
+  on purpose — a genuinely failed edit must not be hidden by an unrelated
+  success in a later turn.
+*/
 function getSupersededFailureKeys(message: FlockChatMessage): Set<string> {
   const supersededKeys = new Set<string>();
   message.parts.forEach((part, partIndex) => {
@@ -152,11 +154,11 @@ function getSupersededFailureKeys(message: FlockChatMessage): Set<string> {
   return supersededKeys;
 }
 
-/**
- * batchIds of successfully-applied agent ops in one assistant message,
- * counting only parts that are this toolCallId's LATEST occurrence (matching
- * the chip-rendering dedupe, so the affordance lands on the visible turn).
- */
+/*
+  batchIds of successfully-applied agent ops in one assistant message,
+  counting only parts that are this toolCallId's LATEST occurrence (matching
+  the chip-rendering dedupe, so the affordance lands on the visible turn).
+*/
 function getAppliedBatchIds({
   message,
   latestToolPartKeys,
@@ -188,12 +190,12 @@ type RevertPhase =
   | { name: "reverted" }
   | { name: "failed"; message: string };
 
-/**
- * The AI-batch revert affordance (Phase 4): one small action per assistant
- * turn that applied ops. Uses the turn's batchId → history.revertBatch, so
- * the whole batch is undone atomically in every open tab; failures (e.g.
- * conflicts with later edits) surface inline.
- */
+/*
+  The AI-batch revert affordance (Phase 4): one small action per assistant
+  turn that applied ops. Uses the turn's batchId → history.revertBatch, so
+  the whole batch is undone atomically in every open tab; failures (e.g.
+  conflicts with later edits) surface inline.
+*/
 function RevertBatchAction({ batchId }: { batchId: string }) {
   const revertAgentBatch = useEditorStore((state) => state.revertAgentBatch);
   const [phase, setPhase] = useState<RevertPhase>({ name: "idle" });
@@ -249,9 +251,13 @@ function AssistantMessageParts({
 }: {
   message: FlockChatMessage;
   latestToolPartKeys: Map<string, string>;
-  /** True while this message's turn is still in flight (a retry may follow). */
+  /*
+    True while this message's turn is still in flight (a retry may follow).
+  */
   isRetryPending: boolean;
-  /** True when any user message follows this one (locks stale clarifications). */
+  /*
+    True when any user message follows this one (locks stale clarifications).
+  */
   hasLaterUserMessage: boolean;
   onApprovalResponse: (input: { approvalId: string; isApproved: boolean }) => void;
 }) {
@@ -265,7 +271,9 @@ function AssistantMessageParts({
         if (toolCallId !== null && latestToolPartKeys.get(toolCallId) !== key) {
           return null;
         }
-        // Transient failures the agent already recovered from draw nothing.
+        /*
+          Transient failures the agent already recovered from draw nothing.
+        */
         if (supersededFailureKeys.has(key)) {
           return null;
         }
@@ -279,9 +287,11 @@ function AssistantMessageParts({
             </p>
           );
         }
-        // askForClarification has no server execute: the validated call IS
-        // the widget (the turn ended on it; the user's click answers it).
-        // While the input is still streaming, the generic chip spins below.
+        /*
+          askForClarification has no server execute: the validated call IS
+          the widget (the turn ended on it; the user's click answers it).
+          While the input is still streaming, the generic chip spins below.
+        */
         if (part.type === "tool-askForClarification" && part.state === "input-available") {
           return (
             <ClarificationWidget
@@ -292,8 +302,10 @@ function AssistantMessageParts({
             />
           );
         }
-        // The registry only produces statically-typed tools; dynamic tool
-        // parts do not occur on this route.
+        /*
+          The registry only produces statically-typed tools; dynamic tool
+          parts do not occur on this route.
+        */
         if (isStaticToolUIPart(part)) {
           return (
             <ToolPartChip
@@ -329,12 +341,12 @@ export interface ChatMessageListProps {
   messages: FlockChatMessage[];
   error: Error | undefined;
   isAwaitingResponse: boolean;
-  /**
-   * True while a turn is in flight (submitted or streaming). Failed tool
-   * parts in the LAST assistant message read as "retrying" while this holds —
-   * the error round-trips to the model in-loop — and settle to a final
-   * friendly failure (or are suppressed by a successful retry) once it drops.
-   */
+  /*
+    True while a turn is in flight (submitted or streaming). Failed tool
+    parts in the LAST assistant message read as "retrying" while this holds —
+    the error round-trips to the model in-loop — and settle to a final
+    friendly failure (or are suppressed by a successful retry) once it drops.
+  */
   isTurnInProgress: boolean;
   onApprovalResponse: (input: { approvalId: string; isApproved: boolean }) => void;
 }
@@ -348,14 +360,18 @@ export function ChatMessageList({
 }: ChatMessageListProps) {
   const scrollContainerRef = useRef<HTMLDivElement>(null);
 
-  // Keep the newest content in view as text/chips stream in.
+  /*
+    Keep the newest content in view as text/chips stream in.
+  */
   useEffect(() => {
     const scrollContainer = scrollContainerRef.current;
     if (scrollContainer !== null) {
       scrollContainer.scrollTop = scrollContainer.scrollHeight;
     }
-    // isTurnInProgress is a dep because the activity indicator appears and
-    // disappears with it — the newest content must stay in view either way.
+    /*
+      isTurnInProgress is a dep because the activity indicator appears and
+      disappears with it — the newest content must stay in view either way.
+    */
   }, [messages, error, isAwaitingResponse, isTurnInProgress]);
 
   if (messages.length === 0 && error === undefined) {
@@ -368,24 +384,30 @@ export function ChatMessageList({
             Describe a change and watch it land on the canvas.
           </p>
         </div>
-        {/* The copy above says what to do; these give the user a way to do it
-            without inventing the wording first. Only here — this branch IS
-            "no conversation yet", so the chips need no dismissal state. */}
+        {/*
+          The copy above says what to do; these give the user a way to do it
+          without inventing the wording first. Only here — this branch IS
+          "no conversation yet", so the chips need no dismissal state.
+        */}
         <PromptStarters />
       </div>
     );
   }
 
   const latestToolPartKeys = buildLatestToolPartKeys(messages);
-  // The in-flight turn's parts, empty until the agent opens its message —
-  // which is exactly the "nothing has come back yet" case the indicator
-  // narrates. A trailing USER message means the turn hasn't started streaming.
+  /*
+    The in-flight turn's parts, empty until the agent opens its message —
+    which is exactly the "nothing has come back yet" case the indicator
+    narrates. A trailing USER message means the turn hasn't started streaming.
+  */
   const lastMessage = messages.at(-1);
   const liveTurnParts =
     lastMessage?.role === "assistant" ? toTurnParts(lastMessage.parts) : [];
-  // Identity of the turn in flight: the user message that opened it. Stable
-  // for the whole turn, new on the next one — which is what gives the
-  // indicator a fresh elapsed clock per turn without resetting state.
+  /*
+    Identity of the turn in flight: the user message that opened it. Stable
+    for the whole turn, new on the next one — which is what gives the
+    indicator a fresh elapsed clock per turn without resetting state.
+  */
   const turnKey = messages.findLast((message) => message.role === "user")?.id ?? "turn";
 
   return (
@@ -419,10 +441,12 @@ export function ChatMessageList({
             />
           ),
         )}
-        {/* The live "what's happening now" line. It reads the turn's OWN parts
-            (the last message, when the agent already opened one) so it can
-            stay quiet while a step chip or streaming prose is narrating, and
-            speak up in the gaps between them. */}
+        {/*
+          The live "what's happening now" line. It reads the turn's OWN parts
+          (the last message, when the agent already opened one) so it can
+          stay quiet while a step chip or streaming prose is narrating, and
+          speak up in the gaps between them.
+        */}
         <TurnActivityIndicator
           key={turnKey}
           isTurnInProgress={isTurnInProgress}

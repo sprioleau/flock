@@ -7,12 +7,12 @@ import {
   truncateFindingText,
 } from "./finding-schema";
 
-/**
- * Regression: a long visible label (a wordy button) used to fail the WHOLE
- * persona run — the structured-output schema hard-capped targetBlockNames at
- * 60 chars and generateObject rejects any schema violation. Prose fields now
- * validate as plain strings and the route truncates on receipt instead.
- */
+/*
+  Regression: a long visible label (a wordy button) used to fail the WHOLE
+  persona run — the structured-output schema hard-capped targetBlockNames at
+  60 chars and generateObject rejects any schema violation. Prose fields now
+  validate as plain strings and the route truncates on receipt instead.
+*/
 
 const LONG_LABEL =
   'the button labeled "Join thousands of happy customers who transformed their ' +
@@ -109,12 +109,14 @@ describe("runnerOutputSchema (copy rewrites)", () => {
   });
 
   it("stays emittable by Gemini: no anyOf, no const, no numeric enum anywhere", () => {
-    /* THE REASON THE CONTRACT IS TWO FLAT ARRAYS rather than one array of a
-       discriminated union. This schema goes to generateObject as a provider
-       response schema, and this project has already had to hand-rewrite
-       numeric literals at the glue layer (api/chat/model-schema.ts) after
-       Gemini rejected them live. A union or a nested rich-text document would
-       reintroduce exactly that failure — so assert the shape stays flat. */
+    /*
+      THE REASON THE CONTRACT IS TWO FLAT ARRAYS rather than one array of a
+      discriminated union. This schema goes to generateObject as a provider
+      response schema, and this project has already had to hand-rewrite
+      numeric literals at the glue layer (api/chat/model-schema.ts) after
+      Gemini rejected them live. A union or a nested rich-text document would
+      reintroduce exactly that failure — so assert the shape stays flat.
+    */
     const jsonSchema = z.toJSONSchema(runnerOutputSchema, {
       io: "input",
       unrepresentable: "any",
@@ -190,9 +192,11 @@ describe("truncateFindingProse", () => {
   });
 
   it("never truncates a copy rewrite — that text is the email, not prose about it", () => {
-    /* The backstop exists to keep CARDS card-sized. A rewrite is content on
-       its way into the user's email; ellipsizing it would ship a
-       half-sentence. Over-long rewrites are refused in finding-ops.ts instead. */
+    /*
+      The backstop exists to keep CARDS card-sized. A rewrite is content on
+      its way into the user's email; ellipsizing it would ship a
+      half-sentence. Over-long rewrites are refused in finding-ops.ts instead.
+    */
     const longRewrite = "Every bag is roasted the morning it ships. ".repeat(30);
     const parsed = runnerOutputSchema.parse({
       findings: [

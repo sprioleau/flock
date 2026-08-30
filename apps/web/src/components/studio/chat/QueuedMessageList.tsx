@@ -7,15 +7,15 @@ import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
 import type { MessageQueue, QueuedMessage } from "./use-message-queue";
 
-/**
- * The pending-message strip between the thread and the composer: one compact
- * muted card per queued message with a queue-position badge and edit/delete
- * controls (editing happens IN PLACE so the composer stays free for the next
- * message and the item keeps its FIFO slot). A one-line status header says
- * why the queue is waiting — normal turn, pending approval, or error pause
- * (which adds explicit "Send next" / "Clear" actions instead of silently
- * draining).
- */
+/*
+  The pending-message strip between the thread and the composer: one compact
+  muted card per queued message with a queue-position badge and edit/delete
+  controls (editing happens IN PLACE so the composer stays free for the next
+  message and the item keeps its FIFO slot). A one-line status header says
+  why the queue is waiting — normal turn, pending approval, or error pause
+  (which adds explicit "Send next" / "Clear" actions instead of silently
+  draining).
+*/
 
 interface QueuedMessageCardProps {
   message: QueuedMessage;

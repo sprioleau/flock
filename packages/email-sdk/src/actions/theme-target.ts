@@ -38,17 +38,25 @@ import type { GlobalStyles } from "../schema/globals";
   that is where those things exist.
 */
 
-// ---------------------------------------------------------------------------
-// The reference vocabulary
-// ---------------------------------------------------------------------------
+/*
+  ---------------------------------------------------------------------------
+  The reference vocabulary
+  ---------------------------------------------------------------------------
+*/
 
-/** Reference meaning "the theme the user's current draft is already wearing". */
+/*
+  Reference meaning "the theme the user's current draft is already wearing".
+*/
 export const CURRENT_THEME_REFERENCE = "current";
 
-/** Reference meaning "the theme read off the page fetched in this turn". */
+/*
+  Reference meaning "the theme read off the page fetched in this turn".
+*/
 export const PAGE_THEME_REFERENCE = "page";
 
-/** Draft target meaning "the draft the user is looking at right now". */
+/*
+  Draft target meaning "the draft the user is looking at right now".
+*/
 export const CURRENT_DRAFT_TARGET = "current";
 
 /**
@@ -107,42 +115,50 @@ export const draftTargetSchema = z
     `Which draft to act on, by its name in the drafts bar exactly as it appears there (createDraft's result tells you the names it actually allocated). Omit it, or pass "${CURRENT_DRAFT_TARGET}", for the draft the user is looking at.`,
   );
 
-// ---------------------------------------------------------------------------
-// Matching
-// ---------------------------------------------------------------------------
+/*
+  ---------------------------------------------------------------------------
+  Matching
+  ---------------------------------------------------------------------------
+*/
 
-/**
- * A reference reduced to what a human meant by it: case, spacing, and the
- * punctuation that separates words all dropped, so "Warm Sand", "warm-sand"
- * and "warmSand" are one key. Ids in this codebase are slugs of names
- * (`buildUniqueVariationId`), so this is also what makes an id and its display
- * name collapse onto each other without a second lookup table.
- */
+/*
+  A reference reduced to what a human meant by it: case, spacing, and the
+  punctuation that separates words all dropped, so "Warm Sand", "warm-sand"
+  and "warmSand" are one key. Ids in this codebase are slugs of names
+  (`buildUniqueVariationId`), so this is also what makes an id and its display
+  name collapse onto each other without a second lookup table.
+*/
 export function normalizeReferenceKey(reference: string): string {
   return reference.toLowerCase().replace(/[^a-z0-9]+/g, "");
 }
 
-/** What a name lookup found in the caller's list. */
+/*
+  What a name lookup found in the caller's list.
+*/
 export type NamedCandidateMatch<Candidate> =
   | { isMatched: true; candidate: Candidate }
-  /** Nothing in the list answers to that name. */
+  /*
+    Nothing in the list answers to that name.
+  */
   | { isMatched: false; reason: "unknown" }
-  /** Two or more do. Refused rather than picked — see below. */
+  /*
+    Two or more do. Refused rather than picked — see below.
+  */
   | { isMatched: false; reason: "ambiguous" };
 
-/**
- * Pick the ONE element of `candidates` that answers to `query`, or say why
- * not.
- *
- * AMBIGUITY IS A REFUSAL, not a tie-break. Picking the first of two drafts
- * called "Launch" restyles a real document the user did not mean, and the only
- * evidence would be a sentence claiming the other one. Every failure here is
- * recoverable by asking; a wrong apply is recoverable only by undo, in a draft
- * the user is not looking at.
- *
- * Each candidate may answer to several names (a theme has an id AND a display
- * name); matching any of them counts as one match for that candidate.
- */
+/*
+  Pick the ONE element of `candidates` that answers to `query`, or say why
+  not.
+
+  AMBIGUITY IS A REFUSAL, not a tie-break. Picking the first of two drafts
+  called "Launch" restyles a real document the user did not mean, and the only
+  evidence would be a sentence claiming the other one. Every failure here is
+  recoverable by asking; a wrong apply is recoverable only by undo, in a draft
+  the user is not looking at.
+
+  Each candidate may answer to several names (a theme has an id AND a display
+  name); matching any of them counts as one match for that candidate.
+*/
 export function matchNamedCandidate<Candidate>({
   query,
   candidates,
@@ -150,7 +166,9 @@ export function matchNamedCandidate<Candidate>({
 }: {
   query: string;
   candidates: readonly Candidate[];
-  /** Every name this candidate answers to. */
+  /*
+    Every name this candidate answers to.
+  */
   getNames: (candidate: Candidate) => readonly string[];
 }): NamedCandidateMatch<Candidate> {
   const key = normalizeReferenceKey(query);
@@ -170,84 +188,114 @@ export function matchNamedCandidate<Candidate>({
   return { isMatched: true, candidate: first };
 }
 
-// ---------------------------------------------------------------------------
-// Theme resolution
-// ---------------------------------------------------------------------------
+/*
+  ---------------------------------------------------------------------------
+  Theme resolution
+  ---------------------------------------------------------------------------
+*/
 
-/**
- * One theme the resolver may choose: a name a person would say, the id it is
- * stored under, and the COMPLETE globals payload `applyTheme` takes.
- *
- * The caller builds this list, and what it leaves out is as load-bearing as
- * what it puts in: a soft-deleted variation must never appear here, because a
- * draft wearing a theme its kit no longer offers is the stranded state soft
- * deletion exists to avoid (`getLiveThemeVariations` is that filter).
- */
+/*
+  One theme the resolver may choose: a name a person would say, the id it is
+  stored under, and the COMPLETE globals payload `applyTheme` takes.
+
+  The caller builds this list, and what it leaves out is as load-bearing as
+  what it puts in: a soft-deleted variation must never appear here, because a
+  draft wearing a theme its kit no longer offers is the stranded state soft
+  deletion exists to avoid (`getLiveThemeVariations` is that filter).
+*/
 export interface NamedTheme {
-  /** Stable id within its kit ("warm-sand"). */
+  /*
+    Stable id within its kit ("warm-sand").
+  */
   id: string;
-  /** Human-readable name as the dropdown shows it ("Warm Sand"). */
+  /*
+    Human-readable name as the dropdown shows it ("Warm Sand").
+  */
   name: string;
-  /** The complete `applyTheme` argument. */
+  /*
+    The complete `applyTheme` argument.
+  */
   globals: GlobalStyles;
 }
 
-/** The page's own theme, when this turn read a page that declared one. */
+/*
+  The page's own theme, when this turn read a page that declared one.
+*/
 export interface PageTheme {
   globals: GlobalStyles;
-  /** Which page signals produced it — the model relays this, not the hexes. */
+  /*
+    Which page signals produced it — the model relays this, not the hexes.
+  */
   source: string;
-  /** The page it came off, for the sentence the user reads. */
+  /*
+    The page it came off, for the sentence the user reads.
+  */
   url: string;
 }
 
-/** Where a resolved theme came from — the model says this, in its own words. */
+/*
+  Where a resolved theme came from — the model says this, in its own words.
+*/
 export type ResolvedThemeSource = "page" | "kit" | "current";
 
 export type ThemeResolution =
   | {
       isResolved: true;
       source: ResolvedThemeSource;
-      /** How to refer to it in prose ("wesbos.com's own colours", "Midnight"). */
+      /*
+        How to refer to it in prose ("wesbos.com's own colours", "Midnight").
+      */
       name: string;
       globals: GlobalStyles;
-      /** Present for a page theme: which signals produced it. */
+      /*
+        Present for a page theme: which signals produced it.
+      */
       derivedFrom?: string;
-      /** Present for a kit theme: the variation id, for the brand pointer. */
+      /*
+        Present for a kit theme: the variation id, for the brand pointer.
+      */
       variationId?: string;
     }
   | {
       isResolved: false;
       reason: "no-page-theme" | "no-current-theme" | "unknown-theme" | "ambiguous-theme";
-      /** The names that WOULD have worked — the model's way back. */
+      /*
+        The names that WOULD have worked — the model's way back.
+      */
       availableThemeNames: string[];
     };
 
 export interface ResolveThemeReferenceInput {
-  /** The model's reference. */
+  /*
+    The model's reference.
+  */
   reference: string;
-  /** The page theme this turn read, or null when it read no page (or an unstyled one). */
+  /*
+    The page theme this turn read, or null when it read no page (or an unstyled one).
+  */
   pageTheme: PageTheme | null;
-  /** This canvas's LIVE themes — soft-deleted variations must not be here. */
+  /*
+    This canvas's LIVE themes — soft-deleted variations must not be here.
+  */
   kitThemes: readonly NamedTheme[];
-  /**
-   * The globals on the draft the user is currently looking at, or null when it
-   * is on the shared defaults. `{}` and null mean the same thing here: there
-   * is no theme to copy, only the renderer's own.
-   */
+  /*
+    The globals on the draft the user is currently looking at, or null when it
+    is on the shared defaults. `{}` and null mean the same thing here: there
+    is no theme to copy, only the renderer's own.
+  */
   currentGlobals: GlobalStyles | null;
 }
 
-/**
- * Turn one reference into real globals, or into the honest reason it could
- * not be. NEVER invents, adjusts, or completes a colour: every arm returns a
- * payload that was authored by the page, by the kit, or by the user's own
- * draft.
- *
- * The failure arms all carry `availableThemeNames`, because a refusal that
- * does not say what would have worked makes the model guess, and guessing at a
- * theme name is one step from guessing at a colour.
- */
+/*
+  Turn one reference into real globals, or into the honest reason it could
+  not be. NEVER invents, adjusts, or completes a colour: every arm returns a
+  payload that was authored by the page, by the kit, or by the user's own
+  draft.
+
+  The failure arms all carry `availableThemeNames`, because a refusal that
+  does not say what would have worked makes the model guess, and guessing at a
+  theme name is one step from guessing at a colour.
+*/
 export function resolveThemeReference({
   reference,
   pageTheme,
@@ -298,11 +346,15 @@ export function resolveThemeReference({
   };
 }
 
-// ---------------------------------------------------------------------------
-// Draft resolution
-// ---------------------------------------------------------------------------
+/*
+  ---------------------------------------------------------------------------
+  Draft resolution
+  ---------------------------------------------------------------------------
+*/
 
-/** One draft the target may name — whatever the caller uses to reach it. */
+/*
+  One draft the target may name — whatever the caller uses to reach it.
+*/
 export interface NamedDraft<DocumentId> {
   documentId: DocumentId;
   name: string;
@@ -313,28 +365,36 @@ export type DraftTargetResolution<DocumentId> =
   | {
       isResolved: false;
       reason: "no-current-draft" | "unknown-draft" | "ambiguous-draft";
-      /** The drafts on this canvas — the model's way back. */
+      /*
+        The drafts on this canvas — the model's way back.
+      */
       availableDraftNames: string[];
     };
 
-/**
- * Resolve which draft to act on, ONLY ever to one of `drafts`.
- *
- * `drafts` is the caller's own canvas listing, which is the whole
- * authorization argument: a name that matches nothing on this canvas resolves
- * to nothing, so a draft belonging to another canvas or another person is not
- * refused by a check that could be forgotten — it was never a candidate.
- */
+/*
+  Resolve which draft to act on, ONLY ever to one of `drafts`.
+
+  `drafts` is the caller's own canvas listing, which is the whole
+  authorization argument: a name that matches nothing on this canvas resolves
+  to nothing, so a draft belonging to another canvas or another person is not
+  refused by a check that could be forgotten — it was never a candidate.
+*/
 export function resolveDraftTarget<DocumentId>({
   target,
   drafts,
   currentDocumentId,
 }: {
-  /** The model's target, or undefined for "the draft the user is on". */
+  /*
+    The model's target, or undefined for "the draft the user is on".
+  */
   target: string | undefined;
-  /** Every draft on the user's current canvas. */
+  /*
+    Every draft on the user's current canvas.
+  */
   drafts: readonly NamedDraft<DocumentId>[];
-  /** The draft the user is looking at, when there is one. */
+  /*
+    The draft the user is looking at, when there is one.
+  */
   currentDocumentId: DocumentId | null;
 }): DraftTargetResolution<DocumentId> {
   const availableDraftNames = drafts.map((draft) => draft.name);
@@ -367,9 +427,11 @@ export function resolveDraftTarget<DocumentId>({
   return { isResolved: true, documentId: match.candidate.documentId, name: match.candidate.name };
 }
 
-// ---------------------------------------------------------------------------
-// The applyThemeToDraft action's wire shapes
-// ---------------------------------------------------------------------------
+/*
+  ---------------------------------------------------------------------------
+  The applyThemeToDraft action's wire shapes
+  ---------------------------------------------------------------------------
+*/
 
 export const applyThemeToDraftInputSchema = z
   .strictObject({

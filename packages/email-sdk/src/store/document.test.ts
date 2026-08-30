@@ -130,28 +130,34 @@ describe("createStarterDocument", () => {
   });
 
   it("opens on a whole email, not a stub — but stays cheap: four to six sections", () => {
-    // The owner's bar in both directions: a new draft should already look like
-    // a finished send, AND it is the document the chat pipeline resends on
-    // every turn, so it must not be a wall of prose nobody asked for.
+    /*
+      The owner's bar in both directions: a new draft should already look like
+      a finished send, AND it is the document the chat pipeline resends on
+      every turn, so it must not be a wall of prose nobody asked for.
+    */
     const sectionIds = createStarterDocument().root!.childrenIds;
     expect(sectionIds.length).toBeGreaterThanOrEqual(4);
     expect(sectionIds.length).toBeLessThanOrEqual(6);
   });
 
   it("stays small enough to resend on every chat turn", () => {
-    // Guards the real cost: this document rides along with every message of
-    // every conversation started from a fresh draft, so every sentence added
-    // here is paid for again on every turn. It currently serializes to ~5.1k
-    // characters. Raising this ceiling is a deliberate decision about token
-    // spend, not a formality — say why in the commit.
+    /*
+      Guards the real cost: this document rides along with every message of
+      every conversation started from a fresh draft, so every sentence added
+      here is paid for again on every turn. It currently serializes to ~5.1k
+      characters. Raising this ceiling is a deliberate decision about token
+      spend, not a formality — say why in the commit.
+    */
     expect(JSON.stringify(createStarterDocument()).length).toBeLessThan(5500);
   });
 
   it("shows off the layout vocabulary a user can reach for", () => {
     const blocks = Object.values(createStarterDocument());
     const presentTypes = new Set(blocks.map((block) => block.type));
-    // A side-by-side area (row + columns) is the point of "visual variety" —
-    // a starter made only of stacked text teaches nothing about layout.
+    /*
+      A side-by-side area (row + columns) is the point of "visual variety" —
+      a starter made only of stacked text teaches nothing about layout.
+    */
     for (const type of ["section", "row", "column", "text", "image", "button", "divider", "link"]) {
       expect(presentTypes.has(type as (typeof blocks)[number]["type"])).toBe(true);
     }
@@ -166,8 +172,10 @@ describe("createStarterDocument", () => {
     const paragraphs: string[] = [];
     const headings: string[] = [];
     for (const [blockId, block] of Object.entries(createStarterDocument())) {
-      // The footer is legitimately small print — links, an address line, an
-      // unsubscribe — and is exempt from the body-copy bar below.
+      /*
+        The footer is legitimately small print — links, an address line, an
+        unsubscribe — and is exempt from the body-copy bar below.
+      */
       if (block.type !== "text" || blockId === "txt_ft01") {
         continue;
       }
@@ -178,14 +186,18 @@ describe("createStarterDocument", () => {
         (node.type === "heading" ? headings : paragraphs).push(plain);
       }
     }
-    // Real headings, not one-word labels.
+    /*
+      Real headings, not one-word labels.
+    */
     expect(headings.length).toBeGreaterThanOrEqual(4);
     for (const heading of headings) {
       expect(heading.split(" ").length).toBeGreaterThanOrEqual(3);
     }
-    // Every body paragraph is a real sentence — the original failure was
-    // four-word stubs — and none of them rambles. The ceiling is the point:
-    // this document is resent on every chat turn, so verbosity has a price.
+    /*
+      Every body paragraph is a real sentence — the original failure was
+      four-word stubs — and none of them rambles. The ceiling is the point:
+      this document is resent on every chat turn, so verbosity has a price.
+    */
     expect(paragraphs.length).toBeGreaterThanOrEqual(5);
     for (const paragraph of paragraphs) {
       expect(paragraph.length).toBeGreaterThanOrEqual(60);
@@ -194,10 +206,12 @@ describe("createStarterDocument", () => {
   });
 
   it("keeps the content clues a composed draft continues from", () => {
-    // deriveDraftContentClues (actions/compose-draft) reads the brand off the
-    // FIRST image's "<Brand> logo" alt, the headline/body off the first
-    // heading and paragraph, and the CTA off the first button. Reordering the
-    // starter past those anchors silently degrades every composed draft.
+    /*
+      deriveDraftContentClues (actions/compose-draft) reads the brand off the
+      FIRST image's "<Brand> logo" alt, the headline/body off the first
+      heading and paragraph, and the CTA off the first button. Reordering the
+      starter past those anchors silently degrades every composed draft.
+    */
     const document = createStarterDocument();
     const readingOrder: string[] = [];
     const visit = (blockId: string): void => {
@@ -227,9 +241,11 @@ describe("createStarterDocument", () => {
   it("renders to email-safe HTML and to plain text without errors", async () => {
     const document = createStarterDocument();
     const html = await renderToHTML(document);
-    // A real email came out the other side: the logo, the hero image, both
-    // columns of the side-by-side area, the call to action, and the
-    // unsubscribe line.
+    /*
+      A real email came out the other side: the logo, the hero image, both
+      columns of the side-by-side area, the call to action, and the
+      unsubscribe line.
+    */
     expect(html).toContain("https://placehold.co/280x80.png");
     expect((html.match(/<img/g) ?? []).length).toBe(2);
     expect((html.match(/width:50%/g) ?? []).length).toBe(2);

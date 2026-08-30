@@ -24,9 +24,11 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
-    // suppressHydrationWarning: next-themes sets the `dark` class (and
-    // color-scheme style) on <html> via a pre-hydration inline script, so the
-    // server-rendered attribute set intentionally differs from the client's.
+    /*
+      suppressHydrationWarning: next-themes sets the `dark` class (and
+      color-scheme style) on <html> via a pre-hydration inline script, so the
+      server-rendered attribute set intentionally differs from the client's.
+    */
     <html
       lang="en"
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
@@ -34,11 +36,11 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
     >
       <body className="min-h-full flex flex-col">
         {/*
-         * App-chrome theming only (class strategy → the `.dark` token block in
-         * globals.css). The email document renders from its own inline styles
-         * and never reads these tokens, so it stays pixel-identical in both
-         * app themes.
-         */}
+          App-chrome theming only (class strategy → the `.dark` token block in
+          globals.css). The email document renders from its own inline styles
+          and never reads these tokens, so it stays pixel-identical in both
+          app themes.
+        */}
         <ThemeProvider attribute="class" defaultTheme="system" enableSystem disableTransitionOnChange>
           <ConvexClientProvider>{children}</ConvexClientProvider>
           <Toaster />

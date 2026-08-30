@@ -5,12 +5,12 @@ import { describe, expect, it } from "vitest";
 import { extractPage } from "../extract-page";
 import type { ImageCandidate } from "../page-scrape";
 
-/**
- * The generic scrape is held to one rule above all others: it must not know
- * what kind of page it is reading. So these tests never ask "is this a
- * portfolio" — they ask what the page literally said, and whether the shape
- * heuristics kept it or threw it away.
- */
+/*
+  The generic scrape is held to one rule above all others: it must not know
+  what kind of page it is reading. So these tests never ask "is this a
+  portfolio" — they ask what the page literally said, and whether the shape
+  heuristics kept it or threw it away.
+*/
 
 const fixturesDir = path.join(path.dirname(fileURLToPath(import.meta.url)), "fixtures");
 

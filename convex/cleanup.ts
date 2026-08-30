@@ -16,19 +16,25 @@ import {
 } from "./model/cleanup";
 import { findLiveBlockRow } from "./model/textBlockSync";
 
-/**
- * Phase 6.1 — registered internal functions for the unclaimed-session
- * cleanup cron (see model/cleanup.ts for the design; crons.ts schedules
- * cleanupStaleDocuments daily). Internal-only: never callable from clients.
- */
+/*
+  Phase 6.1 — registered internal functions for the unclaimed-session
+  cleanup cron (see model/cleanup.ts for the design; crons.ts schedules
+  cleanupStaleDocuments daily). Internal-only: never callable from clients.
+*/
 
-/** Delay before a continuation run when one mutation's budget was not enough. */
+/*
+  Delay before a continuation run when one mutation's budget was not enough.
+*/
 const CONTINUATION_DELAY_MS = 10_000;
 
-/** Hard cap on documents per run, regardless of the arg. */
+/*
+  Hard cap on documents per run, regardless of the arg.
+*/
 const MAX_DOCUMENTS_ARG = 25;
 
-/** Bound on ids per deleteOrphanSyncDocs call (each id fans out component work). */
+/*
+  Bound on ids per deleteOrphanSyncDocs call (each id fans out component work).
+*/
 const MAX_ORPHAN_IDS_PER_CALL = 50;
 
 const cleanupStatsValidator = v.object({
@@ -43,40 +49,50 @@ const cleanupStatsValidator = v.object({
   deletedAssets: v.number(),
   deletedSavedSections: v.number(),
   deletedPersonaCopies: v.number(),
-  /** True when a continuation run was scheduled (more stale data remains). */
+  /*
+    True when a continuation run was scheduled (more stale data remains).
+  */
   hasScheduledContinuation: v.boolean(),
-  /** Stale documents left alone because their owner has a claimed account. */
+  /*
+    Stale documents left alone because their owner has a claimed account.
+  */
   exemptedClaimedDocuments: v.number(),
 });
 
-/**
- * Delete every document (and its full constellation) with no activity for
- * `retentionDays` (owner decision: 30-day retention), UNLESS its owner has a
- * claimed account — claimed accounts are exempt from the sweep entirely
- * (model/cleanup.ts classifyDocumentOwner carries the reasoning and the two
- * gaps). Once a swept session owns nothing at all, its session-keyed library
- * goes too (sweepDeadSessionRows).
- *
- * Bounded: at most `maxDocuments` documents and MAX_ROW_DELETIONS_PER_RUN row
- * deletions per run; when either bound is hit, a continuation is scheduled —
- * so one daily cron tick eventually drains any backlog without ever exceeding
- * Convex mutation limits. Idempotent and resumable (see deleteDocumentCascade).
- *
- * `onlyDocumentId` narrows the run to a single document (still gated on the
- * cutoff) — for surgical testing with `retentionDays: 0` without sweeping
- * the whole deployment, AND as the continuation of a user-invoked draft delete
- * (documents.deleteDocument). That second caller is why a targeted run skips
- * both the ownership exemption and the session sweep: the human asked for that
- * specific delete, so refusing to finish the cascade because they signed up
- * would strand a half-deleted document forever.
- */
+/*
+  Delete every document (and its full constellation) with no activity for
+  `retentionDays` (owner decision: 30-day retention), UNLESS its owner has a
+  claimed account — claimed accounts are exempt from the sweep entirely
+  (model/cleanup.ts classifyDocumentOwner carries the reasoning and the two
+  gaps). Once a swept session owns nothing at all, its session-keyed library
+  goes too (sweepDeadSessionRows).
+
+  Bounded: at most `maxDocuments` documents and MAX_ROW_DELETIONS_PER_RUN row
+  deletions per run; when either bound is hit, a continuation is scheduled —
+  so one daily cron tick eventually drains any backlog without ever exceeding
+  Convex mutation limits. Idempotent and resumable (see deleteDocumentCascade).
+
+  `onlyDocumentId` narrows the run to a single document (still gated on the
+  cutoff) — for surgical testing with `retentionDays: 0` without sweeping
+  the whole deployment, AND as the continuation of a user-invoked draft delete
+  (documents.deleteDocument). That second caller is why a targeted run skips
+  both the ownership exemption and the session sweep: the human asked for that
+  specific delete, so refusing to finish the cascade because they signed up
+  would strand a half-deleted document forever.
+*/
 export const cleanupStaleDocuments = internalMutation({
   args: {
-    /** Days without activity before a document is stale. Default 30. */
+    /*
+      Days without activity before a document is stale. Default 30.
+    */
     retentionDays: v.optional(v.number()),
-    /** Stale documents to process this run. Default 5, max 25. */
+    /*
+      Stale documents to process this run. Default 5, max 25.
+    */
     maxDocuments: v.optional(v.number()),
-    /** Restrict the run to this document (testing / targeted deletes). */
+    /*
+      Restrict the run to this document (testing / targeted deletes).
+    */
     onlyDocumentId: v.optional(v.id("documents")),
   },
   returns: cleanupStatsValidator,
@@ -154,14 +170,18 @@ export const cleanupStaleDocuments = internalMutation({
       }
     }
 
-    // Continue when the budget cut a cascade short, or when a full page of
-    // stale documents suggests more are waiting behind it.
+    /*
+      Continue when the budget cut a cascade short, or when a full page of
+      stale documents suggests more are waiting behind it.
+    */
     //
-    // `sweptDocumentCount > 0` is what keeps the exemption from becoming an
-    // infinite reschedule: the stale scan is ordered by updatedAtMs, so a full
-    // page of documents that were ALL exempt would be re-read verbatim by the
-    // continuation, every ten seconds, forever. Making no progress means there
-    // is nothing to continue — the next daily tick will look again.
+    /*
+      `sweptDocumentCount > 0` is what keeps the exemption from becoming an
+      infinite reschedule: the stale scan is ordered by updatedAtMs, so a full
+      page of documents that were ALL exempt would be re-read verbatim by the
+      continuation, every ten seconds, forever. Making no progress means there
+      is nothing to continue — the next daily tick will look again.
+    */
     const hasScheduledContinuation =
       hasIncompleteCascade ||
       (!isTargetedRun && staleDocuments.length === maxDocuments && sweptDocumentCount > 0);
@@ -189,19 +209,19 @@ export const cleanupStaleDocuments = internalMutation({
   },
 });
 
-/**
- * ONE-SHOT legacy sweep (NOT part of the cron): delete component sync docs
- * left over from before the composite `${documentId}:${blockId}` rekey.
- *
- * The prosemirror-sync component exposes NO listing API (its lib.* surface
- * is per-id: submitSnapshot/latestVersion/submitSteps/getSnapshot/getSteps/
- * deleteSnapshots/deleteSteps/deleteDocument — verified against the
- * component source), so orphan ids must be supplied explicitly; enumerate
- * them with `npx convex data --component prosemirrorSync snapshots` (known
- * orphans on dev: "txt_r7s8", "spike-doc"). Safe by construction: an id that
- * resolves to a live block row in a live document is retained, whatever the
- * caller passed.
- */
+/*
+  ONE-SHOT legacy sweep (NOT part of the cron): delete component sync docs
+  left over from before the composite `${documentId}:${blockId}` rekey.
+
+  The prosemirror-sync component exposes NO listing API (its lib.* surface
+  is per-id: submitSnapshot/latestVersion/submitSteps/getSnapshot/getSteps/
+  deleteSnapshots/deleteSteps/deleteDocument — verified against the
+  component source), so orphan ids must be supplied explicitly; enumerate
+  them with `npx convex data --component prosemirrorSync snapshots` (known
+  orphans on dev: "txt_r7s8", "spike-doc"). Safe by construction: an id that
+  resolves to a live block row in a live document is retained, whatever the
+  caller passed.
+*/
 export const deleteOrphanSyncDocs = internalMutation({
   args: { ids: v.array(v.string()) },
   returns: v.object({
@@ -222,9 +242,11 @@ export const deleteOrphanSyncDocs = internalMutation({
         retainedIds.push(id);
         continue;
       }
-      // Orphaned (bare pre-rekey id, malformed id, or deleted block/document):
-      // the component's deleteDocument removes its snapshots now and schedules
-      // bounded step deletion.
+      /*
+        Orphaned (bare pre-rekey id, malformed id, or deleted block/document):
+        the component's deleteDocument removes its snapshots now and schedules
+        bounded step deletion.
+      */
       await ctx.runMutation(components.prosemirrorSync.lib.deleteDocument, { id });
       deletedIds.push(id);
     }

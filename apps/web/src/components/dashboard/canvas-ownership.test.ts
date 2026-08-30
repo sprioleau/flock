@@ -5,28 +5,28 @@ import { register as registerProsemirrorSync } from "@convex-dev/prosemirror-syn
 import { api, internal } from "@convex/_generated/api";
 import schema from "@convex/schema";
 
-/**
- * THE OWNERSHIP TESTS for the dashboard (convex/canvases.ts).
- *
- * Two things have to stay true at once, and they pull in opposite directions:
- *
- *   1. A user must never see, rename or delete another user's emails. The
- *      dashboard is keyed off a SERVER-RESOLVED identity, so quoting someone
- *      else's session id — which the presence roster publishes to every
- *      collaborator (see apps/web/src/lib/auth/owner-identity.test.ts) — must
- *      buy nothing at all.
- *
- *   2. SHARE-BY-LINK MUST STILL WORK FOR STRANGERS. `canvases` and `documents`
- *      are deliberately exempt from identity checks: the id in the URL is the
- *      capability and that is the product. A dashboard that quietly turned
- *      ownership into an access check would break every shared link, and the
- *      break would be invisible to whoever wrote it because they are signed
- *      in. The second describe block is that regression test.
- *
- * Mirrors the convex-test setup of owner-identity.test.ts, including the note
- * about the array-form glob (the documented extglob matches nothing under
- * vitest 4).
- */
+/*
+  THE OWNERSHIP TESTS for the dashboard (convex/canvases.ts).
+
+  Two things have to stay true at once, and they pull in opposite directions:
+
+    1. A user must never see, rename or delete another user's emails. The
+       dashboard is keyed off a SERVER-RESOLVED identity, so quoting someone
+       else's session id — which the presence roster publishes to every
+       collaborator (see apps/web/src/lib/auth/owner-identity.test.ts) — must
+       buy nothing at all.
+
+    2. SHARE-BY-LINK MUST STILL WORK FOR STRANGERS. `canvases` and `documents`
+       are deliberately exempt from identity checks: the id in the URL is the
+       capability and that is the product. A dashboard that quietly turned
+       ownership into an access check would break every shared link, and the
+       break would be invisible to whoever wrote it because they are signed
+       in. The second describe block is that regression test.
+
+  Mirrors the convex-test setup of owner-identity.test.ts, including the note
+  about the array-form glob (the documented extglob matches nothing under
+  vitest 4).
+*/
 const modules = import.meta.glob([
   "../../../../../convex/**/*.{ts,js}",
   "!**/*.d.ts",
@@ -38,21 +38,23 @@ const OWNER_A = "user_owner_a";
 const OWNER_B = "user_owner_b";
 const STRICT_FLAG = "FLOCK_REQUIRE_AUTH_IDENTITY";
 
-/** A pre-auth browser's localStorage UUID — the legacy fallback key. */
+/*
+  A pre-auth browser's localStorage UUID — the legacy fallback key.
+*/
 const LEGACY_SESSION_ID = "3f9a2b1c-4d5e-4f60-9a8b-7c6d5e4f3a2b";
 
-/**
- * Deleting a canvas cascades into every draft's synced text docs
- * (convex/model/cleanup.ts -> textBlockSync.deleteBlockSyncDoc), which calls
- * INTO the prosemirror-sync component. convex-test knows nothing about an
- * installed component until it is registered, so without this the delete test
- * fails with "Component prosemirrorSync is not registered" — a harness gap,
- * not an ownership failure. This is the first test in the repo to reach that
- * path, which is why no sibling test registers anything.
- *
- * The component ships its own registrar; do not hand-roll the schema+glob,
- * since its internal layout is not a public export.
- */
+/*
+  Deleting a canvas cascades into every draft's synced text docs
+  (convex/model/cleanup.ts -> textBlockSync.deleteBlockSyncDoc), which calls
+  INTO the prosemirror-sync component. convex-test knows nothing about an
+  installed component until it is registered, so without this the delete test
+  fails with "Component prosemirrorSync is not registered" — a harness gap,
+  not an ownership failure. This is the first test in the repo to reach that
+  path, which is why no sibling test registers anything.
+
+  The component ships its own registrar; do not hand-roll the schema+glob,
+  since its internal layout is not a public export.
+*/
 function createBackend() {
   const backend = convexTest(schema, modules);
   registerProsemirrorSync(backend);
@@ -62,9 +64,11 @@ function createBackend() {
 const originalStrictFlag = process.env[STRICT_FLAG];
 
 beforeEach(() => {
-  // Every test here runs in the deployment's REAL posture: strict identity,
-  // exactly as Convex prod is configured. A pre-auth fallback would mask the
-  // very confusion these tests exist to catch.
+  /*
+    Every test here runs in the deployment's REAL posture: strict identity,
+    exactly as Convex prod is configured. A pre-auth fallback would mask the
+    very confusion these tests exist to catch.
+  */
   process.env[STRICT_FLAG] = "true";
 });
 
@@ -104,13 +108,13 @@ describe("the dashboard lists only what you own", () => {
     expect(listB.map((entry) => entry.title)).toEqual(["Owner B newsletter"]);
   });
 
-  /**
-   * THE ATTACK. Both users pass the SAME `sessionId` above — it is a scraped,
-   * published string, not a credential. If the listing ever keyed off the
-   * argument instead of the verified identity, each list would contain both
-   * canvases and the assertions above would fail. This makes the mechanism
-   * explicit rather than incidental.
-   */
+  /*
+    THE ATTACK. Both users pass the SAME `sessionId` above — it is a scraped,
+    published string, not a credential. If the listing ever keyed off the
+    argument instead of the verified identity, each list would contain both
+    canvases and the assertions above would fail. This makes the mechanism
+    explicit rather than incidental.
+  */
   it("ignores a session id quoted from someone else", async () => {
     const t = createBackend();
     const victim = t.withIdentity({ subject: OWNER_A });
@@ -122,7 +126,9 @@ describe("the dashboard lists only what you own", () => {
       name: "Draft 1",
     });
 
-    // The attacker replays the victim's session id verbatim.
+    /*
+      The attacker replays the victim's session id verbatim.
+    */
     const stolenList = await attacker.query(api.canvases.listMyCanvases, {
       sessionId: "victim-session-id",
     });
@@ -139,7 +145,9 @@ describe("the dashboard lists only what you own", () => {
         name: "Draft 1",
       });
 
-    // Strict mode: an anonymous caller cannot name an owner at all.
+    /*
+      Strict mode: an anonymous caller cannot name an owner at all.
+    */
     expect(await t.query(api.canvases.listMyCanvases, { sessionId: LEGACY_SESSION_ID })).toEqual(
       [],
     );
@@ -179,7 +187,9 @@ describe("the dashboard lists only what you own", () => {
     const t = createBackend();
     const owner = t.withIdentity({ subject: OWNER_A });
 
-    // Bare creation, exactly as StudioShell does it: no canvasTitle at all.
+    /*
+      Bare creation, exactly as StudioShell does it: no canvasTitle at all.
+    */
     await owner.mutation(api.documents.createDocument, {
       sessionId: LEGACY_SESSION_ID,
       name: "Welcome email",
@@ -253,7 +263,9 @@ describe("renaming and deleting are owner-only", () => {
       }),
     ).rejects.toThrow();
 
-    // The work is untouched — not merely un-listed.
+    /*
+      The work is untouched — not merely un-listed.
+    */
     expect(await t.query(api.documents.getDocument, { documentId })).not.toBeNull();
   });
 
@@ -283,7 +295,9 @@ describe("renaming and deleting are owner-only", () => {
     expect(await owner.query(api.canvases.listMyCanvases, { sessionId: LEGACY_SESSION_ID }))
       .toEqual([]);
 
-    // The ownership rows go with it — a dangling row would be immortal.
+    /*
+      The ownership rows go with it — a dangling row would be immortal.
+    */
     const strayOwnerRows = await t.run(async (ctx) =>
       ctx.db
         .query("canvasOwners")
@@ -294,12 +308,12 @@ describe("renaming and deleting are owner-only", () => {
   });
 });
 
-/**
- * The other half of the deal. Every assertion here would ALSO pass if
- * ownership had been implemented as an access check — which is exactly why
- * they are written from the stranger's side: each one is a thing a person with
- * only a link must still be able to do.
- */
+/*
+  The other half of the deal. Every assertion here would ALSO pass if
+  ownership had been implemented as an access check — which is exactly why
+  they are written from the stranger's side: each one is a thing a person with
+  only a link must still be able to do.
+*/
 describe("share-by-link still works for people who own nothing", () => {
   it("lets a stranger with no identity read a canvas owner's draft", async () => {
     const t = createBackend();
@@ -309,7 +323,9 @@ describe("share-by-link still works for people who own nothing", () => {
       name: "Draft 1",
     });
 
-    // `t` itself carries NO identity — the signed-out visitor holding a link.
+    /*
+      `t` itself carries NO identity — the signed-out visitor holding a link.
+    */
     expect(await t.query(api.documents.getDocument, { documentId })).not.toBeNull();
     expect(await t.query(api.documents.getDocumentByKey, { documentKey: documentId })).not.toBeNull();
     expect(await t.query(api.documents.canvasExists, { canvasKey: canvasId })).toBe(true);
@@ -348,8 +364,10 @@ describe("share-by-link still works for people who own nothing", () => {
     });
     expect(applied).toMatchObject({ isOk: true });
 
-    // Draft-level renaming is CONTENT, not library management — a link-holder
-    // keeps it. Only the canvas (the dashboard entry) is owner-only.
+    /*
+      Draft-level renaming is CONTENT, not library management — a link-holder
+      keeps it. Only the canvas (the dashboard entry) is owner-only.
+    */
     expect(await t.mutation(api.documents.renameDocument, { documentId, name: "Their edit" })).toBe(
       true,
     );
@@ -358,8 +376,10 @@ describe("share-by-link still works for people who own nothing", () => {
   it("keeps a link-created canvas out of every dashboard rather than in a stranger's", async () => {
     const t = createBackend();
 
-    // No identity at all, strict mode on: nothing can name an owner, so the
-    // canvas is created and fully usable but belongs to no list.
+    /*
+      No identity at all, strict mode on: nothing can name an owner, so the
+      canvas is created and fully usable but belongs to no list.
+    */
     const { canvasId } = await t.mutation(api.documents.createDocument, {
       sessionId: LEGACY_SESSION_ID,
       name: "Draft 1",
@@ -386,14 +406,18 @@ describe("promoting a draft keeps it in its owner's dashboard", () => {
       name: "Draft 2",
     });
 
-    // A STRANGER with only the link does the promotion.
+    /*
+      A STRANGER with only the link does the promotion.
+    */
     const promoted = await t.mutation(api.documents.promoteDocumentToNewCanvas, {
       documentId: second.documentId,
     });
     expect(promoted).toMatchObject({ isOk: true });
 
-    // Both canvases are still the owner's — the draft did not fall out of
-    // their dashboard, and the stranger gained no library entry.
+    /*
+      Both canvases are still the owner's — the draft did not fall out of
+      their dashboard, and the stranger gained no library entry.
+    */
     const list = await owner.query(api.canvases.listMyCanvases, {
       sessionId: LEGACY_SESSION_ID,
     });
@@ -406,7 +430,9 @@ describe("operator backfill for canvases that predate the dashboard", () => {
   it("adopts legacy canvases by session id and is idempotent", async () => {
     const t = createBackend();
 
-    // A canvas with no owner row, exactly as every pre-dashboard canvas is.
+    /*
+      A canvas with no owner row, exactly as every pre-dashboard canvas is.
+    */
     const { canvasId } = await t.mutation(api.documents.createDocument, {
       sessionId: LEGACY_SESSION_ID,
       canvasTitle: "From before",

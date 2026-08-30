@@ -20,12 +20,16 @@ const agentContext: ActionContext = {
   threadId: "thread_1",
 };
 
-/** One paragraph, one unmarked run. */
+/*
+  One paragraph, one unmarked run.
+*/
 function paragraphDoc(text: string): TextDoc {
   return createTextDoc(text);
 }
 
-/** The rich-text doc of a sample-document text block (type-narrowed). */
+/*
+  The rich-text doc of a sample-document text block (type-narrowed).
+*/
 function sampleTextDocOf(blockId: string): TextDoc {
   const block = createSampleDocument()[blockId as keyof ReturnType<typeof createSampleDocument>]!;
   if (block.type !== "text") throw new Error(`fixture: ${blockId} is not a text block`);
@@ -154,7 +158,9 @@ describe("applySpanStyle — find & occurrence resolution", () => {
         },
       ],
     };
-    // The outline shows the hard break as a plain space; both spellings work.
+    /*
+      The outline shows the hard break as a plain space; both spellings work.
+    */
     const result = applySpanStyle({ text: doc, find: "ride? Grab", style: { bold: true } });
     expect(result.isOk).toBe(true);
     if (!result.isOk) return;
@@ -322,7 +328,9 @@ describe("applySpanStyle — mark application", () => {
         },
       ],
     };
-    // Removing bold from the middle run makes all three runs identical → one run.
+    /*
+      Removing bold from the middle run makes all three runs identical → one run.
+    */
     const result = applySpanStyle({ text: doc, find: "bold", style: { bold: false } });
     expect(result.isOk).toBe(true);
     if (!result.isOk) return;
@@ -339,7 +347,9 @@ describe("applySpanStyle — mark application", () => {
     });
     expect(result.isOk).toBe(true);
     if (!result.isOk) return;
-    // The paragraph node (index 1) was not part of the match — same reference.
+    /*
+      The paragraph node (index 1) was not part of the match — same reference.
+    */
     expect(result.text.content[1]).toBe(doc.properties.text.content[1]);
   });
 
@@ -429,9 +439,11 @@ describe("resolveStyleTextSpanOperation", () => {
     expect(missing.isOk).toBe(false);
     if (missing.isOk) return;
     expect(missing.errors[0]!.code).toBe("target_not_found");
-    // A well-formed text id pointing at a non-text row cannot be built through
-    // the schema (prefix implies type), so wrong_block_type is exercised at
-    // the applySpanStyle wrapper level via a hand-built doc:
+    /*
+      A well-formed text id pointing at a non-text row cannot be built through
+      the schema (prefix implies type), so wrong_block_type is exercised at
+      the applySpanStyle wrapper level via a hand-built doc:
+    */
     const forged = { ...doc, txt_fake: { ...doc.img_g7h8!, id: "txt_fake" } };
     const wrongType = resolveStyleTextSpanOperation({
       doc: forged as typeof doc,

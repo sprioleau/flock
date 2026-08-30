@@ -4,23 +4,23 @@ import { tool, type ModelMessage, type ToolSet } from "ai";
 import { z } from "zod";
 import { createToolCallRepairer } from "./pipeline";
 
-/**
- * Regression for the live terminal failure (owner repro, complex prompt):
- * the repairer replayed a failed call's RAW STRING args verbatim inside an
- * assistant tool-call part; the Google provider encoded that string into
- * `function_call.args` (a protobuf Struct), the REPAIR REQUEST ITSELF was
- * rejected (AI_APICallError), the repairer threw, and the SDK wrapped it in
- * AI_ToolCallRepairError — one bad call became a turn-killing wall of JSON.
- *
- * Pinned here:
- * 1. the replayed assistant tool-call part carries an OBJECT input (never a
- *    string), so the repair request is always encodable;
- * 2. an unparseable raw input degrades to `{}` with the raw text quoted in
- *    the tool-result prose instead;
- * 3. a provider failure during the re-ask returns null (unrepaired) instead
- *    of throwing — the SDK then degrades the call to one failure chip and
- *    the turn continues.
- */
+/*
+  Regression for the live terminal failure (owner repro, complex prompt):
+  the repairer replayed a failed call's RAW STRING args verbatim inside an
+  assistant tool-call part; the Google provider encoded that string into
+  `function_call.args` (a protobuf Struct), the REPAIR REQUEST ITSELF was
+  rejected (AI_APICallError), the repairer threw, and the SDK wrapped it in
+  AI_ToolCallRepairError — one bad call became a turn-killing wall of JSON.
+
+  Pinned here:
+  1. the replayed assistant tool-call part carries an OBJECT input (never a
+     string), so the repair request is always encodable;
+  2. an unparseable raw input degrades to `{}` with the raw text quoted in
+     the tool-result prose instead;
+  3. a provider failure during the re-ask returns null (unrepaired) instead
+     of throwing — the SDK then degrades the call to one failure chip and
+     the turn continues.
+*/
 
 const STRINGIFIED_ENVELOPE = JSON.stringify({
   children: [{ id: "txt_ab12", type: "text" }],
@@ -88,11 +88,15 @@ describe("createToolCallRepairer (repair-request encodability + never-throw)", (
       error: new Error("Invalid input"),
     } as never);
 
-    // Never throws; provider failure degrades to "unrepaired".
+    /*
+      Never throws; provider failure degrades to "unrepaired".
+    */
     expect(result).toBeNull();
 
-    // The repair request WAS attempted, and its replayed call carried an
-    // object — the protobuf-encodable form.
+    /*
+      The repair request WAS attempted, and its replayed call carried an
+      object — the protobuf-encodable form.
+    */
     expect(capturedPrompts.length).toBe(1);
     const replayedCall = findReplayedToolCall(capturedPrompts[0]);
     expect(replayedCall).toBeDefined();

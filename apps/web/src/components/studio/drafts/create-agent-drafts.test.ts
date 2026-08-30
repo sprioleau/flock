@@ -89,11 +89,15 @@ const SOURCE_LATER_HEADLINE = "A note from the team, as Draft 1 words it";
 const SOURCE_LATER_BODY = "The supporting paragraph Draft 1 carries in its second section.";
 const SOURCE_STRINGS = [SOURCE_HEADLINE, SOURCE_BODY, SOURCE_LATER_HEADLINE, SOURCE_LATER_BODY];
 
-/** The model's own copy for the ONE section it bothered to fill in. */
+/*
+  The model's own copy for the ONE section it bothered to fill in.
+*/
 const PORTFOLIO_HEADLINE = "Hi, I'm San'Quan Prioleau";
 const PORTFOLIO_BODY = "Staff Software Engineer, writing about the web from Atlanta.";
 
-/** Deterministic ids so a composed document is byte-stable across runs. */
+/*
+  Deterministic ids so a composed document is byte-stable across runs.
+*/
 function createSeededRandom(seed: number): () => number {
   let state = seed;
   return () => {
@@ -102,10 +106,10 @@ function createSeededRandom(seed: number): () => number {
   };
 }
 
-/**
- * The draft the user is looking at — built through the composer itself with
- * every param spelled out, so it is a real email whose exact copy is known.
- */
+/*
+  The draft the user is looking at — built through the composer itself with
+  every param spelled out, so it is a real email whose exact copy is known.
+*/
 function buildSourceDoc(): EmailDocument {
   const [composed] = buildComposedDrafts({
     sourceDoc: createEmptyDocument(),
@@ -147,7 +151,9 @@ function buildSourceDoc(): EmailDocument {
   return result.doc;
 }
 
-/** The under-filled plan the model actually sent: one headline, nothing else. */
+/*
+  The under-filled plan the model actually sent: one headline, nothing else.
+*/
 const UNDER_FILLED_PORTFOLIO_PLAN: CreateDraftInput = {
   drafts: [
     {
@@ -168,7 +174,9 @@ const UNDER_FILLED_PORTFOLIO_PLAN: CreateDraftInput = {
   ],
 };
 
-/** Every word the stored document renders — text, button labels, image alts. */
+/*
+  Every word the stored document renders — text, button labels, image alts.
+*/
 function readAllText(doc: EmailDocument): string {
   const collect = (node: unknown): string => {
     if (typeof node !== "object" || node === null) return "";
@@ -259,7 +267,9 @@ async function runCreateDraft({
   return outcome;
 }
 
-/** The globals a stored draft ended up wearing. */
+/*
+  The globals a stored draft ended up wearing.
+*/
 async function readStoredGlobals({
   t,
   documentId,
@@ -350,7 +360,9 @@ describe("a new draft's theme", () => {
 
     expect(outcome.createdDocumentIds).toHaveLength(1);
     const globals = await readStoredGlobals({ t, documentId: outcome.createdDocumentIds[0]! });
-    /* Inheritance stood, as it would have without the reference at all. */
+    /*
+      Inheritance stood, as it would have without the reference at all.
+    */
     expect(globals).toEqual({});
     const note = toCreateDraftToolOutput(outcome).note;
     expect(note).toContain("was NOT applied");
@@ -394,7 +406,9 @@ describe("a draft composed in a turn that ingested a source", () => {
     for (const sourceString of SOURCE_STRINGS) {
       expect(text).not.toContain(sourceString);
     }
-    /* The copy the model DID write is still there — the fix suppresses the backfill, not the plan. */
+    /*
+      The copy the model DID write is still there — the fix suppresses the backfill, not the plan.
+    */
     expect(text).toContain(PORTFOLIO_HEADLINE);
   });
 
@@ -418,9 +432,13 @@ describe("a draft composed in a turn that ingested a source", () => {
       plannedSectionCount: 1,
       carriedOverSectionCount: 0,
     });
-    /* header, article and footer had no copy in the plan, and none of them survived. */
+    /*
+      header, article and footer had no copy in the plan, and none of them survived.
+    */
     expect(draft!.droppedSectionCount).toBe(3);
-    /* Nothing was invented to fill them — that is the whole point. */
+    /*
+      Nothing was invented to fill them — that is the whole point.
+    */
     expect(draft!.templateDefaultSectionCount).toBe(0);
 
     /*
@@ -462,7 +480,9 @@ describe("what createDraft reports back", () => {
     const t = createBackend();
     const convexClient: AgentDraftsConvexClient = t;
     const canvasId = await seedCanvas(t);
-    /* A draft already carrying the name the model is about to ask for. */
+    /*
+      A draft already carrying the name the model is about to ask for.
+    */
     await t.mutation(api.documents.createDocument, {
       sessionId: BROWSER_SESSION_ID,
       canvasId,
@@ -486,7 +506,9 @@ describe("what createDraft reports back", () => {
 
     const [created] = outcome.createdDrafts;
     expect(created!.name).not.toBe("Portfolio");
-    /* The model quotes what the note says, and the note says what exists. */
+    /*
+      The model quotes what the note says, and the note says what exists.
+    */
     expect(toCreateDraftToolOutput(outcome).note).toContain(created!.name);
   });
 

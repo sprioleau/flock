@@ -29,26 +29,28 @@ import { cn } from "@/lib/utils";
 import { AgentAvatarPentagon } from "./AgentAvatarPentagon";
 import { extractPersonaSlugFromPresenceUserId } from "./persona-cursor-helpers";
 
-/**
- * Phase 6.2a topbar facepile, persona-presence UX overhaul (2026-07-31):
- * one avatar per ONLINE room member (self first — the presence component
- * orders it that way). SHAPE ENCODES KIND: humans are circles; non-human
- * collaborators — advisory personas and the chat agent — are rounded
- * point-up PENTAGONS (AgentAvatarPentagon), so concurrent agent vs human
- * collaborators are instantly distinguishable.
- *
- * Interactions: hovering a PERSONA avatar opens a hover card with its
- * user-facing next-check line ("Checks again in about 30 seconds",
- * "Checking now…", "Paused", "Waiting for changes") and its recent
- * recommendations; CLICKING it opens the recommendations-history modal
- * pre-filtered to that persona. Humans keep the name tooltip; clicking YOUR
- * OWN avatar still opens the nickname editor.
- *
- * Renders nothing when no document/presence room is open.
- */
+/*
+  Phase 6.2a topbar facepile, persona-presence UX overhaul (2026-07-31):
+  one avatar per ONLINE room member (self first — the presence component
+  orders it that way). SHAPE ENCODES KIND: humans are circles; non-human
+  collaborators — advisory personas and the chat agent — are rounded
+  point-up PENTAGONS (AgentAvatarPentagon), so concurrent agent vs human
+  collaborators are instantly distinguishable.
+
+  Interactions: hovering a PERSONA avatar opens a hover card with its
+  user-facing next-check line ("Checks again in about 30 seconds",
+  "Checking now…", "Paused", "Waiting for changes") and its recent
+  recommendations; CLICKING it opens the recommendations-history modal
+  pre-filtered to that persona. Humans keep the name tooltip; clicking YOUR
+  OWN avatar still opens the nickname editor.
+
+  Renders nothing when no document/presence room is open.
+*/
 export function PresenceFacepile() {
   const roster = useOptionalPresenceRoster();
-  // The recommendations modal opened from a persona avatar (pre-filtered).
+  /*
+    The recommendations modal opened from a persona avatar (pre-filtered).
+  */
   const [recommendationsSlug, setRecommendationsSlug] = useState<string | null>(null);
   const [isRecommendationsOpen, setIsRecommendationsOpen] = useState(false);
   if (roster === null) {
@@ -64,9 +66,11 @@ export function PresenceFacepile() {
   };
   return (
     <TooltipProvider>
-      {/* No intrinsic trailing divider (owner, item 32): the header owns ALL
-          group separators, so the avatar stack renders bare like every other
-          toolbar control. */}
+      {/*
+        No intrinsic trailing divider (owner, item 32): the header owns ALL
+        group separators, so the avatar stack renders bare like every other
+        toolbar control.
+      */}
       <div className="flex items-center -space-x-1.5" data-testid="presence-facepile">
         {onlineMembers.map((entry) =>
           entry.isSelf ? (
@@ -91,27 +95,35 @@ export function PresenceFacepile() {
   );
 }
 
-/** Shared avatar box: 24px, glyph typography; shape classes layer on top. */
+/*
+  Shared avatar box: 24px, glyph typography; shape classes layer on top.
+*/
 const AVATAR_BASE_CLASSES =
   "relative flex size-6 shrink-0 items-center justify-center text-[10px] font-semibold text-white select-none";
 
-/** Humans: the classic colored circle with a background ring. */
+/*
+  Humans: the classic colored circle with a background ring.
+*/
 const HUMAN_AVATAR_CLASSES = cn(AVATAR_BASE_CLASSES, "rounded-full ring-2 ring-background");
 
-/**
- * Agents/personas: no CSS shape — the AgentAvatarPentagon SVG (first child)
- * draws both the background-ring pentagon and the colored one.
- */
+/*
+  Agents/personas: no CSS shape — the AgentAvatarPentagon SVG (first child)
+  draws both the background-ring pentagon and the colored one.
+*/
 const AGENT_AVATAR_CLASSES = AVATAR_BASE_CLASSES;
 
-/** Persona roster members (multi-agent canvas v0) carry this userId prefix. */
+/*
+  Persona roster members (multi-agent canvas v0) carry this userId prefix.
+*/
 const isPersonaEntry = (entry: PresenceRosterEntry): boolean =>
   entry.userId.startsWith("persona:");
 
 function AvatarGlyph({ entry }: { entry: PresenceRosterEntry }) {
   if (isPersonaEntry(entry)) {
-    // Personas show their initial like humans — their identity is a NAME, not
-    // "the agent" — the pentagon shape and status dot mark them as non-human.
+    /*
+      Personas show their initial like humans — their identity is a NAME, not
+      "the agent" — the pentagon shape and status dot mark them as non-human.
+    */
     return <>{entry.data.name.charAt(0).toUpperCase()}</>;
   }
   if (entry.data.isAgent === true) {
@@ -131,12 +143,12 @@ function memberLabel(entry: PresenceRosterEntry): string {
   return entry.isSelf ? `${entry.data.name} (you)` : entry.data.name;
 }
 
-/**
- * The persona's live lifecycle dot (bottom-right of the avatar): gray when
- * idle, amber while reading (context assembly), pulsing violet while its
- * analysis call is in flight. Statuses are written server-side on real state
- * transitions (convex/personas.ts setPersonaStatus).
- */
+/*
+  The persona's live lifecycle dot (bottom-right of the avatar): gray when
+  idle, amber while reading (context assembly), pulsing violet while its
+  analysis call is in flight. Statuses are written server-side on real state
+  transitions (convex/personas.ts setPersonaStatus).
+*/
 function PersonaStatusDot({ status }: { status: "idle" | "reading" | "thinking" | undefined }) {
   return (
     <span
@@ -153,7 +165,9 @@ function PersonaStatusDot({ status }: { status: "idle" | "reading" | "thinking" 
   );
 }
 
-/** A remote HUMAN or the chat agent: shape-coded avatar + name tooltip. */
+/*
+  A remote HUMAN or the chat agent: shape-coded avatar + name tooltip.
+*/
 function MemberAvatar({ entry }: { entry: PresenceRosterEntry }) {
   const isAgentShaped = entry.data.isAgent === true;
   return (
@@ -175,11 +189,11 @@ function MemberAvatar({ entry }: { entry: PresenceRosterEntry }) {
   );
 }
 
-/**
- * An advisory persona: pentagon avatar; HOVER opens the status hover card
- * (next check + recent recommendations), CLICK opens the recommendations
- * modal pre-filtered to this persona.
- */
+/*
+  An advisory persona: pentagon avatar; HOVER opens the status hover card
+  (next check + recent recommendations), CLICK opens the recommendations
+  modal pre-filtered to this persona.
+*/
 function PersonaAvatar({
   entry,
   onOpenRecommendations,
@@ -190,7 +204,7 @@ function PersonaAvatar({
   const [isHoverCardOpen, setIsHoverCardOpen] = useState(false);
   const slug = extractPersonaSlugFromPresenceUserId(entry.userId);
   if (slug === null) {
-    return null; // malformed persona userId — nothing sensible to render
+    return null; /* malformed persona userId — nothing sensible to render */
   }
   return (
     <Popover.Root open={isHoverCardOpen} onOpenChange={setIsHoverCardOpen}>
@@ -231,15 +245,17 @@ function PersonaAvatar({
   );
 }
 
-/** How many recent recommendations the hover card lists. */
+/*
+  How many recent recommendations the hover card lists.
+*/
 const HOVER_CARD_RECENT_LIMIT = 3;
 
-/**
- * Hover-card body — mounts only while the card is open, so its queries and
- * the 1s countdown tick cost nothing the rest of the time. The next-check
- * line derives from the local run clock (persona-run-clock.ts) + the
- * registry cooldown — user-facing words only, zero presence writes.
- */
+/*
+  Hover-card body — mounts only while the card is open, so its queries and
+  the 1s countdown tick cost nothing the rest of the time. The next-check
+  line derives from the local run clock (persona-run-clock.ts) + the
+  registry cooldown — user-facing words only, zero presence writes.
+*/
 function PersonaHoverCard({
   slug,
   name,
@@ -260,7 +276,9 @@ function PersonaHoverCard({
     documentId !== null ? { documentId } : "skip",
   );
 
-  // Local 1s tick so "Checks again in about Ns" counts down while visible.
+  /*
+    Local 1s tick so "Checks again in about Ns" counts down while visible.
+  */
   const [nowMs, setNowMs] = useState(() => Date.now());
   useEffect(() => {
     const intervalId = window.setInterval(() => setNowMs(Date.now()), 1_000);
@@ -329,7 +347,9 @@ function PersonaHoverCard({
   );
 }
 
-/** Your own avatar: click opens the display-name editor popover. */
+/*
+  Your own avatar: click opens the display-name editor popover.
+*/
 function SelfAvatar({ entry }: { entry: PresenceRosterEntry }) {
   const [isOpen, setIsOpen] = useState(false);
 
@@ -355,21 +375,21 @@ function SelfAvatar({ entry }: { entry: PresenceRosterEntry }) {
   );
 }
 
-/**
- * The display name as a CLICK-TO-EDIT row: the name reads as text beside a
- * pencil, and only the pencil turns it into a field. What this replaced was an
- * always-open input with a Save button, which made a popover you opened just to
- * see who you are look like a form you had abandoned half-finished.
- *
- * ONE piece of state carries the mode: `draftName` is null when not editing, so
- * a field with no draft — or a draft with no field — cannot exist. The draft is
- * seeded when editing STARTS rather than when the popover opens, because the
- * roster name can change underneath us (another tab of this browser renames and
- * the cross-tab sync adopts it — see presence.tsx).
- *
- * Exported for its unit test, which calls it as a plain function; nothing else
- * imports it.
- */
+/*
+  The display name as a CLICK-TO-EDIT row: the name reads as text beside a
+  pencil, and only the pencil turns it into a field. What this replaced was an
+  always-open input with a Save button, which made a popover you opened just to
+  see who you are look like a form you had abandoned half-finished.
+
+  ONE piece of state carries the mode: `draftName` is null when not editing, so
+  a field with no draft — or a draft with no field — cannot exist. The draft is
+  seeded when editing STARTS rather than when the popover opens, because the
+  roster name can change underneath us (another tab of this browser renames and
+  the cross-tab sync adopts it — see presence.tsx).
+
+  Exported for its unit test, which calls it as a plain function; nothing else
+  imports it.
+*/
 export function DisplayNameRow({ name }: { name: string }) {
   const setNickname = useSetNickname();
   const [draftName, setDraftName] = useState<string | null>(null);
@@ -461,7 +481,9 @@ export function DisplayNameRow({ name }: { name: string }) {
         ) : (
           <p className="min-w-0 flex-1 truncate text-sm">{name}</p>
         )}
-        {/* Icon-only, so the label is the whole accessible name of the action. */}
+        {/*
+          Icon-only, so the label is the whole accessible name of the action.
+        */}
         <Button
           type="button"
           variant="ghost"

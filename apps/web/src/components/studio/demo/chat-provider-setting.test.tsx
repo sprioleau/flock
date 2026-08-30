@@ -11,28 +11,30 @@ vi.mock("./app-settings", () => ({
 
 import { ChatProviderSetting } from "./SettingsFab";
 
-/**
- * The owner-only "which service answers your chat messages" control.
- *
- * WHY THE TREE IS INSPECTED RATHER THAN RENDERED: this suite has no DOM
- * (vitest.config.ts pins `environment: "node"`) and a Base UI menu only mounts
- * its content into a portal after a real click, which no server renderer can
- * do. So the component — which takes props and uses no hooks — is called as a
- * plain function and the element tree it returns is walked. That answers the
- * two questions that matter (is the control there at all, and what does
- * choosing an option persist) without pretending to test the popup mechanics,
- * which are the browser pass's job.
- *
- * THE HEADLINE TEST is "absent, not disabled". A greyed-out row would announce
- * that a hidden capability exists; `null` means the menu simply ends where it
- * always did.
- */
+/*
+  The owner-only "which service answers your chat messages" control.
+
+  WHY THE TREE IS INSPECTED RATHER THAN RENDERED: this suite has no DOM
+  (vitest.config.ts pins `environment: "node"`) and a Base UI menu only mounts
+  its content into a portal after a real click, which no server renderer can
+  do. So the component — which takes props and uses no hooks — is called as a
+  plain function and the element tree it returns is walked. That answers the
+  two questions that matter (is the control there at all, and what does
+  choosing an option persist) without pretending to test the popup mechanics,
+  which are the browser pass's job.
+
+  THE HEADLINE TEST is "absent, not disabled". A greyed-out row would announce
+  that a hidden capability exists; `null` means the menu simply ends where it
+  always did.
+*/
 
 interface ElementWithProps extends ReactElement {
   props: Record<string, unknown>;
 }
 
-/** Every element in a returned tree, fragments and arrays flattened. */
+/*
+  Every element in a returned tree, fragments and arrays flattened.
+*/
 function collectElements(node: ReactNode): ElementWithProps[] {
   const found: ElementWithProps[] = [];
   const visit = (current: ReactNode): void => {
@@ -53,7 +55,9 @@ function collectElements(node: ReactNode): ElementWithProps[] {
   return found;
 }
 
-/** The one element carrying an `onValueChange` — the radio group. */
+/*
+  The one element carrying an `onValueChange` — the radio group.
+*/
 function findRadioGroup(node: ReactNode): ElementWithProps {
   const groups = collectElements(node).filter(
     (element) => typeof element.props.onValueChange === "function",
@@ -74,7 +78,9 @@ function selectValue(node: ReactNode, value: unknown): void {
   (group.props.onValueChange as (next: unknown, details: unknown) => void)(value, {});
 }
 
-/** All human-readable strings in the tree, for copy assertions. */
+/*
+  All human-readable strings in the tree, for copy assertions.
+*/
 function visibleText(node: ReactNode): string {
   const parts: string[] = [];
   const visit = (current: ReactNode): void => {
@@ -103,8 +109,10 @@ describe("the chat-service control, without an owner override", () => {
   });
 
   it("stays absent even when a provider is already pinned in this browser", () => {
-    // Anyone can write the localStorage value; that must not conjure the
-    // control, and the server ignores the request either way.
+    /*
+      Anyone can write the localStorage value; that must not conjure the
+      control, and the server ignores the request either way.
+    */
     expect(ChatProviderSetting({ isUnlocked: false, chatProviderId: "openrouter" })).toBeNull();
   });
 
@@ -155,8 +163,10 @@ describe("the chat-service control, with an owner override", () => {
   });
 
   it("persists NULL for the deployment default, not the default provider's id", () => {
-    // The distinction is real: null follows the deployment if its provider
-    // changes; "gemini" would pin this browser to Gemini for ever.
+    /*
+      The distinction is real: null follows the deployment if its provider
+      changes; "gemini" would pin this browser to Gemini for ever.
+    */
     const tree = ChatProviderSetting({ isUnlocked: true, chatProviderId: "openrouter" });
     selectValue(tree, "deployment-default");
     expect(updateAppSettingsMock).toHaveBeenLastCalledWith({ chatProviderId: null });

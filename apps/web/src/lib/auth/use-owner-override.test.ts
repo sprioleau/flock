@@ -7,18 +7,18 @@ import {
   setOwnerOverrideUnlocked,
 } from "./use-owner-override";
 
-/**
- * The shared "does this browser hold an override?" signal.
- *
- * The property under test is FAILING CLOSED. Every consumer of this hook uses
- * it to decide whether to show an owner-only control, so a hopeful default
- * would put that control in front of people who cannot use it the first time
- * the network hiccups. Every failure shape below must land on `false`.
- *
- * The React binding itself (useSyncExternalStore) is not covered — there is no
- * DOM environment in this suite — but the store it reads from is, and that is
- * where the decisions live.
- */
+/*
+  The shared "does this browser hold an override?" signal.
+
+  The property under test is FAILING CLOSED. Every consumer of this hook uses
+  it to decide whether to show an owner-only control, so a hopeful default
+  would put that control in front of people who cannot use it the first time
+  the network hiccups. Every failure shape below must land on `false`.
+
+  The React binding itself (useSyncExternalStore) is not covered — there is no
+  DOM environment in this suite — but the store it reads from is, and that is
+  where the decisions live.
+*/
 
 afterEach(() => {
   vi.unstubAllGlobals();
@@ -44,7 +44,9 @@ describe("readOwnerOverrideStatus", () => {
     const [url, init] = fetchMock.mock.calls[0]!;
     expect(String(url)).toBe(OWNER_OVERRIDE_STATUS_PATH);
     expect(init?.method).toBe("GET");
-    // A cached "true" would show an owner-only control to the next visitor.
+    /*
+      A cached "true" would show an owner-only control to the next visitor.
+    */
     expect(init?.cache).toBe("no-store");
     expect(init?.credentials).toBe("same-origin");
   });

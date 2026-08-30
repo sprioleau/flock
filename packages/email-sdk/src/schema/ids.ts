@@ -1,19 +1,21 @@
 import { z } from "zod";
 
-/**
- * Block ID scheme.
- *
- * Every block has a short, human-readable, LLM-addressable id of the form
- * `<prefix>_<4 lowercase alphanumeric>` (e.g. `sec_a1b2`, `btn_x9k3`). The
- * one exception is the document root, whose id is literally `"root"` — there
- * is exactly one per document, so it needs no random suffix.
- *
- * The per-type prefix makes ids self-documenting: a compressed outline view
- * (Phase 3.1) can show `btn_x9k3` and the model immediately knows it is a
- * button without a type lookup.
- */
+/*
+  Block ID scheme.
 
-/** All block types in the document model. */
+  Every block has a short, human-readable, LLM-addressable id of the form
+  `<prefix>_<4 lowercase alphanumeric>` (e.g. `sec_a1b2`, `btn_x9k3`). The
+  one exception is the document root, whose id is literally `"root"` — there
+  is exactly one per document, so it needs no random suffix.
+
+  The per-type prefix makes ids self-documenting: a compressed outline view
+  (Phase 3.1) can show `btn_x9k3` and the model immediately knows it is a
+  button without a type lookup.
+*/
+
+/*
+  All block types in the document model.
+*/
 export const BLOCK_TYPES = [
   "root",
   "section",
@@ -30,12 +32,16 @@ export const BLOCK_TYPES = [
 
 export type BlockType = (typeof BLOCK_TYPES)[number];
 
-/** Container block types — blocks that may have children. */
+/*
+  Container block types — blocks that may have children.
+*/
 export const CONTAINER_BLOCK_TYPES = ["root", "section", "row", "column"] as const;
 
 export type ContainerBlockType = (typeof CONTAINER_BLOCK_TYPES)[number];
 
-/** Leaf block types — blocks that never have children. */
+/*
+  Leaf block types — blocks that never have children.
+*/
 export const LEAF_BLOCK_TYPES = [
   "text",
   "button",
@@ -48,10 +54,14 @@ export const LEAF_BLOCK_TYPES = [
 
 export type LeafBlockType = (typeof LEAF_BLOCK_TYPES)[number];
 
-/** The literal id of the single root block in every document. */
+/*
+  The literal id of the single root block in every document.
+*/
 export const ROOT_BLOCK_ID = "root" as const;
 
-/** Per-type id prefix map. The root "prefix" is the entire id. */
+/*
+  Per-type id prefix map. The root "prefix" is the entire id.
+*/
 export const BLOCK_ID_PREFIXES = {
   root: "root",
   section: "sec",
@@ -66,25 +76,27 @@ export const BLOCK_ID_PREFIXES = {
   spacer: "spc",
 } as const satisfies Record<BlockType, string>;
 
-/** Number of random characters after the prefix and underscore. */
+/*
+  Number of random characters after the prefix and underscore.
+*/
 export const BLOCK_ID_SUFFIX_LENGTH = 4;
 
 const ID_SUFFIX_ALPHABET = "abcdefghijklmnopqrstuvwxyz0123456789";
 
-/**
- * A source of randomness: returns a float in [0, 1).
- * Injectable so tests (and deterministic sample factories) can control ids.
- */
+/*
+  A source of randomness: returns a float in [0, 1).
+  Injectable so tests (and deterministic sample factories) can control ids.
+*/
 export type RandomFn = () => number;
 
-/**
- * Generate a fresh block id for the given type: `<prefix>_<4 chars>` drawn
- * from [a-z0-9]. `generateBlockId("root")` always returns `"root"`.
- *
- * Uniqueness is NOT guaranteed by this function — callers inserting into a
- * document must retry on collision (36^4 = ~1.7M ids per type, so collisions
- * are rare but possible).
- */
+/*
+  Generate a fresh block id for the given type: `<prefix>_<4 chars>` drawn
+  from [a-z0-9]. `generateBlockId("root")` always returns `"root"`.
+
+  Uniqueness is NOT guaranteed by this function — callers inserting into a
+  document must retry on collision (36^4 = ~1.7M ids per type, so collisions
+  are rare but possible).
+*/
 export function generateBlockId(type: BlockType, random: RandomFn = Math.random): string {
   if (type === "root") {
     return ROOT_BLOCK_ID;
@@ -97,32 +109,40 @@ export function generateBlockId(type: BlockType, random: RandomFn = Math.random)
   return `${BLOCK_ID_PREFIXES[type]}_${suffix}`;
 }
 
-/** Reverse of BLOCK_ID_PREFIXES: prefix → block type. */
+/*
+  Reverse of BLOCK_ID_PREFIXES: prefix → block type.
+*/
 const BLOCK_TYPES_BY_PREFIX = Object.fromEntries(
   Object.entries(BLOCK_ID_PREFIXES).map(([type, prefix]) => [prefix, type as BlockType]),
 ) as Readonly<Record<string, BlockType>>;
 
 const BLOCK_ID_KEY_PATTERN = new RegExp(`^[a-z0-9]{${BLOCK_ID_SUFFIX_LENGTH}}$`);
 
-/** A block id decomposed into its type and its random key (suffix). */
+/*
+  A block id decomposed into its type and its random key (suffix).
+*/
 export interface ParsedBlockId {
   type: BlockType;
-  /** The random suffix after the prefix — for root, the literal "root". */
+  /*
+    The random suffix after the prefix — for root, the literal "root".
+  */
   key: string;
 }
 
-/** Input to formatBlockId — the inverse of ParsedBlockId. */
+/*
+  Input to formatBlockId — the inverse of ParsedBlockId.
+*/
 export type FormatBlockIdInput = ParsedBlockId;
 
-/**
- * Parse a block id into `{ type, key }`, or null when the string is not a
- * well-formed block id. The conversion seam between the prefixed id style
- * (`btn_x9k3`) and opaque-id consumers (logs, UI): everything downstream of
- * this pair is independent of the id format.
- *
- * `parseBlockId("root")` → `{ type: "root", key: "root" }` (the root id has
- * no random suffix, so its key is the whole id).
- */
+/*
+  Parse a block id into `{ type, key }`, or null when the string is not a
+  well-formed block id. The conversion seam between the prefixed id style
+  (`btn_x9k3`) and opaque-id consumers (logs, UI): everything downstream of
+  this pair is independent of the id format.
+
+  `parseBlockId("root")` → `{ type: "root", key: "root" }` (the root id has
+  no random suffix, so its key is the whole id).
+*/
 export function parseBlockId(id: string): ParsedBlockId | null {
   if (id === ROOT_BLOCK_ID) {
     return { type: "root", key: ROOT_BLOCK_ID };
@@ -140,11 +160,11 @@ export function parseBlockId(id: string): ParsedBlockId | null {
   return { type, key };
 }
 
-/**
- * Format `{ type, key }` back into a block id string — the exact inverse of
- * parseBlockId. Throws on a malformed key so a bad round-trip fails loudly at
- * the seam instead of producing an invalid id.
- */
+/*
+  Format `{ type, key }` back into a block id string — the exact inverse of
+  parseBlockId. Throws on a malformed key so a bad round-trip fails loudly at
+  the seam instead of producing an invalid id.
+*/
 export function formatBlockId({ type, key }: FormatBlockIdInput): string {
   if (type === "root") {
     if (key !== ROOT_BLOCK_ID) {
@@ -175,42 +195,66 @@ function createTypedBlockIdSchema(type: Exclude<BlockType, "root">, noun: string
     );
 }
 
-/** Matches the root block id — always the literal string "root". */
+/*
+  Matches the root block id — always the literal string "root".
+*/
 export const rootBlockIdSchema = z
   .literal(ROOT_BLOCK_ID)
   .describe('Id of the document root block. Always the literal string "root".');
 
-/** Matches section block ids, e.g. "sec_a1b2". */
+/*
+  Matches section block ids, e.g. "sec_a1b2".
+*/
 export const sectionBlockIdSchema = createTypedBlockIdSchema("section", "section block");
 
-/** Matches row block ids, e.g. "row_a1b2". */
+/*
+  Matches row block ids, e.g. "row_a1b2".
+*/
 export const rowBlockIdSchema = createTypedBlockIdSchema("row", "row block");
 
-/** Matches column block ids, e.g. "col_a1b2". */
+/*
+  Matches column block ids, e.g. "col_a1b2".
+*/
 export const columnBlockIdSchema = createTypedBlockIdSchema("column", "column block");
 
-/** Matches text block ids, e.g. "txt_a1b2". */
+/*
+  Matches text block ids, e.g. "txt_a1b2".
+*/
 export const textBlockIdSchema = createTypedBlockIdSchema("text", "text block");
 
-/** Matches button block ids, e.g. "btn_a1b2". */
+/*
+  Matches button block ids, e.g. "btn_a1b2".
+*/
 export const buttonBlockIdSchema = createTypedBlockIdSchema("button", "button block");
 
-/** Matches image block ids, e.g. "img_a1b2". */
+/*
+  Matches image block ids, e.g. "img_a1b2".
+*/
 export const imageBlockIdSchema = createTypedBlockIdSchema("image", "image block");
 
-/** Matches divider block ids, e.g. "div_a1b2". */
+/*
+  Matches divider block ids, e.g. "div_a1b2".
+*/
 export const dividerBlockIdSchema = createTypedBlockIdSchema("divider", "divider block");
 
-/** Matches link block ids, e.g. "lnk_a1b2". */
+/*
+  Matches link block ids, e.g. "lnk_a1b2".
+*/
 export const linkBlockIdSchema = createTypedBlockIdSchema("link", "link block");
 
-/** Matches code block ids, e.g. "cod_a1b2". */
+/*
+  Matches code block ids, e.g. "cod_a1b2".
+*/
 export const codeBlockIdSchema = createTypedBlockIdSchema("code", "code block");
 
-/** Matches spacer block ids, e.g. "spc_a1b2". */
+/*
+  Matches spacer block ids, e.g. "spc_a1b2".
+*/
 export const spacerBlockIdSchema = createTypedBlockIdSchema("spacer", "spacer block");
 
-/** Matches the id of any leaf block (text, button, image, divider, link, code, spacer). */
+/*
+  Matches the id of any leaf block (text, button, image, divider, link, code, spacer).
+*/
 export const leafBlockIdSchema = z
   .union([
     textBlockIdSchema,
@@ -225,7 +269,9 @@ export const leafBlockIdSchema = z
     "Id of a leaf block: text (txt_), button (btn_), image (img_), divider (div_), link (lnk_), code (cod_), or spacer (spc_).",
   );
 
-/** Matches any valid block id, of any block type. */
+/*
+  Matches any valid block id, of any block type.
+*/
 export const blockIdSchema = z
   .string()
   .regex(
@@ -238,7 +284,9 @@ export const blockIdSchema = z
     'Id of any block: the literal "root", or a type prefix (sec, row, col, txt, btn, img, div, lnk, cod, spc) followed by an underscore and 4 lowercase alphanumeric characters.',
   );
 
-/** Per-type id schema lookup, mirroring BLOCK_ID_PREFIXES. */
+/*
+  Per-type id schema lookup, mirroring BLOCK_ID_PREFIXES.
+*/
 export const blockIdSchemasByType = {
   root: rootBlockIdSchema,
   section: sectionBlockIdSchema,
@@ -253,5 +301,7 @@ export const blockIdSchemasByType = {
   spacer: spacerBlockIdSchema,
 } as const;
 
-/** A block id string. See the module doc for the scheme. */
+/*
+  A block id string. See the module doc for the scheme.
+*/
 export type BlockId = string;

@@ -7,16 +7,16 @@ import type { EditSuggestionsDataPart } from "@/lib/chat-contract";
 import { useEditorStore } from "@/lib/editor-store";
 import { cn } from "@/lib/utils";
 
-/**
- * The apply-able suggestions list (generative UI): 1-4 improvement cards from
- * proposeEdits, each carrying ops the SERVER already dry-ran against the
- * request document. Apply re-dry-runs against the LIVE document first (the
- * persona-findings pattern — the user may have edited since), then dispatches
- * through the normal store spine with agent provenance and one batchId per
- * card, so History shows the change and Revert undoes it in one step. A card
- * whose ops no longer fit degrades to a quiet "no longer matches" note —
- * never a half-applied edit.
- */
+/*
+  The apply-able suggestions list (generative UI): 1-4 improvement cards from
+  proposeEdits, each carrying ops the SERVER already dry-ran against the
+  request document. Apply re-dry-runs against the LIVE document first (the
+  persona-findings pattern — the user may have edited since), then dispatches
+  through the normal store spine with agent provenance and one batchId per
+  card, so History shows the change and Revert undoes it in one step. A card
+  whose ops no longer fit degrades to a quiet "no longer matches" note —
+  never a half-applied edit.
+*/
 
 type SuggestionPhase =
   | { name: "idle" }
@@ -41,8 +41,10 @@ export function EditSuggestionsWidget({ data }: { data: EditSuggestionsDataPart 
 
   const handleApply = (suggestion: EditSuggestionsDataPart["suggestions"][number]): void => {
     const store = useEditorStore.getState();
-    // Re-dry-run against the LIVE document — the server validated against the
-    // request-time document, and the user may have edited since.
+    /*
+      Re-dry-run against the LIVE document — the server validated against the
+      request-time document, and the user may have edited since.
+    */
     if (!applyOperations(store.doc, suggestion.ops).isOk) {
       setPhase(suggestion.id, { name: "stale" });
       return;
@@ -56,8 +58,10 @@ export function EditSuggestionsWidget({ data }: { data: EditSuggestionsDataPart 
         batchId,
       });
       if (!result.isOk) {
-        // Unreachable after the dry-run; a partial batch stays revertable in
-        // History — the card just reports the mismatch.
+        /*
+          Unreachable after the dry-run; a partial batch stays revertable in
+          History — the card just reports the mismatch.
+        */
         setPhase(suggestion.id, { name: "stale" });
         return;
       }

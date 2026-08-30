@@ -2,12 +2,12 @@ import { z } from "zod";
 import { createSectionComposer, headingNode, paragraphNode, textDocOf } from "../build-helpers";
 import { defineSectionTemplate } from "../types";
 
-/**
- * `feature-list` — 2–5 features stacked vertically, each a title plus a short
- * description, separated by dividers. The scannable, mobile-friendly sibling
- * of `feature-columns`. Reference: react.email/components feature-list
- * patterns ("features-with-lists").
- */
+/*
+  `feature-list` — 2–5 features stacked vertically, each a title plus a short
+  description, separated by dividers. The scannable, mobile-friendly sibling
+  of `feature-columns`. Reference: react.email/components feature-list
+  patterns ("features-with-lists").
+*/
 
 const featureSchema = z
   .strictObject({

@@ -3,29 +3,33 @@ import { describe, expect, it } from "vitest";
 import type { FlockChatMessage } from "@/lib/chat-contract";
 import { sanitizeReplayedToolInputs } from "./replayed-tool-inputs";
 
-/**
- * Regression for the live turn-level failure (owner repro, 2026-08-13): a
- * design-variation turn died with Gemini's "Request contains an invalid
- * argument.", and so did every later send in the thread. The server log carried
- * the real reason —
- *
- *   Invalid value at 'contents[1].parts[0].function_call.args'
- *   (type.googleapis.com/google.protobuf.Struct), "{\"name\":\"addSection\", …
- *
- * — a REJECTED tool call whose raw argument TEXT was replayed into a slot the
- * wire format requires to be an object.
- *
- * The assertions that matter are the ones about what
- * `convertToModelMessages` produces: the invariant is not "the part was
- * rewritten", it is "no assistant tool-call reaches the provider with a
- * non-object input".
- */
+/*
+  Regression for the live turn-level failure (owner repro, 2026-08-13): a
+  design-variation turn died with Gemini's "Request contains an invalid
+  argument.", and so did every later send in the thread. The server log carried
+  the real reason —
 
-/** Truncated addSection args, exactly the shape the provider hands back. */
+    Invalid value at 'contents[1].parts[0].function_call.args'
+    (type.googleapis.com/google.protobuf.Struct), "{\"name\":\"addSection\", …
+
+  — a REJECTED tool call whose raw argument TEXT was replayed into a slot the
+  wire format requires to be an object.
+
+  The assertions that matter are the ones about what
+  `convertToModelMessages` produces: the invariant is not "the part was
+  rewritten", it is "no assistant tool-call reaches the provider with a
+  non-object input".
+*/
+
+/*
+  Truncated addSection args, exactly the shape the provider hands back.
+*/
 const TRUNCATED_ARGS =
   '{"name":"addSection","parentId":"root","section":{"id":"sec_a1b2","type":"section","parentId":"root","childrenIds":[],"properties":{}},"children":[';
 
-/** The same mangle, once removed: the whole object as one JSON string. */
+/*
+  The same mangle, once removed: the whole object as one JSON string.
+*/
 const STRINGIFIED_ARGS = JSON.stringify(
   JSON.stringify({ name: "removeBlock", blockId: "txt_a1b2" }),
 );
@@ -70,7 +74,9 @@ describe("sanitizeReplayedToolInputs", () => {
       errorText: "Invalid input: expected object, received string",
     });
 
-    /* The unsanitized history is what Gemini rejected — pin that. */
+    /*
+      The unsanitized history is what Gemini rejected — pin that.
+    */
     const unsanitized = await convertToModelMessages(history, {
       ignoreIncompleteToolCalls: true,
     });
@@ -99,7 +105,9 @@ describe("sanitizeReplayedToolInputs", () => {
     const part = failedPart as unknown as { input: unknown; errorText: string };
 
     expect(part.input).toEqual({});
-    /* The raw text is the only record of what the model tried to send. */
+    /*
+      The raw text is the only record of what the model tried to send.
+    */
     expect(part.errorText).toContain('"name":"addSection"');
     expect(part.errorText).toContain("Invalid input: expected object");
   });
@@ -116,7 +124,9 @@ describe("sanitizeReplayedToolInputs", () => {
     );
     const [, failedPart] = assistantMessage?.parts ?? [];
 
-    /* Not `{}`: the arguments were recoverable, so the model sees its own. */
+    /*
+      Not `{}`: the arguments were recoverable, so the model sees its own.
+    */
     expect((failedPart as unknown as { input: unknown }).input).toEqual({
       name: "removeBlock",
       blockId: "txt_a1b2",
@@ -151,8 +161,10 @@ describe("sanitizeReplayedToolInputs", () => {
   });
 
   it("leaves a failed call whose input is already an object alone", () => {
-    /* The client-side apply gate reports failures with a VALID input object —
-       that call is informative to the model exactly as it stands. */
+    /*
+      The client-side apply gate reports failures with a VALID input object —
+      that call is informative to the model exactly as it stands.
+    */
     const history = buildHistory({
       type: "tool-addSection",
       toolCallId: "call_1",

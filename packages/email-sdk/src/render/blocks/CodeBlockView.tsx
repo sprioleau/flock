@@ -6,27 +6,27 @@ import { blockPaddingStyle, type BlockAnnotation } from "./shared";
 export interface CodeBlockViewProps {
   block: CodeBlock;
   resolvedStyles: ResolvedCodeStyles;
-  /**
-   * Analysis-only stamp carrying this block's id onto the outermost element.
-   * Empty (and therefore absent from the HTML) on every ordinary render —
-   * see BLOCK_ANNOTATION_ATTRIBUTE in ./shared.
-   */
+  /*
+    Analysis-only stamp carrying this block's id onto the outermost element.
+    Empty (and therefore absent from the HTML) on every ordinary render —
+    see BLOCK_ANNOTATION_ATTRIBUTE in ./shared.
+  */
   annotation?: BlockAnnotation;
 }
 
-/**
- * The intent-level theme names the schema exposes ("light" / "dark") map
- * deterministically to React Email's Prism themes here — the model and the
- * property panel never see raw Prism style objects.
- */
+/*
+  The intent-level theme names the schema exposes ("light" / "dark") map
+  deterministically to React Email's Prism themes here — the model and the
+  property panel never see raw Prism style objects.
+*/
 const PRISM_THEMES_BY_NAME = { light: oneLight, dark: oneDark } as const;
 
-/**
- * code → React Email <CodeBlock>: Prism syntax highlighting rendered as a
- * <pre> of spans with inline, email-safe styles (no stylesheets, no script).
- * The theme's own base padding/background stay as designed; outer spacing
- * comes from block padding like every other leaf.
- */
+/*
+  code → React Email <CodeBlock>: Prism syntax highlighting rendered as a
+  <pre> of spans with inline, email-safe styles (no stylesheets, no script).
+  The theme's own base padding/background stay as designed; outer spacing
+  comes from block padding like every other leaf.
+*/
 export function CodeBlockView({ block, resolvedStyles, annotation = {} }: CodeBlockViewProps) {
   return (
     <Row {...annotation}>

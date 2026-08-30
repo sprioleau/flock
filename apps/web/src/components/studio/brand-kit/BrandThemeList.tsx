@@ -51,7 +51,9 @@ export function BrandThemeList({
   onSetDeleted,
 }: {
   variations: ThemeVariation[];
-  /* Soft-deleted themes, oldest deletion first — the Restore list. */
+  /*
+    Soft-deleted themes, oldest deletion first — the Restore list.
+  */
   deletedVariations: ThemeVariation[];
   colors: BrandColor[];
   fonts: BrandKitFonts;
@@ -59,9 +61,13 @@ export function BrandThemeList({
   onSaveEdit: (variation: ThemeVariation) => void;
   onSetDeleted: (input: { variationId: string; isDeleted: boolean }) => void;
 }) {
-  /* Which theme's inline editor is open, by id. Null = none. */
+  /*
+    Which theme's inline editor is open, by id. Null = none.
+  */
   const [editingId, setEditingId] = useState<string | null>(null);
-  /* Which theme the confirmation dialog is asking about. */
+  /*
+    Which theme the confirmation dialog is asking about.
+  */
   const [pendingDeletion, setPendingDeletion] = useState<ThemeVariation | null>(null);
   const paletteHexes = useMemo(() => getPaletteHexes(colors), [colors]);
   /*

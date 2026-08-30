@@ -10,24 +10,26 @@ import { cn } from "@/lib/utils";
 import { SavedSectionPreview } from "../../add-blocks/SavedSectionPreview";
 import { scrollBlockIntoView } from "../../add-blocks/scroll-block-into-view";
 
-/**
- * The section-variations picker (generative UI): click-through themed
- * previews of 2-4 takes on a section, each insertable with "Use this one".
- *
- * - Previews render through SavedSectionPreview — the same SDK block views +
- *   active-theme globals the saved-sections palette uses, so what's shown is
- *   what an insert produces.
- * - "Use this one" applies ONE restoreBlocks op (fresh ids minted against the
- *   live document via buildInsertSavedSectionPlan — the saved-section insert
- *   seam) through the normal store dispatch spine with agent provenance and
- *   its own batchId, so History shows it as an agent change and Revert undoes
- *   the whole insert in one step.
- * - Each variation can be inserted at most once from this widget (the button
- *   flips to Added + Revert); other variations stay available for comparison.
- */
+/*
+  The section-variations picker (generative UI): click-through themed
+  previews of 2-4 takes on a section, each insertable with "Use this one".
+
+  - Previews render through SavedSectionPreview — the same SDK block views +
+    active-theme globals the saved-sections palette uses, so what's shown is
+    what an insert produces.
+  - "Use this one" applies ONE restoreBlocks op (fresh ids minted against the
+    live document via buildInsertSavedSectionPlan — the saved-section insert
+    seam) through the normal store dispatch spine with agent provenance and
+    its own batchId, so History shows it as an agent change and Revert undoes
+    the whole insert in one step.
+  - Each variation can be inserted at most once from this widget (the button
+    flips to Added + Revert); other variations stay available for comparison.
+*/
 export function SectionVariationsWidget({ data }: { data: SectionVariationsDataPart }) {
   const [activeVariationId, setActiveVariationId] = useState(data.variations[0]?.id ?? "");
-  // variation id → the batchId its insert dispatched under (for Revert).
+  /*
+    variation id → the batchId its insert dispatched under (for Revert).
+  */
   const [appliedBatchIds, setAppliedBatchIds] = useState<Record<string, string>>({});
   const [revertingVariationId, setRevertingVariationId] = useState<string | null>(null);
   const [noticeMessage, setNoticeMessage] = useState<string | null>(null);

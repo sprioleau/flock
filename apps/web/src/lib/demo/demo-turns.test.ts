@@ -14,15 +14,15 @@ import {
   type DemoRunState,
 } from "./demo-turns";
 
-/**
- * The demo's ordering rules, which are the demo.
- *
- * The claim these tests exist to defend is that the sequencer advances on TURN
- * COMPLETION and on nothing else — no elapsed time, no wall clock, no
- * scheduled catch-up. That is enforceable here precisely because the module
- * takes no time input at all: the only way to move it is to tell it a turn
- * reported in, and the tests below check that every other route is closed.
- */
+/*
+  The demo's ordering rules, which are the demo.
+
+  The claim these tests exist to defend is that the sequencer advances on TURN
+  COMPLETION and on nothing else — no elapsed time, no wall clock, no
+  scheduled catch-up. That is enforceable here precisely because the module
+  takes no time input at all: the only way to move it is to tell it a turn
+  reported in, and the tests below check that every other route is closed.
+*/
 
 function startedRun(): DemoRunState {
   return startNextTurn(createDemoRunState());
@@ -34,8 +34,10 @@ describe("the scripted run", () => {
       "builtin/tone-police",
       "builtin/styling-recommender",
     ]);
-    // The enablement list is DERIVED from the script — a second hardcoded
-    // roster would let the demo enable an agent it never narrates.
+    /*
+      The enablement list is DERIVED from the script — a second hardcoded
+      roster would let the demo enable an agent it never narrates.
+    */
     expect(DEMO_PERSONA_SLUGS).toEqual(DEMO_TURN_SCRIPT.map((turn) => turn.personaSlug));
   });
 
@@ -51,8 +53,10 @@ describe("advancing", () => {
     const running = startedRun();
     expect(selectRunningTurnIndex(running)).toBe(0);
     expect(selectNextPendingTurnIndex(running)).toBeNull();
-    // Same reference back: a re-render, a double click, or any number of
-    // repeated calls can never overlap two agent turns.
+    /*
+      Same reference back: a re-render, a double click, or any number of
+      repeated calls can never overlap two agent turns.
+    */
     expect(startNextTurn(running)).toBe(running);
     expect(startNextTurn(startNextTurn(running))).toBe(running);
   });
@@ -64,7 +68,9 @@ describe("advancing", () => {
 
     const secondRunning = startNextTurn(afterFirstTurn);
     expect(selectRunningTurnIndex(secondRunning)).toBe(1);
-    // The first turn stays landed — the chain never rewinds what it has shown.
+    /*
+      The first turn stays landed — the chain never rewinds what it has shown.
+    */
     expect(secondRunning.turns[0]!.status).toBe("completed");
   });
 
@@ -80,8 +86,10 @@ describe("advancing", () => {
   it("does not stall the chain when a turn fails, but never claims it landed", () => {
     const afterFailure = completeRunningTurn({ state: startedRun(), outcome: "failed" });
     expect(selectNextPendingTurnIndex(afterFailure)).toBe(1);
-    // A failed turn is excluded from what the panel points the visitor at, so
-    // nobody is sent looking for a recommendation that was never posted.
+    /*
+      A failed turn is excluded from what the panel points the visitor at, so
+      nobody is sent looking for a recommendation that was never posted.
+    */
     expect(selectCompletedTurns(afterFailure)).toEqual([]);
     expect(selectActiveNarration(afterFailure)).toBeNull();
   });
@@ -98,8 +106,10 @@ describe("restarting", () => {
     const restarted = restartDemoRunState();
     expect(restarted.status).toBe("idle");
     expect(restarted.turns.every((turn) => turn.status === "pending")).toBe(true);
-    // Nothing is shared with the run it replaced — a carried-over turn object
-    // would let the driver think it had already dispatched turn one.
+    /*
+      Nothing is shared with the run it replaced — a carried-over turn object
+      would let the driver think it had already dispatched turn one.
+    */
     expect(restarted.turns[0]).not.toBe(midRun.turns[0]);
   });
 });

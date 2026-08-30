@@ -4,25 +4,25 @@ import { api } from "@convex/_generated/api";
 import type { Id } from "@convex/_generated/dataModel";
 import { fetchAuthMutation, fetchAuthQuery } from "@/lib/auth/auth-server";
 
-/**
- * POST /api/library/import-image — the Asset Library's "From URL" import:
- * REHOST an external image into Convex blob storage so the library row (and
- * anything inserted from it) serves from OUR storage URL, never the external
- * one. Same server-side rails as the brand-kit confirm-asset route: the
- * external fetch must happen here (client fetch = CORS), then the shipped
- * upload-URL flow (files.generateUploadUrl → POST bytes → assets.register).
- *
- * Contract (LibraryPanel codes against exactly this):
- *   request:  { sessionId: string, url: string }
- *   response: { isOk: true, url: string }        // the durable Convex URL
- *           | { isOk: false, message: string }   // friendly, user-facing
- *
- * Guards (minimal duplicate of lib/brand-kit-extraction's fetch rails —
- * those files are mid-flight for another workstream; consolidation noted):
- * http(s) only, private/loopback hosts refused, 10s deadline, image/*
- * content-type allowlist (SVG excluded — importing it would need the
- * brand-kit SVG sanitizer), 10 MB streaming cap.
- */
+/*
+  POST /api/library/import-image — the Asset Library's "From URL" import:
+  REHOST an external image into Convex blob storage so the library row (and
+  anything inserted from it) serves from OUR storage URL, never the external
+  one. Same server-side rails as the brand-kit confirm-asset route: the
+  external fetch must happen here (client fetch = CORS), then the shipped
+  upload-URL flow (files.generateUploadUrl → POST bytes → assets.register).
+
+  Contract (LibraryPanel codes against exactly this):
+    request:  { sessionId: string, url: string }
+    response: { isOk: true, url: string }        // the durable Convex URL
+            | { isOk: false, message: string }   // friendly, user-facing
+
+  Guards (minimal duplicate of lib/brand-kit-extraction's fetch rails —
+  those files are mid-flight for another workstream; consolidation noted):
+  http(s) only, private/loopback hosts refused, 10s deadline, image/*
+  content-type allowlist (SVG excluded — importing it would need the
+  brand-kit SVG sanitizer), 10 MB streaming cap.
+*/
 
 const MAX_IMPORT_BYTES = 10 * 1024 * 1024;
 const FETCH_TIMEOUT_MS = 10_000;
@@ -36,7 +36,9 @@ function failureResponse({ message, status }: { message: string; status: number 
   return Response.json({ isOk: false, message }, { status });
 }
 
-/** http(s) URLs only — anything else (data:, file:, ftp:) is refused. */
+/*
+  http(s) URLs only — anything else (data:, file:, ftp:) is refused.
+*/
 function parseImportUrl(rawUrl: string): URL | null {
   let parsed: URL;
   try {
@@ -47,7 +49,9 @@ function parseImportUrl(rawUrl: string): URL | null {
   return parsed.protocol === "https:" || parsed.protocol === "http:" ? parsed : null;
 }
 
-/** Refuse obvious loopback/private/link-local targets (basic SSRF hygiene). */
+/*
+  Refuse obvious loopback/private/link-local targets (basic SSRF hygiene).
+*/
 function isBlockedHostname(hostname: string): boolean {
   const lowerHostname = hostname.toLowerCase();
   if (
@@ -55,7 +59,9 @@ function isBlockedHostname(hostname: string): boolean {
     lowerHostname === "0.0.0.0" ||
     lowerHostname.endsWith(".local") ||
     lowerHostname.endsWith(".internal") ||
-    // IPv6 literals ([::1] etc.) — no legitimate image CDN needs one.
+    /*
+      IPv6 literals ([::1] etc.) — no legitimate image CDN needs one.
+    */
     lowerHostname.startsWith("[")
   ) {
     return true;
@@ -76,7 +82,9 @@ function isBlockedHostname(hostname: string): boolean {
   );
 }
 
-/** "image/png; charset=…" → "image/png"; null when not an importable image. */
+/*
+  "image/png; charset=…" → "image/png"; null when not an importable image.
+*/
 function normalizeImageContentType(contentTypeHeader: string | null): string | null {
   const normalized = contentTypeHeader?.split(";")[0]?.trim().toLowerCase() ?? "";
   if (!normalized.startsWith("image/") || normalized === "image/svg+xml") {
@@ -85,7 +93,9 @@ function normalizeImageContentType(contentTypeHeader: string | null): string | n
   return normalized;
 }
 
-/** Read the body up to the cap; null = over the cap (canceled mid-stream). */
+/*
+  Read the body up to the cap; null = over the cap (canceled mid-stream).
+*/
 async function readBodyWithCap(response: Response): Promise<Uint8Array | null> {
   const reader = response.body?.getReader();
   if (reader === undefined) {
@@ -114,7 +124,9 @@ async function readBodyWithCap(response: Response): Promise<Uint8Array | null> {
   return bytes;
 }
 
-/** Display name from the URL's last path segment, when it has one. */
+/*
+  Display name from the URL's last path segment, when it has one.
+*/
 function deriveAssetName(importUrl: URL): string | null {
   const lastSegment = importUrl.pathname.split("/").filter(Boolean).pop() ?? "";
   let decoded: string;
@@ -154,7 +166,9 @@ export async function POST(request: Request) {
     });
   }
 
-  // 1. Fetch the external image (deadline covers headers AND body read).
+  /*
+    1. Fetch the external image (deadline covers headers AND body read).
+  */
   let imageResponse: Response;
   try {
     imageResponse = await fetch(importUrl, {
@@ -204,11 +218,15 @@ export async function POST(request: Request) {
   }
 
   try {
-    // Authenticated: `assets.register` is keyed by resolveOwnerId, so the
-    // import must present the caller's token or it files the image under the
-    // legacy session id while the library reads under the verified identity.
+    /*
+      Authenticated: `assets.register` is keyed by resolveOwnerId, so the
+      import must present the caller's token or it files the image under the
+      legacy session id while the library reads under the verified identity.
+    */
 
-    // 2. Upload — the shipped server-side pattern (generate-image route).
+    /*
+      2. Upload — the shipped server-side pattern (generate-image route).
+    */
     const postUrl = await fetchAuthMutation(api.files.generateUploadUrl, {});
     const uploadResponse = await fetch(postUrl, {
       method: "POST",
@@ -220,9 +238,11 @@ export async function POST(request: Request) {
     }
     const { storageId } = (await uploadResponse.json()) as { storageId: Id<"_storage"> };
 
-    // 3. Register into the session's library (Content Studio Stage S seam) —
-    // the row's `url` is the durable Convex serving URL; the external origin
-    // is provenance only (sourceUrl), never served from.
+    /*
+      3. Register into the session's library (Content Studio Stage S seam) —
+      the row's `url` is the durable Convex serving URL; the external origin
+      is provenance only (sourceUrl), never served from.
+    */
     const assetName = deriveAssetName(importUrl);
     const { url } = await fetchAuthMutation(api.assets.register, {
       sessionId,

@@ -23,13 +23,13 @@ export interface DragGhostProps {
   globals: GlobalStyles | undefined;
 }
 
-/**
- * Static render of the dragged block for the DragOverlay — the same SDK
- * views the canvas uses, minus the interactive shell, so the lifted copy
- * matches what the user picked up. Leaves render alone; a dragged section
- * renders its whole subtree (rows/columns/leaves recurse). The root is never
- * a drag source and renders nothing.
- */
+/*
+  Static render of the dragged block for the DragOverlay — the same SDK
+  views the canvas uses, minus the interactive shell, so the lifted copy
+  matches what the user picked up. Leaves render alone; a dragged section
+  renders its whole subtree (rows/columns/leaves recurse). The root is never
+  a drag source and renders nothing.
+*/
 export function DragGhost({ blockId, doc, globals }: DragGhostProps) {
   const block = doc[blockId];
   if (block === undefined) {

@@ -55,34 +55,38 @@ import type { Suggestion, SuggestionRung, SuggestionRungId } from "./types";
  * table is unit-testable in the node test environment (no DOM required).
  */
 
-/** react-hotkeys-hook combo notation — `alt` renders as ⌥ on Apple keyboards. */
+/*
+  react-hotkeys-hook combo notation — `alt` renders as ⌥ on Apple keyboards.
+*/
 export const APPLY_SUGGESTION_COMBO = "alt+a";
 
-/** Dismiss the live suggestion (or back out of an open confirm). */
+/*
+  Dismiss the live suggestion (or back out of an open confirm).
+*/
 export const DISMISS_SUGGESTION_COMBO = "escape";
 
-/**
- * The rung ⌥A applies: the first NON-gated rung on the ladder (smallest
- * scope first). Null when every rung is confirm-gated — the keyboard path
- * then does nothing at all rather than promoting a gated rung.
- */
+/*
+  The rung ⌥A applies: the first NON-gated rung on the ladder (smallest
+  scope first). Null when every rung is confirm-gated — the keyboard path
+  then does nothing at all rather than promoting a gated rung.
+*/
 export function getDefaultRung(suggestion: Suggestion): SuggestionRung | null {
   return suggestion.rungs.find((rung) => rung.needsConfirm !== true) ?? null;
 }
 
-/**
- * Can the user act on the live suggestion right now?
- *
- * This was the second, independent half of "I wasn't sure the feature
- * worked": ⌥A was gated on the chat panel being EXPANDED, so with the panel
- * collapsed the suggestion was both invisible AND unreachable. It is reachable
- * whenever it is on screen SOMEWHERE — the chat card in the expanded panel, or
- * the pill under the block that was just edited. The pill reports its own
- * mount (suggestion-surface-store.ts) rather than being inferred, so this
- * never claims a keystroke for something the user cannot see: the pill hides
- * itself in the mobile preview, on a different draft frame, when its block is
- * deselected, and after its × is clicked.
- */
+/*
+  Can the user act on the live suggestion right now?
+
+  This was the second, independent half of "I wasn't sure the feature
+  worked": ⌥A was gated on the chat panel being EXPANDED, so with the panel
+  collapsed the suggestion was both invisible AND unreachable. It is reachable
+  whenever it is on screen SOMEWHERE — the chat card in the expanded panel, or
+  the pill under the block that was just edited. The pill reports its own
+  mount (suggestion-surface-store.ts) rather than being inferred, so this
+  never claims a keystroke for something the user cannot see: the pill hides
+  itself in the mobile preview, on a different draft frame, when its block is
+  deselected, and after its × is clicked.
+*/
 export function getIsSuggestionReachable({
   isChatPanelExpanded,
   isCanvasPillVisible,
@@ -93,29 +97,37 @@ export function getIsSuggestionReachable({
   return isChatPanelExpanded || isCanvasPillVisible;
 }
 
-/** The parts of a keydown this decision depends on (a real KeyboardEvent fits). */
+/*
+  The parts of a keydown this decision depends on (a real KeyboardEvent fits).
+*/
 export interface SuggestionShortcutKeyEvent {
-  /** The produced character/name — used for Esc only (see `code`). */
+  /*
+    The produced character/name — used for Esc only (see `code`).
+  */
   key: string;
-  /**
-   * The PHYSICAL key. The apply chord matches on this, never on `key`:
-   * macOS composes ⌥A into "å", so `key === "a"` silently never fires there.
-   */
+  /*
+    The PHYSICAL key. The apply chord matches on this, never on `key`:
+    macOS composes ⌥A into "å", so `key === "a"` silently never fires there.
+  */
   code: string;
   metaKey: boolean;
   ctrlKey: boolean;
   shiftKey: boolean;
   altKey: boolean;
-  /** Another handler already claimed this keystroke; leave it alone. */
+  /*
+    Another handler already claimed this keystroke; leave it alone.
+  */
   isDefaultPrevented: boolean;
-  /**
-   * The keystroke landed in a field, the composer, or a contenteditable.
-   * Consulted for Esc ONLY — ⌥A deliberately fires inside text fields too.
-   */
+  /*
+    The keystroke landed in a field, the composer, or a contenteditable.
+    Consulted for Esc ONLY — ⌥A deliberately fires inside text fields too.
+  */
   isTypingContext: boolean;
 }
 
-/** What the card should do about a keystroke. */
+/*
+  What the card should do about a keystroke.
+*/
 export type SuggestionShortcutAction =
   | { name: "ignore" }
   | { name: "apply"; rungId: SuggestionRungId }
@@ -124,10 +136,10 @@ export type SuggestionShortcutAction =
 
 const IGNORE: SuggestionShortcutAction = { name: "ignore" };
 
-/**
- * The whole decision table. Returns `ignore` for every keystroke the card
- * must not claim, so the caller can pass the event straight through.
- */
+/*
+  The whole decision table. Returns `ignore` for every keystroke the card
+  must not claim, so the caller can pass the event straight through.
+*/
 export function resolveSuggestionShortcut({
   event,
   suggestion,
@@ -135,9 +147,13 @@ export function resolveSuggestionShortcut({
   isCardInteractive,
 }: {
   event: SuggestionShortcutKeyEvent;
-  /** The live suggestion, or null when nothing is suggested right now. */
+  /*
+    The live suggestion, or null when nothing is suggested right now.
+  */
   suggestion: Suggestion | null;
-  /** The rung whose inline confirm is currently open, or null. */
+  /*
+    The rung whose inline confirm is currently open, or null.
+  */
   confirmingRungId: SuggestionRungId | null;
   /**
    * False while the suggestion exists but the user can see it on NO surface.
@@ -153,22 +169,30 @@ export function resolveSuggestionShortcut({
   }
 
   if (event.key === "Escape") {
-    // Rule 2: Esc belongs to whatever field the user is typing in.
+    /*
+      Rule 2: Esc belongs to whatever field the user is typing in.
+    */
     if (event.isTypingContext) {
       return IGNORE;
     }
-    // A bare Esc only. ⌥Esc / ⇧Esc belong to the OS and the browser.
+    /*
+      A bare Esc only. ⌥Esc / ⇧Esc belong to the OS and the browser.
+    */
     if (event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) {
       return IGNORE;
     }
-    // Esc backs out of the innermost thing first: an open confirm, then the
-    // suggestion itself.
+    /*
+      Esc backs out of the innermost thing first: an open confirm, then the
+      suggestion itself.
+    */
     return confirmingRungId === null ? { name: "dismiss" } : { name: "cancelConfirm" };
   }
 
-  // ⌥A on the PHYSICAL A key, alt and nothing else — so no larger chord
-  // (⌘⌥A, ⌥⇧A, browser and OS combos) can trip an apply. Note the absence of
-  // any isTypingContext check: this chord is meant to reach the user mid-type.
+  /*
+    ⌥A on the PHYSICAL A key, alt and nothing else — so no larger chord
+    (⌘⌥A, ⌥⇧A, browser and OS combos) can trip an apply. Note the absence of
+    any isTypingContext check: this chord is meant to reach the user mid-type.
+  */
   const isApplyChord =
     event.code === "KeyA" &&
     event.altKey &&
@@ -178,7 +202,9 @@ export function resolveSuggestionShortcut({
   if (!isApplyChord) {
     return IGNORE;
   }
-  // Rule 1: an open confirm is a gate, and gates take an explicit click.
+  /*
+    Rule 1: an open confirm is a gate, and gates take an explicit click.
+  */
   if (confirmingRungId !== null) {
     return IGNORE;
   }
@@ -186,13 +212,13 @@ export function resolveSuggestionShortcut({
   return defaultRung === null ? IGNORE : { name: "apply", rungId: defaultRung.id };
 }
 
-/**
- * The card's discoverability hint, in the reader's own keyboard notation:
- * "⌥A to apply · esc to dismiss" on Apple keyboards, "Alt+A to apply ·
- * Esc to dismiss" elsewhere. Derived from the combo constants rather than
- * written out, so the hint cannot drift from the binding. While a confirm is
- * open the only live key is Esc, so the hint says just that.
- */
+/*
+  The card's discoverability hint, in the reader's own keyboard notation:
+  "⌥A to apply · esc to dismiss" on Apple keyboards, "Alt+A to apply ·
+  Esc to dismiss" elsewhere. Derived from the combo constants rather than
+  written out, so the hint cannot drift from the binding. While a confirm is
+  open the only live key is Esc, so the hint says just that.
+*/
 export function formatSuggestionShortcutHint({
   isApplePlatform,
   isConfirming,

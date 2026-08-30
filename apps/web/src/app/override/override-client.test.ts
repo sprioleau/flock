@@ -11,16 +11,16 @@ import {
   resolveReleaseOutcome,
 } from "./override-client";
 
-/**
- * What the /override page does with each answer the endpoint can give.
- *
- * The load-bearing test in this file is "passes the server's rejection through
- * word for word". The ambiguity of "That password didn't match." is a security
- * property (lib/auth/owner-override.ts): a wrong password and a deployment
- * with no override configured must be indistinguishable. A well-meaning future
- * edit that split them into two friendlier messages would break that silently,
- * so it breaks this instead.
- */
+/*
+  What the /override page does with each answer the endpoint can give.
+
+  The load-bearing test in this file is "passes the server's rejection through
+  word for word". The ambiguity of "That password didn't match." is a security
+  property (lib/auth/owner-override.ts): a wrong password and a deployment
+  with no override configured must be indistinguishable. A well-meaning future
+  edit that split them into two friendlier messages would break that silently,
+  so it breaks this instead.
+*/
 
 function jsonResponse(status: number, body: unknown): Response {
   return new Response(JSON.stringify(body), {
@@ -49,7 +49,9 @@ describe("resolveRedeemOutcome", () => {
       body: { isUnlocked: false, message: "That password didn't match." },
     });
     expect(outcome).toEqual({ status: "rejected", message: "That password didn't match." });
-    // Nothing about deployments, configuration, or what to check next.
+    /*
+      Nothing about deployments, configuration, or what to check next.
+    */
     expect(outcome.message).not.toMatch(/deploy|configur|env|set up|enabled/i);
   });
 
@@ -135,7 +137,9 @@ describe("redeemOwnerOverride", () => {
     expect(String(url)).not.toContain("hunter2");
     expect(init?.method).toBe("POST");
     expect(JSON.parse(String(init?.body))).toEqual({ password: "hunter2" });
-    // Same-origin credentials so the Set-Cookie actually lands.
+    /*
+      Same-origin credentials so the Set-Cookie actually lands.
+    */
     expect(init?.credentials).toBe("same-origin");
   });
 

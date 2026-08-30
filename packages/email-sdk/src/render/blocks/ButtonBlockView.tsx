@@ -6,20 +6,20 @@ import { blockPaddingStyle, type BlockAnnotation } from "./shared";
 export interface ButtonBlockViewProps {
   block: ButtonBlock;
   resolvedStyles: ResolvedButtonStyles;
-  /**
-   * Analysis-only stamp carrying this block's id onto the outermost element.
-   * Empty (and therefore absent from the HTML) on every ordinary render —
-   * see BLOCK_ANNOTATION_ATTRIBUTE in ./shared.
-   */
+  /*
+    Analysis-only stamp carrying this block's id onto the outermost element.
+    Empty (and therefore absent from the HTML) on every ordinary render —
+    see BLOCK_ANNOTATION_ATTRIBUTE in ./shared.
+  */
   annotation?: BlockAnnotation;
 }
 
-/**
- * button → React Email <Button> (an inline-block anchor with MSO padding
- * hacks). Inner padding goes through the style `padding` shorthand, which
- * React Email parses to generate Outlook-safe spacing; `align` is applied as
- * text-align on the wrapping cell.
- */
+/*
+  button → React Email <Button> (an inline-block anchor with MSO padding
+  hacks). Inner padding goes through the style `padding` shorthand, which
+  React Email parses to generate Outlook-safe spacing; `align` is applied as
+  text-align on the wrapping cell.
+*/
 export function ButtonBlockView({ block, resolvedStyles, annotation = {} }: ButtonBlockViewProps) {
   const hasBorder = resolvedStyles.borderSize > 0 && resolvedStyles.borderStyle !== "none";
   return (

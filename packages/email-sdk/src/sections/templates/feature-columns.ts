@@ -2,11 +2,11 @@ import { z } from "zod";
 import { createSectionComposer, headingNode, paragraphNode, textDocOf } from "../build-helpers";
 import { defineSectionTemplate } from "../types";
 
-/**
- * `feature-columns` — 2–4 short selling points side by side (column count
- * follows the number of features given). Reference: react.email/components
- * "one-row-two-columns" / "one-row-three-columns".
- */
+/*
+  `feature-columns` — 2–4 short selling points side by side (column count
+  follows the number of features given). Reference: react.email/components
+  "one-row-two-columns" / "one-row-three-columns".
+*/
 
 const featureSchema = z
   .strictObject({

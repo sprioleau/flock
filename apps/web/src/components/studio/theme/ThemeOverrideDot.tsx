@@ -78,8 +78,10 @@ export function ThemeOverrideDot({ documentId }: { documentId: Id<"documents"> }
         <TooltipTrigger
           render={
             <span
-              /* Not a button: there is no action here, only a status. Announced
-                 to screen readers by its label, since the dot itself is color. */
+              /*
+                Not a button: there is no action here, only a status. Announced
+                to screen readers by its label, since the dot itself is color.
+              */
               role="status"
               aria-label={explanation}
               title={explanation}

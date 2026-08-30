@@ -124,8 +124,8 @@ describe("resolveBlockStyles precedence (defaults → globals → block override
       buttonBlock({ backgroundColor: "#ff0000", borderRadius: 0 }),
     );
     expect(fromOverrides.backgroundColor).toBe("#ff0000");
-    expect(fromOverrides.borderRadius).toBe(0); // falsy override still wins
-    expect(fromOverrides.textColor).toBe("#eeeeee"); // untouched fields keep globals
+    expect(fromOverrides.borderRadius).toBe(0); /* falsy override still wins */
+    expect(fromOverrides.textColor).toBe("#eeeeee"); /* untouched fields keep globals */
   });
 
   it("sections: inner/outer backgrounds chain from content/email background globals", () => {
@@ -199,7 +199,9 @@ describe("resolveBlockStyles precedence (defaults → globals → block override
       expect(scope.textColor).toBe("#ff00ff");
       expect(scope.textAlign).toBe("right");
     }
-    // fontFamily is not overridable at block level; globals still apply.
+    /*
+      fontFamily is not overridable at block level; globals still apply.
+    */
     expect(resolved.heading1.fontFamily).toBe(DEFAULT_GLOBAL_STYLES.heading1FontFamily);
   });
 
@@ -227,7 +229,9 @@ describe("resolveBlockStyles precedence (defaults → globals → block override
   it("images: align defaults to center; columns: verticalAlign defaults to top", () => {
     expect(resolveBlockStyles(undefined, imageBlock()).align).toBe("center");
     expect(resolveBlockStyles(undefined, imageBlock({ align: "left" })).align).toBe("left");
-    // Image backgrounds are transparent unless the block sets one.
+    /*
+      Image backgrounds are transparent unless the block sets one.
+    */
     expect(resolveBlockStyles(undefined, imageBlock()).backgroundColor).toBeUndefined();
     expect(
       resolveBlockStyles(undefined, imageBlock({ backgroundColor: "#0ea5e9" })).backgroundColor,
@@ -245,9 +249,13 @@ describe("resolveBlockStyles precedence (defaults → globals → block override
     expect(bare.borderStyle).toBe("solid");
     expect(bare.borderColor).toBe("#000000");
 
-    // globals.imageBorderRadius is the brand-level image shape…
+    /*
+      globals.imageBorderRadius is the brand-level image shape…
+    */
     expect(resolveBlockStyles({ imageBorderRadius: 12 }, imageBlock()).borderRadius).toBe(12);
-    // …and the block override still wins over it.
+    /*
+      …and the block override still wins over it.
+    */
     expect(
       resolveBlockStyles({ imageBorderRadius: 12 }, imageBlock({ borderRadius: 4 })).borderRadius,
     ).toBe(4);

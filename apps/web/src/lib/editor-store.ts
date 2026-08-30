@@ -70,7 +70,9 @@ import { toHistoryStepOutcome, type HistoryStepOutcome } from "./history-step-re
  * specific frame's subtree or in shell chrome (toolbar, chat, panels).
  */
 
-/** Default provenance for ops produced by this UI's own controls. */
+/*
+  Default provenance for ops produced by this UI's own controls.
+*/
 const LOCAL_ACTION_CONTEXT: Omit<ActionContext, "authorId"> = {
   caller: "frontend",
   author: "user",
@@ -79,31 +81,31 @@ const LOCAL_ACTION_CONTEXT: Omit<ActionContext, "authorId"> = {
 /** Fallback session id before {@link EditorState.connectDocument} has run. */
 const UNCONNECTED_AUTHOR_ID = "local";
 
-/**
- * The provenance one dispatch commits under.
- *
- * `authorId` is the DISPLAY author and callers override it freely — the chat
- * panel stamps the chat id, the suggestion and persona surfaces stamp their
- * own labels. `undoOwnerId` is a separate question: whose undo stack the op
- * belongs to. Every op dispatched from this browser was asked for by the
- * person sitting in front of it, so the connected session always owns it,
- * and no provenance override can take it off their stack.
- *
- * `verifiedCaller` is a third question and this function answers it the only
- * way a browser honestly can: it does not. The field is DROPPED off
- * `provenance` rather than passed through, because `DispatchProvenance` is a
- * `Partial<ActionContext>` and would otherwise let any client caller assert a
- * verified identity for itself — the precise thing the field exists to make
- * impossible. Verification is established server-side from a signed token
- * (see api/chat/verified-caller.ts) and nowhere else.
- *
- * Dropping it also keeps it OFF THE WIRE. This context is passed straight
- * through to Convex as a mutation argument, and Convex arg validators reject
- * fields they do not declare, so a field that can reach this object is a field
- * `applyContextValidator` must be taught about — and taught about in a deploy
- * that lands BEFORE the frontend that sends it. Nothing here can produce one,
- * so no validator changes and no deploy ordering.
- */
+/*
+  The provenance one dispatch commits under.
+
+  `authorId` is the DISPLAY author and callers override it freely — the chat
+  panel stamps the chat id, the suggestion and persona surfaces stamp their
+  own labels. `undoOwnerId` is a separate question: whose undo stack the op
+  belongs to. Every op dispatched from this browser was asked for by the
+  person sitting in front of it, so the connected session always owns it,
+  and no provenance override can take it off their stack.
+
+  `verifiedCaller` is a third question and this function answers it the only
+  way a browser honestly can: it does not. The field is DROPPED off
+  `provenance` rather than passed through, because `DispatchProvenance` is a
+  `Partial<ActionContext>` and would otherwise let any client caller assert a
+  verified identity for itself — the precise thing the field exists to make
+  impossible. Verification is established server-side from a signed token
+  (see api/chat/verified-caller.ts) and nowhere else.
+
+  Dropping it also keeps it OFF THE WIRE. This context is passed straight
+  through to Convex as a mutation argument, and Convex arg validators reject
+  fields they do not declare, so a field that can reach this object is a field
+  `applyContextValidator` must be taught about — and taught about in a deploy
+  that lands BEFORE the frontend that sends it. Nothing here can produce one,
+  so no validator changes and no deploy ordering.
+*/
 export function buildDispatchContext({
   sessionAuthorId,
   provenance,
@@ -142,28 +144,30 @@ export type DispatchProvenance = Partial<ActionContext>;
 
 export type Viewport = PreviewMode;
 
-/**
- * Gesture-settling window. Property-panel inputs dispatch on EVERY input
- * event so the canvas tracks in real time (color drags fire ~16ms apart);
- * consecutive ops hitting the same block + operation + property key set
- * within this window are ONE gesture: the held outbound op is replaced by the
- * latest forward op, and only the settled op is sent to Convex. A gesture
- * ends when the window lapses, the field blurs (endCoalescing), or a
- * different target or property is edited. One gesture = one Convex op = one
- * server-side undo step.
- */
+/*
+  Gesture-settling window. Property-panel inputs dispatch on EVERY input
+  event so the canvas tracks in real time (color drags fire ~16ms apart);
+  consecutive ops hitting the same block + operation + property key set
+  within this window are ONE gesture: the held outbound op is replaced by the
+  latest forward op, and only the settled op is sent to Convex. A gesture
+  ends when the window lapses, the field blurs (endCoalescing), or a
+  different target or property is edited. One gesture = one Convex op = one
+  server-side undo step.
+*/
 export const UNDO_COALESCE_WINDOW_MS = 120;
 
-/**
- * A dispatchable content input: a plain email-sdk Operation, or one of the
- * intent-shaped inputs (styleTextSpan, scaffoldSection) whose translation to
- * a canonical op (updateText / addSection) happens inside
- * dispatchContentAction (SDK resolveOperation hooks) against the CURRENT
- * local document. Type-only union — no dispatch logic branches on it.
- */
+/*
+  A dispatchable content input: a plain email-sdk Operation, or one of the
+  intent-shaped inputs (styleTextSpan, scaffoldSection) whose translation to
+  a canonical op (updateText / addSection) happens inside
+  dispatchContentAction (SDK resolveOperation hooks) against the CURRENT
+  local document. Type-only union — no dispatch logic branches on it.
+*/
 export type DispatchableOp = Operation | StyleTextSpanInput | ScaffoldSectionInput;
 
-/** Coalesce key for an op, or null when the op never coalesces. */
+/*
+  Coalesce key for an op, or null when the op never coalesces.
+*/
 function getCoalesceKey(op: DispatchableOp): string | null {
   if (op.name === "updateBlockProperties") {
     return `updateBlockProperties:${op.blockId}:${Object.keys(op.properties).sort().join(",")}`;
@@ -174,52 +178,66 @@ function getCoalesceKey(op: DispatchableOp): string | null {
   return null;
 }
 
-/** One op in the outbound overlay (held, in flight, or acked-awaiting-snapshot). */
+/*
+  One op in the outbound overlay (held, in flight, or acked-awaiting-snapshot).
+*/
 interface PendingOp {
-  /** Local identity (server versions don't exist until the ack). */
+  /*
+    Local identity (server versions don't exist until the ack).
+  */
   clientId: string;
-  /** The RESOLVED operation (styleTextSpan intents resolve to updateText). */
+  /*
+    The RESOLVED operation (styleTextSpan intents resolve to updateText).
+  */
   op: Operation;
-  /**
-   * The raw styleTextSpan intent when this pending op came from one (null
-   * otherwise). Sent to Convex INSTEAD of the locally-resolved op so the
-   * server re-runs the same deterministic translation against the
-   * authoritative document (agentText.applyAgentStyleTextSpan); `op` remains
-   * what the local overlay replays for instant feedback.
-   */
+  /*
+    The raw styleTextSpan intent when this pending op came from one (null
+    otherwise). Sent to Convex INSTEAD of the locally-resolved op so the
+    server re-runs the same deterministic translation against the
+    authoritative document (agentText.applyAgentStyleTextSpan); `op` remains
+    what the local overlay replays for instant feedback.
+  */
   styleTextSpanIntent: StyleTextSpanInput | null;
   context: ActionContext;
-  /** True while the op is held open for gesture coalescing (not yet sent). */
+  /*
+    True while the op is held open for gesture coalescing (not yet sent).
+  */
   isHeld: boolean;
-  /** Discriminates the gesture: op name + target + sorted property keys. */
+  /*
+    Discriminates the gesture: op name + target + sorted property keys.
+  */
   coalesceKey: string | null;
-  /** Timestamp of the gesture's most recent dispatch (epoch ms). */
+  /*
+    Timestamp of the gesture's most recent dispatch (epoch ms).
+  */
   lastDispatchedAt: number;
-  /** Server headVersion after this op, once the mutation acked (null before). */
+  /*
+    Server headVersion after this op, once the mutation acked (null before).
+  */
   confirmedVersion: number | null;
 }
 
-/**
- * Route ONE settled operation to the correct Convex mutation — THE wire-out
- * seam shared by the store's own outbound overlay (sendPendingOp) and the
- * chat panel's mid-turn-draft-switch path (use-flock-chat.ts, which must
- * land a turn's ops in the document the turn STARTED in even when that
- * document is no longer the connected one).
- *
- * Phase 5.3 routing: agent `updateText` ops go through
- * agentText.applyAgentTextEdit, which records the SAME standard op row
- * (author/batchId provenance intact) AND merges the edit into the block's
- * live ProseMirror sync doc via the component's server-side transform — so
- * an agent rewrite lands as a minimal targeted change that rebases against
- * concurrent human keystrokes instead of clobbering them. Agent
- * `styleTextSpan` intents route through the sibling
- * agentText.applyAgentStyleTextSpan, which re-runs the same deterministic
- * find→marks translation against the AUTHORITATIVE document before recording
- * the one resulting updateText op the same way. All mutations return the
- * same result shape, so callers share their ack/failure handling. User
- * `updateText` session ops keep using applyOperations: their content ALREADY
- * came from the sync doc, so transforming it again would be circular.
- */
+/*
+  Route ONE settled operation to the correct Convex mutation — THE wire-out
+  seam shared by the store's own outbound overlay (sendPendingOp) and the
+  chat panel's mid-turn-draft-switch path (use-flock-chat.ts, which must
+  land a turn's ops in the document the turn STARTED in even when that
+  document is no longer the connected one).
+
+  Phase 5.3 routing: agent `updateText` ops go through
+  agentText.applyAgentTextEdit, which records the SAME standard op row
+  (author/batchId provenance intact) AND merges the edit into the block's
+  live ProseMirror sync doc via the component's server-side transform — so
+  an agent rewrite lands as a minimal targeted change that rebases against
+  concurrent human keystrokes instead of clobbering them. Agent
+  `styleTextSpan` intents route through the sibling
+  agentText.applyAgentStyleTextSpan, which re-runs the same deterministic
+  find→marks translation against the AUTHORITATIVE document before recording
+  the one resulting updateText op the same way. All mutations return the
+  same result shape, so callers share their ack/failure handling. User
+  `updateText` session ops keep using applyOperations: their content ALREADY
+  came from the sync doc, so transforming it again would be circular.
+*/
 export function submitOperationToConvex({
   convexClient,
   documentId,
@@ -229,9 +247,13 @@ export function submitOperationToConvex({
 }: {
   convexClient: ConvexReactClient;
   documentId: Id<"documents">;
-  /** The RESOLVED operation (styleTextSpan intents resolve to updateText). */
+  /*
+    The RESOLVED operation (styleTextSpan intents resolve to updateText).
+  */
   op: Operation;
-  /** The raw styleTextSpan intent when `op` came from one (null otherwise). */
+  /*
+    The raw styleTextSpan intent when `op` came from one (null otherwise).
+  */
   styleTextSpanIntent: StyleTextSpanInput | null;
   context: ActionContext;
 }) {
@@ -257,7 +279,9 @@ export function submitOperationToConvex({
         });
 }
 
-/** Replay the still-pending overlay onto a server doc (dropping covered/conflicting ops). */
+/*
+  Replay the still-pending overlay onto a server doc (dropping covered/conflicting ops).
+*/
 function rebasePendingOps({
   serverDoc,
   serverHeadVersion,
@@ -280,8 +304,10 @@ function rebasePendingOps({
       doc = result.doc;
       remaining.push(pending);
     } else {
-      // A remote edit invalidated this not-yet-applied local op (e.g. the
-      // target block was deleted in another tab). Drop it; the server wins.
+      /*
+        A remote edit invalidated this not-yet-applied local op (e.g. the
+        target block was deleted in another tab). Drop it; the server wins.
+      */
       console.warn(`pending ${pending.op.name} no longer applies after rebase; dropped`);
     }
   }
@@ -304,44 +330,66 @@ function toHistoryFailureMessage(reason: string): string {
   return HISTORY_FAILURE_MESSAGES[reason] ?? `Couldn't apply (${reason}).`;
 }
 
-/** Result surfaced to the AI-batch revert affordance. */
+/*
+  Result surfaced to the AI-batch revert affordance.
+*/
 export type RevertBatchResult = { isOk: true } | { isOk: false; message: string };
 
-/** Result surfaced to the history panel's restore affordance. */
+/*
+  Result surfaced to the history panel's restore affordance.
+*/
 export type RestoreVersionResult = { isOk: true } | { isOk: false; message: string };
 
 export interface EditorState {
-  /** The rendered email document: server head + the pending local overlay. */
+  /*
+    The rendered email document: server head + the pending local overlay.
+  */
   doc: EmailDocument;
-  /** Last server snapshot from the reactive getDocument query (null until loaded). */
+  /*
+    Last server snapshot from the reactive getDocument query (null until loaded).
+  */
   serverDoc: EmailDocument | null;
   serverHeadVersion: number;
-  /** True once the first server snapshot has been applied. */
+  /*
+    True once the first server snapshot has been applied.
+  */
   isDocumentReady: boolean;
-  /** The Convex document this store is bound to (null before connect). */
+  /*
+    The Convex document this store is bound to (null before connect).
+  */
   documentId: Id<"documents"> | null;
-  /**
-   * The canvas the connected document lives on (null before connect). Held
-   * here — not derived from the reactive snapshot — so the drafts bar keeps
-   * its canvas while a draft switch's new subscription is still loading
-   * (the snapshot goes undefined in that window; this does not).
-   */
+  /*
+    The canvas the connected document lives on (null before connect). Held
+    here — not derived from the reactive snapshot — so the drafts bar keeps
+    its canvas while a draft switch's new subscription is still loading
+    (the snapshot goes undefined in that window; this does not).
+  */
   canvasId: Id<"canvases"> | null;
-  /** The anonymous session id — authorId for user ops and history calls. */
+  /*
+    The anonymous session id — authorId for user ops and history calls.
+  */
   authorId: string | null;
-  /** Outbound overlay: held/in-flight/acked-awaiting-snapshot ops, oldest first. */
+  /*
+    Outbound overlay: held/in-flight/acked-awaiting-snapshot ops, oldest first.
+  */
   pendingOps: PendingOp[];
-  /** Server-derived button states (fed from the history.canUndoRedo query). */
+  /*
+    Server-derived button states (fed from the history.canUndoRedo query).
+  */
   canUndo: boolean;
   canRedo: boolean;
-  /** Transient user-facing notice (undo/redo/revert failures, dropped ops). */
+  /*
+    Transient user-facing notice (undo/redo/revert failures, dropped ops).
+  */
   notice: string | null;
-  /** The currently selected block on the canvas, or null for no selection. */
+  /*
+    The currently selected block on the canvas, or null for no selection.
+  */
   selectedBlockId: BlockId | null;
-  /**
-   * The text block whose inline rich-text editor is open, or null. At most
-   * one editor is open at a time; while open, canvas selection stays on it.
-   */
+  /*
+    The text block whose inline rich-text editor is open, or null. At most
+    one editor is open at a time; while open, canvas selection stays on it.
+  */
   editingBlockId: BlockId | null;
   /*
     The block a hovered breadcrumb chip is previewing, or null. Its shell
@@ -352,21 +400,31 @@ export interface EditorState {
     one document, and forked sibling drafts share block ids.
   */
   hoverPreviewBlockId: BlockId | null;
-  /** Canvas viewport width preset. */
+  /*
+    Canvas viewport width preset.
+  */
   viewport: Viewport;
 
-  /** Bind the store to a loaded Convex document (called by StudioShell on load and on draft switch). */
+  /*
+    Bind the store to a loaded Convex document (called by StudioShell on load and on draft switch).
+  */
   connectDocument: (input: {
     convexClient: ConvexReactClient;
     documentId: Id<"documents">;
     canvasId: Id<"canvases">;
     authorId: string;
   }) => void;
-  /** Detach from the current document and clear all document-scoped state. */
+  /*
+    Detach from the current document and clear all document-scoped state.
+  */
   resetDocumentState: () => void;
-  /** Feed a reactive getDocument snapshot in; rebases the pending overlay. */
+  /*
+    Feed a reactive getDocument snapshot in; rebases the pending overlay.
+  */
   applyServerSnapshot: (input: { doc: EmailDocument; headVersion: number }) => void;
-  /** Feed the reactive canUndoRedo query result in. */
+  /*
+    Feed the reactive canUndoRedo query result in.
+  */
   setHistoryAvailability: (input: { canUndo: boolean; canRedo: boolean }) => void;
 
   /**
@@ -378,10 +436,10 @@ export interface EditorState {
    * ops never coalesce — each is sent immediately with its own identity.
    */
   dispatch: (op: DispatchableOp, provenance?: DispatchProvenance) => DispatchContentActionResult;
-  /**
-   * Explicitly end the active gesture (field blur / picker close): flushes
-   * the held op to Convex; the next dispatch starts a fresh gesture.
-   */
+  /*
+    Explicitly end the active gesture (field blur / picker close): flushes
+    the held op to Convex; the next dispatch starts a fresh gesture.
+  */
   endCoalescing: () => void;
   /*
     Server-side per-author undo (history.undo). Failures still surface as a
@@ -393,29 +451,39 @@ export interface EditorState {
   undo: () => Promise<HistoryStepOutcome>;
   /** Server-side per-author redo (history.redo) — same contract as {@link undo}. */
   redo: () => Promise<HistoryStepOutcome>;
-  /** Revert one AI turn's batch (history.revertBatch). */
+  /*
+    Revert one AI turn's batch (history.revertBatch).
+  */
   revertAgentBatch: (batchId: string) => Promise<RevertBatchResult>;
-  /** Restore the document to a historical version (history.rollbackToVersion). */
+  /*
+    Restore the document to a historical version (history.rollbackToVersion).
+  */
   restoreVersion: (version: number) => Promise<RestoreVersionResult>;
 
   showNotice: (message: string) => void;
   dismissNotice: () => void;
 
   selectBlock: (blockId: BlockId | null) => void;
-  /**
-   * Open the inline rich-text editor for a text block (also selects it).
-   * Selecting any other block — or deselecting — closes the open editor;
-   * the editor component commits its session on unmount.
-   */
+  /*
+    Open the inline rich-text editor for a text block (also selects it).
+    Selecting any other block — or deselecting — closes the open editor;
+    the editor component commits its session on unmount.
+  */
   startTextEditing: (blockId: BlockId) => void;
-  /** Close the inline rich-text editor (selection is left untouched). */
+  /*
+    Close the inline rich-text editor (selection is left untouched).
+  */
   stopTextEditing: () => void;
-  /** Arm (or clear) the dashed ancestor-hover preview outline. */
+  /*
+    Arm (or clear) the dashed ancestor-hover preview outline.
+  */
   setHoverPreviewBlock: (blockId: BlockId | null) => void;
   setViewport: (viewport: Viewport) => void;
 }
 
-/** Keep the selection only if the block still exists in the new document. */
+/*
+  Keep the selection only if the block still exists in the new document.
+*/
 function reconcileSelection(
   selectedBlockId: BlockId | null,
   doc: EmailDocument,
@@ -425,17 +493,21 @@ function reconcileSelection(
     : null;
 }
 
-/** One independent editor-store instance (vanilla zustand StoreApi). */
+/*
+  One independent editor-store instance (vanilla zustand StoreApi).
+*/
 export type EditorStoreApi = StoreApi<EditorState>;
 
-/**
- * THE FACTORY: one fully independent editor store — its own rendered doc,
- * server mirror, pending-op overlay, selection, gesture timers, and Convex
- * client binding. Two instances never share document state.
- */
+/*
+  THE FACTORY: one fully independent editor store — its own rendered doc,
+  server mirror, pending-op overlay, selection, gesture timers, and Convex
+  client binding. Two instances never share document state.
+*/
 export function createEditorStore(): EditorStoreApi {
   return createStore<EditorState>()((set, get) => {
-  // The Convex client is runtime wiring, not renderable state.
+  /*
+    The Convex client is runtime wiring, not renderable state.
+  */
   let convexClient: ConvexReactClient | null = null;
   let flushTimerId: ReturnType<typeof setTimeout> | null = null;
   let noticeTimerId: ReturnType<typeof setTimeout> | null = null;
@@ -445,7 +517,9 @@ export function createEditorStore(): EditorStoreApi {
     return lastPending !== undefined && lastPending.isHeld ? lastPending : null;
   };
 
-  /** Remove one pending op (send failure) and rebase the doc without it. */
+  /*
+    Remove one pending op (send failure) and rebase the doc without it.
+  */
   const dropPendingOp = (clientId: string, noticeMessage: string): void => {
     set((state) => {
       const pendingOps = state.pendingOps.filter((pending) => pending.clientId !== clientId);
@@ -467,7 +541,9 @@ export function createEditorStore(): EditorStoreApi {
     get().showNotice(noticeMessage);
   };
 
-  /** Submit one pending op to Convex applyOperations and track its outcome. */
+  /*
+    Submit one pending op to Convex applyOperations and track its outcome.
+  */
   const sendPendingOp = (clientId: string): void => {
     const { documentId, pendingOps } = get();
     const pending = pendingOps.find((candidate) => candidate.clientId === clientId);
@@ -481,8 +557,10 @@ export function createEditorStore(): EditorStoreApi {
         ),
       }));
     }
-    // Routing (agentText vs applyOperations) lives in submitOperationToConvex,
-    // shared with the chat panel's mid-turn-draft-switch path.
+    /*
+      Routing (agentText vs applyOperations) lives in submitOperationToConvex,
+      shared with the chat panel's mid-turn-draft-switch path.
+    */
     const mutationPromise = submitOperationToConvex({
       convexClient,
       documentId,
@@ -502,7 +580,9 @@ export function createEditorStore(): EditorStoreApi {
           const pendingOpsWithAck = state.pendingOps.map((candidate) =>
             candidate.clientId === clientId ? { ...candidate, confirmedVersion } : candidate,
           );
-          // If the snapshot covering this version already arrived, prune now.
+          /*
+            If the snapshot covering this version already arrived, prune now.
+          */
           if (state.serverDoc !== null && confirmedVersion <= state.serverHeadVersion) {
             const rebased = rebasePendingOps({
               serverDoc: state.serverDoc,
@@ -519,7 +599,9 @@ export function createEditorStore(): EditorStoreApi {
       });
   };
 
-  /** Settle the open gesture: send its held op now. */
+  /*
+    Settle the open gesture: send its held op now.
+  */
   const flushHeldOp = (): void => {
     if (flushTimerId !== null) {
       clearTimeout(flushTimerId);
@@ -531,7 +613,9 @@ export function createEditorStore(): EditorStoreApi {
     }
   };
 
-  /** (Re)arm the gesture-settle timer. */
+  /*
+    (Re)arm the gesture-settle timer.
+  */
   const scheduleFlush = (): void => {
     if (flushTimerId !== null) {
       clearTimeout(flushTimerId);
@@ -620,25 +704,31 @@ export function createEditorStore(): EditorStoreApi {
         context,
       });
       if (!result.isOk) {
-        // Surface for debugging; UI controls are built to only emit valid ops.
-        // Agent-authored failures are an EXPECTED path (the chat panel surfaces
-        // them as failed chips and reports them back to the model), so they are
-        // not console noise.
+        /*
+          Surface for debugging; UI controls are built to only emit valid ops.
+          Agent-authored failures are an EXPECTED path (the chat panel surfaces
+          them as failed chips and reports them back to the model), so they are
+          not console noise.
+        */
         if (context.author !== "agent") {
           console.error(`dispatch(${op.name}) failed`, result.errors);
         }
         return result;
       }
 
-      // 1. Instant local apply — the input path never waits on Convex.
+      /*
+        1. Instant local apply — the input path never waits on Convex.
+      */
       set((state) => ({
         doc: result.doc,
         selectedBlockId: reconcileSelection(state.selectedBlockId, result.doc),
         editingBlockId: reconcileSelection(state.editingBlockId, result.doc),
       }));
 
-      // 2. Outbound bookkeeping. Agent ops never coalesce: each tool call is a
-      // discrete edit with its own provenance.
+      /*
+        2. Outbound bookkeeping. Agent ops never coalesce: each tool call is a
+        discrete edit with its own provenance.
+      */
       const now = Date.now();
       const coalesceKey = context.author === "agent" ? null : getCoalesceKey(op);
       /*
@@ -657,8 +747,10 @@ export function createEditorStore(): EditorStoreApi {
         now - heldOp.lastDispatchedAt <= UNDO_COALESCE_WINDOW_MS;
 
       if (isSameGesture) {
-        // Extend the open gesture: the latest forward op supersedes the held
-        // one entirely (same target, same property keys, newest values).
+        /*
+          Extend the open gesture: the latest forward op supersedes the held
+          one entirely (same target, same property keys, newest values).
+        */
         set((state) => ({
           pendingOps: state.pendingOps.map((candidate) =>
             candidate.clientId === heldOp.clientId
@@ -670,8 +762,10 @@ export function createEditorStore(): EditorStoreApi {
         return result;
       }
 
-      // A new edit always settles the previous gesture first (server order
-      // must match local apply order).
+      /*
+        A new edit always settles the previous gesture first (server order
+        must match local apply order).
+      */
       flushHeldOp();
       const pending: PendingOp = {
         clientId: crypto.randomUUID(),
@@ -699,7 +793,9 @@ export function createEditorStore(): EditorStoreApi {
       if (documentId === null || authorId === null || convexClient === null) {
         return { isOk: false as const, reason: "not_connected" as const };
       }
-      // Settle the open gesture first so it is what gets undone.
+      /*
+        Settle the open gesture first so it is what gets undone.
+      */
       flushHeldOp();
       try {
         const result = await convexClient.mutation(api.history.undo, { documentId, authorId });
@@ -795,8 +891,10 @@ export function createEditorStore(): EditorStoreApi {
     selectBlock: (blockId) =>
       set((state) => ({
         selectedBlockId: blockId,
-        // Moving selection off the block being edited closes its editor
-        // (the unmounting editor commits its session).
+        /*
+          Moving selection off the block being edited closes its editor
+          (the unmounting editor commits its session).
+        */
         editingBlockId: state.editingBlockId === blockId ? state.editingBlockId : null,
         /*
           Selecting always ends the preview: the chip that armed it belongs
@@ -815,13 +913,17 @@ export function createEditorStore(): EditorStoreApi {
   });
 }
 
-// ---------------------------------------------------------------------------
-// Per-document registry — one cached instance per documentId
-// ---------------------------------------------------------------------------
+/*
+  ---------------------------------------------------------------------------
+  Per-document registry — one cached instance per documentId
+  ---------------------------------------------------------------------------
+*/
 
 interface EditorStoreRegistryEntry {
   store: EditorStoreApi;
-  /** Mounted holders (frames, pinned chat turns). Disposed when it hits 0. */
+  /*
+    Mounted holders (frames, pinned chat turns). Disposed when it hits 0.
+  */
   referenceCount: number;
 }
 
@@ -845,7 +947,9 @@ export function acquireEditorStore(documentId: Id<"documents">): EditorStoreApi 
   return store;
 }
 
-/** Drop one reference; the last release detaches and evicts the instance. */
+/*
+  Drop one reference; the last release detaches and evicts the instance.
+*/
 export function releaseEditorStore(documentId: Id<"documents">): void {
   const entry = editorStoreRegistry.get(documentId);
   if (entry === undefined) {
@@ -856,36 +960,46 @@ export function releaseEditorStore(documentId: Id<"documents">): void {
     return;
   }
   editorStoreRegistry.delete(documentId);
-  // Clears gesture timers and document-scoped state; the detached instance
-  // is then garbage-collectable once its subscribers unhook.
+  /*
+    Clears gesture timers and document-scoped state; the detached instance
+    is then garbage-collectable once its subscribers unhook.
+  */
   entry.store.getState().resetDocumentState();
 }
 
-/** Peek without taking a reference (null when no frame holds the document). */
+/*
+  Peek without taking a reference (null when no frame holds the document).
+*/
 export function peekEditorStore(documentId: Id<"documents">): EditorStoreApi | null {
   return editorStoreRegistry.get(documentId)?.store ?? null;
 }
 
-// ---------------------------------------------------------------------------
-// The ACTIVE instance + the compatibility hook
-// ---------------------------------------------------------------------------
+/*
+  ---------------------------------------------------------------------------
+  The ACTIVE instance + the compatibility hook
+  ---------------------------------------------------------------------------
+*/
 
-/**
- * The active editor store: the instance bound to the authoritative `?doc=`
- * URL. Held in a tiny swappable store so hook consumers re-render when the
- * lifecycle owner (StudioShell) swaps instances on a draft switch. Starts
- * with a detached default instance — exactly the old singleton's boot state.
- */
+/*
+  The active editor store: the instance bound to the authoritative `?doc=`
+  URL. Held in a tiny swappable store so hook consumers re-render when the
+  lifecycle owner (StudioShell) swaps instances on a draft switch. Starts
+  with a detached default instance — exactly the old singleton's boot state.
+*/
 const activeEditorStoreHolder = createStore<{ store: EditorStoreApi }>(() => ({
   store: createEditorStore(),
 }));
 
-/** The instance currently bound to the URL's ?doc= (always non-null). */
+/*
+  The instance currently bound to the URL's ?doc= (always non-null).
+*/
 export function getActiveEditorStore(): EditorStoreApi {
   return activeEditorStoreHolder.getState().store;
 }
 
-/** Swap the active instance (lifecycle owner only — the ?doc= URL is authoritative). */
+/*
+  Swap the active instance (lifecycle owner only — the ?doc= URL is authoritative).
+*/
 export function setActiveEditorStore(store: EditorStoreApi): void {
   if (activeEditorStoreHolder.getState().store !== store) {
     activeEditorStoreHolder.setState({ store });
@@ -900,13 +1014,13 @@ export function setActiveEditorStore(store: EditorStoreApi): void {
 const EditorStoreContext = createContext<EditorStoreApi | null>(null);
 export const EditorStoreProvider = EditorStoreContext.Provider;
 
-/**
- * The historical consumer surface, preserved: a selector hook that also
- * carries getState/subscribe statics. Hook reads resolve against the nearest
- * EditorStoreProvider, falling back to the active instance; the statics
- * always target the ACTIVE instance (imperative call sites all mean "the
- * document the studio is editing").
- */
+/*
+  The historical consumer surface, preserved: a selector hook that also
+  carries getState/subscribe statics. Hook reads resolve against the nearest
+  EditorStoreProvider, falling back to the active instance; the statics
+  always target the ACTIVE instance (imperative call sites all mean "the
+  document the studio is editing").
+*/
 export function useEditorStore<SelectedValue>(
   selector: (state: EditorState) => SelectedValue,
 ): SelectedValue {
@@ -935,13 +1049,13 @@ useEditorStore.setState = (partial: Partial<EditorState>): void => {
   getActiveEditorStore().setState(partial);
 };
 
-/**
- * Subscribe to the ACTIVE instance, surviving instance swaps: when the
- * lifecycle owner swaps the active store (draft switch), the subscription
- * transparently re-attaches to the new instance — matching the old
- * singleton's "one subscription across draft switches" behavior that
- * use-persona-advisors and use-suggestions rely on.
- */
+/*
+  Subscribe to the ACTIVE instance, surviving instance swaps: when the
+  lifecycle owner swaps the active store (draft switch), the subscription
+  transparently re-attaches to the new instance — matching the old
+  singleton's "one subscription across draft switches" behavior that
+  use-persona-advisors and use-suggestions rely on.
+*/
 useEditorStore.subscribe = (
   listener: (state: EditorState, previousState: EditorState) => void,
 ): (() => void) => {
@@ -956,8 +1070,10 @@ useEditorStore.subscribe = (
   };
 };
 
-// Dev-only escape hatch so in-browser verification (agents, debugging) can
-// inspect the pending overlay and document without going through React.
+/*
+  Dev-only escape hatch so in-browser verification (agents, debugging) can
+  inspect the pending overlay and document without going through React.
+*/
 declare global {
   interface Window {
     __flockEditorStore?: typeof useEditorStore;
@@ -967,8 +1083,12 @@ if (typeof window !== "undefined" && process.env.NODE_ENV !== "production") {
   window.__flockEditorStore = useEditorStore;
 }
 
-/** Selector: can history.undo do anything for this author? (server-derived) */
+/*
+  Selector: can history.undo do anything for this author? (server-derived)
+*/
 export const selectCanUndo = (state: EditorState): boolean => state.canUndo;
 
-/** Selector: can history.redo do anything for this author? (server-derived) */
+/*
+  Selector: can history.redo do anything for this author? (server-derived)
+*/
 export const selectCanRedo = (state: EditorState): boolean => state.canRedo;

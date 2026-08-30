@@ -10,16 +10,16 @@ import { Textarea } from "@/components/ui/textarea";
 import { retryGenerateImageFlow, runGenerateImageFlow } from "@/lib/generate-image-flow";
 import { useImagePreviewStore } from "@/lib/image-preview-store";
 
-/**
- * "Generate with AI" for the image panel: prompt in, image on the canvas.
- *
- * The button kicks off the perceived-latency flow (generate-image-flow.ts):
- * the canvas paints the generated image from a data URI the moment the model
- * responds, the binary uploads to Convex storage in the background, and one
- * updateBlockProperties op commits the durable URL + prompt-derived alt.
- * All flow state lives in the ephemeral preview store keyed by blockId, so
- * switching selection mid-generation loses nothing.
- */
+/*
+  "Generate with AI" for the image panel: prompt in, image on the canvas.
+
+  The button kicks off the perceived-latency flow (generate-image-flow.ts):
+  the canvas paints the generated image from a data URI the moment the model
+  responds, the binary uploads to Convex storage in the background, and one
+  updateBlockProperties op commits the durable URL + prompt-derived alt.
+  All flow state lives in the ephemeral preview store keyed by blockId, so
+  switching selection mid-generation loses nothing.
+*/
 
 export function GenerateImageField({ blockId }: { blockId: BlockId }) {
   const convexClient = useConvex();

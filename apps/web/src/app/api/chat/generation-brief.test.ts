@@ -12,13 +12,13 @@ import {
   VARIATION_MAX_TEXT_CHARS,
 } from "./generation-brief";
 
-/**
- * The reported bug's own document, in miniature: a personal email with a
- * headline, a paragraph LONGER than the outline's 70-char snippet cap, a real
- * photo, and a CTA — plus a two-column hero so the brief has a column shape to
- * report. Any content that fails to reach the prompt from here is content the
- * model cannot preserve.
- */
+/*
+  The reported bug's own document, in miniature: a personal email with a
+  headline, a paragraph LONGER than the outline's 70-char snippet cap, a real
+  photo, and a CTA — plus a two-column hero so the brief has a column shape to
+  report. Any content that fails to reach the prompt from here is content the
+  model cannot preserve.
+*/
 const PERSONAL_PARAGRAPH =
   "I write code and break things (responsibly). Every couple of weeks I send a short note about what I shipped, what broke, and the one thing I'd do differently next time.";
 
@@ -111,16 +111,20 @@ function createPersonalSourceDocument(): EmailDocument {
 
 describe("buildIdeationOutline", () => {
   it("returns an empty string for a blank draft — no context block worth writing", () => {
-    // The shared generator would say "(no sections)"; the prompts read "" as
-    // "there is no source to mention".
+    /*
+      The shared generator would say "(no sections)"; the prompts read "" as
+      "there is no source to mention".
+    */
     expect(buildIdeationOutline(createEmptyDocument())).toBe("");
   });
 
   it("keeps the shared outline's default clip — a sketch, not source material", () => {
     const outline = buildIdeationOutline(createPersonalSourceDocument());
     expect(outline).toContain("Hi, I'm San'Quan.");
-    // The whole point of the ideate path: the wording does NOT survive, so the
-    // model invents rather than rewrites.
+    /*
+      The whole point of the ideate path: the wording does NOT survive, so the
+      model invents rather than rewrites.
+    */
     expect(outline).not.toContain(PERSONAL_PARAGRAPH);
   });
 });
@@ -132,8 +136,10 @@ describe("buildVariationBrief", () => {
 
   it("carries the source's real copy WHOLE, past the clip that lost it", () => {
     const doc = createPersonalSourceDocument();
-    // The reported failure, both halves: the ideate-fidelity view truncates
-    // the owner's paragraph to a third of itself; this one does not.
+    /*
+      The reported failure, both halves: the ideate-fidelity view truncates
+      the owner's paragraph to a third of itself; this one does not.
+    */
     expect(buildIdeationOutline(doc)).not.toContain(PERSONAL_PARAGRAPH);
     expect(PERSONAL_PARAGRAPH.length).toBeLessThan(VARIATION_MAX_TEXT_CHARS);
     const brief = buildVariationBrief(doc);
@@ -143,8 +149,10 @@ describe("buildVariationBrief", () => {
 
   it("keeps the shared outline's structural facts the variation has to change", () => {
     const brief = buildVariationBrief(createPersonalSourceDocument());
-    // Column widths and heading levels — the current arrangement, stated so the
-    // model can deliberately depart from it.
+    /*
+      Column widths and heading levels — the current arrangement, stated so the
+      model can deliberately depart from it.
+    */
     expect(brief).toContain("row (2 col)");
     expect(brief).toContain("60%");
     expect(brief).toContain("40%");
@@ -153,8 +161,10 @@ describe("buildVariationBrief", () => {
 
   it("lists the EXACT image addresses, which the shared outline reduces to a host", () => {
     const brief = buildVariationBrief(createPersonalSourceDocument());
-    // The shared outline says `src=cdn.example`; a variation that has to move
-    // an image needs the file itself or it lands a grey placeholder.
+    /*
+      The shared outline says `src=cdn.example`; a variation that has to move
+      an image needs the file itself or it lands a grey placeholder.
+    */
     expect(brief).toContain("The pictures it uses:");
     expect(brief).toContain('- "My desk at 2am" → https://cdn.example/desk.jpg');
     expect(brief).toContain('- "San\'Quan logo" → https://cdn.example/sq-logo.png');
@@ -168,7 +178,9 @@ describe("buildVariationBrief", () => {
 });
 
 describe("resolveVariationThemeState", () => {
-  /** The blank draft the variation streams into, wearing `globals`. */
+  /*
+    The blank draft the variation streams into, wearing `globals`.
+  */
   function createTargetDocument(globals: Record<string, string>): EmailDocument {
     const doc = createEmptyDocument();
     const root = doc.root;
@@ -179,7 +191,9 @@ describe("resolveVariationThemeState", () => {
   }
 
   it("reports the seeded theme as applied", () => {
-    // What DraftSelector's applyTheme op produces when it lands.
+    /*
+      What DraftSelector's applyTheme op produces when it lands.
+    */
     expect(
       resolveVariationThemeState({
         sourceDoc: createPersonalSourceDocument(),
@@ -189,8 +203,10 @@ describe("resolveVariationThemeState", () => {
   });
 
   it("reports a FAILED seed, so the model is told to match the look itself", () => {
-    // The whole reason this is derived server-side: the client could only
-    // report what it intended, this reports what is actually on the draft.
+    /*
+      The whole reason this is derived server-side: the client could only
+      report what it intended, this reports what is actually on the draft.
+    */
     expect(
       resolveVariationThemeState({
         sourceDoc: createPersonalSourceDocument(),
@@ -253,8 +269,10 @@ describe("expandGenerationBriefPart", () => {
   });
 
   it("leaves an EARLIER turn's request collapsed", () => {
-    // Same part type, different instance: a thread that has already run a
-    // generation must not pay for that brief on every later message.
+    /*
+      Same part type, different instance: a thread that has already run a
+      generation must not pay for that brief on every later message.
+    */
     const olderPart: FlockChatDataPart = { ...briefPart };
     expect(
       expandGenerationBriefPart({ part: olderPart, brief: { part: briefPart, text: "the brief" } }),
@@ -278,9 +296,11 @@ describe("expandGenerationBriefPart", () => {
 
 describe("countSourceSections", () => {
   it("counts the source's top-level sections — the number the brief states", () => {
-    // The owner's requirement is a COUNT ("roughly the same number of sections
-    // as the previous email draft did"), and the server holds the document, so
-    // it can say the number instead of hoping for it.
+    /*
+      The owner's requirement is a COUNT ("roughly the same number of sections
+      as the previous email draft did"), and the server holds the document, so
+      it can say the number instead of hoping for it.
+    */
     expect(countSourceSections(createPersonalSourceDocument())).toBe(2);
   });
 
@@ -304,10 +324,12 @@ describe("buildIdeateDraftPrompt", () => {
   });
 
   it("asks for the source's SUBJECT in fresh words, not its sentences", () => {
-    // The tension this path lives with: the outline is clipped to 60 chars so
-    // ideate invents rather than paraphrases, while the owner asked it to
-    // "base the new text content off of the existing text content". Resolved by
-    // changing the ASK, not the clip — carry the meaning, write the copy.
+    /*
+      The tension this path lives with: the outline is clipped to 60 chars so
+      ideate invents rather than paraphrases, while the owner asked it to
+      "base the new text content off of the existing text content". Resolved by
+      changing the ASK, not the clip — carry the meaning, write the copy.
+    */
     const prompt = buildIdeateDraftPrompt(promptInput);
     expect(prompt).toMatch(/SAME SUBJECT, FRESH WORDS/);
     expect(prompt).toMatch(/CLIPPED on purpose/i);
@@ -315,9 +337,11 @@ describe("buildIdeateDraftPrompt", () => {
   });
 
   it("asks for variants of the SECTION TYPES the source uses, plus a new layout and a restyle", () => {
-    // The three remaining defaults the owner said a user should not have to
-    // type ("try various layouts", "make style updates", "try different
-    // variants of the sections that exist in the source draft").
+    /*
+      The three remaining defaults the owner said a user should not have to
+      type ("try various layouts", "make style updates", "try different
+      variants of the sections that exist in the source draft").
+    */
     const prompt = buildIdeateDraftPrompt(promptInput);
     expect(prompt).toMatch(/RIFF ON THE SECTIONS IT HAS/);
     expect(prompt).toMatch(/TRY A DIFFERENT LAYOUT/);
@@ -337,18 +361,22 @@ describe("buildIdeateDraftPrompt", () => {
   });
 
   it("drops the floor warning on a source too small to fall short of", () => {
-    // "Build about 2" and "one or two sections is a failure" cannot both be
-    // said about the same draft — the warning is only meaningful when there is
-    // room under the target.
+    /*
+      "Build about 2" and "one or two sections is a failure" cannot both be
+      said about the same draft — the warning is only meaningful when there is
+      room under the target.
+    */
     const prompt = buildIdeateDraftPrompt({ ...promptInput, sourceSectionCount: 2 });
     expect(prompt).toContain('"Launch email" has 2 sections, so build about 2');
     expect(prompt).not.toMatch(/comes back as one or two sections/);
   });
 
   it("asks for every section in ONE response — the actual fix for one-section drafts", () => {
-    // The defect is arithmetic: one content op per response × a
-    // continuation ceiling of 1 is a two-op turn. Ops per RESPONSE is the only
-    // lever that does not cost another ~20k-token round.
+    /*
+      The defect is arithmetic: one content op per response × a
+      continuation ceiling of 1 is a two-op turn. Ops per RESPONSE is the only
+      lever that does not cost another ~20k-token round.
+    */
     const prompt = buildIdeateDraftPrompt(promptInput);
     expect(prompt).toMatch(/SEND EVERY SECTION IN ONE RESPONSE/);
     expect(prompt).toMatch(/one tool call per section, in reading order/i);
@@ -401,7 +429,9 @@ describe("buildDesignVariationPrompt", () => {
     const prompt = buildDesignVariationPrompt(themedInput);
     expect(prompt).toMatch(/theme from "Launch email" is already applied/i);
     expect(prompt).toMatch(/Keep it/);
-    // The regression under repair: the old prompt invited a relook.
+    /*
+      The regression under repair: the old prompt invited a relook.
+    */
     expect(prompt).not.toMatch(/different theme or visual feel/i);
   });
 
@@ -435,7 +465,9 @@ describe("buildDesignVariationPrompt", () => {
     const prompt = buildDesignVariationPrompt(themedInput);
     expect(prompt).toMatch(/KEEP THE WORDS/);
     expect(prompt).toMatch(/CHANGE THE STRUCTURE/);
-    // Concrete moves, not "rework the layout".
+    /*
+      Concrete moves, not "rework the layout".
+    */
     expect(prompt).toMatch(/side-by-side columns/i);
     expect(prompt).toMatch(/how many sections/i);
     expect(prompt).toMatch(/MOVE THE IMAGERY/);
@@ -443,35 +475,45 @@ describe("buildDesignVariationPrompt", () => {
   });
 
   it("names the HERO move outright — it was only implied before", () => {
-    // The owner's stated goal is visual appeal, and "make one thing
-    // prominent" was reachable only through "leading the email … or full width
-    // and much larger". Naming it is cheap and concrete.
+    /*
+      The owner's stated goal is visual appeal, and "make one thing
+      prominent" was reachable only through "leading the email … or full width
+      and much larger". Naming it is cheap and concrete.
+    */
     const prompt = buildDesignVariationPrompt(themedInput);
     expect(prompt).toMatch(/CONSIDER LEADING WITH A HERO/);
     expect(prompt).toMatch(/a single image and the main headline carry the whole width/i);
   });
 
   it("offers the asset library as a SECOND image source, behind the source's own", () => {
-    // The genuinely new capability, in the owner's own priority order: source
-    // images are known-relevant, library images are a guess from a filename.
-    // Getting this backwards would swap unrelated pictures into variations,
-    // which is a worse failure than the one being fixed.
+    /*
+      The genuinely new capability, in the owner's own priority order: source
+      images are known-relevant, library images are a guess from a filename.
+      Getting this backwards would swap unrelated pictures into variations,
+      which is a worse failure than the one being fixed.
+    */
     const prompt = buildDesignVariationPrompt(themedInput);
     expect(prompt).toMatch(/IMAGE LIBRARY IS AVAILABLE, SECOND/);
     expect(prompt).toMatch(/listAssets/);
-    // Name-based selection is the accepted limitation; kind is the coarse
-    // filter that is already there and costs nothing.
+    /*
+      Name-based selection is the accepted limitation; kind is the coarse
+      filter that is already there and costs nothing.
+    */
     expect(prompt).toMatch(/Pick by the NAME/);
     expect(prompt).toMatch(/"Logo" for a brand mark/);
-    // And the refusal: no plausible match means no library image at all.
+    /*
+      And the refusal: no plausible match means no library image at all.
+    */
     expect(prompt).toMatch(/use none of it/i);
   });
 
   it("states the source-parity target as a number the model can aim at", () => {
     const prompt = buildDesignVariationPrompt(themedInput);
     expect(prompt).toContain('"Launch email" has 6 sections, so build about 6');
-    // "Roughly" has to stay roughly: this same prompt asks the model to split,
-    // fold, and add sections, so a hard equality would fight the feature.
+    /*
+      "Roughly" has to stay roughly: this same prompt asks the model to split,
+      fold, and add sections, so a hard equality would fight the feature.
+    */
     expect(prompt).toMatch(/give or take one or two/);
     expect(prompt).toMatch(/Going over is fine/);
   });
@@ -479,8 +521,10 @@ describe("buildDesignVariationPrompt", () => {
   it("asks for every section in ONE response — the actual fix for one-section drafts", () => {
     const prompt = buildDesignVariationPrompt(themedInput);
     expect(prompt).toMatch(/SEND EVERY SECTION IN ONE RESPONSE/);
-    // The clause that keeps this compatible with the static prompt's
-    // per-section streaming rule: one call per section either way.
+    /*
+      The clause that keeps this compatible with the static prompt's
+      per-section streaming rule: one call per section either way.
+    */
     expect(prompt).toMatch(/one tool call per section, in reading order/i);
     expect(prompt).toMatch(/each section appears on the canvas the moment its own call completes/i);
   });
@@ -489,8 +533,10 @@ describe("buildDesignVariationPrompt", () => {
     const prompt = buildDesignVariationPrompt(themedInput);
     expect(prompt).toMatch(/is what "Launch email" SAYS/);
     expect(prompt).toMatch(/the arrangement it happens to be in right now is the one thing/i);
-    // The brief's ids belong to the SOURCE draft; this turn is pinned to an
-    // empty one, so anchoring a section to them would fail.
+    /*
+      The brief's ids belong to the SOURCE draft; this turn is pinned to an
+      empty one, so anchoring a section to them would fail.
+    */
     expect(prompt).toMatch(/block ids belong to that other draft/i);
   });
 
@@ -517,8 +563,10 @@ describe("buildDesignVariationPrompt", () => {
   });
 
   it("still produces a usable prompt when the source draft is empty", () => {
-    // The fail-soft path: an unreadable source leaves the person's own
-    // sentence to carry the turn, and the instructions still have to stand up.
+    /*
+      The fail-soft path: an unreadable source leaves the person's own
+      sentence to carry the turn, and the instructions still have to stand up.
+    */
     const prompt = buildDesignVariationPrompt({ ...themedInput, sourceBrief: "" });
     expect(prompt).toMatch(/KEEP THE WORDS/);
     expect(prompt).not.toMatch(/is what "Launch email" SAYS/);

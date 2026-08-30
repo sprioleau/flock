@@ -15,27 +15,27 @@ import { updatePanelPreferences, usePanelPreferences } from "./panel-preferences
 import { PropertyPanel } from "./property-panel/PropertyPanel";
 import { ShortcutKbd } from "./shortcuts/ShortcutKbd";
 
-/**
- * The right rail: a two-tab panel — BLOCKS (the add-blocks palette, §8.1
- * owner decision: the palette lives here, not in a left rail) and
- * PROPERTIES (the selection-driven property panel; document settings with no
- * selection).
- *
- * Tab semantics: Blocks is the landing tab (browse what's available);
- * selecting a block auto-switches to Properties, and deselecting (clicking
- * the canvas or frames-surface background, Escape) switches back to Blocks —
- * the add-then-tweak loop in both directions. NEITHER switch fires while a
- * drag is live, so the Blocks tab never unmounts its own active drag source
- * mid-gesture. The post-drop selection lands after the gesture ends, which
- * is what flips the rail to Properties.
- *
- * Collapsible like the chat panel (same animated width + cross-fade, same
- * persisted-preference plumbing — panel-preferences.ts; ⌘\ toggles via
- * StudioShortcuts). Expanded by default: the palette is the primary add
- * affordance. The body stays MOUNTED while collapsed (fixed inner width,
- * hidden + unreachable), so tab state and the palette's drag sources survive
- * a collapse exactly like the chat panel's message list does.
- */
+/*
+  The right rail: a two-tab panel — BLOCKS (the add-blocks palette, §8.1
+  owner decision: the palette lives here, not in a left rail) and
+  PROPERTIES (the selection-driven property panel; document settings with no
+  selection).
+
+  Tab semantics: Blocks is the landing tab (browse what's available);
+  selecting a block auto-switches to Properties, and deselecting (clicking
+  the canvas or frames-surface background, Escape) switches back to Blocks —
+  the add-then-tweak loop in both directions. NEITHER switch fires while a
+  drag is live, so the Blocks tab never unmounts its own active drag source
+  mid-gesture. The post-drop selection lands after the gesture ends, which
+  is what flips the rail to Properties.
+
+  Collapsible like the chat panel (same animated width + cross-fade, same
+  persisted-preference plumbing — panel-preferences.ts; ⌘\ toggles via
+  StudioShortcuts). Expanded by default: the palette is the primary add
+  affordance. The body stays MOUNTED while collapsed (fixed inner width,
+  hidden + unreachable), so tab state and the palette's drag sources survive
+  a collapse exactly like the chat panel's message list does.
+*/
 type RightRailTab = "blocks" | "properties";
 
 const EXPANDED_WIDTH_PX = 280;
@@ -49,8 +49,10 @@ export function PropertyPanelSlot() {
     updatePanelPreferences({ isRightRailExpanded: nextIsExpanded });
   };
 
-  // Agent-parity: openPanel("blocks"/"properties") activates the tab AND
-  // expands the rail — "open the blocks tab" must end with it on screen.
+  /*
+    Agent-parity: openPanel("blocks"/"properties") activates the tab AND
+    expands the rail — "open the blocks tab" must end with it on screen.
+  */
   const openRailTab = (tab: RightRailTab): void => {
     setActiveTab(tab);
     setIsExpanded(true);
@@ -58,12 +60,14 @@ export function PropertyPanelSlot() {
   useUiSurfaceOpenRequest("blocks", () => openRailTab("blocks"));
   useUiSurfaceOpenRequest("properties", () => openRailTab("properties"));
 
-  // Adjust-state-during-render (the React "derive from props" pattern, no
-  // effect): a NEW selection flips the rail to Properties, and a DESELECT
-  // (canvas-background click, Escape) flips it back to Blocks so adding is
-  // immediately available — the two halves of the add-then-tweak loop.
-  // Neither fires while a drag is live: the Blocks tab must never unmount
-  // its own active drag source mid-gesture.
+  /*
+    Adjust-state-during-render (the React "derive from props" pattern, no
+    effect): a NEW selection flips the rail to Properties, and a DESELECT
+    (canvas-background click, Escape) flips it back to Blocks so adding is
+    immediately available — the two halves of the add-then-tweak loop.
+    Neither fires while a drag is live: the Blocks tab must never unmount
+    its own active drag source mid-gesture.
+  */
   const [lastSeenSelectedBlockId, setLastSeenSelectedBlockId] = useState(selectedBlockId);
   if (selectedBlockId !== lastSeenSelectedBlockId) {
     setLastSeenSelectedBlockId(selectedBlockId);
@@ -78,7 +82,9 @@ export function PropertyPanelSlot() {
       className="relative shrink-0 overflow-hidden border-l bg-background transition-[width] duration-300 ease-in-out"
       style={{ width: isExpanded ? EXPANDED_WIDTH_PX : COLLAPSED_WIDTH_PX }}
     >
-      {/* Collapsed rail */}
+      {/*
+        Collapsed rail
+      */}
       <div
         className={cn(
           "absolute inset-y-0 right-0 flex w-12 flex-col items-center py-3 transition-opacity duration-200",
@@ -109,7 +115,9 @@ export function PropertyPanelSlot() {
         </TooltipProvider>
       </div>
 
-      {/* Expanded body (fixed inner width so content never reflows mid-animation) */}
+      {/*
+        Expanded body (fixed inner width so content never reflows mid-animation)
+      */}
       <div
         className={cn(
           "flex h-full flex-col transition-opacity duration-200",
@@ -172,7 +180,9 @@ function RightRailTabButton({
 }: {
   label: string;
   isActive: boolean;
-  /** False while the rail is collapsed — hidden tabs leave the tab order. */
+  /*
+    False while the rail is collapsed — hidden tabs leave the tab order.
+  */
   isReachable: boolean;
   onSelect: () => void;
 }) {
@@ -196,13 +206,13 @@ function RightRailTabButton({
   );
 }
 
-/**
- * The Properties tab: the ancestor-breadcrumb header ("Section › Row ›
- * Column › Button", each ancestor clickable) over the schema-driven property
- * panel. With no selection it shows document settings (the root block's
- * global styles). All edits dispatch SDK operations through the store — the
- * panel never touches the document directly.
- */
+/*
+  The Properties tab: the ancestor-breadcrumb header ("Section › Row ›
+  Column › Button", each ancestor clickable) over the schema-driven property
+  panel. With no selection it shows document settings (the root block's
+  global styles). All edits dispatch SDK operations through the store — the
+  panel never touches the document directly.
+*/
 function PropertiesTab() {
   const doc = useEditorStore((state) => state.doc);
   const selectedBlockId = useEditorStore((state) => state.selectedBlockId);
@@ -242,7 +252,9 @@ function PropertiesTab() {
                 </Fragment>
               );
             })}
-            {/* Block ids are internal — the header shows only the display label. */}
+            {/*
+              Block ids are internal — the header shows only the display label.
+            */}
             <h2 className="text-sm font-semibold capitalize">
               {getBlockDisplayLabel({ block: selectedBlock })}
             </h2>

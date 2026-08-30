@@ -24,71 +24,77 @@ import { getIsApplePlatform } from "../shortcuts/shortcut-keys";
 import { cn } from "@/lib/utils";
 import { handOffPromptToComposer } from "./composer-handoff";
 
-/**
- * The Phase 7.3 suggestion surface: one slim, dismissible card directly above
- * the composer. Deliberately quiet — muted colors, small type, no motion, and
- * it renders nothing at all when no suggestion is live (passive v1: it
- * appears after a settled user gesture and never interrupts).
- *
- * THIS IS NOW THE SECOND-CLOSEST SURFACE, NOT THE ONLY ONE. The same live
- * suggestion also renders as a pill under the block that produced it
- * (BlockSuggestionPill) — correct here but ~1400px from where the user was
- * looking, and invisible entirely with the panel collapsed, was the whole of
- * the owner's complaint. The card keeps EVERYTHING: the full escalation
- * ladder, the confirm-gated re-theme, the "Applied — Revert" state, and the
- * permanent per-pattern dismissal. The pill carries only the default rung and
- * a hide. One controller (useSuggestions in ChatPanel) drives both.
- *
- * - Rung buttons apply that scope's pre-validated ops instantly.
- * - The confirm-gated rung (whole-email re-theme) swaps the card body to an
- *   inline confirm before anything is dispatched.
- * - ⌥A (Alt+A) applies the DEFAULT (non-gated) rung and Esc dismisses, so a
- *   suggestion never costs a trip to the mouse. ⌥A deliberately fires inside
- *   text fields too — the composer owns Enter, and the property fields whose
- *   edits generate these suggestions are exactly where focus tends to be. It
- *   also fires while this panel is COLLAPSED whenever the canvas pill is
- *   showing the same suggestion (getIsSuggestionReachable) — the panel is no
- *   longer the only place a suggestion can be seen.
- *   The binding lives on the body below rather than with the controllers in
- *   ChatPanel: it reads the card-local confirm state it must not bypass, and
- *   it should exist only while a suggestion is actually on screen.
- *   shortcuts.ts holds the decision table and the full rationale.
- * - After Apply the card shows a brief "Applied — Revert" state wired to the
- *   same history.revertBatch path as chat-turn revert chips (suggestions
- *   apply outside a chat turn, so the affordance lives here — see
- *   use-suggestions.ts), then clears on its own.
- *
- * Multi-agent canvas v0: persona ADVISORY findings (source:"analysis") render
- * here too — up to 3 quiet cards, each chipped with its persona's name and
- * color, stacked above the rule card. A finding with pre-validated ops gets
- * one-click Apply (same instant dispatch + revert path, `persona:<slug>`
- * provenance); a finding without ops is informational — dismiss, plus, when
- * the runner authored a suggestedPrompt, an "Ask in chat" handoff that
- * inserts that prompt into the composer (focused, editable, never auto-sent)
- * so the user partners with the main chat agent on the fix.
- *
- * Both controllers are OWNED by ChatPanel (which always mounts, collapsed or
- * not) and passed down: ChatPanel also needs the pending-recommendation count
- * for the collapsed rail's notification badge, and the hooks must mount
- * exactly once (usePersonaAdvisors hosts the presence heartbeat + runner).
- *
- * "Dismiss all" (shown from 2 pending cards up) routes every card through
- * the SAME per-card dismiss paths — persona rows get their Convex status
- * update (cross-tab convergence), the rule card its local/localStorage
- * dismissal.
- *
- * THE TRAY IS ALSO AN ATTENTION TARGET. Elsewhere in the app — /demo step 2
- * today — a control's whole job is "the cards you want are over here". Those
- * callers name the intent (lib/ui-surfaces.ts §attention channel) and this
- * component answers it: uncollapse, focus, highlight. See revealForAttention
- * below for why all three, and why none of them is a DOM query from outside.
- */
+/*
+  The Phase 7.3 suggestion surface: one slim, dismissible card directly above
+  the composer. Deliberately quiet — muted colors, small type, no motion, and
+  it renders nothing at all when no suggestion is live (passive v1: it
+  appears after a settled user gesture and never interrupts).
+
+  THIS IS NOW THE SECOND-CLOSEST SURFACE, NOT THE ONLY ONE. The same live
+  suggestion also renders as a pill under the block that produced it
+  (BlockSuggestionPill) — correct here but ~1400px from where the user was
+  looking, and invisible entirely with the panel collapsed, was the whole of
+  the owner's complaint. The card keeps EVERYTHING: the full escalation
+  ladder, the confirm-gated re-theme, the "Applied — Revert" state, and the
+  permanent per-pattern dismissal. The pill carries only the default rung and
+  a hide. One controller (useSuggestions in ChatPanel) drives both.
+
+  - Rung buttons apply that scope's pre-validated ops instantly.
+  - The confirm-gated rung (whole-email re-theme) swaps the card body to an
+    inline confirm before anything is dispatched.
+  - ⌥A (Alt+A) applies the DEFAULT (non-gated) rung and Esc dismisses, so a
+    suggestion never costs a trip to the mouse. ⌥A deliberately fires inside
+    text fields too — the composer owns Enter, and the property fields whose
+    edits generate these suggestions are exactly where focus tends to be. It
+    also fires while this panel is COLLAPSED whenever the canvas pill is
+    showing the same suggestion (getIsSuggestionReachable) — the panel is no
+    longer the only place a suggestion can be seen.
+    The binding lives on the body below rather than with the controllers in
+    ChatPanel: it reads the card-local confirm state it must not bypass, and
+    it should exist only while a suggestion is actually on screen.
+    shortcuts.ts holds the decision table and the full rationale.
+  - After Apply the card shows a brief "Applied — Revert" state wired to the
+    same history.revertBatch path as chat-turn revert chips (suggestions
+    apply outside a chat turn, so the affordance lives here — see
+    use-suggestions.ts), then clears on its own.
+
+  Multi-agent canvas v0: persona ADVISORY findings (source:"analysis") render
+  here too — up to 3 quiet cards, each chipped with its persona's name and
+  color, stacked above the rule card. A finding with pre-validated ops gets
+  one-click Apply (same instant dispatch + revert path, `persona:<slug>`
+  provenance); a finding without ops is informational — dismiss, plus, when
+  the runner authored a suggestedPrompt, an "Ask in chat" handoff that
+  inserts that prompt into the composer (focused, editable, never auto-sent)
+  so the user partners with the main chat agent on the fix.
+
+  Both controllers are OWNED by ChatPanel (which always mounts, collapsed or
+  not) and passed down: ChatPanel also needs the pending-recommendation count
+  for the collapsed rail's notification badge, and the hooks must mount
+  exactly once (usePersonaAdvisors hosts the presence heartbeat + runner).
+
+  "Dismiss all" (shown from 2 pending cards up) routes every card through
+  the SAME per-card dismiss paths — persona rows get their Convex status
+  update (cross-tab convergence), the rule card its local/localStorage
+  dismissal.
+
+  THE TRAY IS ALSO AN ATTENTION TARGET. Elsewhere in the app — /demo step 2
+  today — a control's whole job is "the cards you want are over here". Those
+  callers name the intent (lib/ui-surfaces.ts §attention channel) and this
+  component answers it: uncollapse, focus, highlight. See revealForAttention
+  below for why all three, and why none of them is a DOM query from outside.
+*/
 export interface SuggestionCardProps {
-  /** Keeps the card's controls out of the tab order while the panel is collapsed. */
+  /*
+    Keeps the card's controls out of the tab order while the panel is collapsed.
+  */
   isPanelExpanded: boolean;
-  /** The rule-suggestion controller (owned by ChatPanel — see above). */
+  /*
+    The rule-suggestion controller (owned by ChatPanel — see above).
+  */
   suggestions: SuggestionsController;
-  /** The persona-findings controller (owned by ChatPanel — see above). */
+  /*
+    The persona-findings controller (owned by ChatPanel — see above).
+  */
   personaAdvisors: PersonaAdvisorsController;
 }
 
@@ -97,12 +103,12 @@ const quietButtonClassName = cn(
   "text-muted-foreground hover:bg-muted hover:text-foreground",
 );
 
-/**
- * Collapsed/expanded tray preference — a tiny module-level store exposed via
- * useSyncExternalStore (the app-settings.ts pattern): SSR/first paint see the
- * expanded default, the stored value applies right after mount, no hydration
- * mismatch, no setState-in-effect.
- */
+/*
+  Collapsed/expanded tray preference — a tiny module-level store exposed via
+  useSyncExternalStore (the app-settings.ts pattern): SSR/first paint see the
+  expanded default, the stored value applies right after mount, no hydration
+  mismatch, no setState-in-effect.
+*/
 const TRAY_COLLAPSED_STORAGE_KEY = "flock_suggestions_tray_collapsed";
 let cachedIsTrayCollapsed = false;
 let hasReadTrayStorage = false;
@@ -137,7 +143,9 @@ function setIsTrayCollapsed(isCollapsed: boolean): void {
       window.localStorage.removeItem(TRAY_COLLAPSED_STORAGE_KEY);
     }
   } catch {
-    // Storage unavailable — session-only preference.
+    /*
+      Storage unavailable — session-only preference.
+    */
   }
   for (const listener of trayListeners) {
     listener();
@@ -201,8 +209,10 @@ export function SuggestionCard({ isPanelExpanded, suggestions, personaAdvisors }
   }
   const tabIndex = isPanelExpanded ? 0 : -1;
 
-  // Every card a single click could dismiss right now (applied cards are in
-  // their transient revert state — not dismissible, not counted).
+  /*
+    Every card a single click could dismiss right now (applied cards are in
+    their transient revert state — not dismissible, not counted).
+  */
   const dismissiblePersonaCards = personaAdvisors.cards.filter((card) => card.appliedState === null);
   const dismissibleCount = dismissiblePersonaCards.length + (visibleSuggestion !== null ? 1 : 0);
   const visibleCardCount =
@@ -220,21 +230,25 @@ export function SuggestionCard({ isPanelExpanded, suggestions, personaAdvisors }
   return (
     <div
       ref={regionRef}
-      /* Programmatically focusable, never in the tab order: this is a
-         destination the app can send someone to, not a control they should
-         have to tab THROUGH to reach the cards inside it. Labelled and given a
-         landmark role so what a screen reader announces on arrival is
-         "Suggestions region" rather than a mute container. */
+      /*
+        Programmatically focusable, never in the tab order: this is a
+        destination the app can send someone to, not a control they should
+        have to tab THROUGH to reach the cards inside it. Labelled and given a
+        landmark role so what a screen reader announces on arrival is
+        "Suggestions region" rather than a mute container.
+      */
       tabIndex={-1}
       role="region"
       aria-label="Suggestions"
       onBlur={() => setHighlightRequestId(0)}
       className={cn(
         "relative flex shrink-0 flex-col gap-2 border-t px-3 py-2",
-        /* The quiet half of the focus cue, and the reason `outline-none` is
-           safe: while this region holds focus something visible says so, for
-           as long as that stays true. It costs nothing when focus is
-           elsewhere, which is almost always. */
+        /*
+          The quiet half of the focus cue, and the reason `outline-none` is
+          safe: while this region holds focus something visible says so, for
+          as long as that stays true. It costs nothing when focus is
+          elsewhere, which is almost always.
+        */
         "outline-none focus:ring-1 focus:ring-ring/50 focus:ring-inset",
       )}
       data-testid="suggestion-card"
@@ -271,9 +285,11 @@ export function SuggestionCard({ isPanelExpanded, suggestions, personaAdvisors }
           data-testid="suggestions-attention-ring"
         />
       )}
-      {/* Tray header — always present: the count (live while collapsed) and
-          the collapse/expand toggle; Dismiss all only in the expanded state
-          (from 2 dismissible cards up). */}
+      {/*
+        Tray header — always present: the count (live while collapsed) and
+        the collapse/expand toggle; Dismiss all only in the expanded state
+        (from 2 dismissible cards up).
+      */}
       <div className="flex items-center justify-between">
         <button
           type="button"
@@ -303,9 +319,11 @@ export function SuggestionCard({ isPanelExpanded, suggestions, personaAdvisors }
           </button>
         )}
       </div>
-      {/* The tray body: height-capped with internal scrolling so open cards
-          never crowd out the conversation (the chat stays the dominant
-          surface); collapsed = just the header row above "Editing:". */}
+      {/*
+        The tray body: height-capped with internal scrolling so open cards
+        never crowd out the conversation (the chat stays the dominant
+        surface); collapsed = just the header row above "Editing:".
+      */}
       {!isTrayCollapsed && (
       <div
         className="flex max-h-40 flex-col gap-2 overflow-y-auto"
@@ -349,8 +367,10 @@ export function SuggestionCard({ isPanelExpanded, suggestions, personaAdvisors }
             )}
           </div>
         ) : visibleSuggestion !== null ? (
-          // Keyed by suggestion id so the inline confirm state resets whenever
-          // a fresh suggestion replaces the current one.
+          /*
+            Keyed by suggestion id so the inline confirm state resets whenever
+            a fresh suggestion replaces the current one.
+          */
           <SuggestionBody
             key={visibleSuggestion.id}
             suggestion={visibleSuggestion}
@@ -368,11 +388,11 @@ export function SuggestionCard({ isPanelExpanded, suggestions, personaAdvisors }
   );
 }
 
-/**
- * One persona finding: identity chip (persona color dot + name), title,
- * description, target hints, and either Apply+Dismiss (ops pre-validated by
- * the runner + re-dry-run at click time) or Dismiss only (informational).
- */
+/*
+  One persona finding: identity chip (persona color dot + name), title,
+  description, target hints, and either Apply+Dismiss (ops pre-validated by
+  the runner + re-dry-run at click time) or Dismiss only (informational).
+*/
 function PersonaFindingCard({
   card,
   tabIndex,
@@ -453,8 +473,10 @@ function PersonaFindingCard({
               </button>
             </div>
           ) : suggestion.suggestedPrompt !== undefined ? (
-            // Op-less finding with a runner-authored handoff prompt: insert
-            // it into the composer for the user to review and send (or edit).
+            /*
+              Op-less finding with a runner-authored handoff prompt: insert
+              it into the composer for the user to review and send (or edit).
+            */
             <div className="flex flex-wrap gap-1.5 pt-1">
               <button
                 type="button"
@@ -474,7 +496,9 @@ function PersonaFindingCard({
   );
 }
 
-/** The persona identity chip: color dot + name, quiet by design. */
+/*
+  The persona identity chip: color dot + name, quiet by design.
+*/
 function PersonaChip({ name, color }: { name: string; color: string }) {
   return (
     <span
@@ -497,15 +521,19 @@ function SuggestionBody({
 }: {
   suggestion: Suggestion;
   tabIndex: number;
-  /** Part of the shortcut gate: while collapsed THIS card is unreachable. */
+  /*
+    Part of the shortcut gate: while collapsed THIS card is unreachable.
+  */
   isPanelExpanded: boolean;
   applyRung: (rungId: SuggestionRungId) => void;
   dismiss: () => void;
 }) {
   const [confirmingRungId, setConfirmingRungId] = useState<SuggestionRungId | null>(null);
-  // ...but the canvas pill may still be showing this very suggestion, in
-  // which case the user CAN see it and ⌥A must work. Gating on this panel
-  // alone was the second half of "I wasn't sure the feature worked".
+  /*
+    ...but the canvas pill may still be showing this very suggestion, in
+    which case the user CAN see it and ⌥A must work. Gating on this panel
+    alone was the second half of "I wasn't sure the feature worked".
+  */
   const isCanvasPillVisible = useIsBlockSuggestionPillMounted();
   const isSuggestionReachable = getIsSuggestionReachable({
     isChatPanelExpanded: isPanelExpanded,
@@ -516,12 +544,14 @@ function SuggestionBody({
       ? suggestion.rungs.find((rung) => rung.id === confirmingRungId)
       : undefined;
 
-  // ⌘↵ applies / Esc dismisses. This component mounts ONLY while a suggestion
-  // is live and the tray is open, so "no suggestion, no shortcut" is
-  // structural; shortcuts.ts re-checks it anyway and owns every other rule
-  // (gate, typing contexts, modifiers). The listener re-binds when any input
-  // to that decision changes — a keystroke must never read a stale rung
-  // ladder or a stale confirm state.
+  /*
+    ⌘↵ applies / Esc dismisses. This component mounts ONLY while a suggestion
+    is live and the tray is open, so "no suggestion, no shortcut" is
+    structural; shortcuts.ts re-checks it anyway and owns every other rule
+    (gate, typing contexts, modifiers). The listener re-binds when any input
+    to that decision changes — a keystroke must never read a stale rung
+    ladder or a stale confirm state.
+  */
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent): void => {
       const action = resolveSuggestionShortcut({
@@ -557,9 +587,11 @@ function SuggestionBody({
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [suggestion, confirmingRungId, isSuggestionReachable, applyRung, dismiss]);
 
-  // Platform notation for the hint. Safe to read at render time: the card
-  // only ever appears after a client-side op-log evaluation, so it cannot
-  // render during SSR/hydration.
+  /*
+    Platform notation for the hint. Safe to read at render time: the card
+    only ever appears after a client-side op-log evaluation, so it cannot
+    render during SSR/hydration.
+  */
   const shortcutHint = formatSuggestionShortcutHint({
     isApplePlatform: getIsApplePlatform(),
     isConfirming: confirmingRung !== undefined,
@@ -642,13 +674,13 @@ function SuggestionBody({
   );
 }
 
-/**
- * The keyboard hint under the card's actions — the quietest thing on a
- * deliberately quiet card: smallest type, muted, no motion. `aria-hidden`
- * because it describes a shortcut, not content: every action it names is
- * already reachable as a real, labeled button in the tab order, and screen
- * reader users would otherwise hear the same offer twice.
- */
+/*
+  The keyboard hint under the card's actions — the quietest thing on a
+  deliberately quiet card: smallest type, muted, no motion. `aria-hidden`
+  because it describes a shortcut, not content: every action it names is
+  already reachable as a real, labeled button in the tab order, and screen
+  reader users would otherwise hear the same offer twice.
+*/
 function ShortcutHint({ text }: { text: string }) {
   return (
     <p

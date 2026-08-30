@@ -1,17 +1,17 @@
-/**
- * Prompt layer (a) — SYSTEM_STATIC. Plan §3.2.
- *
- * CACHEABLE: this string is a compile-time constant, byte-identical on every
- * request. It MUST come first in the assembled prompt: the provider is Gemini,
- * whose implicit context caching keys on long stable prefixes — the longer the
- * unchanged head of the prompt, the more of it is served from cache. Never
- * interpolate per-request data into this layer.
- *
- * Layer order (see buildAgentSystemPrompt):
- *   1. SYSTEM_STATIC            — constant           (cached)
- *   2. buildToolGuidance(...)   — constant per registry (cached)
- *   3. buildDocumentContext(...) — per-request        (fresh tokens)
- */
+/*
+  Prompt layer (a) — SYSTEM_STATIC. Plan §3.2.
+
+  CACHEABLE: this string is a compile-time constant, byte-identical on every
+  request. It MUST come first in the assembled prompt: the provider is Gemini,
+  whose implicit context caching keys on long stable prefixes — the longer the
+  unchanged head of the prompt, the more of it is served from cache. Never
+  interpolate per-request data into this layer.
+
+  Layer order (see buildAgentSystemPrompt):
+    1. SYSTEM_STATIC            — constant           (cached)
+    2. buildToolGuidance(...)   — constant per registry (cached)
+    3. buildDocumentContext(...) — per-request        (fresh tokens)
+*/
 export const SYSTEM_STATIC = `You are Flock's email editing copilot. You edit a user's email design by calling tools; you never output raw HTML or JSON documents directly.
 
 ## The document model

@@ -6,37 +6,43 @@ import type {
   ScrapedList,
 } from "./page-scrape";
 
-/**
- * Generic page extraction — pure HTML → a `PageScrape`, with NO idea what kind
- * of page it was reading. No network, no LLM, no DOM.
- *
- * This is the parser that `extract-article.ts` and `extract-person.ts` always
- * shared, plus three channels those two readers threw away:
- *
- *   - `lists`   — judged per LIST rather than per item, so a skills list
- *                 survives and a link menu does not (see LIST_LINK_DENSITY_MAX).
- *   - `imageCandidates` — every image the page offers, as evidence with hints,
- *                 rather than one image already chosen as "the" hero/portrait.
- *   - `structuredData`  — every JSON-LD node, with no type filter at all.
- *
- * THE RULE: nothing below branches on what kind of page this is. There is no
- * page type at this layer — that is a later step's OUTPUT. The heuristics here
- * are about SHAPE (link density, text length, document position), never about
- * subject matter. `PORTRAIT_HINT_PATTERN` is the closest thing to a subject
- * keyword left, and it is deliberately demoted to a hint string that decides
- * nothing.
- */
+/*
+  Generic page extraction — pure HTML → a `PageScrape`, with NO idea what kind
+  of page it was reading. No network, no LLM, no DOM.
+
+  This is the parser that `extract-article.ts` and `extract-person.ts` always
+  shared, plus three channels those two readers threw away:
+
+    - `lists`   — judged per LIST rather than per item, so a skills list
+                  survives and a link menu does not (see LIST_LINK_DENSITY_MAX).
+    - `imageCandidates` — every image the page offers, as evidence with hints,
+                  rather than one image already chosen as "the" hero/portrait.
+    - `structuredData`  — every JSON-LD node, with no type filter at all.
+
+  THE RULE: nothing below branches on what kind of page this is. There is no
+  page type at this layer — that is a later step's OUTPUT. The heuristics here
+  are about SHAPE (link density, text length, document position), never about
+  subject matter. `PORTRAIT_HINT_PATTERN` is the closest thing to a subject
+  keyword left, and it is deliberately demoted to a hint string that decides
+  nothing.
+*/
 
 export type { ProseBlock } from "./page-scrape";
 
-// ---------------------------------------------------------------------------
-// Budgets & thresholds
-// ---------------------------------------------------------------------------
+/*
+  ---------------------------------------------------------------------------
+  Budgets & thresholds
+  ---------------------------------------------------------------------------
+*/
 
-/** Context-window budget for everything the page said (chars, ~2k tokens). */
+/*
+  Context-window budget for everything the page said (chars, ~2k tokens).
+*/
 export const MAX_PAGE_CONTENT_CHARS = 8_000;
 
-/** Below this much extracted prose the page is treated as unreadable. */
+/*
+  Below this much extracted prose the page is treated as unreadable.
+*/
 export const MIN_MAIN_TEXT_CHARS = 300;
 
 /*
@@ -47,13 +53,15 @@ export const MIN_MAIN_TEXT_CHARS = 300;
 */
 const MIN_CROSS_LINKED_PROSE_CHARS = 200;
 
-/**
- * A paywall signal only refuses when there is also little prose — plenty of
- * fully readable articles mention subscribing somewhere on the page.
- */
+/*
+  A paywall signal only refuses when there is also little prose — plenty of
+  fully readable articles mention subscribing somewhere on the page.
+*/
 export const MAX_PAYWALLED_TEASER_CHARS = 1_200;
 
-/** Same budget the article extractor puts on its excerpt. */
+/*
+  Same budget the article extractor puts on its excerpt.
+*/
 const MAX_DESCRIPTION_CHARS = 300;
 
 /*
@@ -83,15 +91,21 @@ const MAX_DESCRIPTION_CHARS = 300;
 */
 const LIST_LINK_DENSITY_MAX = 0.5;
 
-/** Roughly 200 characters of context around an image tag. */
+/*
+  Roughly 200 characters of context around an image tag.
+*/
 const SURROUNDING_TEXT_CHARS = 200;
 
-/** How much raw markup to look through to find that context. */
+/*
+  How much raw markup to look through to find that context.
+*/
 const SURROUNDING_SCAN_CHARS = 1_200;
 
-// ---------------------------------------------------------------------------
-// Small HTML utilities (no DOM)
-// ---------------------------------------------------------------------------
+/*
+  ---------------------------------------------------------------------------
+  Small HTML utilities (no DOM)
+  ---------------------------------------------------------------------------
+*/
 
 const NAMED_ENTITIES: Record<string, string> = {
   amp: "&",
@@ -120,14 +134,18 @@ function decodeHtmlEntities(text: string): string {
     .replace(/&([a-z]+);/gi, (match, name: string) => NAMED_ENTITIES[name.toLowerCase()] ?? match);
 }
 
-/** Strip every tag, decode entities, collapse whitespace. */
+/*
+  Strip every tag, decode entities, collapse whitespace.
+*/
 export function toPlainText(html: string): string {
   return decodeHtmlEntities(html.replace(/<[^>]*>/g, " "))
     .replace(/\s+/g, " ")
     .trim();
 }
 
-/** One attribute's value from a single raw tag string. */
+/*
+  One attribute's value from a single raw tag string.
+*/
 export function getAttribute({ tag, name }: { tag: string; name: string }): string | undefined {
   const match = tag.match(
     new RegExp(`(?:^|\\s)${name}\\s*=\\s*(?:"([^"]*)"|'([^']*)')`, "i"),
@@ -158,10 +176,10 @@ function tokenizeTag(tagName: string, html: string): TagToken[] {
   return tokens;
 }
 
-/**
- * Remove every `<tagName>…</tagName>` subtree (depth-aware, so nested
- * same-name tags don't truncate the removal early).
- */
+/*
+  Remove every `<tagName>…</tagName>` subtree (depth-aware, so nested
+  same-name tags don't truncate the removal early).
+*/
 export function removeTagBlocks({ html, tagName }: { html: string; tagName: string }): string {
   const tokens = tokenizeTag(tagName, html);
   if (tokens.length === 0) {
@@ -174,7 +192,7 @@ export function removeTagBlocks({ html, tagName }: { html: string; tagName: stri
     if (!token.isClosing) {
       if (depth === 0) {
         result += html.slice(keptUpTo, token.index);
-        keptUpTo = html.length; // provisional: dropped until the matching close
+        keptUpTo = html.length; /* provisional: dropped until the matching close */
       }
       if (!token.isSelfClosing) {
         depth += 1;
@@ -194,7 +212,9 @@ export function removeTagBlocks({ html, tagName }: { html: string; tagName: stri
   return result;
 }
 
-/** Inner HTML of every top-level `<tagName>` block. */
+/*
+  Inner HTML of every top-level `<tagName>` block.
+*/
 function extractTagBlocks({ html, tagName }: { html: string; tagName: string }): string[] {
   const tokens = tokenizeTag(tagName, html);
   const blocks: string[] = [];
@@ -216,20 +236,22 @@ function extractTagBlocks({ html, tagName }: { html: string; tagName: string }):
   return blocks;
 }
 
-/**
- * Blank out a region's markup while KEEPING the document's length, so every
- * index computed against the result still points at the same character of the
- * original. Image candidates carry positions (document order, nearest heading,
- * surrounding text), so the masking trick is what lets them be read out of a
- * document that has had its scripts and comments neutralised.
- */
+/*
+  Blank out a region's markup while KEEPING the document's length, so every
+  index computed against the result still points at the same character of the
+  original. Image candidates carry positions (document order, nearest heading,
+  surrounding text), so the masking trick is what lets them be read out of a
+  document that has had its scripts and comments neutralised.
+*/
 function maskRegions({ html, pattern }: { html: string; pattern: RegExp }): string {
   return html.replace(pattern, (match: string) => " ".repeat(match.length));
 }
 
-// ---------------------------------------------------------------------------
-// Junk removal (ads / menus / comments / promo chrome)
-// ---------------------------------------------------------------------------
+/*
+  ---------------------------------------------------------------------------
+  Junk removal (ads / menus / comments / promo chrome)
+  ---------------------------------------------------------------------------
+*/
 
 export const NON_CONTENT_TAGS = [
   "script",
@@ -253,15 +275,21 @@ export const NON_CONTENT_TAGS = [
 const JUNK_CLASS_OR_ID_PATTERN =
   /\b(ad|ads|advert\w*|sponsor\w*|promo\w*|banner|comment\w*|disqus|sidebar|related|recommend\w*|trending|popular|share|social|newsletter|subscribe|signup|sign-up|cookie|consent|breadcrumb\w*|menu|nav|navigation|masthead|footer|popup|modal|paywall|meter|outbrain|taboola)\b/i;
 
-/** Tags worth junk-scanning by class/id (structural containers + lists). */
+/*
+  Tags worth junk-scanning by class/id (structural containers + lists).
+*/
 const JUNK_SCAN_TAGS = ["div", "section", "ul", "ol"];
 
-/** Remove subtrees whose opening tag's class/id matches the junk pattern. */
+/*
+  Remove subtrees whose opening tag's class/id matches the junk pattern.
+*/
 export function removeJunkBlocks(html: string): string {
   let cleaned = html;
   for (const tagName of JUNK_SCAN_TAGS) {
-    // Re-scan until stable: removing an outer block can expose nothing new for
-    // the same tag, but junk blocks of the same tag can be siblings.
+    /*
+      Re-scan until stable: removing an outer block can expose nothing new for
+      the same tag, but junk blocks of the same tag can be siblings.
+    */
     let hasRemoved = true;
     while (hasRemoved) {
       hasRemoved = false;
@@ -299,9 +327,11 @@ export function removeJunkBlocks(html: string): string {
   return cleaned;
 }
 
-// ---------------------------------------------------------------------------
-// Metadata (OpenGraph, JSON-LD, standard fallbacks)
-// ---------------------------------------------------------------------------
+/*
+  ---------------------------------------------------------------------------
+  Metadata (OpenGraph, JSON-LD, standard fallbacks)
+  ---------------------------------------------------------------------------
+*/
 
 export interface PageMetadata {
   ogTitle?: string;
@@ -355,7 +385,9 @@ export function asText(value: unknown): string | undefined {
   return undefined;
 }
 
-/** Every JSON-LD object on the page, `@graph` members flattened in. */
+/*
+  Every JSON-LD object on the page, `@graph` members flattened in.
+*/
 export function readJsonLdNodes(html: string): Record<string, unknown>[] {
   const scriptPattern =
     /<script\b[^>]*type\s*=\s*["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi;
@@ -374,13 +406,17 @@ export function readJsonLdNodes(html: string): Record<string, unknown>[] {
         }
       }
     } catch {
-      // Malformed JSON-LD is common in the wild — skip it, never throw.
+      /*
+        Malformed JSON-LD is common in the wild — skip it, never throw.
+      */
     }
   }
   return nodes;
 }
 
-/** True when a JSON-LD node's `@type` (string or array) matches `pattern`. */
+/*
+  True when a JSON-LD node's `@type` (string or array) matches `pattern`.
+*/
 export function hasJsonLdType({ node, pattern }: { node: Record<string, unknown>; pattern: RegExp }): boolean {
   const rawType = node["@type"];
   const types = Array.isArray(rawType) ? rawType : [rawType];
@@ -389,7 +425,9 @@ export function hasJsonLdType({ node, pattern }: { node: Record<string, unknown>
 
 const ARTICLE_TYPE_PATTERN = /(news|blog|report|scholarly)?article|blogposting/i;
 
-/** The first JSON-LD object whose @type is an Article flavor, flattened. */
+/*
+  The first JSON-LD object whose @type is an Article flavor, flattened.
+*/
 function readJsonLdArticle(html: string): Record<string, unknown> | undefined {
   return readJsonLdNodes(html).find((node) =>
     hasJsonLdType({ node, pattern: ARTICLE_TYPE_PATTERN }),
@@ -456,9 +494,11 @@ export function toAbsoluteHttpUrl({
   }
 }
 
-// ---------------------------------------------------------------------------
-// Main-content scope + prose block collection
-// ---------------------------------------------------------------------------
+/*
+  ---------------------------------------------------------------------------
+  Main-content scope + prose block collection
+  ---------------------------------------------------------------------------
+*/
 
 type ScopeKind = "article" | "main" | "body";
 
@@ -482,14 +522,18 @@ const BOILERPLATE_PATTERN =
 
 const LEGAL_CHROME_PATTERN = /all rights reserved|terms of (use|service)|privacy policy/i;
 
-/** Link-density-aware prose collection — this is the ads/menus firewall. */
+/*
+  Link-density-aware prose collection — this is the ads/menus firewall.
+*/
 export function collectProseBlocks(scopeHtml: string): ProseBlock[] {
   const blocks: ProseBlock[] = [];
   const blockPattern = /<(h1|h2|h3|p|li|blockquote)\b[^>]*>([\s\S]*?)<\/\1>/gi;
   for (const match of scopeHtml.matchAll(blockPattern)) {
     const tagName = match[1].toLowerCase();
-    // Drop heading-anchor widgets ("Copy link to heading", "#", "Permalink")
-    // before flattening — docs/blog platforms nest them inside h2/h3.
+    /*
+      Drop heading-anchor widgets ("Copy link to heading", "#", "Permalink")
+      before flattening — docs/blog platforms nest them inside h2/h3.
+    */
     const rawInner = match[2].replace(/<a\b[^>]*>([\s\S]*?)<\/a>/gi, (anchor, anchorInner: string) =>
       /^\s*(copy link( to (heading|section))?|permalink|anchor|#|§)\s*$/i.test(
         toPlainText(anchorInner),
@@ -515,8 +559,10 @@ export function collectProseBlocks(scopeHtml: string): ProseBlock[] {
       continue;
     }
     if (tagName === "li") {
-      // Menus and index pages are lists of links — only long, prose-like,
-      // link-light items survive.
+      /*
+        Menus and index pages are lists of links — only long, prose-like,
+        link-light items survive.
+      */
       if (text.length >= 60 && linkDensity <= 0.2) {
         blocks.push({ kind: "paragraph", text });
       }
@@ -575,10 +621,12 @@ export function collectProseBlocks(scopeHtml: string): ProseBlock[] {
   });
 }
 
-// ---------------------------------------------------------------------------
-// Honest refusals — shared verbatim with the article extractor so the two
-// cannot drift apart while both exist.
-// ---------------------------------------------------------------------------
+/*
+  ---------------------------------------------------------------------------
+  Honest refusals — shared verbatim with the article extractor so the two
+  cannot drift apart while both exist.
+  ---------------------------------------------------------------------------
+*/
 
 export const PAYWALL_TEXT_PATTERN =
   /(subscribe|sign in|log in|register|create (a )?free account|become a member)[^.]{0,60}(to (continue|keep) reading|to read (this|the full)|full (access|story|article))|this (article|story|content) is (exclusively )?for (subscribers|members)|to continue reading, (subscribe|sign in|log in)/i;
@@ -596,9 +644,11 @@ export const PAYWALL_REFUSAL_MESSAGE =
 export const NO_MAIN_CONTENT_REFUSAL_MESSAGE =
   "There wasn't enough readable content on that page to work from — it looks like it is mostly navigation, links, or media. Try a direct link to the page whose content you want.";
 
-// ---------------------------------------------------------------------------
-// The lists channel
-// ---------------------------------------------------------------------------
+/*
+  ---------------------------------------------------------------------------
+  The lists channel
+  ---------------------------------------------------------------------------
+*/
 
 interface ListSpan {
   startIndex: number;
@@ -606,11 +656,11 @@ interface ListSpan {
   innerHtml: string;
 }
 
-/**
- * Every `<ul>`/`<ol>` block with its position, at EVERY nesting level. A list
- * nested inside another list is reported separately, and its items are removed
- * from its parent's, so no item is counted twice.
- */
+/*
+  Every `<ul>`/`<ol>` block with its position, at EVERY nesting level. A list
+  nested inside another list is reported separately, and its items are removed
+  from its parent's, so no item is counted twice.
+*/
 function findListSpans(html: string): ListSpan[] {
   const tokens = [...tokenizeTag("ul", html), ...tokenizeTag("ol", html)].sort(
     (left, right) => left.index - right.index,
@@ -639,11 +689,11 @@ interface RawListItem {
   linkTextLength: number;
 }
 
-/**
- * A list's own items. Splitting on the OPENING `<li>` rather than matching
- * `<li>…</li>` pairs, because an unclosed `<li>` is valid HTML and extremely
- * common — a pair-matching regex silently swallows the rest of the list.
- */
+/*
+  A list's own items. Splitting on the OPENING `<li>` rather than matching
+  `<li>…</li>` pairs, because an unclosed `<li>` is valid HTML and extremely
+  common — a pair-matching regex silently swallows the rest of the list.
+*/
 function readListItems(listInnerHtml: string): RawListItem[] {
   const withoutNestedLists = removeTagBlocks({
     html: removeTagBlocks({ html: listInnerHtml, tagName: "ul" }),
@@ -672,7 +722,9 @@ function readListItems(listInnerHtml: string): RawListItem[] {
   return items;
 }
 
-/** The nearest heading at or above `index`, when the page has one. */
+/*
+  The nearest heading at or above `index`, when the page has one.
+*/
 function findHeadingBefore({ html, index }: { html: string; index: number }): string | undefined {
   let heading: string | undefined;
   for (const match of html.slice(0, index).matchAll(/<(h[1-6])\b[^>]*>([\s\S]*?)<\/\1>/gi)) {
@@ -689,11 +741,11 @@ interface AdmittedList {
   span: ListSpan;
 }
 
-/**
- * Collect lists, judging each list AS A WHOLE on link density. This is the
- * channel `collectProseBlocks` cannot provide: it asks whether an ITEM reads
- * like prose (60+ chars), and a skills list never will.
- */
+/*
+  Collect lists, judging each list AS A WHOLE on link density. This is the
+  channel `collectProseBlocks` cannot provide: it asks whether an ITEM reads
+  like prose (60+ chars), and a skills list never will.
+*/
 function collectLists(scopeHtml: string): AdmittedList[] {
   const admitted: AdmittedList[] = [];
   for (const span of findListSpans(scopeHtml)) {
@@ -717,11 +769,11 @@ function collectLists(scopeHtml: string): AdmittedList[] {
   return admitted;
 }
 
-/**
- * Cut the admitted lists out of the scope before prose collection, so an item
- * cannot arrive twice — once as a list item and once as a paragraph. Outermost
- * span wins, so an admitted list nested inside an admitted list is removed once.
- */
+/*
+  Cut the admitted lists out of the scope before prose collection, so an item
+  cannot arrive twice — once as a list item and once as a paragraph. Outermost
+  span wins, so an admitted list nested inside an admitted list is removed once.
+*/
 function removeSpans({ html, spans }: { html: string; spans: ListSpan[] }): string {
   const ordered = [...spans].sort((left, right) => left.startIndex - right.startIndex);
   const disjoint: ListSpan[] = [];
@@ -740,15 +792,17 @@ function removeSpans({ html, spans }: { html: string; spans: ListSpan[] }): stri
   return result + html.slice(keptUpTo);
 }
 
-// ---------------------------------------------------------------------------
-// Image candidates
-// ---------------------------------------------------------------------------
+/*
+  ---------------------------------------------------------------------------
+  Image candidates
+  ---------------------------------------------------------------------------
+*/
 
-/**
- * Class/id/alt/url hints that an image is a picture of a person. Ported from
- * the old person extractor, where it CHOSE the portrait. Here it only adds a
- * string to `hints` — the same regex, no longer allowed to decide anything.
- */
+/*
+  Class/id/alt/url hints that an image is a picture of a person. Ported from
+  the old person extractor, where it CHOSE the portrait. Here it only adds a
+  string to `hints` — the same regex, no longer allowed to decide anything.
+*/
 const PORTRAIT_HINT_PATTERN = /\b(portrait|headshot|avatar|profile|photo|person|bio|staff|faculty)\b/i;
 
 const LOGO_HINT_PATTERN = /\b(logo|brandmark|wordmark)\b/i;
@@ -759,12 +813,16 @@ const OG_IMAGE_META_KEYS = ["og:image", "og:image:url", "twitter:image"];
 
 const ICON_LINK_REL_PATTERN = /(^|\s)(shortcut\s+)?(icon|apple-touch-icon(-precomposed)?|mask-icon)(\s|$)/i;
 
-/** Schema.org fields that carry a picture rather than a description of one. */
+/*
+  Schema.org fields that carry a picture rather than a description of one.
+*/
 const STRUCTURED_DATA_IMAGE_FIELDS = ["image", "logo", "photo", "thumbnailUrl"];
 
 interface RawImageCandidate {
   sourceIndex: number;
-  /** Length of the tag this was read from, so context can start after it. */
+  /*
+    Length of the tag this was read from, so context can start after it.
+  */
   tagLength: number;
   rawUrl: string;
   origin: ImageOrigin;
@@ -773,11 +831,11 @@ interface RawImageCandidate {
   height?: number;
   hintSource: string;
   hasContext: boolean;
-  /**
-   * What the element carrying this picture calls itself. Set only where a
-   * picture HAS a carrying element — a background — and it displaces the
-   * document-order heading rather than supplementing it.
-   */
+  /*
+    What the element carrying this picture calls itself. Set only where a
+    picture HAS a carrying element — a background — and it displaces the
+    document-order heading rather than supplementing it.
+  */
   carrierLabel?: string;
 }
 
@@ -789,12 +847,12 @@ function toPositiveInteger(value: string | undefined): number | undefined {
   return Number.isSafeInteger(parsed) && parsed > 0 ? parsed : undefined;
 }
 
-/**
- * The largest entry of a `srcset` descriptor list. Only a partial answer to the
- * responsive-image problem — a `<picture>`'s `<source srcset>` and a lazily
- * hydrated `data-src` are still invisible to an `<img src>` reader — but it is
- * two lines and it recovers the srcset-only `<img>`, which is common.
- */
+/*
+  The largest entry of a `srcset` descriptor list. Only a partial answer to the
+  responsive-image problem — a `<picture>`'s `<source srcset>` and a lazily
+  hydrated `data-src` are still invisible to an `<img src>` reader — but it is
+  two lines and it recovers the srcset-only `<img>`, which is common.
+*/
 function readLargestSrcsetUrl(srcset: string): string | undefined {
   let bestUrl: string | undefined;
   let bestWeight = -1;
@@ -818,11 +876,11 @@ function readLargestSrcsetUrl(srcset: string): string | undefined {
   return bestUrl;
 }
 
-/**
- * An open tag that carries a quoted `style` attribute. A pre-filter, so the
- * attribute reader runs on the handful of tags that could hold a background
- * rather than on every tag in the document.
- */
+/*
+  An open tag that carries a quoted `style` attribute. A pre-filter, so the
+  attribute reader runs on the handful of tags that could hold a background
+  rather than on every tag in the document.
+*/
 const TAG_WITH_STYLE_ATTRIBUTE_PATTERN =
   /<[a-z][a-z0-9-]*\b[^>]*\sstyle\s*=\s*(?:"[^"]*"|'[^']*')[^>]*>/gi;
 
@@ -836,15 +894,17 @@ const TAG_WITH_STYLE_ATTRIBUTE_PATTERN =
 const CSS_BACKGROUND_DECLARATION_PATTERN =
   /(?:^|;)\s*background(?:-image)?\s*:((?:[^;(]|\([^)]*\))*)/gi;
 
-/** One `url(…)` token: double-quoted, single-quoted, or bare. */
+/*
+  One `url(…)` token: double-quoted, single-quoted, or bare.
+*/
 const CSS_URL_PATTERN = /url\(\s*(?:"([^"]*)"|'([^']*)'|([^)'"\s]+))\s*\)/gi;
 
-/**
- * Every image a `style` attribute's background declarations point at, in the
- * order they were written. A layer that is a gradient contributes nothing, and
- * a `data:` URI is left to the URL resolver, which refuses any scheme that is
- * not http(s) — so it is dropped by the same rule that drops a `mailto:`.
- */
+/*
+  Every image a `style` attribute's background declarations point at, in the
+  order they were written. A layer that is a gradient contributes nothing, and
+  a `data:` URI is left to the URL resolver, which refuses any scheme that is
+  not http(s) — so it is dropped by the same rule that drops a `mailto:`.
+*/
 function readCssBackgroundUrls(style: string): string[] {
   const urls: string[] = [];
   for (const declaration of style.matchAll(CSS_BACKGROUND_DECLARATION_PATTERN)) {
@@ -856,39 +916,41 @@ function readCssBackgroundUrls(style: string): string[] {
   return urls;
 }
 
-/**
- * How far past a background-carrying tag the end of that element is looked
- * for. An element's own heading sits near the top of it; one whose closing tag
- * is further away than this is a container so large that no single heading
- * describes it, and the search is abandoned rather than guessed at.
- */
+/*
+  How far past a background-carrying tag the end of that element is looked
+  for. An element's own heading sits near the top of it; one whose closing tag
+  is further away than this is a container so large that no single heading
+  describes it, and the search is abandoned rather than guessed at.
+*/
 const MAX_CARRIER_SCAN_CHARS = 20_000;
 
-/**
- * How long an element's own text may be and still read as a NAME for the
- * picture it carries rather than a sentence about it.
- */
+/*
+  How long an element's own text may be and still read as a NAME for the
+  picture it carries rather than a sentence about it.
+*/
 const MAX_CARRIER_LABEL_CHARS = 80;
 
-/** The same bound `findHeadingBefore` puts on a heading it is willing to use. */
+/*
+  The same bound `findHeadingBefore` puts on a heading it is willing to use.
+*/
 const MAX_CARRIER_HEADING_CHARS = 200;
 
 const FIRST_HEADING_PATTERN = /<(h[1-6])\b[^>]*>([\s\S]*?)<\/\1>/i;
 
-/**
- * What the element carrying a background image calls itself, if anything.
- *
- * A background belongs to the element it is painted on, so that element
- * describes it better than whatever heading last appeared in the document. The
- * difference is not academic: when a card puts its picture above its own title
- * — which is the ordinary way to build a card — the heading BEFORE the picture
- * is the PREVIOUS card's name, and `nearestHeading` is the only context that
- * travels to a later step. A confidently wrong name is worse than none.
- *
- * So: a heading inside the element wins, then the element's own text when it is
- * short enough to be a label, and otherwise nothing at all — leaving the caller
- * with the document-order heading it would have used anyway.
- */
+/*
+  What the element carrying a background image calls itself, if anything.
+
+  A background belongs to the element it is painted on, so that element
+  describes it better than whatever heading last appeared in the document. The
+  difference is not academic: when a card puts its picture above its own title
+  — which is the ordinary way to build a card — the heading BEFORE the picture
+  is the PREVIOUS card's name, and `nearestHeading` is the only context that
+  travels to a later step. A confidently wrong name is worse than none.
+
+  So: a heading inside the element wins, then the element's own text when it is
+  short enough to be a label, and otherwise nothing at all — leaving the caller
+  with the document-order heading it would have used anyway.
+*/
 function readCarrierLabel({
   html,
   openTag,
@@ -952,7 +1014,9 @@ function collectImageUrls({ value, into }: { value: unknown; into: string[] }): 
   }
 }
 
-/** The og:image meta tag, with its position, resolved in the same order metadata uses. */
+/*
+  The og:image meta tag, with its position, resolved in the same order metadata uses.
+*/
 function findOgImageTag(html: string): { url: string; index: number } | undefined {
   const byKey = new Map<string, { url: string; index: number }>();
   for (const match of html.matchAll(/<meta\b[^>]*>/gi)) {
@@ -1145,7 +1209,9 @@ function readHints({
   return hints;
 }
 
-/** Roughly `SURROUNDING_TEXT_CHARS` of the page's own words either side of a tag. */
+/*
+  Roughly `SURROUNDING_TEXT_CHARS` of the page's own words either side of a tag.
+*/
 function readSurroundingText({
   html,
   startIndex,
@@ -1268,11 +1334,15 @@ function collectImageCandidates({
   return candidates;
 }
 
-// ---------------------------------------------------------------------------
-// The token budget
-// ---------------------------------------------------------------------------
+/*
+  ---------------------------------------------------------------------------
+  The token budget
+  ---------------------------------------------------------------------------
+*/
 
-/** Kept whole when the budget bites, because losing these is losing the page. */
+/*
+  Kept whole when the budget bites, because losing these is losing the page.
+*/
 const MAX_KEPT_PARAGRAPHS = 2;
 const MAX_ITEMS_PER_LIST = 12;
 const MAX_LISTS = 6;
@@ -1306,12 +1376,12 @@ function measureImageCandidate(candidate: ImageCandidate): number {
   );
 }
 
-/**
- * What the budget governs: everything the PAGE said. The identity fields
- * (finalUrl, canonicalUrl, siteName, title, description) are deliberately not
- * counted, because they are never droppable — charging for something that
- * cannot be sold makes the budget unsatisfiable at small values.
- */
+/*
+  What the budget governs: everything the PAGE said. The identity fields
+  (finalUrl, canonicalUrl, siteName, title, description) are deliberately not
+  counted, because they are never droppable — charging for something that
+  cannot be sold makes the budget unsatisfiable at small values.
+*/
 function measureContent(content: BudgetedContent): number {
   return (
     content.blocks.reduce((sum, block) => sum + block.text.length, 0) +
@@ -1321,7 +1391,9 @@ function measureContent(content: BudgetedContent): number {
   );
 }
 
-/** The first heading and the first two paragraphs — a page states what it is at the top. */
+/*
+  The first heading and the first two paragraphs — a page states what it is at the top.
+*/
 function findProtectedBlockIndexes(blocks: ProseBlock[]): Set<number> {
   const protectedIndexes = new Set<number>();
   const firstHeadingIndex = blocks.findIndex((block) => block.kind === "heading");
@@ -1338,13 +1410,13 @@ function findProtectedBlockIndexes(blocks: ProseBlock[]): Set<number> {
   return protectedIndexes;
 }
 
-/**
- * Fit the scrape into `maxContentChars` by a strict, deterministic sequence.
- * Each step runs only if the ones before it did not free enough, so the order
- * IS the policy: prose tail first (a page says what it is at the top), then
- * list depth, then list count, then structured data, then images, then the
- * context around images.
- */
+/*
+  Fit the scrape into `maxContentChars` by a strict, deterministic sequence.
+  Each step runs only if the ones before it did not free enough, so the order
+  IS the policy: prose tail first (a page says what it is at the top), then
+  list depth, then list count, then structured data, then images, then the
+  context around images.
+*/
 function applyContentBudget({
   content,
   maxContentChars,
@@ -1362,7 +1434,9 @@ function applyContentBudget({
     return measureContent({ blocks, lists, structuredData, imageCandidates }) > maxContentChars;
   }
 
-  /* 1. Trailing prose blocks, later before earlier. */
+  /*
+    1. Trailing prose blocks, later before earlier.
+  */
   if (isOverBudget()) {
     const protectedIndexes = findProtectedBlockIndexes(blocks);
     const droppedIndexes = new Set<number>();
@@ -1375,7 +1449,9 @@ function applyContentBudget({
     }
   }
 
-  /* 2. List items beyond MAX_ITEMS_PER_LIST per list. */
+  /*
+    2. List items beyond MAX_ITEMS_PER_LIST per list.
+  */
   if (isOverBudget() && lists.some((list) => list.items.length > MAX_ITEMS_PER_LIST)) {
     lists = lists.map((list) =>
       list.items.length <= MAX_ITEMS_PER_LIST
@@ -1385,7 +1461,9 @@ function applyContentBudget({
     hasDropped = true;
   }
 
-  /* 3. Lists beyond MAX_LISTS, keeping the lowest link density — the least menu-like. */
+  /*
+    3. Lists beyond MAX_LISTS, keeping the lowest link density — the least menu-like.
+  */
   if (isOverBudget() && lists.length > MAX_LISTS) {
     const keptLists = new Set(
       [...lists]
@@ -1396,7 +1474,9 @@ function applyContentBudget({
     hasDropped = true;
   }
 
-  /* 4. structuredData beyond MAX_STRUCTURED_DATA_NODES, priority types first, document order kept. */
+  /*
+    4. structuredData beyond MAX_STRUCTURED_DATA_NODES, priority types first, document order kept.
+  */
   if (isOverBudget() && structuredData.length > MAX_STRUCTURED_DATA_NODES) {
     const priorityNodes = structuredData.filter((node) =>
       hasJsonLdType({ node, pattern: PRIORITY_STRUCTURED_DATA_TYPE_PATTERN }),
@@ -1411,7 +1491,9 @@ function applyContentBudget({
     hasDropped = true;
   }
 
-  /* 5. imageCandidates beyond MAX_IMAGE_CANDIDATES; og-image and structured-data always survive. */
+  /*
+    5. imageCandidates beyond MAX_IMAGE_CANDIDATES; og-image and structured-data always survive.
+  */
   if (isOverBudget() && imageCandidates.length > MAX_IMAGE_CANDIDATES) {
     const alwaysKept = imageCandidates.filter(
       (candidate) => candidate.origin === "og-image" || candidate.origin === "structured-data",
@@ -1427,7 +1509,9 @@ function applyContentBudget({
     hasDropped = true;
   }
 
-  /* 6. surroundingText on candidates beyond the first MAX_CANDIDATES_WITH_SURROUNDING_TEXT. */
+  /*
+    6. surroundingText on candidates beyond the first MAX_CANDIDATES_WITH_SURROUNDING_TEXT.
+  */
   if (
     isOverBudget() &&
     imageCandidates
@@ -1446,16 +1530,24 @@ function applyContentBudget({
   return { blocks, lists, structuredData, imageCandidates, isTruncated: hasDropped };
 }
 
-// ---------------------------------------------------------------------------
-// The extractor
-// ---------------------------------------------------------------------------
+/*
+  ---------------------------------------------------------------------------
+  The extractor
+  ---------------------------------------------------------------------------
+*/
 
 export interface ExtractPageInput {
-  /** The fetched page HTML (already capped by fetchPage). */
+  /*
+    The fetched page HTML (already capped by fetchPage).
+  */
   html: string;
-  /** The post-redirect URL — the base for resolving relative URLs. */
+  /*
+    The post-redirect URL — the base for resolving relative URLs.
+  */
   finalUrl: string;
-  /** Override the content budget. Present so the drop order is testable. */
+  /*
+    Override the content budget. Present so the drop order is testable.
+  */
   maxContentChars?: number;
 }
 
@@ -1472,11 +1564,11 @@ const MASKED_REGION_PATTERNS = [
   /<!--[\s\S]*?-->/g,
 ];
 
-/**
- * Read one fetched page into a `PageScrape`, or refuse honestly. Pure and
- * deterministic — safe to unit-test on saved fixtures. A refusal is a normal
- * return value; nothing here throws on unreadable input.
- */
+/*
+  Read one fetched page into a `PageScrape`, or refuse honestly. Pure and
+  deterministic — safe to unit-test on saved fixtures. A refusal is a normal
+  return value; nothing here throws on unreadable input.
+*/
 /*
   How much of a content scope's text ONE non-content tag may take away before
   the removal is treated as evidence the tag was mismarked.
@@ -1505,11 +1597,11 @@ const MASKED_REGION_PATTERNS = [
 */
 const MAX_NON_CONTENT_REMOVAL_RATIO = 0.85;
 
-/**
- * Remove one non-content tag's subtrees, unless doing so would take away
- * essentially the whole scope — in which case the tag is mismarked and the
- * scope is returned untouched.
- */
+/*
+  Remove one non-content tag's subtrees, unless doing so would take away
+  essentially the whole scope — in which case the tag is mismarked and the
+  scope is returned untouched.
+*/
 function removeNonContentTag({ html, tagName }: { html: string; tagName: string }): string {
   const stripped = removeTagBlocks({ html, tagName });
 
@@ -1541,23 +1633,23 @@ function removeNonContentTag({ html, tagName }: { html: string; tagName: string 
   return removedRatio > MAX_NON_CONTENT_REMOVAL_RATIO ? html : stripped;
 }
 
-/**
- * Whether a page's declared canonical URL is on the same site as the page that
- * was actually fetched.
- *
- * A canonical tag is a publisher's claim about its own page, and it is usually
- * right — but a stale build can leave one pointing at a host nobody should be
- * linked to. Measured on a real portfolio: both the canonical and the og:image
- * pointed at a long-dead preview deployment on a different domain entirely, so
- * every attribution link built from that page would have sent readers to a
- * preview build instead of the site.
- *
- * Differing by subdomain, path, or scheme is completely normal (a fetch of
- * `example.com` canonicalising to `www.example.com` is the common case) and
- * stays trusted. A different registrable domain is not a canonicalisation; it
- * is a page pointing somewhere else, and the URL actually fetched is the more
- * trustworthy of the two.
- */
+/*
+  Whether a page's declared canonical URL is on the same site as the page that
+  was actually fetched.
+
+  A canonical tag is a publisher's claim about its own page, and it is usually
+  right — but a stale build can leave one pointing at a host nobody should be
+  linked to. Measured on a real portfolio: both the canonical and the og:image
+  pointed at a long-dead preview deployment on a different domain entirely, so
+  every attribution link built from that page would have sent readers to a
+  preview build instead of the site.
+
+  Differing by subdomain, path, or scheme is completely normal (a fetch of
+  `example.com` canonicalising to `www.example.com` is the common case) and
+  stays trusted. A different registrable domain is not a canonicalisation; it
+  is a page pointing somewhere else, and the URL actually fetched is the more
+  trustworthy of the two.
+*/
 function getIsSameSiteCanonical({
   canonicalUrl,
   finalUrl,

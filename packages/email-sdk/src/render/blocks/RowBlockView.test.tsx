@@ -4,13 +4,13 @@ import type { RowBlock } from "../../schema/blocks";
 import { resolveBlockStyles } from "../styles";
 import { RowBlockView } from "./RowBlockView";
 
-/**
- * The row's padding/background wrapper. A row paints on a wrapping <td>
- * because <Row> is a border-collapsed table, which ignores padding and is an
- * unreliable background surface in Word-engine Outlook. The wrapper is emitted
- * only when there is something to paint, so unstyled rows keep their historic
- * markup (the golden snapshots cover that side).
- */
+/*
+  The row's padding/background wrapper. A row paints on a wrapping <td>
+  because <Row> is a border-collapsed table, which ignores padding and is an
+  unreliable background surface in Word-engine Outlook. The wrapper is emitted
+  only when there is something to paint, so unstyled rows keep their historic
+  markup (the golden snapshots cover that side).
+*/
 
 function rowBlock(properties: RowBlock["properties"] = {}): RowBlock {
   return {

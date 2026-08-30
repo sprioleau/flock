@@ -33,11 +33,15 @@ export function ThemeRolePicker({
   onRolesChange,
 }: {
   roles: ThemeColorRoles;
-  /* The colors this form may offer, BEFORE contrast filtering. */
+  /*
+    The colors this form may offer, BEFORE contrast filtering.
+  */
   paletteHexes: string[];
   colors: BrandColor[];
   isBusy: boolean;
-  /* Distinguishes this form's control ids from any other on screen. */
+  /*
+    Distinguishes this form's control ids from any other on screen.
+  */
   idPrefix: string;
   onRolesChange: (roles: ThemeColorRoles) => void;
 }) {
@@ -80,9 +84,15 @@ export function ThemeRolePicker({
       <ColorRoleSelect
         label="Buttons & links"
         value={roles.accent}
-        /* Every palette color is a safe accent: the button label is derived */
-        /* for legibility and the link color repaired against the background, */
-        /* exactly as the scrape does for its own variations. */
+        /*
+          Every palette color is a safe accent: the button label is derived
+        */
+        /*
+          for legibility and the link color repaired against the background,
+        */
+        /*
+          exactly as the scrape does for its own variations.
+        */
         options={paletteHexes.filter((hex) => hex !== roles.contentBackground)}
         colors={colors}
         isBusy={isBusy}

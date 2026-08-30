@@ -10,11 +10,11 @@ import {
 } from "../build-helpers";
 import { defineSectionTemplate } from "../types";
 
-/**
- * `hero-split` — side-by-side hero: headline, supporting line, and CTA on the
- * left; image on the right (55/45, middle-aligned). Reference:
- * react.email/components split title-card / feature patterns.
- */
+/*
+  `hero-split` — side-by-side hero: headline, supporting line, and CTA on the
+  left; image on the right (55/45, middle-aligned). Reference:
+  react.email/components split title-card / feature patterns.
+*/
 
 export const heroSplitParamsSchema = z
   .strictObject({
@@ -68,7 +68,9 @@ export const heroSplitTemplate = defineSectionTemplate({
     listParams: [],
     imageCount: 1,
   },
-  /* As `hero`: the gallery shows the button, a real draft earns it. */
+  /*
+    As `hero`: the gallery shows the button, a real draft earns it.
+  */
   previewParams: { ctaLabel: "Get started", ctaHref: "https://example.com" },
   /*
     imageSrc is for programmatic callers only (a rehosted image URL from the

@@ -10,14 +10,14 @@ import {
 } from "./apply";
 import type { Operation } from "./ops";
 
-/**
- * Sample document shape (createSampleDocument):
- *   root
- *   ├─ sec_a1b2: [txt_e5f6, img_g7h8, div_i9j0]
- *   └─ sec_c3d4: [row_k1l2]
- *       ├─ col_m3n4: [txt_r7s8]
- *       └─ col_p5q6: [btn_t9u0]
- */
+/*
+  Sample document shape (createSampleDocument):
+    root
+    ├─ sec_a1b2: [txt_e5f6, img_g7h8, div_i9j0]
+    └─ sec_c3d4: [row_k1l2]
+        ├─ col_m3n4: [txt_r7s8]
+        └─ col_p5q6: [btn_t9u0]
+*/
 
 function applyOrThrow(document: EmailDocument, operation: Operation) {
   const result = applyOperation(document, operation);
@@ -48,12 +48,12 @@ function expectErrorCode({
   return result;
 }
 
-/**
- * The core quality bar, asserted for every op:
- * 1. Purity — the input document is deep-equal unchanged after apply.
- * 2. Inverse round trip — applying the op then its inverse restores a
- *    document deep-equal to the original.
- */
+/*
+  The core quality bar, asserted for every op:
+  1. Purity — the input document is deep-equal unchanged after apply.
+  2. Inverse round trip — applying the op then its inverse restores a
+     document deep-equal to the original.
+*/
 function expectPureInverseRoundTrip(document: EmailDocument, operation: Operation) {
   const before = structuredClone(document);
   const applied = applyOrThrow(document, operation);
@@ -89,9 +89,11 @@ const createNewSectionText = (): TextBlock => ({
   properties: { text: createTextDoc("Fresh section copy") },
 });
 
-// ---------------------------------------------------------------------------
-// updateBlockProperties
-// ---------------------------------------------------------------------------
+/*
+  ---------------------------------------------------------------------------
+  updateBlockProperties
+  ---------------------------------------------------------------------------
+*/
 
 describe("applyOperation — updateBlockProperties", () => {
   it("merges partial overrides, preserving unmentioned properties", () => {
@@ -182,9 +184,11 @@ describe("applyOperation — updateBlockProperties", () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-// replaceBlockProperties
-// ---------------------------------------------------------------------------
+/*
+  ---------------------------------------------------------------------------
+  replaceBlockProperties
+  ---------------------------------------------------------------------------
+*/
 
 describe("applyOperation — replaceBlockProperties", () => {
   it("replaces the entire properties object and round-trips", () => {
@@ -217,9 +221,11 @@ describe("applyOperation — replaceBlockProperties", () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-// updateDocumentSettings
-// ---------------------------------------------------------------------------
+/*
+  ---------------------------------------------------------------------------
+  updateDocumentSettings
+  ---------------------------------------------------------------------------
+*/
 
 describe("applyOperation — updateDocumentSettings", () => {
   it("merges partial globals into root.properties.globals", () => {
@@ -268,12 +274,16 @@ describe("applyOperation — updateDocumentSettings", () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-// applyTheme
-// ---------------------------------------------------------------------------
+/*
+  ---------------------------------------------------------------------------
+  applyTheme
+  ---------------------------------------------------------------------------
+*/
 
 describe("applyOperation — applyTheme", () => {
-  /** Sample doc plus a section carrying BOTH theme-scoped overrides and padding. */
+  /*
+    Sample doc plus a section carrying BOTH theme-scoped overrides and padding.
+  */
   const createDocumentWithSectionOverrides = (): EmailDocument => {
     const document = createSampleDocument();
     const section = document.sec_c3d4! as SectionBlock;
@@ -309,9 +319,13 @@ describe("applyOperation — applyTheme", () => {
       name: "applyTheme",
       globals: { emailBackgroundColor: "#000000" },
     });
-    // sec_c3d4 carried innerBackgroundColor (#fafafa), outerBackgroundColor, and paddingTop.
+    /*
+      sec_c3d4 carried innerBackgroundColor (#fafafa), outerBackgroundColor, and paddingTop.
+    */
     expect(result.doc.sec_c3d4!.properties).toEqual({ paddingTop: 40 });
-    // sec_a1b2 carried no overrides and is untouched (structurally shared).
+    /*
+      sec_a1b2 carried no overrides and is untouched (structurally shared).
+    */
     expect(result.doc.sec_a1b2).toBe(document.sec_a1b2);
   });
 
@@ -341,7 +355,7 @@ describe("applyOperation — applyTheme", () => {
 
   it("generates the classic root-snapshot inverse when no section carries an override", () => {
     const document = createSampleDocument();
-    delete document.sec_c3d4; // drop the override-carrying section (and its subtree refs)
+    delete document.sec_c3d4; /* drop the override-carrying section (and its subtree refs) */
     const root = document.root!;
     document.root = { ...root, childrenIds: ["sec_a1b2", "sec_e5f6"] } as typeof root;
     for (const blockId of ["row_k1l2", "col_m3n4", "txt_r7s8", "col_p5q6", "btn_t9u0"] as const) {
@@ -419,9 +433,11 @@ describe("applyOperation — applyTheme", () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-// addBlock
-// ---------------------------------------------------------------------------
+/*
+  ---------------------------------------------------------------------------
+  addBlock
+  ---------------------------------------------------------------------------
+*/
 
 describe("applyOperation — addBlock", () => {
   it("inserts the block at the given index under the parent", () => {
@@ -519,9 +535,11 @@ describe("applyOperation — addBlock", () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-// addSection
-// ---------------------------------------------------------------------------
+/*
+  ---------------------------------------------------------------------------
+  addSection
+  ---------------------------------------------------------------------------
+*/
 
 describe("applyOperation — addSection", () => {
   it("inserts an empty section at the given index under the root", () => {
@@ -592,9 +610,11 @@ describe("applyOperation — addSection", () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-// removeBlock (and restoreBlocks, its inverse)
-// ---------------------------------------------------------------------------
+/*
+  ---------------------------------------------------------------------------
+  removeBlock (and restoreBlocks, its inverse)
+  ---------------------------------------------------------------------------
+*/
 
 describe("applyOperation — removeBlock", () => {
   it("removes a leaf and splices it out of its parent", () => {
@@ -699,9 +719,11 @@ describe("applyOperation — restoreBlocks (direct)", () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-// moveBlock
-// ---------------------------------------------------------------------------
+/*
+  ---------------------------------------------------------------------------
+  moveBlock
+  ---------------------------------------------------------------------------
+*/
 
 describe("applyOperation — moveBlock", () => {
   it("reparents a leaf across containers and round-trips", () => {
@@ -795,9 +817,11 @@ describe("applyOperation — moveBlock", () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-// reorderChildren
-// ---------------------------------------------------------------------------
+/*
+  ---------------------------------------------------------------------------
+  reorderChildren
+  ---------------------------------------------------------------------------
+*/
 
 describe("applyOperation — reorderChildren", () => {
   it("applies the new order and round-trips", () => {
@@ -856,9 +880,11 @@ describe("applyOperation — reorderChildren", () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-// updateText
-// ---------------------------------------------------------------------------
+/*
+  ---------------------------------------------------------------------------
+  updateText
+  ---------------------------------------------------------------------------
+*/
 
 describe("applyOperation — updateText", () => {
   it("replaces the text doc and round-trips", () => {
@@ -919,9 +945,11 @@ describe("applyOperation — updateText", () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-// Envelope validation
-// ---------------------------------------------------------------------------
+/*
+  ---------------------------------------------------------------------------
+  Envelope validation
+  ---------------------------------------------------------------------------
+*/
 
 describe("applyOperation — envelope validation", () => {
   it("rejects an unknown operation name", () => {
@@ -941,9 +969,11 @@ describe("applyOperation — envelope validation", () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-// applyOperations — batches
-// ---------------------------------------------------------------------------
+/*
+  ---------------------------------------------------------------------------
+  applyOperations — batches
+  ---------------------------------------------------------------------------
+*/
 
 describe("applyOperations", () => {
   it("applies sequentially and returns inverses in reverse order", () => {

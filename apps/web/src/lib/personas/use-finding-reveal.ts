@@ -3,26 +3,28 @@
 import { useCallback, useMemo, useSyncExternalStore } from "react";
 import { getFindingCardRevealAtMs } from "./finding-presentation";
 
-/**
- * Which findings have passed their card-reveal instant (the dwell-gate that
- * makes a recommendation "post" only after its persona's dwell + select beat
- * — see finding-presentation.ts). A tiny external clock store in the
- * useIsPresentationWindowOpen idiom: the snapshot is a STABLE string of the
- * revealed ids (it only changes when a reveal instant actually crosses), and
- * the subscription arms one timeout for the next upcoming reveal — no
- * ticking, no render-time clock reads outside the snapshot.
- *
- * Findings that arrive already old (a tab that loaded later, or an open row
- * re-read after reload) are revealed from the first render, so the gate only
- * ever delays a FRESH finding's debut.
- */
+/*
+  Which findings have passed their card-reveal instant (the dwell-gate that
+  makes a recommendation "post" only after its persona's dwell + select beat
+  — see finding-presentation.ts). A tiny external clock store in the
+  useIsPresentationWindowOpen idiom: the snapshot is a STABLE string of the
+  revealed ids (it only changes when a reveal instant actually crosses), and
+  the subscription arms one timeout for the next upcoming reveal — no
+  ticking, no render-time clock reads outside the snapshot.
+
+  Findings that arrive already old (a tab that loaded later, or an open row
+  re-read after reload) are revealed from the first render, so the gate only
+  ever delays a FRESH finding's debut.
+*/
 
 export interface RevealableFindingRef {
   findingId: string;
   createdAtMs: number;
 }
 
-/** Small cushion so the timer never fires a hair before the clock crosses. */
+/*
+  Small cushion so the timer never fires a hair before the clock crosses.
+*/
 const REVEAL_TIMER_CUSHION_MS = 15;
 
 function parseFindingSignature(signature: string): RevealableFindingRef[] {
@@ -43,8 +45,10 @@ export function useRevealedFindingIds({
 }: {
   findings: readonly RevealableFindingRef[];
 }): ReadonlySet<string> {
-  // Value signature (not array identity) so a re-render with an equal list
-  // never re-subscribes. Convex ids contain no colons or newlines.
+  /*
+    Value signature (not array identity) so a re-render with an equal list
+    never re-subscribes. Convex ids contain no colons or newlines.
+  */
   const signature = findings
     .map((finding) => `${finding.findingId}:${finding.createdAtMs}`)
     .join("\n");
@@ -59,7 +63,7 @@ export function useRevealedFindingIds({
         const nowMs = Date.now();
         const futureRevealAtMsValues = revealAtMsValues.filter((atMs) => atMs > nowMs);
         if (futureRevealAtMsValues.length === 0) {
-          return; // everything visible already — nothing left to wait for
+          return; /* everything visible already — nothing left to wait for */
         }
         const nextRevealAtMs = Math.min(...futureRevealAtMsValues);
         timerId = window.setTimeout(() => {

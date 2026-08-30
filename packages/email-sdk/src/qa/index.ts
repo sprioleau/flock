@@ -1,13 +1,13 @@
-/**
- * `@flock/email-sdk/qa` — the deterministic, zero-model pre-send checks.
- *
- * A SUBPATH AND NOT THE MAIN BARREL, deliberately. `@flock/email-sdk` is
- * imported by well over a hundred CLIENT modules in apps/web, and this entry
- * pulls in the caniemail dataset (~1.5MB of feature-support data plus an HTML
- * and a CSS parser). Exporting it from `src/index.ts` would put all of that
- * into the studio's browser bundle to support a check that only ever runs on
- * a server. The subpath keeps the cost where the capability is.
- */
+/*
+  `@flock/email-sdk/qa` — the deterministic, zero-model pre-send checks.
+
+  A SUBPATH AND NOT THE MAIN BARREL, deliberately. `@flock/email-sdk` is
+  imported by well over a hundred CLIENT modules in apps/web, and this entry
+  pulls in the caniemail dataset (~1.5MB of feature-support data plus an HTML
+  and a CSS parser). Exporting it from `src/index.ts` would put all of that
+  into the studio's browser bundle to support a check that only ever runs on
+  a server. The subpath keeps the cost where the capability is.
+*/
 export {
   checkEmailCompatibility,
   COMPATIBILITY_MAX_FINDINGS,

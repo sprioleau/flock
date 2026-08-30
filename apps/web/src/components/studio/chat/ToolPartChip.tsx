@@ -53,11 +53,11 @@ function getToolName(part: FlockToolPart): string {
   return part.type.slice("tool-".length);
 }
 
-/**
- * True once the step has actually landed — the one signal that flips the
- * chip's copy from present to past tense. A denied step never happened, so it
- * stays in the present ("Sending a test email · denied").
- */
+/*
+  True once the step has actually landed — the one signal that flips the
+  chip's copy from present to past tense. A denied step never happened, so it
+  stays in the present ("Sending a test email · denied").
+*/
 function getIsPartComplete(part: FlockToolPart): boolean {
   return part.state === "output-available";
 }
@@ -108,11 +108,11 @@ function getToolIcon(part: FlockToolPart): React.ReactNode {
   return <PencilIcon className="size-3" />;
 }
 
-/**
- * Everything technical about a failed tool part — tool name, raw error text,
- * raw args JSON (which may contain block ids) — flattened into one string
- * that ONLY ever renders inside the collapsed "Details" disclosure.
- */
+/*
+  Everything technical about a failed tool part — tool name, raw error text,
+  raw args JSON (which may contain block ids) — flattened into one string
+  that ONLY ever renders inside the collapsed "Details" disclosure.
+*/
 function getRawFailureDetails(part: FlockToolPart & { state: "output-error" }): string {
   const rawArgs = part.input ?? part.rawInput;
   const detailLines = [`tool: ${getToolName(part)}`, `error: ${part.errorText}`];
@@ -122,15 +122,15 @@ function getRawFailureDetails(part: FlockToolPart & { state: "output-error" }): 
   return detailLines.join("\n");
 }
 
-/**
- * A failed tool call (schema-rejected op, exhausted repair round-trip, or a
- * failed client-side apply) rendered like the transcript's friendly turn-error
- * bubble: short human copy up front, the raw error + args behind a collapsed
- * "Details" disclosure. Block ids, tool names, and raw JSON never appear
- * outside the disclosure. While the turn is still in flight the copy says the
- * agent is retrying (the error round-trips to the model in-loop); once the
- * turn settles without a successful retry it reads as a final failure.
- */
+/*
+  A failed tool call (schema-rejected op, exhausted repair round-trip, or a
+  failed client-side apply) rendered like the transcript's friendly turn-error
+  bubble: short human copy up front, the raw error + args behind a collapsed
+  "Details" disclosure. Block ids, tool names, and raw JSON never appear
+  outside the disclosure. While the turn is still in flight the copy says the
+  agent is retrying (the error round-trips to the model in-loop); once the
+  turn settles without a successful retry it reads as a final failure.
+*/
 function FailedToolPart({
   part,
   isRetryPending,
@@ -183,7 +183,9 @@ function StateBadge({ part }: { part: FlockToolPart }) {
   }
 }
 
-/** Short trailing status text for terminal states. */
+/*
+  Short trailing status text for terminal states.
+*/
 function getStatusText(part: FlockToolPart): string | undefined {
   if (part.state === "approval-responded") {
     return part.approval.approved ? "approved, executing…" : "denied";
@@ -197,15 +199,19 @@ function getStatusText(part: FlockToolPart): string | undefined {
 export interface ToolPartChipProps {
   part: FlockToolPart;
   onApprovalResponse: (input: { approvalId: string; isApproved: boolean }) => void;
-  /** True while this part's turn is still in flight (a retry may follow). */
+  /*
+    True while this part's turn is still in flight (a retry may follow).
+  */
   isRetryPending?: boolean;
 }
 
 export function ToolPartChip({ part, onApprovalResponse, isRetryPending = false }: ToolPartChipProps) {
   const toolName = getToolName(part);
   const targetBlockId = getTargetBlockId(part.input);
-  // "· button", "· text"… — the target block's type, not its id. Undefined
-  // when the block is gone (removed/reverted later): the chip just omits it.
+  /*
+    "· button", "· text"… — the target block's type, not its id. Undefined
+    when the block is gone (removed/reverted later): the chip just omits it.
+  */
   const targetBlockType = useEditorStore((state) =>
     targetBlockId === undefined ? undefined : state.doc[targetBlockId]?.type,
   );
@@ -215,8 +221,10 @@ export function ToolPartChip({ part, onApprovalResponse, isRetryPending = false 
   const statusText = getStatusText(part);
   const isApprovalRequested = part.state === "approval-requested";
 
-  // Failed tool calls never render the normal chip — no tool name, block id,
-  // or raw error outside the friendly copy + collapsed Details disclosure.
+  /*
+    Failed tool calls never render the normal chip — no tool name, block id,
+    or raw error outside the friendly copy + collapsed Details disclosure.
+  */
   if (part.state === "output-error") {
     return <FailedToolPart part={part} isRetryPending={isRetryPending} />;
   }
@@ -236,8 +244,10 @@ export function ToolPartChip({ part, onApprovalResponse, isRetryPending = false 
           {getActivityLabel({
             toolName,
             input: part.input,
-            // undo/redo report whether a step actually happened; the chip must
-            // not say "Undid the last change" when the answer was no.
+            /*
+              undo/redo report whether a step actually happened; the chip must
+              not say "Undid the last change" when the answer was no.
+            */
             output: part.state === "output-available" ? part.output : undefined,
             isComplete: getIsPartComplete(part),
           })}

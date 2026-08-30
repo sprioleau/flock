@@ -3,7 +3,9 @@ import type { EmailDocument } from "@flock/email-sdk";
 import { buildSocialFillUpdates, hasSocialRow } from "./brand-kit-social-fill";
 import type { BrandSocialLink } from "./social-links";
 
-/** A minimal footer-ish section: social text row + unsubscribe link block. */
+/*
+  A minimal footer-ish section: social text row + unsubscribe link block.
+*/
 function buildFixtureDoc(): EmailDocument {
   const socialTextDoc = {
     type: "doc",
@@ -58,7 +60,9 @@ describe("hasSocialRow", () => {
 
   it("is false for a section without social links", () => {
     const doc = buildFixtureDoc();
-    // Strip the social text block and the social link block.
+    /*
+      Strip the social text block and the social link block.
+    */
     (doc.sec_f1 as { childrenIds: string[] }).childrenIds = ["lnk_u1"];
     expect(hasSocialRow({ doc, sectionId: "sec_f1" })).toBe(false);
   });
@@ -77,13 +81,19 @@ describe("buildSocialFillUpdates", () => {
       content: { type: string; content?: { text?: string; marks?: { type: string; attrs?: { href?: string } }[] }[] }[];
     };
     const socialRuns = nextDoc.content[0].content ?? [];
-    // 3 kit links joined by 2 separators = 5 runs.
+    /*
+      3 kit links joined by 2 separators = 5 runs.
+    */
     expect(socialRuns.map((run) => run.text)).toEqual(["X", " | ", "Facebook", " | ", "GitHub"]);
-    // Links point at the kit URLs; styling mark carried over.
+    /*
+      Links point at the kit URLs; styling mark carried over.
+    */
     const firstRun = socialRuns[0];
     expect(firstRun.marks?.some((mark) => mark.type === "link" && mark.attrs?.href === "https://x.com/acme")).toBe(true);
     expect(firstRun.marks?.some((mark) => mark.type === "textStyle")).toBe(true);
-    // The company-line paragraph is untouched.
+    /*
+      The company-line paragraph is untouched.
+    */
     expect(nextDoc.content[1].content?.[0].text).toBe("Acme Inc. · 123 Market St");
   });
 

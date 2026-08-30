@@ -12,18 +12,18 @@
  *   renamed draft without the marker gets it appended once.
  */
 
-/**
- * One trailing variation marker: "(variation)" or "(variation N)". Matched
- * case-insensitively so a hand-edited "(Variation 2)" still increments
- * rather than stacking a second marker.
- */
+/*
+  One trailing variation marker: "(variation)" or "(variation N)". Matched
+  case-insensitively so a hand-edited "(Variation 2)" still increments
+  rather than stacking a second marker.
+*/
 const VARIATION_SUFFIX_REGEX = /\s*\(variation(?:\s+(\d+))?\)$/i;
 
-/**
- * The variation draft's name: the source name with a single "(variation)" /
- * "(variation N)" marker, ordinal bumped until it collides with nothing in
- * `existingNames`.
- */
+/*
+  The variation draft's name: the source name with a single "(variation)" /
+  "(variation N)" marker, ordinal bumped until it collides with nothing in
+  `existingNames`.
+*/
 export function computeVariationDraftName({
   sourceName,
   existingNames,
@@ -37,7 +37,9 @@ export function computeVariationDraftName({
     suffixMatch === null
       ? trimmedSourceName
       : trimmedSourceName.slice(0, suffixMatch.index).trimEnd();
-  // A bare "(variation)" continues at 2; "(variation N)" continues at N+1.
+  /*
+    A bare "(variation)" continues at 2; "(variation N)" continues at N+1.
+  */
   const startOrdinal =
     suffixMatch === null ? 1 : suffixMatch[1] === undefined ? 2 : Number(suffixMatch[1]) + 1;
   const takenNames = new Set(existingNames);
@@ -50,18 +52,18 @@ export function computeVariationDraftName({
   }
 }
 
-/**
- * The next available name for a new draft.
- *
- * Without a `preferredName` this is the SMALLEST unused "Draft N", counting
- * from 1 — variation names and renames don't inflate the numbering (a canvas
- * of "Draft 1" + "Draft 1 (variation)" yields "Draft 2", not "Draft 3").
- *
- * With one — the agent naming a composed draft for what it IS ("Spring sale —
- * bold") — that name is used as given, and only if the canvas already has it
- * does it take the next free ordinal ("Spring sale — bold 2"). A blank or
- * whitespace-only preference falls back to the numbered form.
- */
+/*
+  The next available name for a new draft.
+
+  Without a `preferredName` this is the SMALLEST unused "Draft N", counting
+  from 1 — variation names and renames don't inflate the numbering (a canvas
+  of "Draft 1" + "Draft 1 (variation)" yields "Draft 2", not "Draft 3").
+
+  With one — the agent naming a composed draft for what it IS ("Spring sale —
+  bold") — that name is used as given, and only if the canvas already has it
+  does it take the next free ordinal ("Spring sale — bold 2"). A blank or
+  whitespace-only preference falls back to the numbered form.
+*/
 export function computeNextDraftName({
   existingNames,
   preferredName,

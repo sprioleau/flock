@@ -31,7 +31,9 @@ describe("generateBlockId", () => {
     const values = [0, 0.5, 0.999, 0.1];
     let callCount = 0;
     const fakeRandom = () => values[callCount++ % values.length]!;
-    // alphabet indexes: floor(0*36)=0→"a", floor(0.5*36)=18→"s", floor(0.999*36)=35→"9", floor(0.1*36)=3→"d"
+    /*
+      alphabet indexes: floor(0*36)=0→"a", floor(0.5*36)=18→"s", floor(0.999*36)=35→"9", floor(0.1*36)=3→"d"
+    */
     expect(generateBlockId("section", fakeRandom)).toBe("sec_as9d");
   });
 
@@ -58,15 +60,15 @@ describe("blockIdSchema (generic)", () => {
   );
 
   it.each([
-    "sec_A1B2", // uppercase
-    "sec_a1b", // suffix too short
-    "sec_a1b22", // suffix too long
-    "foo_a1b2", // unknown prefix
-    "sec-a1b2", // wrong separator
-    "sec_a1b!", // invalid character
-    "seca1b2", // missing underscore
-    "", // empty
-    "root_a1b2", // root takes no suffix
+    "sec_A1B2", /* uppercase */
+    "sec_a1b", /* suffix too short */
+    "sec_a1b22", /* suffix too long */
+    "foo_a1b2", /* unknown prefix */
+    "sec-a1b2", /* wrong separator */
+    "sec_a1b!", /* invalid character */
+    "seca1b2", /* missing underscore */
+    "", /* empty */
+    "root_a1b2", /* root takes no suffix */
   ])("rejects %s", (id) => {
     expect(blockIdSchema.safeParse(id).success).toBe(false);
   });
@@ -89,16 +91,16 @@ describe("parseBlockId / formatBlockId", () => {
   });
 
   it.each([
-    "sec_A1B2", // uppercase key
-    "sec_a1b", // key too short
-    "sec_a1b22", // key too long
-    "foo_a1b2", // unknown prefix
-    "sec-a1b2", // wrong separator
-    "seca1b2", // missing underscore
-    "root_a1b2", // root takes no suffix
-    "_a1b2", // empty prefix
-    "sec_", // empty key
-    "", // empty
+    "sec_A1B2", /* uppercase key */
+    "sec_a1b", /* key too short */
+    "sec_a1b22", /* key too long */
+    "foo_a1b2", /* unknown prefix */
+    "sec-a1b2", /* wrong separator */
+    "seca1b2", /* missing underscore */
+    "root_a1b2", /* root takes no suffix */
+    "_a1b2", /* empty prefix */
+    "sec_", /* empty key */
+    "", /* empty */
   ])("parseBlockId returns null for %j", (id) => {
     expect(parseBlockId(id)).toBeNull();
   });

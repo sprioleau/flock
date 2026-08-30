@@ -1,15 +1,15 @@
-/**
- * Property key → human phrase, shared by every op-log surface. Extracted from
- * op-author.ts (still the single source of truth for full op labels) so the
- * pure value-transition helper can reuse the exact same phrases without
- * pulling in the presence/identity imports op-author needs.
- */
+/*
+  Property key → human phrase, shared by every op-log surface. Extracted from
+  op-author.ts (still the single source of truth for full op labels) so the
+  pure value-transition helper can reuse the exact same phrases without
+  pulling in the presence/identity imports op-author needs.
+*/
 
-/**
- * Property key → human phrase for "Updated {phrase} · {Block type}" labels.
- * Anything unmapped falls back to the camelCase splitter below, so an
- * internal-looking key can never leak verbatim.
- */
+/*
+  Property key → human phrase for "Updated {phrase} · {Block type}" labels.
+  Anything unmapped falls back to the camelCase splitter below, so an
+  internal-looking key can never leak verbatim.
+*/
 export const PROPERTY_PHRASES: Record<string, string> = {
   backgroundColor: "background color",
   color: "text color",
@@ -55,7 +55,9 @@ export const PROPERTY_PHRASES: Record<string, string> = {
   imageBorderRadius: "image corner radius",
 };
 
-/** "borderRadius" → "corner radius"; unmapped keys → "heading 1 text align". */
+/*
+  "borderRadius" → "corner radius"; unmapped keys → "heading 1 text align".
+*/
 export function humanizePropertyKey(key: string): string {
   return (
     PROPERTY_PHRASES[key] ??

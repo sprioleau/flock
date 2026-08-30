@@ -76,37 +76,47 @@ import {
 type OperationsPage = FunctionReturnType<typeof api.documents.getOperations>;
 type FindingRow = FunctionReturnType<typeof api.personaFindings.listOpenFindings>[number];
 
-/** Op-log tail to subscribe to (matches the suggestions watcher). */
+/*
+  Op-log tail to subscribe to (matches the suggestions watcher).
+*/
 const OPS_TAIL_LIMIT = 30;
 
-/** Trailing debounce between a settled gesture and the runner call. */
+/*
+  Trailing debounce between a settled gesture and the runner call.
+*/
 const RUN_DEBOUNCE_MS = 1_200;
 
-/**
- * Keep-alive cadence for enabled persona presence rows. Item 27 (owner:
- * heartbeats "need to chill" — idle burn on the free Convex plan): raised
- * 4s → 25s against the server's 30s presence interval (the component times
- * out at 2.5× = 75s, so 25s beats keep ~3× headroom, enough for
- * background-tab timer throttling). Facepile drop-off after disabling a
- * persona is correspondingly slower (≤ ~75s) — accepted cost trade.
- */
+/*
+  Keep-alive cadence for enabled persona presence rows. Item 27 (owner:
+  heartbeats "need to chill" — idle burn on the free Convex plan): raised
+  4s → 25s against the server's 30s presence interval (the component times
+  out at 2.5× = 75s, so 25s beats keep ~3× headroom, enough for
+  background-tab timer throttling). Facepile drop-off after disabling a
+  persona is correspondingly slower (≤ ~75s) — accepted cost trade.
+*/
 const PRESENCE_HEARTBEAT_MS = 25_000;
 
-/**
- * Deterministic per-persona stagger window (item 27): each persona's
- * cooldown is lengthened by hash(slug) % this, so personas drift apart
- * instead of all coming due at the same moment. Eligibility-only — runs
- * stay BATCHED (one /api/personas call per trigger window).
- */
+/*
+  Deterministic per-persona stagger window (item 27): each persona's
+  cooldown is lengthened by hash(slug) % this, so personas drift apart
+  instead of all coming due at the same moment. Eligibility-only — runs
+  stay BATCHED (one /api/personas call per trigger window).
+*/
 const STAGGER_WINDOW_MS = 20_000;
 
-/** Global visible-findings cap (owner §10.1 row-1 constraint). */
+/*
+  Global visible-findings cap (owner §10.1 row-1 constraint).
+*/
 const MAX_VISIBLE_FINDINGS = 3;
 
-/** How long an applied card's Revert affordance lingers before clearing. */
+/*
+  How long an applied card's Revert affordance lingers before clearing.
+*/
 const APPLIED_STATE_TTL_MS = 8_000;
 
-// Dev-only trace so in-browser verification can see WHY a run did/didn't fire.
+/*
+  Dev-only trace so in-browser verification can see WHY a run did/didn't fire.
+*/
 declare global {
   interface Window {
     __flockPersonasDebug?: unknown[];
@@ -159,7 +169,9 @@ type RunnerResponse =
     }
   | { isOk: false; message: string };
 
-/** One locally applied finding: the card's revert affordance state. */
+/*
+  One locally applied finding: the card's revert affordance state.
+*/
 interface AppliedCardState {
   suggestion: PersonaSuggestion;
   findingId: string;
@@ -179,10 +191,14 @@ export interface PersonaAdvisorsController {
   revertApplied: (suggestionId: string) => void;
 }
 
-/** A persisted findings row → the suggestions surface's card shape. */
+/*
+  A persisted findings row → the suggestions surface's card shape.
+*/
 function toPersonaSuggestion(row: FindingRow): PersonaSuggestion {
   return {
-    // The Convex row id IS the card id: stable across renders AND tabs.
+    /*
+      The Convex row id IS the card id: stable across renders AND tabs.
+    */
     id: row.findingId,
     source: "analysis",
     personaSlug: row.personaSlug,
@@ -198,7 +214,9 @@ function toPersonaSuggestion(row: FindingRow): PersonaSuggestion {
   };
 }
 
-/** Short prompt-internal note about the ops that triggered this run. */
+/*
+  Short prompt-internal note about the ops that triggered this run.
+*/
 function summarizeTriggerOps(page: OperationsPage): string | undefined {
   const recentUserOps = page.operations
     .filter((entry) => entry.author === "user" && entry.kind === "edit")
@@ -220,40 +238,46 @@ export function usePersonaAdvisors(): PersonaAdvisorsController {
   const enabledSlugs = useEnabledPersonaSlugs();
   const personaRows = useQuery(api.personas.listPersonas, enabledSlugs.length > 0 ? {} : "skip");
 
-  // THE findings feed: every open finding for this document, all tabs, all
-  // collaborators — reactive, so records/dismissals/applies converge live.
+  /*
+    THE findings feed: every open finding for this document, all tabs, all
+    collaborators — reactive, so records/dismissals/applies converge live.
+  */
   const findingRows = useQuery(
     api.personaFindings.listOpenFindings,
     documentId !== null ? { documentId } : "skip",
   );
 
-  /**
-   * Rows hidden in THIS tab only: locally-detected stale findings ("dies
-   * quietly" — never resurrects even if the block changes back) and
-   * optimistically dismissed rows (hidden ahead of the mutation ack).
-   */
+  /*
+    Rows hidden in THIS tab only: locally-detected stale findings ("dies
+    quietly" — never resurrects even if the block changes back) and
+    optimistically dismissed rows (hidden ahead of the mutation ack).
+  */
   const [hiddenFindingIds, setHiddenFindingIds] = useState<ReadonlySet<string>>(new Set());
-  /**
-   * Dismissed patternKeys: session dismissals ∪ the per-document localStorage
-   * bookkeeping (the pre-persistence twin of the dismissed rows' patternKey
-   * skip in personaFindings.recordFindings). Loaded lazily on mount and
-   * reloaded in the document-switch render adjustment below.
-   */
+  /*
+    Dismissed patternKeys: session dismissals ∪ the per-document localStorage
+    bookkeeping (the pre-persistence twin of the dismissed rows' patternKey
+    skip in personaFindings.recordFindings). Loaded lazily on mount and
+    reloaded in the document-switch render adjustment below.
+  */
   const [dismissedPatternKeys, setDismissedPatternKeys] = useState<ReadonlySet<string>>(() =>
     documentId !== null ? readDismissedPatternKeys(documentId) : new Set(),
   );
-  /** Cards this tab applied — they carry the revert affordance locally. */
+  /*
+    Cards this tab applied — they carry the revert affordance locally.
+  */
   const [appliedCards, setAppliedCards] = useState<AppliedCardState[]>([]);
-  /**
-   * Ids of findings whose ops were (or are being) applied. A REF, not state,
-   * on purpose: dispatching a card's ops mutates its own target blocks, which
-   * fires the editor-store staleness subscription SYNCHRONOUSLY — before any
-   * state update commits — and the applied card would hide itself as stale.
-   * The ref updates synchronously ahead of the dispatch, so the staleness
-   * check can exempt the card immediately.
-   */
+  /*
+    Ids of findings whose ops were (or are being) applied. A REF, not state,
+    on purpose: dispatching a card's ops mutates its own target blocks, which
+    fires the editor-store staleness subscription SYNCHRONOUSLY — before any
+    state update commits — and the applied card would hide itself as stale.
+    The ref updates synchronously ahead of the dispatch, so the staleness
+    check can exempt the card immediately.
+  */
   const appliedFindingIdsRef = useRef<Set<string>>(new Set());
-  // Per-document runner bookkeeping (cooldowns, dedup key, high-water mark).
+  /*
+    Per-document runner bookkeeping (cooldowns, dedup key, high-water mark).
+  */
   const runnerRef = useRef<{
     documentId: string | null;
     lastEvaluatedVersion: number;
@@ -270,9 +294,11 @@ export function usePersonaAdvisors(): PersonaAdvisorsController {
   const debounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const appliedClearTimersRef = useRef<Map<string, ReturnType<typeof setTimeout>>>(new Map());
 
-  // Refs so the debounced run always sees current values without re-arming
-  // the watcher effect on every enablement/registry change (synced in an
-  // effect — never during render, per the React Compiler contract).
+  /*
+    Refs so the debounced run always sees current values without re-arming
+    the watcher effect on every enablement/registry change (synced in an
+    effect — never during render, per the React Compiler contract).
+  */
   const enabledSlugsRef = useRef(enabledSlugs);
   const personaRowsRef = useRef(personaRows);
   useEffect(() => {
@@ -280,8 +306,10 @@ export function usePersonaAdvisors(): PersonaAdvisorsController {
     personaRowsRef.current = personaRows;
   }, [enabledSlugs, personaRows]);
 
-  // Document switch: drop carried-over local card state (render-time state
-  // adjustment; refs/timers are cleared in the effect below).
+  /*
+    Document switch: drop carried-over local card state (render-time state
+    adjustment; refs/timers are cleared in the effect below).
+  */
   const [boundDocumentId, setBoundDocumentId] = useState<Id<"documents"> | null>(documentId);
   if (boundDocumentId !== documentId) {
     setBoundDocumentId(documentId);
@@ -290,7 +318,9 @@ export function usePersonaAdvisors(): PersonaAdvisorsController {
     setAppliedCards([]);
   }
 
-  // Document switch / unmount: clear timers and the applied-exemption ref.
+  /*
+    Document switch / unmount: clear timers and the applied-exemption ref.
+  */
   useEffect(() => {
     const timers = appliedClearTimersRef.current;
     const appliedIds = appliedFindingIdsRef.current;
@@ -310,20 +340,26 @@ export function usePersonaAdvisors(): PersonaAdvisorsController {
       appliedClearTimersRef.current.delete(findingId);
     }
     appliedFindingIdsRef.current.delete(findingId);
-    // Keep the id hidden: if markFindingApplied failed (row still open), the
-    // card must not pop back after its applied affordance cleared.
+    /*
+      Keep the id hidden: if markFindingApplied failed (row still open), the
+      card must not pop back after its applied affordance cleared.
+    */
     setHiddenFindingIds((current) => new Set([...current, findingId]));
     setAppliedCards((current) => current.filter((card) => card.findingId !== findingId));
   };
 
-  // -------------------------------------------------------------------------
-  // PRESENCE keep-alive for enabled personas
-  // -------------------------------------------------------------------------
+  /*
+    -------------------------------------------------------------------------
+    PRESENCE keep-alive for enabled personas
+    -------------------------------------------------------------------------
+  */
   const enabledKey = [...enabledSlugs].sort().join(",");
   const arePersonasPaused = useArePersonasPaused();
   useEffect(() => {
-    // While paused the heartbeat stops too, so persona avatars/cursors go
-    // idle (explicitly fine per the pause design) and resume on unpause.
+    /*
+      While paused the heartbeat stops too, so persona avatars/cursors go
+      idle (explicitly fine per the pause design) and resume on unpause.
+    */
     if (documentId === null || enabledKey.length === 0 || arePersonasPaused) {
       return;
     }
@@ -340,17 +376,21 @@ export function usePersonaAdvisors(): PersonaAdvisorsController {
     return () => clearInterval(intervalId);
   }, [convexClient, documentId, enabledKey, arePersonasPaused]);
 
-  // -------------------------------------------------------------------------
-  // WATCH + RUN (findings land in Convex — nothing card-shaped comes back)
-  // -------------------------------------------------------------------------
+  /*
+    -------------------------------------------------------------------------
+    WATCH + RUN (findings land in Convex — nothing card-shaped comes back)
+    -------------------------------------------------------------------------
+  */
   useEffect(() => {
     if (documentId === null) {
       return;
     }
 
     const runAdvisors = async (page: OperationsPage): Promise<void> => {
-      // Paused = ZERO /api/personas requests (credit conservation). Checked
-      // LIVE here too — a debounce armed just before pausing must not fire.
+      /*
+        Paused = ZERO /api/personas requests (credit conservation). Checked
+        LIVE here too — a debounce armed just before pausing must not fire.
+      */
       if (shouldSkipAdvisorRun(documentId)) {
         tracePersonas({ step: "skip-paused" });
         return;
@@ -363,9 +403,11 @@ export function usePersonaAdvisors(): PersonaAdvisorsController {
       }
       const rowsBySlug = new Map(rows.map((row) => [row.slug, row]));
       const now = Date.now();
-      // Per-persona cooldown gate — with the deterministic stagger offset
-      // (item 27) so personas' windows drift apart instead of all expiring
-      // together. Only personas past cooldown+offset may join this batch.
+      /*
+        Per-persona cooldown gate — with the deterministic stagger offset
+        (item 27) so personas' windows drift apart instead of all expiring
+        together. Only personas past cooldown+offset may join this batch.
+      */
       const eligibleSlugs = enabledSlugsRef.current.filter((slug) => {
         const row = rowsBySlug.get(slug);
         if (row === undefined) {
@@ -380,18 +422,22 @@ export function usePersonaAdvisors(): PersonaAdvisorsController {
         return;
       }
 
-      // Outline-unchanged skip: a gesture that didn't change what the model
-      // would see (e.g. an edit + its undo) never spends a call. Depth "full"
-      // matches the route: styling-only edits must count as outline changes.
+      /*
+        Outline-unchanged skip: a gesture that didn't change what the model
+        would see (e.g. an edit + its undo) never spends a call. Depth "full"
+        matches the route: styling-only edits must count as outline changes.
+      */
       const doc = useEditorStore.getState().doc;
       const outline = generateDocumentOutline({ doc, options: { depth: "full" } });
 
-      // Hash-gated checks (item 27): a persona whose WATCHED SCOPE hash is
-      // unchanged since its last check skips silently — no API call, no
-      // presence churn — even when its cooldown is due. Scope comes from the
-      // persona's `watch:` frontmatter (whole document by default); the
-      // baseline lives in localStorage beside the run clock, so reloads and
-      // sibling tabs share it.
+      /*
+        Hash-gated checks (item 27): a persona whose WATCHED SCOPE hash is
+        unchanged since its last check skips silently — no API call, no
+        presence churn — even when its cooldown is due. Scope comes from the
+        persona's `watch:` frontmatter (whole document by default); the
+        baseline lives in localStorage beside the run clock, so reloads and
+        sibling tabs share it.
+      */
       const scopeHashBySlug = new Map<string, string>();
       const dueSlugs = eligibleSlugs.filter((slug) => {
         const row = rowsBySlug.get(slug);
@@ -419,10 +465,12 @@ export function usePersonaAdvisors(): PersonaAdvisorsController {
       }
 
       runner.isRunInFlight = true;
-      // Stamp cooldowns + checked-scope hashes at run START so a burst can't
-      // double-spend. The run-clock twin feeds the facepile popover's
-      // "checks again in ~Ns" (localStorage — shared across this browser's
-      // tabs, zero presence writes).
+      /*
+        Stamp cooldowns + checked-scope hashes at run START so a burst can't
+        double-spend. The run-clock twin feeds the facepile popover's
+        "checks again in ~Ns" (localStorage — shared across this browser's
+        tabs, zero presence writes).
+      */
       for (const slug of dueSlugs) {
         runner.lastRunAtMsBySlug.set(slug, now);
         recordPersonaRunStart({ documentId, slug, atMs: now });
@@ -452,8 +500,10 @@ export function usePersonaAdvisors(): PersonaAdvisorsController {
           tracePersonas({ step: "run-skipped-server", reason: payload.skippedReason });
           return;
         }
-        // The route persisted the findings; the reactive listOpenFindings
-        // query delivers them to this tab AND every other one.
+        /*
+          The route persisted the findings; the reactive listOpenFindings
+          query delivers them to this tab AND every other one.
+        */
         tracePersonas({ step: "run-findings", count: payload.findings.length });
       } catch (error) {
         tracePersonas({ step: "run-error", message: String(error) });
@@ -470,11 +520,13 @@ export function usePersonaAdvisors(): PersonaAdvisorsController {
       const entries = page.operations;
       const newest = entries[entries.length - 1];
       if (runner.documentId !== documentId) {
-        // First page for this document: BASELINE only, never evaluate (item
-        // 27, owner: "don't check on initial load"). Whatever op history the
-        // document arrives with — including a user edit from a previous
-        // session — is old news; the first check happens only after the
-        // first NEW settled user edit.
+        /*
+          First page for this document: BASELINE only, never evaluate (item
+          27, owner: "don't check on initial load"). Whatever op history the
+          document arrives with — including a user edit from a previous
+          session — is old news; the first check happens only after the
+          first NEW settled user edit.
+        */
         runnerRef.current = {
           documentId,
           lastEvaluatedVersion: newest?.version ?? 0,
@@ -489,9 +541,11 @@ export function usePersonaAdvisors(): PersonaAdvisorsController {
         return;
       }
       runnerRef.current.lastEvaluatedVersion = newest.version;
-      // THE loop-prevention rule (§5.3): only a settled USER edit triggers.
-      // Agent ops — chat turns, rule-suggestion applies, and persona-finding
-      // applies (author "agent", authorId `persona:<slug>`) — never do.
+      /*
+        THE loop-prevention rule (§5.3): only a settled USER edit triggers.
+        Agent ops — chat turns, rule-suggestion applies, and persona-finding
+        applies (author "agent", authorId `persona:<slug>`) — never do.
+      */
       if (newest.author !== "user" || newest.kind !== "edit") {
         tracePersonas({ step: "skip-not-user-edit", author: newest.author, kind: newest.kind });
         return;
@@ -499,12 +553,16 @@ export function usePersonaAdvisors(): PersonaAdvisorsController {
       if (enabledSlugsRef.current.length === 0) {
         return;
       }
-      // Gate at the TRIGGER while paused: no debounce armed, no request made.
+      /*
+        Gate at the TRIGGER while paused: no debounce armed, no request made.
+      */
       if (shouldSkipAdvisorRun(documentId)) {
         tracePersonas({ step: "skip-paused" });
         return;
       }
-      // Trailing debounce: an editing burst coalesces into one run.
+      /*
+        Trailing debounce: an editing burst coalesces into one run.
+      */
       if (debounceTimerRef.current !== null) {
         clearTimeout(debounceTimerRef.current);
       }
@@ -535,16 +593,20 @@ export function usePersonaAdvisors(): PersonaAdvisorsController {
     return () => {
       isDisposed = true;
       unsubscribe();
-      // Deliberately NOT clearing the debounce timer here: this effect
-      // re-runs on EVERY committed op (serverHeadVersion advances → the watch
-      // window re-anchors), and the very op that scheduled the run would
-      // cancel it in the same breath. The timer is cleared only on document
-      // switch / unmount (the effect below).
+      /*
+        Deliberately NOT clearing the debounce timer here: this effect
+        re-runs on EVERY committed op (serverHeadVersion advances → the watch
+        window re-anchors), and the very op that scheduled the run would
+        cancel it in the same breath. The timer is cleared only on document
+        switch / unmount (the effect below).
+      */
     };
   }, [convexClient, documentId, serverHeadVersion]);
 
-  // Pending-run lifetime: a debounced run belongs to ONE document; drop it
-  // when the document changes or the hook unmounts.
+  /*
+    Pending-run lifetime: a debounced run belongs to ONE document; drop it
+    when the document changes or the hook unmounts.
+  */
   useEffect(() => {
     return () => {
       if (debounceTimerRef.current !== null) {
@@ -554,15 +616,17 @@ export function usePersonaAdvisors(): PersonaAdvisorsController {
     };
   }, [documentId]);
 
-  // -------------------------------------------------------------------------
-  // STALENESS: any drift between a finding's persisted targetSnapshots and
-  // THIS tab's rendered doc hides it here, permanently ("dies quietly").
-  // Local-only — no mutation — so it can never race an apply in another tab;
-  // every tab converges to the same doc and reaches the same verdict, and
-  // the runner prunes the stale rows server-side on its next pass. Findings
-  // this tab applied are exempt (their revert affordance must survive the
-  // very change the apply itself made).
-  // -------------------------------------------------------------------------
+  /*
+    -------------------------------------------------------------------------
+    STALENESS: any drift between a finding's persisted targetSnapshots and
+    THIS tab's rendered doc hides it here, permanently ("dies quietly").
+    Local-only — no mutation — so it can never race an apply in another tab;
+    every tab converges to the same doc and reaches the same verdict, and
+    the runner prunes the stale rows server-side on its next pass. Findings
+    this tab applied are exempt (their revert affordance must survive the
+    very change the apply itself made).
+    -------------------------------------------------------------------------
+  */
   useEffect(() => {
     if (findingRows === undefined || findingRows.length === 0) {
       return;
@@ -599,26 +663,32 @@ export function usePersonaAdvisors(): PersonaAdvisorsController {
     };
   }, [findingRows, hiddenFindingIds]);
 
-  // -------------------------------------------------------------------------
-  // The visible card set: this tab's applied cards (revert affordance) on
-  // top, then the freshest open findings that aren't locally hidden,
-  // dismissed, or being applied — capped at MAX_VISIBLE_FINDINGS total.
+  /*
+    -------------------------------------------------------------------------
+    The visible card set: this tab's applied cards (revert affordance) on
+    top, then the freshest open findings that aren't locally hidden,
+    dismissed, or being applied — capped at MAX_VISIBLE_FINDINGS total.
+  */
   //
-  // DWELL-GATE (owner feedback 2026-07-31 — wander → dwell → select → post):
-  // a FRESH finding's card stays hidden until FINDING_CARD_REVEAL_MS after
-  // its server-stamped createdAtMs, i.e. until just after its persona's
-  // cursor has dwell-hovered the target block and visibly selected it — so
-  // the human connects the motion to the message. Rows that arrive already
-  // old (late-joining tab, reload) reveal instantly.
-  // -------------------------------------------------------------------------
+  /*
+    DWELL-GATE (owner feedback 2026-07-31 — wander → dwell → select → post):
+    a FRESH finding's card stays hidden until FINDING_CARD_REVEAL_MS after
+    its server-stamped createdAtMs, i.e. until just after its persona's
+    cursor has dwell-hovered the target block and visibly selected it — so
+    the human connects the motion to the message. Rows that arrive already
+    old (late-joining tab, reload) reveal instantly.
+    -------------------------------------------------------------------------
+  */
   const revealedFindingIds = useRevealedFindingIds({
     findings: (findingRows ?? []).map((row) => ({
       findingId: row.findingId,
       createdAtMs: row.createdAtMs,
     })),
   });
-  // Applied ids from STATE here (never the ref — refs must not be read in
-  // render): by the re-render after an apply, the card is in appliedCards.
+  /*
+    Applied ids from STATE here (never the ref — refs must not be read in
+    render): by the re-render after an apply, the card is in appliedCards.
+  */
   const appliedFindingIds = new Set(appliedCards.map((card) => card.findingId));
   const visibleOpenRows = (findingRows ?? [])
     .filter(
@@ -630,9 +700,11 @@ export function usePersonaAdvisors(): PersonaAdvisorsController {
     )
     .slice(0, Math.max(0, MAX_VISIBLE_FINDINGS - appliedCards.length));
 
-  // -------------------------------------------------------------------------
-  // Actions
-  // -------------------------------------------------------------------------
+  /*
+    -------------------------------------------------------------------------
+    Actions
+    -------------------------------------------------------------------------
+  */
   const applySuggestion = (suggestionId: string): void => {
     const row = visibleOpenRows.find((candidate) => candidate.findingId === suggestionId);
     if (row === undefined || row.ops.length === 0) {
@@ -641,15 +713,21 @@ export function usePersonaAdvisors(): PersonaAdvisorsController {
     const suggestion = toPersonaSuggestion(row);
     const store = useEditorStore.getState();
     if (!applyOperations(store.doc, suggestion.ops).isOk) {
-      // Raced a concurrent edit — quietly drop (locally; the runner prunes).
+      /*
+        Raced a concurrent edit — quietly drop (locally; the runner prunes).
+      */
       setHiddenFindingIds((current) => new Set([...current, suggestionId]));
       return;
     }
-    // Persona provenance (proposal §3.2): author "agent", authorId
-    // `persona:<slug>` (its own undo stack + History identity), one batch per
-    // apply so history.revertBatch reverts it in one click.
+    /*
+      Persona provenance (proposal §3.2): author "agent", authorId
+      `persona:<slug>` (its own undo stack + History identity), one batch per
+      apply so history.revertBatch reverts it in one click.
+    */
     const batchId = `persona:${suggestion.personaSlug}:${crypto.randomUUID()}`;
-    // Exempt this card from staleness BEFORE dispatching (see appliedFindingIdsRef).
+    /*
+      Exempt this card from staleness BEFORE dispatching (see appliedFindingIdsRef).
+    */
     appliedFindingIdsRef.current.add(suggestionId);
     for (const op of suggestion.ops) {
       const result = store.dispatch(op, {
@@ -659,7 +737,9 @@ export function usePersonaAdvisors(): PersonaAdvisorsController {
         batchId,
       });
       if (!result.isOk) {
-        // Unreachable after the dry-run; partial batch stays revertable in History.
+        /*
+          Unreachable after the dry-run; partial batch stays revertable in History.
+        */
         appliedFindingIdsRef.current.delete(suggestionId);
         setHiddenFindingIds((current) => new Set([...current, suggestionId]));
         return;
@@ -669,7 +749,9 @@ export function usePersonaAdvisors(): PersonaAdvisorsController {
       { suggestion, findingId: suggestionId, batchId, revertErrorMessage: null },
       ...current,
     ]);
-    // Converge the row for every tab: open → applied (+ the revert handle).
+    /*
+      Converge the row for every tab: open → applied (+ the revert handle).
+    */
     convexClient
       .mutation(api.personaFindings.markFindingApplied, {
         findingId: row.findingId,
@@ -694,14 +776,18 @@ export function usePersonaAdvisors(): PersonaAdvisorsController {
     if (row === undefined) {
       return;
     }
-    // Local bookkeeping first (instant hide + the localStorage twin) ...
+    /*
+      Local bookkeeping first (instant hide + the localStorage twin) ...
+    */
     setDismissedPatternKeys((current) => new Set([...current, row.patternKey]));
     setHiddenFindingIds((current) => new Set([...current, suggestionId]));
     if (documentId !== null) {
       persistDismissedPatternKey({ documentId, patternKey: row.patternKey });
     }
-    // ... then the authoritative row status: every other tab converges, and
-    // recordFindings will refuse to re-record this patternKey.
+    /*
+      ... then the authoritative row status: every other tab converges, and
+      recordFindings will refuse to re-record this patternKey.
+    */
     convexClient
       .mutation(api.personaFindings.dismissFinding, { findingId: row.findingId })
       .catch((error: unknown) => {

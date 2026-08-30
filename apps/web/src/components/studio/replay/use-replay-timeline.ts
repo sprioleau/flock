@@ -7,39 +7,47 @@ import { api } from "@convex/_generated/api";
 import type { Id } from "@convex/_generated/dataModel";
 import type { OperationEntry } from "../history/history-grouping";
 
-/**
- * Data layer for time-travel replay: reconstructed documents by version
- * (small LRU over one-off `getDocumentAtVersion` queries, aggressively
- * prefetched around the playhead) plus the full op list for captions.
- *
- * Prefetch strategy (owner law: no debounce — warm instead):
- * - Small histories (head ≤ EAGER_FULL_PREFETCH_MAX_HEAD) are warmed in FULL
- *   the moment the panel opens, so every scrub position is a synchronous
- *   cache hit.
- * - Larger histories warm a sliding window around the playhead on every
- *   playhead change: PREFETCH_AHEAD_COUNT versions ahead (playback + forward
- *   scrub) and PREFETCH_BEHIND_COUNT behind (backward scrub).
- * - In-flight versions are tracked so a fast drag never issues duplicate
- *   queries; each reconstruction is server-bounded (snapshot + ≤ interval
- *   ops) so repeats are cheap anyway.
- *
- * Memory is bounded by the LRU cap; nothing else retains reconstructions.
- * Cache entries are keyed by `documentId:version`, so a document switch
- * never needs an explicit reset (stale entries just age out of the LRU).
- * Render paths read the state-backed map via `getDocAtVersion`; interval and
- * effect paths use the stable `hasVersion`/`ensureVersion` callbacks
- * (ref-backed key mirrors, never touched during render).
- */
+/*
+  Data layer for time-travel replay: reconstructed documents by version
+  (small LRU over one-off `getDocumentAtVersion` queries, aggressively
+  prefetched around the playhead) plus the full op list for captions.
+
+  Prefetch strategy (owner law: no debounce — warm instead):
+  - Small histories (head ≤ EAGER_FULL_PREFETCH_MAX_HEAD) are warmed in FULL
+    the moment the panel opens, so every scrub position is a synchronous
+    cache hit.
+  - Larger histories warm a sliding window around the playhead on every
+    playhead change: PREFETCH_AHEAD_COUNT versions ahead (playback + forward
+    scrub) and PREFETCH_BEHIND_COUNT behind (backward scrub).
+  - In-flight versions are tracked so a fast drag never issues duplicate
+    queries; each reconstruction is server-bounded (snapshot + ≤ interval
+    ops) so repeats are cheap anyway.
+
+  Memory is bounded by the LRU cap; nothing else retains reconstructions.
+  Cache entries are keyed by `documentId:version`, so a document switch
+  never needs an explicit reset (stale entries just age out of the LRU).
+  Render paths read the state-backed map via `getDocAtVersion`; interval and
+  effect paths use the stable `hasVersion`/`ensureVersion` callbacks
+  (ref-backed key mirrors, never touched during render).
+*/
 
 const OPERATIONS_PAGE_SIZE = 200;
 const MAX_OPERATION_PAGES = 50;
-/** LRU cap on cached reconstructions. */
+/*
+  LRU cap on cached reconstructions.
+*/
 const RECONSTRUCTION_CACHE_SIZE = 64;
-/** Versions warmed ahead of the playhead (≥ 2s of 2x playback buffer). */
+/*
+  Versions warmed ahead of the playhead (≥ 2s of 2x playback buffer).
+*/
 const PREFETCH_AHEAD_COUNT = 8;
-/** Versions warmed behind the playhead for backward scrubbing. */
+/*
+  Versions warmed behind the playhead for backward scrubbing.
+*/
 const PREFETCH_BEHIND_COUNT = 2;
-/** Histories up to this head are fully warmed when the panel opens. */
+/*
+  Histories up to this head are fully warmed when the panel opens.
+*/
 const EAGER_FULL_PREFETCH_MAX_HEAD = 48;
 
 function toCacheKey(documentId: Id<"documents">, version: number): string {
@@ -47,15 +55,25 @@ function toCacheKey(documentId: Id<"documents">, version: number): string {
 }
 
 export interface ReplayTimeline {
-  /** Cached reconstruction for a version of the CURRENT document, if warm. */
+  /*
+    Cached reconstruction for a version of the CURRENT document, if warm.
+  */
   getDocAtVersion: (version: number) => EmailDocument | null;
-  /** Whether a version is already cached (stable; safe inside intervals). */
+  /*
+    Whether a version is already cached (stable; safe inside intervals).
+  */
   hasVersion: (version: number) => boolean;
-  /** Start fetching one version if it isn't cached or already in flight. */
+  /*
+    Start fetching one version if it isn't cached or already in flight.
+  */
   ensureVersion: (version: number) => void;
-  /** Warm the prefetch window around the playhead. */
+  /*
+    Warm the prefetch window around the playhead.
+  */
   prefetchAround: (version: number) => void;
-  /** version → op-log entry, once loaded (null while loading). */
+  /*
+    version → op-log entry, once loaded (null while loading).
+  */
   operationsByVersion: Map<number, OperationEntry> | null;
 }
 
@@ -65,7 +83,9 @@ export function useReplayTimeline({
   isOpen,
 }: {
   documentId: Id<"documents"> | null;
-  /** The scrubber's upper bound — captured by the panel when it opens. */
+  /*
+    The scrubber's upper bound — captured by the panel when it opens.
+  */
   headVersion: number;
   isOpen: boolean;
 }): ReplayTimeline {
@@ -78,7 +98,9 @@ export function useReplayTimeline({
     entries: Map<number, OperationEntry>;
   } | null>(null);
 
-  /** Mirror of the cache's keys, for synchronous checks in callbacks. */
+  /*
+    Mirror of the cache's keys, for synchronous checks in callbacks.
+  */
   const knownCacheKeysRef = useRef<Set<string>>(new Set());
   const inFlightCacheKeysRef = useRef<Set<string>>(new Set());
 
@@ -125,7 +147,9 @@ export function useReplayTimeline({
           });
         })
         .catch(() => {
-          // Prefetch failures are non-fatal; a later ensureVersion retries.
+          /*
+            Prefetch failures are non-fatal; a later ensureVersion retries.
+          */
         })
         .finally(() => {
           inFlightCacheKeysRef.current.delete(cacheKey);
@@ -148,8 +172,10 @@ export function useReplayTimeline({
     [ensureVersion, headVersion],
   );
 
-  // Small histories: warm the whole timeline at open, so scrubbing anywhere
-  // is a synchronous cache hit.
+  /*
+    Small histories: warm the whole timeline at open, so scrubbing anywhere
+    is a synchronous cache hit.
+  */
   useEffect(() => {
     if (!isOpen || documentId === null || headVersion > EAGER_FULL_PREFETCH_MAX_HEAD) {
       return;
@@ -159,7 +185,9 @@ export function useReplayTimeline({
     }
   }, [isOpen, documentId, headVersion, ensureVersion]);
 
-  // Page the full op list once per open, for captions + author colors.
+  /*
+    Page the full op list once per open, for captions + author colors.
+  */
   useEffect(() => {
     if (!isOpen || documentId === null) {
       return;
@@ -188,7 +216,9 @@ export function useReplayTimeline({
       setOperationsState({ documentId, entries });
     };
     loadOperations().catch(() => {
-      // Captions are decorative; the scrubber still works without them.
+      /*
+        Captions are decorative; the scrubber still works without them.
+      */
     });
     return () => {
       isCancelled = true;

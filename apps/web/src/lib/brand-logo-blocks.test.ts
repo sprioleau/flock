@@ -22,7 +22,9 @@ const CONFIRMED_LOGO: BrandLogoSource = {
   alt: "Acme logo",
 };
 
-/* Two logo blocks and one ordinary image, so scope is actually testable. */
+/*
+  Two logo blocks and one ordinary image, so scope is actually testable.
+*/
 function buildFixtureDoc({
   firstLogoSrc = "https://placehold.co/200x60",
   firstLogoAlt = "",
@@ -91,8 +93,12 @@ describe("getLogoBlockPromptState — the three states §5 names, plus the one i
   });
 
   it("asks for CONFIRMATION — never an apply — while the logo is only a suggestion", () => {
-    /* The distinction that matters: a suggestion is a third-party hotlink that */
-    /* has not been rehosted, so decision 4 forbids it entering a document. */
+    /*
+      The distinction that matters: a suggestion is a third-party hotlink that
+    */
+    /*
+      has not been rehosted, so decision 4 forbids it entering a document.
+    */
     expect(
       getLogoBlockPromptState({
         hasSavedKit: true,
@@ -104,14 +110,18 @@ describe("getLogoBlockPromptState — the three states §5 names, plus the one i
       }),
     ).toEqual({
       kind: "unconfirmed",
-      /* Carried for PREVIEW only — the user has to see what they're confirming. */
+      /*
+        Carried for PREVIEW only — the user has to see what they're confirming.
+      */
       suggestedLogoUrl: "https://acme.com/logo.svg",
       isConfirmableHere: true,
     });
   });
 
   it("keeps the suggestion out of every document update it could reach", () => {
-    /* The state exposes the hotlink; the update builder must still refuse it. */
+    /*
+      The state exposes the hotlink; the update builder must still refuse it.
+    */
     const state = getLogoBlockPromptState({
       hasSavedKit: true,
       logoUrl: "https://acme.com/logo.svg",
@@ -121,16 +131,24 @@ describe("getLogoBlockPromptState — the three states §5 names, plus the one i
       blockId: "img_head",
     });
     expect(state.kind).toBe("unconfirmed");
-    /* buildLogoBlockUpdates takes `confirmedLogo`, which is null here — there */
-    /* is no overload, field or fallback that turns a suggestion into a write. */
+    /*
+      buildLogoBlockUpdates takes `confirmedLogo`, which is null here — there
+    */
+    /*
+      is no overload, field or fallback that turns a suggestion into a write.
+    */
     expect(JSON.stringify(buildLogoBlockUpdates({ doc, logo: CONFIRMED_LOGO }))).not.toContain(
       "acme.com/logo.svg",
     );
   });
 
   it("points at the brand kit instead of confirming when the kit is someone else's", () => {
-    /* Confirm is session-scoped: from here it would rehost the VIEWER's own */
-    /* kit row, not the bound kit this canvas is actually showing. */
+    /*
+      Confirm is session-scoped: from here it would rehost the VIEWER's own
+    */
+    /*
+      kit row, not the bound kit this canvas is actually showing.
+    */
     expect(
       getLogoBlockPromptState({
         hasSavedKit: true,

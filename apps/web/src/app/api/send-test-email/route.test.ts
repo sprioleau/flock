@@ -25,14 +25,16 @@ vi.mock("@/lib/auth/send-meter", () => ({ reserveTestSend: reserveTestSendMock }
 
 import { POST } from "./route";
 
-/**
- * Request-contract tests for the HUMAN test-send endpoint. The send module
- * itself (rendering, idempotency key, Resend error shaping) is exercised
- * against the real provider in dev — here it is mocked so the tests pin the
- * route's validation gates and outcome→HTTP mapping.
- */
+/*
+  Request-contract tests for the HUMAN test-send endpoint. The send module
+  itself (rendering, idempotency key, Resend error shaping) is exercised
+  against the real provider in dev — here it is mocked so the tests pin the
+  route's validation gates and outcome→HTTP mapping.
+*/
 
-/** An anonymous visitor: the weakest identity the gate is meant to admit. */
+/*
+  An anonymous visitor: the weakest identity the gate is meant to admit.
+*/
 const ANONYMOUS_VISITOR: ResolvedIdentity = {
   id: "user_anon_1",
   email: "temp-user_anon_1@flockto.email",
@@ -51,14 +53,18 @@ function makeRequest(body: unknown): Request {
 describe("POST /api/send-test-email", () => {
   beforeEach(() => {
     sendTestEmailWithResendMock.mockReset();
-    // Auth ON for the whole suite, so every case below goes through the real
-    // identity gate rather than the auth-off bypass (which has its own test).
+    /*
+      Auth ON for the whole suite, so every case below goes through the real
+      identity gate rather than the auth-off bypass (which has its own test).
+    */
     vi.stubEnv("NEXT_PUBLIC_FLOCK_AUTH_ENABLED", "true");
     fetchAuthQueryMock.mockReset();
     fetchAuthQueryMock.mockResolvedValue(ANONYMOUS_VISITOR);
-    // The meter allows by default so the cases below test what they name; the
-    // metered cases set their own refusal. Its own arithmetic is tested against
-    // a real backend in lib/auth/test-send-limits.test.ts.
+    /*
+      The meter allows by default so the cases below test what they name; the
+      metered cases set their own refusal. Its own arithmetic is tested against
+      a real backend in lib/auth/test-send-limits.test.ts.
+    */
     reserveTestSendMock.mockReset();
     reserveTestSendMock.mockResolvedValue({ isAllowed: true, message: "", retryAtMs: null });
   });
@@ -67,13 +73,13 @@ describe("POST /api/send-test-email", () => {
     vi.unstubAllEnvs();
   });
 
-  /**
-   * The identity gate. A click on the Send-test button and a curl at the same
-   * URL are indistinguishable by the time they reach this handler, so "no
-   * verified session" has to mean "no send" — and the assertion that carries
-   * the security property is that the SEND MODULE was never reached, not that
-   * some status code came back.
-   */
+  /*
+    The identity gate. A click on the Send-test button and a curl at the same
+    URL are indistinguishable by the time they reach this handler, so "no
+    verified session" has to mean "no send" — and the assertion that carries
+    the security property is that the SEND MODULE was never reached, not that
+    some status code came back.
+  */
   it("refuses a caller with no identity, and never reaches the send module", async () => {
     fetchAuthQueryMock.mockResolvedValue(null);
     const response = await POST(
@@ -85,8 +91,10 @@ describe("POST /api/send-test-email", () => {
   });
 
   it("refuses the send when the identity check itself fails", async () => {
-    // Fails CLOSED: an unreachable Convex must not reopen the anonymous-send
-    // hole for the length of the outage.
+    /*
+      Fails CLOSED: an unreachable Convex must not reopen the anonymous-send
+      hole for the length of the outage.
+    */
     vi.spyOn(console, "warn").mockImplementation(() => {});
     fetchAuthQueryMock.mockRejectedValue(new Error("convex unreachable"));
     const response = await POST(
@@ -99,8 +107,10 @@ describe("POST /api/send-test-email", () => {
   });
 
   it("admits an anonymous visitor and records their id as the send's owner", async () => {
-    // Anonymous is the identity every browser gets on arrival, /demo included,
-    // so this is the case that proves the gate costs a visitor nothing.
+    /*
+      Anonymous is the identity every browser gets on arrival, /demo included,
+      so this is the case that proves the gate costs a visitor nothing.
+    */
     sendTestEmailWithResendMock.mockResolvedValue({
       isSent: true,
       messageId: "em_test_anon",
@@ -124,8 +134,10 @@ describe("POST /api/send-test-email", () => {
   });
 
   it("sends without an identity on a deployment with auth switched off", async () => {
-    // No identities exist at all in that state, so a gate here would be a
-    // permanently broken button rather than a control.
+    /*
+      No identities exist at all in that state, so a gate here would be a
+      permanently broken button rather than a control.
+    */
     vi.stubEnv("NEXT_PUBLIC_FLOCK_AUTH_ENABLED", "false");
     sendTestEmailWithResendMock.mockResolvedValue({
       isSent: true,
@@ -137,7 +149,9 @@ describe("POST /api/send-test-email", () => {
     );
     expect(response.status).toBe(200);
     expect(sendTestEmailWithResendMock).toHaveBeenCalledTimes(1);
-    // Nothing was asked of Convex — there is nobody to ask about.
+    /*
+      Nothing was asked of Convex — there is nobody to ask about.
+    */
     expect(fetchAuthQueryMock).not.toHaveBeenCalled();
   });
 
@@ -168,8 +182,10 @@ describe("POST /api/send-test-email", () => {
       ...doc,
       [ROOT_BLOCK_ID]: {
         ...doc[ROOT_BLOCK_ID]!,
-        // Schema-valid id shape (prefix + 4 alphanumerics) that no block has
-        // — schema passes, checkDocumentIntegrity flags the dangling pointer.
+        /*
+          Schema-valid id shape (prefix + 4 alphanumerics) that no block has
+          — schema passes, checkDocumentIntegrity flags the dangling pointer.
+        */
         childrenIds: ["sec_gone" as BlockId],
       },
     };
@@ -189,7 +205,9 @@ describe("POST /api/send-test-email", () => {
     const response = await POST(makeRequest({ document, to: ["  delivered@resend.dev  "] }));
     expect(response.status).toBe(200);
     expect(await response.json()).toEqual({ messageId: "em_test_123", to: ["delivered@resend.dev"] });
-    // The recipient reaches the module trimmed; the doc rides through as-is.
+    /*
+      The recipient reaches the module trimmed; the doc rides through as-is.
+    */
     expect(sendTestEmailWithResendMock).toHaveBeenCalledWith({
       doc: document,
       to: ["delivered@resend.dev"],
@@ -199,9 +217,11 @@ describe("POST /api/send-test-email", () => {
   });
 
   it("carries several recipients, the subject and the preview text through to the module", async () => {
-    // The dialog's full payload: up to five addresses plus an explicit subject
-    // and preheader. The route threads all of them into the send module and
-    // echoes the (trimmed) recipient list back in the response.
+    /*
+      The dialog's full payload: up to five addresses plus an explicit subject
+      and preheader. The route threads all of them into the send module and
+      echoes the (trimmed) recipient list back in the response.
+    */
     sendTestEmailWithResendMock.mockResolvedValue({
       isSent: true,
       messageId: "em_multi",
@@ -224,7 +244,9 @@ describe("POST /api/send-test-email", () => {
     expect(sendTestEmailWithResendMock).toHaveBeenCalledWith({
       doc: document,
       to: ["a@example.com", "b@example.com", "c@example.com"],
-      // The schema trims the optional fields before they reach the module.
+      /*
+        The schema trims the optional fields before they reach the module.
+      */
       subject: "Quarter in review",
       previewText: "What changed",
     });
@@ -264,8 +286,10 @@ describe("POST /api/send-test-email", () => {
   });
 
   it("maps a not_configured outcome to a 503 the client can tell apart", async () => {
-    // Not a retryable provider fault — this deployment has no email service
-    // connected, so the UI says "not set up" instead of "try again".
+    /*
+      Not a retryable provider fault — this deployment has no email service
+      connected, so the UI says "not set up" instead of "try again".
+    */
     sendTestEmailWithResendMock.mockResolvedValue({
       isSent: false,
       reason: "not_configured",
@@ -277,7 +301,9 @@ describe("POST /api/send-test-email", () => {
     expect(response.status).toBe(503);
     const body = (await response.json()) as { error: string; message: string };
     expect(body.error).toBe("not_configured");
-    // Missing env keys are logged server-side, never returned to the browser.
+    /*
+      Missing env keys are logged server-side, never returned to the browser.
+    */
     expect(body.message).not.toContain("RESEND");
   });
 
@@ -305,8 +331,10 @@ describe("POST /api/send-test-email", () => {
   */
 
   it("refuses a capped caller with a 429, and never reaches the send module", async () => {
-    // The security property is the same one the identity gate's test carries:
-    // not the status code, but that no mail was handed to the provider.
+    /*
+      The security property is the same one the identity gate's test carries:
+      not the status code, but that no mail was handed to the provider.
+    */
     reserveTestSendMock.mockResolvedValue({
       isAllowed: false,
       message: "You've used today's test sends — the allowance refills in about 3 hours.",
@@ -326,9 +354,11 @@ describe("POST /api/send-test-email", () => {
   });
 
   it("meters the address the mail would actually go to", async () => {
-    // The recipient bucket is only worth having if it is keyed to the inbox
-    // that would receive the mail — the trimmed one the send module is given,
-    // not the raw string the caller typed.
+    /*
+      The recipient bucket is only worth having if it is keyed to the inbox
+      that would receive the mail — the trimmed one the send module is given,
+      not the raw string the caller typed.
+    */
     sendTestEmailWithResendMock.mockResolvedValue({
       isSent: true,
       messageId: "em_metered",
@@ -341,8 +371,10 @@ describe("POST /api/send-test-email", () => {
   });
 
   it("does not spend an allowance on a request it was going to reject anyway", async () => {
-    // A broken draft never reaches an inbox, so charging for it would let a
-    // malformed-body loop burn a real user's day out from under them.
+    /*
+      A broken draft never reaches an inbox, so charging for it would let a
+      malformed-body loop burn a real user's day out from under them.
+    */
     const doc = createEmptyDocument();
     const response = await POST(
       makeRequest({
@@ -355,10 +387,12 @@ describe("POST /api/send-test-email", () => {
   });
 
   it("still meters when auth is switched off, where the identity gate does not apply", async () => {
-    // The gate short-circuits on that deployment because no identity exists to
-    // check. The METER must not: there is still an origin and still a
-    // recipient, and leaving the one posture with no gate also unmetered would
-    // be the most exposed configuration of the two.
+    /*
+      The gate short-circuits on that deployment because no identity exists to
+      check. The METER must not: there is still an origin and still a
+      recipient, and leaving the one posture with no gate also unmetered would
+      be the most exposed configuration of the two.
+    */
     vi.stubEnv("NEXT_PUBLIC_FLOCK_AUTH_ENABLED", "false");
     reserveTestSendMock.mockResolvedValue({
       isAllowed: false,

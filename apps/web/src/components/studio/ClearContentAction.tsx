@@ -27,32 +27,34 @@ import {
   CLEAR_CONTENT_UNDO_ACTION,
 } from "./clear-content-client";
 
-/**
- * "Clear the content" — one click that turns the email you designed into a
- * skeleton you can write again: every heading, paragraph, button, link, code
- * snippet and image becomes placeholder content, while the layout, the theme
- * and the brand logo stay exactly where they are.
- *
- * WHERE IT LIVES: the bottom of the Blocks panel, under its own heading. The
- * Blocks panel is the "what is this email made of" surface — the same rail the
- * user reaches for to add a heading or an image — so the control that empties
- * all of them belongs there rather than in the toolbar, whose right-hand
- * cluster is strictly presence / agent / history groupings.
- *
- * WHY IT CONFIRMS: it throws work away in one gesture. Undo alone is not a
- * safety net for that — the user has to already know it happened to reach for
- * it — so the dialog states plainly what goes and what stays before anything
- * is dispatched.
- *
- * AFTERWARDS: a "put my content back" affordance stays on screen until it is
- * used or the panel is left. It reverts the clear's whole batch in one call
- * (the same history.revertBatch the chat panel's turn-revert uses), so taking
- * a clear back is ONE action rather than one undo per rewritten block.
- */
+/*
+  "Clear the content" — one click that turns the email you designed into a
+  skeleton you can write again: every heading, paragraph, button, link, code
+  snippet and image becomes placeholder content, while the layout, the theme
+  and the brand logo stay exactly where they are.
+
+  WHERE IT LIVES: the bottom of the Blocks panel, under its own heading. The
+  Blocks panel is the "what is this email made of" surface — the same rail the
+  user reaches for to add a heading or an image — so the control that empties
+  all of them belongs there rather than in the toolbar, whose right-hand
+  cluster is strictly presence / agent / history groupings.
+
+  WHY IT CONFIRMS: it throws work away in one gesture. Undo alone is not a
+  safety net for that — the user has to already know it happened to reach for
+  it — so the dialog states plainly what goes and what stays before anything
+  is dispatched.
+
+  AFTERWARDS: a "put my content back" affordance stays on screen until it is
+  used or the panel is left. It reverts the clear's whole batch in one call
+  (the same history.revertBatch the chat panel's turn-revert uses), so taking
+  a clear back is ONE action rather than one undo per rewritten block.
+*/
 export function ClearContentAction() {
-  // The one piece of store state worth subscribing to: a boolean that flips
-  // once. Reading `doc` here instead would re-render this on every keystroke
-  // in the email — the plan is computed on click, from getState(), instead.
+  /*
+    The one piece of store state worth subscribing to: a boolean that flips
+    once. Reading `doc` here instead would re-render this on every keystroke
+    in the email — the plan is computed on click, from getState(), instead.
+  */
   const isDocumentReady = useEditorStore((state) => state.isDocumentReady);
   const [isConfirmOpen, setIsConfirmOpen] = useState(false);
   const [clearedBatchId, setClearedBatchId] = useState<string | null>(null);
@@ -103,9 +105,11 @@ export function ClearContentAction() {
         className="justify-start"
         disabled={!isDocumentReady}
         onClick={() => {
-          // Close any open inline text editor FIRST: its session commit must
-          // land before the clear, not on top of it. Clicking here is already
-          // an outside-pointerdown for that editor; this makes it explicit.
+          /*
+            Close any open inline text editor FIRST: its session commit must
+            land before the clear, not on top of it. Clicking here is already
+            an outside-pointerdown for that editor; this makes it explicit.
+          */
           useEditorStore.getState().stopTextEditing();
           setMessage(null);
           setIsConfirmOpen(true);
@@ -142,9 +146,11 @@ export function ClearContentAction() {
             <DialogDescription>{CLEAR_CONTENT_CONFIRM_BODY}</DialogDescription>
           </DialogHeader>
           <DialogFooter>
-            {/* render target is our own Button, which IS a native <button> —
-                so no nativeButton={false} here (that is only needed when the
-                render target is something else, e.g. a Link's <a>). */}
+            {/*
+              render target is our own Button, which IS a native <button> —
+              so no nativeButton={false} here (that is only needed when the
+              render target is something else, e.g. a Link's <a>).
+            */}
             <DialogClose render={<Button variant="outline" size="sm" />}>
               {CLEAR_CONTENT_CANCEL_ACTION}
             </DialogClose>

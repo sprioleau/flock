@@ -5,16 +5,16 @@ import { api } from "@convex/_generated/api";
 import schema from "@convex/schema";
 import { MOCK_BRAND_KIT, type BrandColor } from "@/lib/brand-kit";
 
-/**
- * Brand-kit user control (docs/proposals/brand-kit-user-control.md) against
- * the REAL Convex functions: the authored palette and tone of voice are
- * human-editable, human edits SURVIVE a re-scrape (§8), and metadata writes
- * never re-arm the "Updated brand available" pills (§8.3).
- *
- * These are the two questions the proposal flagged as the ones most likely to
- * make editable fields feel broken, so they are pinned end to end rather than
- * only at the pure-function level.
- */
+/*
+  Brand-kit user control (docs/proposals/brand-kit-user-control.md) against
+  the REAL Convex functions: the authored palette and tone of voice are
+  human-editable, human edits SURVIVE a re-scrape (§8), and metadata writes
+  never re-arm the "Updated brand available" pills (§8.3).
+
+  These are the two questions the proposal flagged as the ones most likely to
+  make editable fields feel broken, so they are pinned end to end rather than
+  only at the pure-function level.
+*/
 
 const modules = import.meta.glob([
   "../../../../../../convex/**/*.{ts,js}",
@@ -30,7 +30,9 @@ function createBackend() {
 
 type Backend = ReturnType<typeof createBackend>;
 
-/** A valid kit payload (mock variations pass completeness + contrast). */
+/*
+  A valid kit payload (mock variations pass completeness + contrast).
+*/
 function buildKitInput({
   colors,
   toneOfVoice,
@@ -108,7 +110,9 @@ describe("updateBrandColors — the palette is editable", () => {
     expect(after.colors![0]!.name).toBe("Banana");
     expect(after.colors![0]!.origin).toBe("user");
     expect(after.colors![0]!.userEditedAtMs).toBeGreaterThan(0);
-    // §8.3 / risk 3: renaming a color must NOT re-arm every draft's pill.
+    /*
+      §8.3 / risk 3: renaming a color must NOT re-arm every draft's pill.
+    */
     expect(after.revision).toBe(1);
   });
 
@@ -161,11 +165,15 @@ describe("updateBrandFonts — the fonts are editable (brand-kit-v2 §1)", () =>
     expect(globals.heading3FontFamily).toBe(GEORGIA);
     expect(globals.paragraphFontFamily).toBe(VERDANA);
     expect(globals.buttonFontFamily).toBe(VERDANA);
-    // Colors are untouched — a font edit re-fonts, it never recolors.
+    /*
+      Colors are untouched — a font edit re-fonts, it never recolors.
+    */
     expect(globals.contentBackgroundColor).toBe(
       before.variations[0]!.globals.contentBackgroundColor,
     );
-    // Variations are what a draft renders (§8.3), so this one DOES bump.
+    /*
+      Variations are what a draft renders (§8.3), so this one DOES bump.
+    */
     expect(after.revision).toBe(2);
   });
 
@@ -178,7 +186,7 @@ describe("updateBrandFonts — the fonts are editable (brand-kit-v2 §1)", () =>
         fonts: { heading: "Comic Sans MS, cursive", body: VERDANA },
       }),
     ).rejects.toThrow(/isn't one we can send in email/);
-    expect((await readKit(t)).revision).toBe(1); // nothing was written
+    expect((await readKit(t)).revision).toBe(1); /* nothing was written */
   });
 
   it("does not re-arm every draft's pill when the pick didn't change", async () => {
@@ -213,7 +221,7 @@ describe("updateBrandToneOfVoice — the voice is editable", () => {
     expect(saved.toneOfVoice!.descriptors).toEqual(["warm", "plain-spoken"]);
     expect(saved.toneOfVoice!.formality).toBe("casual");
     expect(saved.toneOfVoice!.origin).toBe("user");
-    expect(saved.revision).toBe(1); // nothing renders a voice
+    expect(saved.revision).toBe(1); /* nothing renders a voice */
 
     await t.mutation(api.brandKits.updateBrandToneOfVoice, {
       sessionId: SESSION_ID,
@@ -235,18 +243,22 @@ describe("re-scrape reconciliation (§8) — human edits survive", () => {
       }),
     });
     const kit = await readKit(t);
-    // The human renames one color; the other stays the agent's.
+    /*
+      The human renames one color; the other stays the agent's.
+    */
     await t.mutation(api.brandKits.updateBrandColors, {
       sessionId: SESSION_ID,
       colors: [{ ...kit.colors![0]!, name: "Banana" }, kit.colors![1]!],
     });
 
-    // A re-scrape of the redesigned site: different names, one new color.
+    /*
+      A re-scrape of the redesigned site: different names, one new color.
+    */
     const result = await saveKit(t, {
       ...buildKitInput({
         spacingBump: 4,
         colors: [
-          brandColor({ hex: "#ffc400", name: "Golden" }), // would clobber "Banana"
+          brandColor({ hex: "#ffc400", name: "Golden" }), /* would clobber "Banana" */
           brandColor({ hex: "#123456", name: "Steel" }),
         ],
       }),
@@ -254,10 +266,10 @@ describe("re-scrape reconciliation (§8) — human edits survive", () => {
 
     const after = await readKit(t);
     const names = after.colors!.map((color) => color.name);
-    expect(names).toContain("Banana"); // the human's rename survived
-    expect(names).not.toContain("Golden"); // the scrape did not clobber it
-    expect(names).toContain("Steel"); // new site colors still arrive
-    expect(names).not.toContain("Ink"); // stale machine entries are replaced
+    expect(names).toContain("Banana"); /* the human's rename survived */
+    expect(names).not.toContain("Golden"); /* the scrape did not clobber it */
+    expect(names).toContain("Steel"); /* new site colors still arrive */
+    expect(names).not.toContain("Ink"); /* stale machine entries are replaced */
     expect(result.keptUserEditedColors).toBe(1);
   });
 
@@ -299,7 +311,9 @@ describe("re-scrape reconciliation (§8) — human edits survive", () => {
         ],
       }),
     );
-    /* The human corrects LinkedIn to the company page. */
+    /*
+      The human corrects LinkedIn to the company page.
+    */
     await t.mutation(api.brandKits.updateSocialLinks, {
       sessionId: SESSION_ID,
       socialLinks: [
@@ -308,7 +322,9 @@ describe("re-scrape reconciliation (§8) — human edits survive", () => {
       ],
     });
 
-    /* A re-scrape that still reads the CEO's profile out of the footer. */
+    /*
+      A re-scrape that still reads the CEO's profile out of the footer.
+    */
     const result = await saveKit(
       t,
       buildKitInput({
@@ -321,15 +337,23 @@ describe("re-scrape reconciliation (§8) — human edits survive", () => {
     );
 
     const after = await readKit(t);
-    /* Stored in the shared display order, not in merge order. */
+    /*
+      Stored in the shared display order, not in merge order.
+    */
     expect(after.socialLinks).toEqual([
-      /* Survived, verbatim, with its provenance intact for the NEXT scrape. */
+      /*
+        Survived, verbatim, with its provenance intact for the NEXT scrape.
+      */
       { platform: "linkedin", url: "https://linkedin.com/company/acme", origin: "user" },
-      /* Adopted: a platform nobody had claimed. */
+      /*
+        Adopted: a platform nobody had claimed.
+      */
       { platform: "github", url: "https://github.com/acme" },
     ]);
     expect(result.keptUserEditedSocialLinks).toBe(1);
-    /* The X link the human never edited was machine-owned, so it was swept. */
+    /*
+      The X link the human never edited was machine-owned, so it was swept.
+    */
     expect(after.socialLinks!.some(({ platform }) => platform === "x")).toBe(false);
   });
 
@@ -405,7 +429,9 @@ describe("revision policy (§8.3) — pills only re-arm for what a draft renders
     const t = createBackend();
     await saveKit(t, buildKitInput());
     expect((await readKit(t)).revision).toBe(1);
-    // Same variations, new palette + voice + name: nothing a draft renders.
+    /*
+      Same variations, new palette + voice + name: nothing a draft renders.
+    */
     await saveKit(t, {
       ...buildKitInput({
         colors: [brandColor({ hex: "#ffc400", name: "Banana" })],

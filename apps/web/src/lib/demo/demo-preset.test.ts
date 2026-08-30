@@ -12,15 +12,15 @@ import {
   type DemoSession,
 } from "./demo-preset";
 
-/**
- * What entering the demo does to a visitor's browser — and, more importantly,
- * what leaving it has to be able to undo.
- *
- * The failure these tests exist to prevent is silent and permanent: /demo
- * writes browser-global settings, so a bug in the snapshot rule does not break
- * the demo at all — it quietly leaves a stranger's own drafts with demo mode
- * on and two agents enabled forever.
- */
+/*
+  What entering the demo does to a visitor's browser — and, more importantly,
+  what leaving it has to be able to undo.
+
+  The failure these tests exist to prevent is silent and permanent: /demo
+  writes browser-global settings, so a bug in the snapshot rule does not break
+  the demo at all — it quietly leaves a stranger's own drafts with demo mode
+  on and two agents enabled forever.
+*/
 
 const EMPTY_SNAPSHOT: DemoRestoreSnapshot = {
   appSettingsRaw: null,
@@ -41,8 +41,10 @@ describe("the preset", () => {
   it("keeps settings it has no business changing", () => {
     const prior = JSON.stringify({ chatProviderId: "gemini", isSuggestionsEnabled: false });
     const settings = JSON.parse(buildDemoAppSettingsRaw(prior)) as Record<string, unknown>;
-    // The demo runs in the visitor's own browser, not a sandbox — an unrelated
-    // preference must survive it and be there when they exit.
+    /*
+      The demo runs in the visitor's own browser, not a sandbox — an unrelated
+      preference must survive it and be there when they exit.
+    */
     expect(settings.chatProviderId).toBe("gemini");
     expect(settings.isSuggestionsEnabled).toBe(false);
   });
@@ -57,9 +59,11 @@ describe("the preset", () => {
   });
 
   it("suppresses the first-run tour, which would otherwise auto-start over the demo", () => {
-    // Terminal status, so selectActiveTourStopId resolves to null: no card, and
-    // — the part that would actually break the demo — advisory runs are no
-    // longer gated off by getIsTourRunning().
+    /*
+      Terminal status, so selectActiveTourStopId resolves to null: no card, and
+      — the part that would actually break the demo — advisory runs are no
+      longer gated off by getIsTourRunning().
+    */
     expect(JSON.parse(buildDemoTourProgressRaw())).toEqual({
       status: "dismissed",
       resumeStopId: null,
@@ -88,9 +92,11 @@ describe("the restore snapshot", () => {
       startedAtMs: 1,
       restore: original,
     };
-    // "Start over" routes back through /demo. Without this rule the second
-    // entry would record the PRESET as the visitor's prior settings and the
-    // exit path would then "restore" them to demo mode permanently.
+    /*
+      "Start over" routes back through /demo. Without this rule the second
+      entry would record the PRESET as the visitor's prior settings and the
+      exit path would then "restore" them to demo mode permanently.
+    */
     const current: DemoRestoreSnapshot = {
       appSettingsRaw: buildDemoAppSettingsRaw(original.appSettingsRaw),
       enabledPersonasRaw: buildDemoEnabledPersonasRaw(),
@@ -164,8 +170,10 @@ describe("reading the session back", () => {
     expect(parseDemoSession(null)).toBeNull();
     expect(parseDemoSession("{not json")).toBeNull();
     expect(parseDemoSession('{"documentId":""}')).toBeNull();
-    // A record with no restore snapshot cannot be exited from cleanly, so it
-    // is not a session worth honouring.
+    /*
+      A record with no restore snapshot cannot be exited from cleanly, so it
+      is not a session worth honouring.
+    */
     expect(parseDemoSession('{"documentId":"doc_demo"}')).toBeNull();
   });
 });
@@ -179,8 +187,10 @@ describe("which document the demo owns", () => {
 
   it("is the demo's scratch document and nothing else", () => {
     expect(selectIsDemoDocument({ session, documentId: "doc_demo" })).toBe(true);
-    // The whole zero-leak property: a stale session record must never put the
-    // demo bar — or the advisors' demo run gate — over a real draft.
+    /*
+      The whole zero-leak property: a stale session record must never put the
+      demo bar — or the advisors' demo run gate — over a real draft.
+    */
     expect(selectIsDemoDocument({ session, documentId: "doc_real" })).toBe(false);
     expect(selectIsDemoDocument({ session: null, documentId: "doc_demo" })).toBe(false);
     expect(selectIsDemoDocument({ session, documentId: null })).toBe(false);

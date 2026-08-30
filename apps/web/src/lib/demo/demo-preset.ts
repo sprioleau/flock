@@ -29,15 +29,19 @@
 
 import { DEMO_PERSONA_SLUGS } from "./demo-turns";
 
-/* The keys the preset touches, owned by app-settings.ts, enabled-personas.ts
-   and tour-progress.ts respectively. Re-declared rather than imported because
-   those modules are "use client" localStorage stores and this one is pure. */
+/*
+  The keys the preset touches, owned by app-settings.ts, enabled-personas.ts
+  and tour-progress.ts respectively. Re-declared rather than imported because
+  those modules are "use client" localStorage stores and this one is pure.
+*/
 export const APP_SETTINGS_STORAGE_KEY = "flock:app-settings";
 export const ENABLED_PERSONAS_STORAGE_KEY = "flock_enabled_agents";
 export const TOUR_PROGRESS_STORAGE_KEY = "flock:tour-progress";
 export const DEMO_SESSION_STORAGE_KEY = "flock:demo-session";
 
-/** The three raw values as they were before the demo touched them. */
+/*
+  The three raw values as they were before the demo touched them.
+*/
 export interface DemoRestoreSnapshot {
   appSettingsRaw: string | null;
   enabledPersonasRaw: string | null;
@@ -45,20 +49,22 @@ export interface DemoRestoreSnapshot {
 }
 
 export interface DemoSession {
-  /** The scratch document this demo run belongs to. */
+  /*
+    The scratch document this demo run belongs to.
+  */
   documentId: string;
   startedAtMs: number;
   restore: DemoRestoreSnapshot;
 }
 
-/**
- * The app-settings value the demo writes: the visitor's own settings with the
- * three power-user lenses forced on.
- *
- * A MERGE over the prior value, not a fresh object — an unrelated setting
- * (their chat provider choice, their suggestions preference) must survive the
- * demo, because the demo is their own browser and not a sandbox.
- */
+/*
+  The app-settings value the demo writes: the visitor's own settings with the
+  three power-user lenses forced on.
+
+  A MERGE over the prior value, not a fresh object — an unrelated setting
+  (their chat provider choice, their suggestions preference) must survive the
+  demo, because the demo is their own browser and not a sandbox.
+*/
 export function buildDemoAppSettingsRaw(priorRaw: string | null): string {
   let prior: Record<string, unknown> = {};
   try {
@@ -67,46 +73,54 @@ export function buildDemoAppSettingsRaw(priorRaw: string | null): string {
       prior = parsed as Record<string, unknown>;
     }
   } catch {
-    /* Corrupt stored settings cost the visitor their preferences for one
-       demo, which is a far better failure than a demo that will not start. */
+    /*
+      Corrupt stored settings cost the visitor their preferences for one
+      demo, which is a far better failure than a demo that will not start.
+    */
   }
   return JSON.stringify({
     ...prior,
-    /* Reveals the chat panel's demo controls and the ghost collaborator. */
+    /*
+      Reveals the chat panel's demo controls and the ghost collaborator.
+    */
     isDemoModeEnabled: true,
-    /* Stop 5 of the narration: the visitor rewinds what they just did. */
+    /*
+      Stop 5 of the narration: the visitor rewinds what they just did.
+    */
     isTimeTravelReplayEnabled: true,
-    /* "None of this is magic — it's a log." */
+    /*
+      "None of this is magic — it's a log."
+    */
     isOpInspectorEnabled: true,
   });
 }
 
-/**
- * Exactly the two agents the demo is about. Not a union with whatever the
- * visitor already had enabled: four agents on a demo canvas is noise, and the
- * narration names two.
- */
+/*
+  Exactly the two agents the demo is about. Not a union with whatever the
+  visitor already had enabled: four agents on a demo canvas is noise, and the
+  narration names two.
+*/
 export function buildDemoEnabledPersonasRaw(): string {
   return JSON.stringify([...DEMO_PERSONA_SLUGS]);
 }
 
-/**
- * The tour progress the demo writes: dismissed.
- *
- * The first-run walkthrough AUTO-STARTS for anyone who has never seen it, and
- * a stranger arriving at /demo is exactly that person. Left alone, its card
- * would appear over the demo and the two would narrate at each other — and
- * worse, `shouldSkipAdvisorRun()` suppresses every advisory run while the tour
- * is on screen, so the agents this route exists to show would go quiet.
- *
- * Suppress rather than sequence: whichever entry the visitor came in through
- * wins, and the two never run for the same person at the same time. This
- * write is load-bearing for the agents, not just for tidiness, so it stays.
- *
- * The exit path puts a tour state back rather than clearing this one — see
- * buildRestoredTourProgressRaw for which value, and why a first-timer keeps
- * this same dismissed value instead of the null they arrived with.
- */
+/*
+  The tour progress the demo writes: dismissed.
+
+  The first-run walkthrough AUTO-STARTS for anyone who has never seen it, and
+  a stranger arriving at /demo is exactly that person. Left alone, its card
+  would appear over the demo and the two would narrate at each other — and
+  worse, `shouldSkipAdvisorRun()` suppresses every advisory run while the tour
+  is on screen, so the agents this route exists to show would go quiet.
+
+  Suppress rather than sequence: whichever entry the visitor came in through
+  wins, and the two never run for the same person at the same time. This
+  write is load-bearing for the agents, not just for tidiness, so it stays.
+
+  The exit path puts a tour state back rather than clearing this one — see
+  buildRestoredTourProgressRaw for which value, and why a first-timer keeps
+  this same dismissed value instead of the null they arrived with.
+*/
 export function buildDemoTourProgressRaw(): string {
   return JSON.stringify({ status: "dismissed", resumeStopId: null });
 }
@@ -168,14 +182,14 @@ function hasNeverSeenTourStatus(stashedRaw: string | null): boolean {
   }
 }
 
-/**
- * The snapshot to persist when entering /demo.
- *
- * The load-bearing rule is the second argument: if a demo session is ALREADY
- * active, its snapshot is carried forward untouched. "Start over" re-enters
- * /demo, and without this rule the second entry would snapshot the DEMO's own
- * settings as the visitor's prior ones and cement them forever.
- */
+/*
+  The snapshot to persist when entering /demo.
+
+  The load-bearing rule is the second argument: if a demo session is ALREADY
+  active, its snapshot is carried forward untouched. "Start over" re-enters
+  /demo, and without this rule the second entry would snapshot the DEMO's own
+  settings as the visitor's prior ones and cement them forever.
+*/
 export function buildDemoRestoreSnapshot({
   current,
   activeSession,
@@ -186,7 +200,9 @@ export function buildDemoRestoreSnapshot({
   return activeSession?.restore ?? current;
 }
 
-/** Tolerant read of the stored session; null for anything unrecognizable. */
+/*
+  Tolerant read of the stored session; null for anything unrecognizable.
+*/
 export function parseDemoSession(raw: string | null): DemoSession | null {
   if (raw === null) {
     return null;
@@ -223,13 +239,13 @@ function readNullableString(value: unknown): string | null {
   return typeof value === "string" ? value : null;
 }
 
-/**
- * Is THIS document the scripted demo's scratch document?
- *
- * Every demo surface gates on this rather than on "a demo session exists", so
- * a stale session record can never make the demo panel appear over somebody's
- * real draft in another tab.
- */
+/*
+  Is THIS document the scripted demo's scratch document?
+
+  Every demo surface gates on this rather than on "a demo session exists", so
+  a stale session record can never make the demo panel appear over somebody's
+  real draft in another tab.
+*/
 export function selectIsDemoDocument({
   session,
   documentId,

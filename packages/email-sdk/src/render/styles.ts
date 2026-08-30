@@ -20,33 +20,37 @@ import {
 } from "../schema/globals";
 import type { BlockType } from "../schema/ids";
 
-/**
- * Style resolution — the renderer's single source of final, fully-defaulted
- * style values. Pure and framework-free so it is unit-testable and reusable
- * by the Phase 2 editing canvas.
- *
- * Precedence, lowest to highest:
- *
- *   1. DEFAULT_GLOBAL_STYLES        (the renderer contract in schema/globals)
- *   2. root.properties.globals      (the document-wide theme)
- *   3. block-level property overrides
- *
- * Sections additionally chain their backgrounds off the canvas globals:
- * innerBackgroundColor ← globals.contentBackgroundColor and
- * outerBackgroundColor ← globals.emailBackgroundColor, unless overridden.
- *
- * Padding defaults derive from globals.baseSpacing:
- *   section — top/left/right = baseSpacing, bottom = 0 (the last leaf's own
- *             bottom padding closes the section symmetrically)
- *   leaves  — bottom = baseSpacing (the "space between blocks"), others 0
- *   rows/columns — 0
- */
+/*
+  Style resolution — the renderer's single source of final, fully-defaulted
+  style values. Pure and framework-free so it is unit-testable and reusable
+  by the Phase 2 editing canvas.
 
-// ---------------------------------------------------------------------------
-// Resolved style shapes
-// ---------------------------------------------------------------------------
+  Precedence, lowest to highest:
 
-/** Fully-defaulted box padding, in pixels. */
+    1. DEFAULT_GLOBAL_STYLES        (the renderer contract in schema/globals)
+    2. root.properties.globals      (the document-wide theme)
+    3. block-level property overrides
+
+  Sections additionally chain their backgrounds off the canvas globals:
+  innerBackgroundColor ← globals.contentBackgroundColor and
+  outerBackgroundColor ← globals.emailBackgroundColor, unless overridden.
+
+  Padding defaults derive from globals.baseSpacing:
+    section — top/left/right = baseSpacing, bottom = 0 (the last leaf's own
+              bottom padding closes the section symmetrically)
+    leaves  — bottom = baseSpacing (the "space between blocks"), others 0
+    rows/columns — 0
+*/
+
+/*
+  ---------------------------------------------------------------------------
+  Resolved style shapes
+  ---------------------------------------------------------------------------
+*/
+
+/*
+  Fully-defaulted box padding, in pixels.
+*/
 export interface ResolvedPadding {
   paddingTop: number;
   paddingBottom: number;
@@ -54,7 +58,9 @@ export interface ResolvedPadding {
   paddingRight: number;
 }
 
-/** Canvas-level values the root traversal needs. */
+/*
+  Canvas-level values the root traversal needs.
+*/
 export interface ResolvedRootStyles {
   emailBackgroundColor: string;
   contentBackgroundColor: string;
@@ -63,28 +69,42 @@ export interface ResolvedRootStyles {
 }
 
 export interface ResolvedSectionStyles extends ResolvedPadding {
-  /** Background of the section's centered content area. */
+  /*
+    Background of the section's centered content area.
+  */
   innerBackgroundColor: string;
-  /** Background of the full-width band behind the content area. */
+  /*
+    Background of the full-width band behind the content area.
+  */
   outerBackgroundColor: string;
-  /** Width of the centered content area, from globals.contentWidth. */
+  /*
+    Width of the centered content area, from globals.contentWidth.
+  */
   contentWidth: number;
 }
 
 export interface ResolvedRowStyles extends ResolvedPadding {
-  /** Undefined means transparent (the section background shows through). */
+  /*
+    Undefined means transparent (the section background shows through).
+  */
   backgroundColor: string | undefined;
 }
 
 export interface ResolvedColumnStyles extends ResolvedPadding {
-  /** Undefined means "share the row equally with sibling columns". */
+  /*
+    Undefined means "share the row equally with sibling columns".
+  */
   widthPercent: number | undefined;
   verticalAlign: "top" | "middle" | "bottom";
-  /** Undefined means transparent (the section background shows through). */
+  /*
+    Undefined means transparent (the section background shows through).
+  */
   backgroundColor: string | undefined;
 }
 
-/** Resolved styles for one rich-text node scope (a heading level or paragraph). */
+/*
+  Resolved styles for one rich-text node scope (a heading level or paragraph).
+*/
 export interface ResolvedTextNodeStyles {
   fontFamily: string;
   textColor: string;
@@ -97,7 +117,9 @@ export interface ResolvedTextStyles extends ResolvedPadding {
   heading3: ResolvedTextNodeStyles;
   paragraph: ResolvedTextNodeStyles;
   linkTextColor: string;
-  /** Undefined means transparent (the container background shows through). */
+  /*
+    Undefined means transparent (the container background shows through).
+  */
   backgroundColor: string | undefined;
 }
 
@@ -116,7 +138,9 @@ export interface ResolvedButtonStyles extends ResolvedPadding {
 
 export interface ResolvedImageStyles extends ResolvedPadding {
   align: TextAlign;
-  /** Undefined means transparent (the container background shows through). */
+  /*
+    Undefined means transparent (the container background shows through).
+  */
   backgroundColor: string | undefined;
   borderRadius: number;
   borderWidth: number;
@@ -146,7 +170,9 @@ export interface ResolvedSpacerStyles {
   height: number;
 }
 
-/** Map from block type to its resolved-styles shape. */
+/*
+  Map from block type to its resolved-styles shape.
+*/
 export interface ResolvedStylesByBlockType {
   root: ResolvedRootStyles;
   section: ResolvedSectionStyles;
@@ -161,17 +187,21 @@ export interface ResolvedStylesByBlockType {
   spacer: ResolvedSpacerStyles;
 }
 
-/** Resolved styles for any block type. */
+/*
+  Resolved styles for any block type.
+*/
 export type ResolvedBlockStyles = ResolvedStylesByBlockType[BlockType];
 
-// ---------------------------------------------------------------------------
-// Resolution
-// ---------------------------------------------------------------------------
+/*
+  ---------------------------------------------------------------------------
+  Resolution
+  ---------------------------------------------------------------------------
+*/
 
-/**
- * Layer the document globals over DEFAULT_GLOBAL_STYLES, ignoring undefined
- * values, so every global field has a concrete value.
- */
+/*
+  Layer the document globals over DEFAULT_GLOBAL_STYLES, ignoring undefined
+  values, so every global field has a concrete value.
+*/
 export function resolveGlobalStyles(globals: GlobalStyles | undefined): Required<GlobalStyles> {
   const resolved: Required<GlobalStyles> = { ...DEFAULT_GLOBAL_STYLES };
   if (globals !== undefined) {
@@ -200,17 +230,21 @@ function resolvePadding(overrides: PaddingOverrides, defaults: ResolvedPadding):
   };
 }
 
-/** Renderer default border line style wherever a block leaves it unset. */
+/*
+  Renderer default border line style wherever a block leaves it unset.
+*/
 const DEFAULT_BORDER_STYLE: BorderStyle = "solid";
 
-/**
- * Renderer default image border color. Images have no border-color global (the
- * brand-level image knob is `imageBorderRadius`, the shape), so this mirrors
- * the buttonBorderColor default: a visible line the moment a width is set.
- */
+/*
+  Renderer default image border color. Images have no border-color global (the
+  brand-level image knob is `imageBorderRadius`, the shape), so this mirrors
+  the buttonBorderColor default: a visible line the moment a width is set.
+*/
 const DEFAULT_IMAGE_BORDER_COLOR = "#000000";
 
-/** Leaf blocks default to baseSpacing below (the space between blocks). */
+/*
+  Leaf blocks default to baseSpacing below (the space between blocks).
+*/
 function leafPaddingDefaults(baseSpacing: number): ResolvedPadding {
   return { paddingTop: 0, paddingBottom: baseSpacing, paddingLeft: 0, paddingRight: 0 };
 }
@@ -282,8 +316,10 @@ function resolveTextStyles(globals: Required<GlobalStyles>, block: TextBlock): R
     globalAlign: TextAlign;
   }): ResolvedTextNodeStyles => ({
     fontFamily,
-    // Block-level textColor/textAlign override the per-node-type globals for
-    // EVERY node in this block.
+    /*
+      Block-level textColor/textAlign override the per-node-type globals for
+      EVERY node in this block.
+    */
     textColor: textColor ?? globalColor,
     textAlign: textAlign ?? globalAlign,
   });
@@ -342,7 +378,9 @@ function resolveDividerStyles(
   };
 }
 
-/** Renderer default font size for standalone links (matches paragraph text). */
+/*
+  Renderer default font size for standalone links (matches paragraph text).
+*/
 const DEFAULT_LINK_FONT_SIZE = 14;
 
 function resolveLinkStyles(globals: Required<GlobalStyles>, block: LinkBlock): ResolvedLinkStyles {
@@ -399,13 +437,13 @@ function resolveAnyBlockStyles(
   }
 }
 
-/**
- * Resolve the final styles for one block:
- * DEFAULT_GLOBAL_STYLES → `globals` (root.properties.globals) → block overrides.
- *
- * `globals` is the raw (possibly partial or absent) object from the document
- * root; defaulting is handled here.
- */
+/*
+  Resolve the final styles for one block:
+  DEFAULT_GLOBAL_STYLES → `globals` (root.properties.globals) → block overrides.
+
+  `globals` is the raw (possibly partial or absent) object from the document
+  root; defaulting is handled here.
+*/
 export function resolveBlockStyles<TBlock extends Block>(
   globals: GlobalStyles | undefined,
   block: TBlock,
@@ -415,7 +453,9 @@ export function resolveBlockStyles<TBlock extends Block>(
   ];
 }
 
-/** Cast-free convenience: root styles straight from a root block. */
+/*
+  Cast-free convenience: root styles straight from a root block.
+*/
 export function resolveRootBlockStyles(root: RootBlock): ResolvedRootStyles {
   return resolveRootStyles(resolveGlobalStyles(root.properties.globals));
 }

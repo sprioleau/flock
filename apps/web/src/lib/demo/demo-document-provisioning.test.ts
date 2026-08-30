@@ -19,9 +19,11 @@ import schema from "@convex/schema";
      changed default would break every existing draft.
 */
 
-// NOTE: convex-test's documented `!(*.*.*)` extglob matches nothing under
-// vitest 4 (tinyglobby has no extglob support) — the array form with negative
-// patterns is the equivalent that works.
+/*
+  NOTE: convex-test's documented `!(*.*.*)` extglob matches nothing under
+  vitest 4 (tinyglobby has no extglob support) — the array form with negative
+  patterns is the equivalent that works.
+*/
 const modules = import.meta.glob([
   "../../../../../convex/**/*.{ts,js}",
   "!**/*.d.ts",
@@ -50,8 +52,10 @@ describe("provisioning a /demo document", () => {
       documentKey: documentId,
     });
     expect(payload?.isDemo).toBe(true);
-    /* The seed, identified by the two problems the agents are here to find:
-       the shouted paragraph and the second CTA that drifted from the first. */
+    /*
+      The seed, identified by the two problems the agents are here to find:
+      the shouted paragraph and the second CTA that drifted from the first.
+    */
     expect(JSON.stringify(payload?.doc)).toContain("LAST CHANCE");
     expect(JSON.stringify(payload?.doc)).toContain("Shop the spring lineup");
   });
@@ -62,24 +66,32 @@ describe("provisioning a /demo document", () => {
       sessionId: SESSION_ID,
     });
 
-    /* Absent, not false: the row is byte-identical to the rows every release
-       before this one wrote, which is what makes the migration a no-op. */
+    /*
+      Absent, not false: the row is byte-identical to the rows every release
+      before this one wrote, which is what makes the migration a no-op.
+    */
     const payload = await backend.query(api.documents.getDocumentByKey, {
       documentKey: documentId,
     });
     expect(payload?.isDemo).toBeUndefined();
-    /* And the spend authority reads that absence as "an ordinary draft". */
+    /*
+      And the spend authority reads that absence as "an ordinary draft".
+    */
     expect(await backend.query(api.documents.getDocumentIsDemo, { documentKey: documentId })).toBe(
       false,
     );
-    /* Still the designed starter email, not the demo seed. */
+    /*
+      Still the designed starter email, not the demo seed.
+    */
     expect(JSON.stringify(payload?.doc)).not.toContain("LAST CHANCE");
   });
 
   it("answers false for an id that names nothing, rather than throwing", async () => {
-    /* The `?doc=` param is untrusted input; a malformed id must degrade to
-       "not a demo document" — today's behaviour for a request naming no
-       document at all — instead of failing the turn. */
+    /*
+      The `?doc=` param is untrusted input; a malformed id must degrade to
+      "not a demo document" — today's behaviour for a request naming no
+      document at all — instead of failing the turn.
+    */
     const backend = createBackend();
     expect(
       await backend.query(api.documents.getDocumentIsDemo, { documentKey: "not-a-real-id" }),

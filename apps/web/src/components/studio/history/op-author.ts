@@ -3,43 +3,55 @@ import { deriveIdentity } from "@/lib/presence";
 import type { OperationEntry } from "./history-grouping";
 import { humanizePropertyKey } from "./property-phrases";
 
-/**
- * Shared identity + human-label helpers for EVERY op-log surface (History
- * panel, op inspector, time-travel replay) — the single source of truth for
- * presenting ops to users. Given an op-log row's `author`/`authorId`, derive
- * who made it and what color represents them; given an op payload, derive a
- * plain-English label ("Updated background color · Button") that names the
- * block TYPE — never an internal op name, never a block id.
- *
- * Author derivation is prefix-based, matching the provenance conventions the
- * backend already writes:
- * - `author: "agent"` → the AI agent (violet), or the demo agent when the
- *   authorId carries the demo prefix.
- * - `authorId: "suggestions:<sessionId>"` → an applied suggestion.
- * - `authorId: "demo-ghost…"` → the demo ghost typist (impersonates a human,
- *   so it gets a derived presence identity like any user).
- * - everything else → a human session; name + hue via `deriveIdentity`, the
- *   same hash presence uses, so colors line up with the facepile.
- */
+/*
+  Shared identity + human-label helpers for EVERY op-log surface (History
+  panel, op inspector, time-travel replay) — the single source of truth for
+  presenting ops to users. Given an op-log row's `author`/`authorId`, derive
+  who made it and what color represents them; given an op payload, derive a
+  plain-English label ("Updated background color · Button") that names the
+  block TYPE — never an internal op name, never a block id.
+
+  Author derivation is prefix-based, matching the provenance conventions the
+  backend already writes:
+  - `author: "agent"` → the AI agent (violet), or the demo agent when the
+    authorId carries the demo prefix.
+  - `authorId: "suggestions:<sessionId>"` → an applied suggestion.
+  - `authorId: "demo-ghost…"` → the demo ghost typist (impersonates a human,
+    so it gets a derived presence identity like any user).
+  - everything else → a human session; name + hue via `deriveIdentity`, the
+    same hash presence uses, so colors line up with the facepile.
+*/
 
 export type OpAuthorKind = "agent" | "demo-agent" | "suggestion" | "ghost" | "you" | "user";
 
 export interface OpAuthorIdentity {
   kind: OpAuthorKind;
-  /** Short display name ("Agent", "You", "Brisk Otter"). */
+  /*
+    Short display name ("Agent", "You", "Brisk Otter").
+  */
   label: string;
-  /** CSS color for dots/borders/labels. */
+  /*
+    CSS color for dots/borders/labels.
+  */
   color: string;
 }
 
-/** Violet, matching the existing Agent badge language in the History panel. */
+/*
+  Violet, matching the existing Agent badge language in the History panel.
+*/
 const AGENT_COLOR = "hsl(262 68% 52%)";
-/** Magenta — visibly agent-family but distinct from the real agent. */
+/*
+  Magenta — visibly agent-family but distinct from the real agent.
+*/
 const DEMO_AGENT_COLOR = "hsl(310 62% 48%)";
-/** Amber — the quiet suggestion accent. */
+/*
+  Amber — the quiet suggestion accent.
+*/
 const SUGGESTION_COLOR = "hsl(35 85% 40%)";
 
-/** Who authored an op-log row, with a stable display color. */
+/*
+  Who authored an op-log row, with a stable display color.
+*/
 export function deriveOpAuthor({
   author,
   authorId,
@@ -68,7 +80,9 @@ export function deriveOpAuthor({
   return { kind: "user", label: identity.name, color: identity.color };
 }
 
-/** Human noun per block type for row labels. */
+/*
+  Human noun per block type for row labels.
+*/
 const BLOCK_TYPE_NOUNS: Record<BlockType, string> = {
   root: "document",
   section: "section",
@@ -91,7 +105,9 @@ function withIndefiniteArticle(noun: string): string {
   return /^[aeiou]/i.test(noun) ? `an ${noun}` : `a ${noun}`;
 }
 
-/** The target block's human noun, from its id prefix — never the id itself. */
+/*
+  The target block's human noun, from its id prefix — never the id itself.
+*/
 function getBlockNoun(blockId: string | undefined): string | null {
   if (blockId === undefined) {
     return null;
@@ -100,16 +116,18 @@ function getBlockNoun(blockId: string | undefined): string | null {
   return parsed === null ? null : BLOCK_TYPE_NOUNS[parsed.type];
 }
 
-/** " · Button" suffix for a label, or "" when the target is unknown. */
+/*
+  " · Button" suffix for a label, or "" when the target is unknown.
+*/
 function formatBlockSuffix(noun: string | null): string {
   return noun === null ? "" : ` · ${capitalizeFirst(noun)}`;
 }
 
-/**
- * "Updated corner radius · Button" / "Updated padding and label · Button" /
- * "Updated 4 styles · Button" — up to two property phrases spelled out
- * (deduped: paddingTop+paddingBottom read as one "padding"), a count beyond.
- */
+/*
+  "Updated corner radius · Button" / "Updated padding and label · Button" /
+  "Updated 4 styles · Button" — up to two property phrases spelled out
+  (deduped: paddingTop+paddingBottom read as one "padding"), a count beyond.
+*/
 function describePropertyUpdate({
   properties,
   noun,
@@ -131,9 +149,9 @@ function describePropertyUpdate({
   return `Updated ${phrases.length} styles${suffix}`;
 }
 
-/**
- * The block id an op targets, if any — for the unknown-op fallback below.
- */
+/*
+  The block id an op targets, if any — for the unknown-op fallback below.
+*/
 function extractTargetBlockId(rawOp: unknown): string | undefined {
   const op = rawOp as Operation & {
     blockId?: string;
@@ -148,12 +166,12 @@ function extractTargetBlockId(rawOp: unknown): string | undefined {
   return op.section?.id ?? op.block?.id ?? op.blocks?.[0]?.id ?? op.parentId;
 }
 
-/**
- * Human one-liner for an op payload — an action phrase plus the target
- * block's TYPE: "Updated background color · Button", "Edited text · Text
- * block", "Added a section", "Applied theme". Never the internal op name,
- * never a block id (owner rule: those are not user-facing anywhere).
- */
+/*
+  Human one-liner for an op payload — an action phrase plus the target
+  block's TYPE: "Updated background color · Button", "Edited text · Text
+  block", "Added a section", "Applied theme". Never the internal op name,
+  never a block id (owner rule: those are not user-facing anywhere).
+*/
 export function describeOperationHuman(rawOp: unknown): string {
   const op = rawOp as Operation;
   switch (op.name) {
@@ -201,7 +219,9 @@ export function describeOperationHuman(rawOp: unknown): string {
     case "updateText":
       return `Edited text${formatBlockSuffix(getBlockNoun(op.blockId))}`;
     default: {
-      // A future/unknown op kind must still never leak its internal name.
+      /*
+        A future/unknown op kind must still never leak its internal name.
+      */
       const noun = getBlockNoun(extractTargetBlockId(rawOp));
       return noun === null ? "Made an edit" : `Edited ${withIndefiniteArticle(noun)}`;
     }
@@ -209,16 +229,18 @@ export function describeOperationHuman(rawOp: unknown): string {
 }
 
 export interface DescribeEntryContext {
-  /**
-   * Resolve another log entry by version, so undo/redo rows can name what
-   * they undid ("Undid: Updated background color · Button"). Surfaces that
-   * hold the operations list pass their lookup; without one (or when the
-   * target version isn't loaded) the label falls back to "Undid a change".
-   */
+  /*
+    Resolve another log entry by version, so undo/redo rows can name what
+    they undid ("Undid: Updated background color · Button"). Surfaces that
+    hold the operations list pass their lookup; without one (or when the
+    target version isn't loaded) the label falls back to "Undid a change".
+  */
   getEntryByVersion?: (version: number) => OperationEntry | undefined;
 }
 
-/** The human label of the op recorded at `version`, if that entry is loaded. */
+/*
+  The human label of the op recorded at `version`, if that entry is loaded.
+*/
 function resolveVersionLabel(
   version: number | undefined,
   context: DescribeEntryContext,
@@ -230,10 +252,10 @@ function resolveVersionLabel(
   return targetEntry === undefined ? null : describeOperationHuman(targetEntry.op);
 }
 
-/**
- * Human one-liner for a full op-log entry: undo/redo rows wrap the label of
- * the change they target; edits fall through to `describeOperationHuman`.
- */
+/*
+  Human one-liner for a full op-log entry: undo/redo rows wrap the label of
+  the change they target; edits fall through to `describeOperationHuman`.
+*/
 export function describeEntryHuman(
   entry: OperationEntry,
   context: DescribeEntryContext = {},
@@ -243,8 +265,10 @@ export function describeEntryHuman(
     return targetLabel === null ? "Undid a change" : `Undid: ${targetLabel}`;
   }
   if (entry.kind === "redo") {
-    // redoesVersion points at the undo entry; the original edit whose effect
-    // came back is behind THAT entry's undoesVersion.
+    /*
+      redoesVersion points at the undo entry; the original edit whose effect
+      came back is behind THAT entry's undoesVersion.
+    */
     const undoEntry =
       entry.redoesVersion !== undefined
         ? context.getEntryByVersion?.(entry.redoesVersion)

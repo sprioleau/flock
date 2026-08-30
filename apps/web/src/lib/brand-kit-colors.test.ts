@@ -1,9 +1,9 @@
-/**
- * The authored palette (docs/proposals/brand-kit-user-control.md §3): the
- * `--banana` naming ladder, the deterministic color description that always
- * terminates it, and the read rule that makes an authored palette WIN over the
- * derived one in every color picker.
- */
+/*
+  The authored palette (docs/proposals/brand-kit-user-control.md §3): the
+  `--banana` naming ladder, the deterministic color description that always
+  terminates it, and the read rule that makes an authored palette WIN over the
+  derived one in every color picker.
+*/
 import { describe, expect, it } from "vitest";
 import {
   MAX_BRAND_COLORS,
@@ -45,7 +45,9 @@ describe("deriveColorNameFromVariable (the owner's --banana)", () => {
   it("drops leading namespace noise but never the whole name", () => {
     expect(deriveColorNameFromVariable("--ui-accent-1")).toBe("Accent 1");
     expect(deriveColorNameFromVariable("--color-theme-ink")).toBe("Ink");
-    // "--brand" is all noise words: keep the last one rather than derive nothing.
+    /*
+      "--brand" is all noise words: keep the last one rather than derive nothing.
+    */
     expect(deriveColorNameFromVariable("--brand")).toBe("Brand");
   });
 
@@ -103,7 +105,9 @@ describe("getBrandKitPalette read rule (authored beats derived)", () => {
       ],
     };
     const palette = getBrandKitPalette(kit);
-    // Primaries lead the PICKER row, accents next (the panel groups differently).
+    /*
+      Primaries lead the PICKER row, accents next (the panel groups differently).
+    */
     expect(palette).toEqual([
       { color: "#0b1120", label: "Ink" },
       { color: "#ffc400", label: "Banana" },
@@ -118,8 +122,10 @@ describe("getBrandKitPalette read rule (authored beats derived)", () => {
         buildColor({ hex: "#3831a5", name: "Indigo Deep", orderIndex: 1 }),
       ],
     };
-    // The derived path would merge these (RGB distance < 36); the authored
-    // path must not — a human who curated two close tints meant to.
+    /*
+      The derived path would merge these (RGB distance < 36); the authored
+      path must not — a human who curated two close tints meant to.
+    */
     expect(getBrandKitPalette(kit).map(({ label }) => label)).toEqual(["Indigo", "Indigo Deep"]);
   });
 

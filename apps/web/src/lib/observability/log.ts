@@ -24,41 +24,49 @@
  *     failure record and is truncated hard (see MAX_PAYLOAD_CHARS).
  */
 
-// ---------------------------------------------------------------------------
-// Truncation caps
-// ---------------------------------------------------------------------------
+/*
+  ---------------------------------------------------------------------------
+  Truncation caps
+  ---------------------------------------------------------------------------
+*/
 
-/** Cap for a provider/exception message quoted into a record. */
+/*
+  Cap for a provider/exception message quoted into a record.
+*/
 export const MAX_MESSAGE_CHARS = 500;
 
-/**
- * Cap for a serialized diagnostic payload (the rejected tool input). Chosen so
- * a whole 47k-character schema or a full email document can never reach a log
- * line, while still showing the shape of what the model actually sent —
- * roughly the first two dozen JSON fields, which is where a discriminator
- * mistake or a wrapper-shaped `children[0]` always shows up.
- */
+/*
+  Cap for a serialized diagnostic payload (the rejected tool input). Chosen so
+  a whole 47k-character schema or a full email document can never reach a log
+  line, while still showing the shape of what the model actually sent —
+  roughly the first two dozen JSON fields, which is where a discriminator
+  mistake or a wrapper-shaped `children[0]` always shows up.
+*/
 export const MAX_PAYLOAD_CHARS = 1_000;
 
-/** Cap on how many validation issues ride one record. */
+/*
+  Cap on how many validation issues ride one record.
+*/
 export const MAX_ISSUE_COUNT = 10;
 
-/** Cap for a single validation issue's message. */
+/*
+  Cap for a single validation issue's message.
+*/
 export const MAX_ISSUE_MESSAGE_CHARS = 200;
 
-/**
- * Truncate to `maxChars`, marking the cut so a reader never mistakes a clipped
- * value for a complete one. Returns the input unchanged when it already fits.
- */
+/*
+  Truncate to `maxChars`, marking the cut so a reader never mistakes a clipped
+  value for a complete one. Returns the input unchanged when it already fits.
+*/
 export function truncate(text: string, maxChars: number): string {
   return text.length <= maxChars ? text : `${text.slice(0, maxChars)}…[+${text.length - maxChars}]`;
 }
 
-/**
- * Serialize any value for a log field and truncate it. Values that cannot be
- * serialized (cycles, BigInt) degrade to a marker rather than throwing — a
- * logging call must never be the thing that fails a request.
- */
+/*
+  Serialize any value for a log field and truncate it. Values that cannot be
+  serialized (cycles, BigInt) degrade to a marker rather than throwing — a
+  logging call must never be the thing that fails a request.
+*/
 export function truncateJson(value: unknown, maxChars: number = MAX_PAYLOAD_CHARS): string {
   let serialized: string;
   try {
@@ -69,16 +77,18 @@ export function truncateJson(value: unknown, maxChars: number = MAX_PAYLOAD_CHAR
   return truncate(serialized, maxChars);
 }
 
-// ---------------------------------------------------------------------------
-// Identifier hashing
-// ---------------------------------------------------------------------------
+/*
+  ---------------------------------------------------------------------------
+  Identifier hashing
+  ---------------------------------------------------------------------------
+*/
 
-/**
- * A short, stable, non-reversible tag for an identifier (session id, email).
- * Same input → same tag, so records CORRELATE, but the original value is not
- * in the log. FNV-1a: not cryptographic, and it does not need to be — this is
- * a correlation key, not an authentication token.
- */
+/*
+  A short, stable, non-reversible tag for an identifier (session id, email).
+  Same input → same tag, so records CORRELATE, but the original value is not
+  in the log. FNV-1a: not cryptographic, and it does not need to be — this is
+  a correlation key, not an authentication token.
+*/
 export function hashIdentifier(value: string | null | undefined): string | null {
   if (value === undefined || value === null || value.length === 0) {
     return null;
@@ -91,15 +101,17 @@ export function hashIdentifier(value: string | null | undefined): string | null 
   return hash.toString(36).padStart(7, "0");
 }
 
-// ---------------------------------------------------------------------------
-// Error classification
-// ---------------------------------------------------------------------------
+/*
+  ---------------------------------------------------------------------------
+  Error classification
+  ---------------------------------------------------------------------------
+*/
 
-/**
- * Stable, low-cardinality codes. These are what the owner FILTERS and COUNTS
- * on ("how many rate_limited yesterday"), so they must not drift with provider
- * copy — the human-readable prose lives in the separate `message` field.
- */
+/*
+  Stable, low-cardinality codes. These are what the owner FILTERS and COUNTS
+  on ("how many rate_limited yesterday"), so they must not drift with provider
+  copy — the human-readable prose lives in the separate `message` field.
+*/
 export type ModelErrorCode =
   | "invalid_tool_input"
   | "no_such_tool"
@@ -115,40 +127,48 @@ export type ModelErrorCode =
   | "unknown";
 
 export interface ErrorSummary {
-  /** Stable classification — filter and count on this. */
+  /*
+    Stable classification — filter and count on this.
+  */
   code: ModelErrorCode;
-  /** The constructor/AI-SDK name, e.g. "AI_InvalidToolInputError". */
+  /*
+    The constructor/AI-SDK name, e.g. "AI_InvalidToolInputError".
+  */
   name: string;
-  /** Truncated human-readable text. Never used for filtering. */
+  /*
+    Truncated human-readable text. Never used for filtering.
+  */
   message: string;
-  /** HTTP status when the provider supplied one. */
+  /*
+    HTTP status when the provider supplied one.
+  */
   statusCode?: number;
-  /**
-   * The provider's own response body, truncated. Present only on an
-   * APICallError that carried one.
-   *
-   * WHY IT EARNS A FIELD. `message` for a rejected Gemini request is the
-   * generic "Request contains an invalid argument." — true and useless. The
-   * body under it names the offending field:
-   *
-   *   Invalid value at 'contents[1].parts[0].function_call.args'
-   *   (type.googleapis.com/google.protobuf.Struct), "{\"name\":\"addSection\"…
-   *
-   * That sentence is the entire difference between a diagnosable 400 and an
-   * afternoon of bisecting, and it was previously discarded.
-   */
+  /*
+    The provider's own response body, truncated. Present only on an
+    APICallError that carried one.
+
+    WHY IT EARNS A FIELD. `message` for a rejected Gemini request is the
+    generic "Request contains an invalid argument." — true and useless. The
+    body under it names the offending field:
+
+      Invalid value at 'contents[1].parts[0].function_call.args'
+      (type.googleapis.com/google.protobuf.Struct), "{\"name\":\"addSection\"…
+
+    That sentence is the entire difference between a diagnosable 400 and an
+    afternoon of bisecting, and it was previously discarded.
+  */
   providerDetail?: string;
 }
 
-/**
- * Reach the real thrown value.
- *
- * The AI SDK hands telemetry integrations an ENVELOPE — `{ error }` — rather
- * than the error itself, and its stream funnels re-emit an already-formatted
- * failure as a bare STRING. Without this, both land as
- * `name: "object" / "string"`, `code: "unknown"`, `message: "[object Object]"`
- * — which was exactly what the first live run produced.
- */
+/*
+  Reach the real thrown value.
+
+  The AI SDK hands telemetry integrations an ENVELOPE — `{ error }` — rather
+  than the error itself, and its stream funnels re-emit an already-formatted
+  failure as a bare STRING. Without this, both land as
+  `name: "object" / "string"`, `code: "unknown"`, `message: "[object Object]"`
+  — which was exactly what the first live run produced.
+*/
 export function unwrapThrown(value: unknown): unknown {
   let current = value;
   for (let depth = 0; depth < 3; depth++) {
@@ -165,7 +185,9 @@ export function unwrapThrown(value: unknown): unknown {
   return current;
 }
 
-/** `"AI_InvalidToolInputError: Invalid input for tool …"` → the name prefix. */
+/*
+  `"AI_InvalidToolInputError: Invalid input for tool …"` → the name prefix.
+*/
 const STRINGIFIED_ERROR_PREFIX = /^((?:AI_)?[A-Za-z]*Error):/;
 
 function readErrorName(error: unknown): string {
@@ -199,11 +221,11 @@ function readStatusCode(error: unknown): number | undefined {
   return typeof status === "number" ? status : undefined;
 }
 
-/**
- * Map a thrown value to a stable code. Name-first (AI SDK error classes carry
- * a stable `name` and survive being re-thrown across module instances, which
- * `instanceof` does not), then status code, then message shape.
- */
+/*
+  Map a thrown value to a stable code. Name-first (AI SDK error classes carry
+  a stable `name` and survive being re-thrown across module instances, which
+  `instanceof` does not), then status code, then message shape.
+*/
 export function classifyModelError(thrown: unknown): ModelErrorCode {
   const error = unwrapThrown(thrown);
   const name = readErrorName(error);
@@ -247,11 +269,11 @@ export function classifyModelError(thrown: unknown): ModelErrorCode {
   return "unknown";
 }
 
-/**
- * The provider's raw response body, when the thrown value is an APICallError
- * that carried one. Non-string bodies are serialized; `requestBodyValues` is
- * deliberately NOT read — it is the whole request, tool schemas included.
- */
+/*
+  The provider's raw response body, when the thrown value is an APICallError
+  that carried one. Non-string bodies are serialized; `requestBodyValues` is
+  deliberately NOT read — it is the whole request, tool schemas included.
+*/
 function readProviderDetail(error: unknown): string | undefined {
   if (typeof error !== "object" || error === null) {
     return undefined;
@@ -264,7 +286,9 @@ function readProviderDetail(error: unknown): string | undefined {
   return detail.length === 0 ? undefined : detail;
 }
 
-/** Classify + truncate a thrown value into the fields every failure record carries. */
+/*
+  Classify + truncate a thrown value into the fields every failure record carries.
+*/
 export function summarizeError(thrown: unknown): ErrorSummary {
   const error = unwrapThrown(thrown);
   const statusCode = readStatusCode(error);
@@ -298,14 +322,20 @@ export function toFailureSignature(thrown: unknown): string {
   return `${classifyModelError(error)}|${normalizedMessage.slice(0, MAX_MESSAGE_CHARS)}`;
 }
 
-// ---------------------------------------------------------------------------
-// Validation issues
-// ---------------------------------------------------------------------------
+/*
+  ---------------------------------------------------------------------------
+  Validation issues
+  ---------------------------------------------------------------------------
+*/
 
 export interface LoggedValidationIssue {
-  /** Zod issue code, e.g. "invalid_type" / "invalid_union". */
+  /*
+    Zod issue code, e.g. "invalid_type" / "invalid_union".
+  */
   code: string;
-  /** Dotted path into the rejected input, e.g. "children.0.text". */
+  /*
+    Dotted path into the rejected input, e.g. "children.0.text".
+  */
   path: string;
   message: string;
 }
@@ -320,18 +350,18 @@ function toDottedPath(path: unknown): string {
   return Array.isArray(path) ? path.map(String).join(".") : "";
 }
 
-/**
- * Pull the Zod issue list off an AI SDK tool-input validation failure.
- *
- * The issues are the single most diagnostic thing in the whole pipeline — the
- * production failure this module exists for (`addSection` rejected because the
- * model wrapped `children[0].text` in a `type:"text"` envelope, omitted
- * `childrenIds` and `properties`, and got the `name` discriminator wrong) is
- * ONE GLANCE at codes + paths and completely invisible without them.
- *
- * Digs through the AI SDK's wrapping: InvalidToolInputError → `cause`
- * (TypeValidationError) → `cause` (ZodError with `.issues`).
- */
+/*
+  Pull the Zod issue list off an AI SDK tool-input validation failure.
+
+  The issues are the single most diagnostic thing in the whole pipeline — the
+  production failure this module exists for (`addSection` rejected because the
+  model wrapped `children[0].text` in a `type:"text"` envelope, omitted
+  `childrenIds` and `properties`, and got the `name` discriminator wrong) is
+  ONE GLANCE at codes + paths and completely invisible without them.
+
+  Digs through the AI SDK's wrapping: InvalidToolInputError → `cause`
+  (TypeValidationError) → `cause` (ZodError with `.issues`).
+*/
 export function extractValidationIssues(thrown: unknown): LoggedValidationIssue[] {
   const seen = new Set<unknown>();
   let current: unknown = unwrapThrown(thrown);
@@ -356,27 +386,31 @@ export function extractValidationIssues(thrown: unknown): LoggedValidationIssue[
   return [];
 }
 
-// ---------------------------------------------------------------------------
-// The writer
-// ---------------------------------------------------------------------------
+/*
+  ---------------------------------------------------------------------------
+  The writer
+  ---------------------------------------------------------------------------
+*/
 
-/** Every record carries a `tag`; the rest is per-record. */
+/*
+  Every record carries a `tag`; the rest is per-record.
+*/
 export interface LogRecord {
   tag: string;
   [field: string]: unknown;
 }
 
-/**
- * `console.error` (Vercel level "error") for failures, `console.log` (level
- * "info") for everything else. Vercel's Level filter reads stderr vs stdout,
- * so this is what makes "show me only failures" work in the dashboard.
- */
+/*
+  `console.error` (Vercel level "error") for failures, `console.log` (level
+  "info") for everything else. Vercel's Level filter reads stderr vs stdout,
+  so this is what makes "show me only failures" work in the dashboard.
+*/
 export type LogSeverity = "info" | "error";
 
-/**
- * Drop undefined fields so a record's key set stays meaningful — a present key
- * always carries a real value, and `null` always means "known to be absent".
- */
+/*
+  Drop undefined fields so a record's key set stays meaningful — a present key
+  always carries a real value, and `null` always means "known to be absent".
+*/
 function compact(record: LogRecord): LogRecord {
   const compacted: LogRecord = { tag: record.tag };
   for (const [key, value] of Object.entries(record)) {
@@ -387,10 +421,10 @@ function compact(record: LogRecord): LogRecord {
   return compacted;
 }
 
-/**
- * Write one single-line JSON record. Never throws: an observability failure
- * must not be able to fail the request it is observing.
- */
+/*
+  Write one single-line JSON record. Never throws: an observability failure
+  must not be able to fail the request it is observing.
+*/
 export function logRecord(record: LogRecord, severity: LogSeverity = "info"): void {
   let line: string;
   try {
@@ -405,21 +439,25 @@ export function logRecord(record: LogRecord, severity: LogSeverity = "info"): vo
   }
 }
 
-/** Shorthand for the failure half — reads at the call site as what it is. */
+/*
+  Shorthand for the failure half — reads at the call site as what it is.
+*/
 export function logFailure(record: LogRecord): void {
   logRecord(record, "error");
 }
 
-// ---------------------------------------------------------------------------
-// Correlation
-// ---------------------------------------------------------------------------
+/*
+  ---------------------------------------------------------------------------
+  Correlation
+  ---------------------------------------------------------------------------
+*/
 
-/**
- * Mint the id that ties one request's records together. A single chat turn
- * produces a main-call record, zero or more repair records, and zero or more
- * per-tool failure records; they all carry the same `traceId`, so pasting it
- * into the Vercel Logs search box pulls exactly that turn and nothing else.
- */
+/*
+  Mint the id that ties one request's records together. A single chat turn
+  produces a main-call record, zero or more repair records, and zero or more
+  per-tool failure records; they all carry the same `traceId`, so pasting it
+  into the Vercel Logs search box pulls exactly that turn and nothing else.
+*/
 export function createTraceId(): string {
   return crypto.randomUUID().slice(0, 8);
 }

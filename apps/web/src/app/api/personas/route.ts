@@ -23,130 +23,144 @@ import { selectSeededFinding } from "./demo-findings";
 import { composeFindingOps } from "./finding-ops";
 import { runnerOutputSchema, truncateFindingProse, type RunnerOutputFinding } from "./finding-schema";
 
-/**
- * POST /api/personas — the multi-agent canvas v0 ADVISORY RUNNER
- * (docs/proposals/multi-agent-canvas.md §3.3 model A, §4.2 batched call).
- *
- * One settled user gesture (client watcher, use-persona-advisors.ts) fires at
- * most ONE Gemini analysis call covering ALL enabled advisory personas. The
- * prompt stacks cache-friendly (§3.4): shared static core first, then the
- * enabled personas' markdowns ordered by slug (a stable extended prefix per
- * enabled set), fresh tokens (outline + trigger summary) always last.
- *
- * Structured output = per-persona findings. A finding MAY carry concrete
- * intent-level edits — property edits ({blockId, property, value}) and/or
- * copy rewrites ({blockId, text} as PLAIN TEXT) — which finding-ops.ts
- * translates deterministically into `updateBlockProperties` / `updateText`
- * operations (the llm-tool-interface principle: simple args in, structure
- * built server-side). Every op batch is DRY-RUN through the SDK's pure
- * `applyOperations` before it is surfaced; findings whose ops fail the dry-run
- * degrade to informational. Personas never dispatch anything — findings become
- * source:"analysis" suggestions client-side, and only a human clicking Apply
- * writes to the document.
- *
- * Budget discipline (§5.1): per-persona cooldowns gate client-side; this
- * route adds a per-document minimum interval and an outline-unchanged skip
- * as server backstops, plus a `flock.personas.request` JSON log line so
- * tokens-per-run stay observable. Requests carrying `x-flock-mock: 1` (or any
- * request when GOOGLE_GENERATIVE_AI_API_KEY is absent — the chat route's exact
- * convention) skip the Gemini call for a deterministic mock findings set;
- * everything else in the pipeline stays real.
- *
- * FORCED MOCK ON DEMO DOCUMENTS (demo-mode.md §H, stage 2). A document whose
- * row carries `isDemo` runs the mock NO MATTER WHAT THE CLIENT SENT — resolved
- * from the row this route already fetches, so it costs no extra read. /demo is
- * a public unauthenticated link onto a Gemini free-tier quota shared with
- * production; a header the client chooses to send is a request, not a guard.
- * The rule itself lives in lib/demo/mock-authority.ts.
- *
- * PERSISTENCE (multi-agent v1): surviving findings are RECORDED in the
- * `personaFindings` table (convex/personaFindings.ts) rather than consumed
- * only by the initiating client — every tab/collaborator reads them
- * reactively, and dismiss/apply converge through row status. Each finding is
- * stored with `targetSnapshots` (stableStringify of every block it depends
- * on, from THIS run's doc snapshot — the exact doc the ops were dry-run
- * against) as the shared staleness baseline. Before the call, the runner
- * prunes stale open rows and feeds the fresh ones back into the prompt as
- * §5.6b turn-input dedup context — per-request data, appended in the
- * fresh-tokens-LAST position (the user message), never into a static layer.
- */
+/*
+  POST /api/personas — the multi-agent canvas v0 ADVISORY RUNNER
+  (docs/proposals/multi-agent-canvas.md §3.3 model A, §4.2 batched call).
 
-/**
- * Model for the batched persona analysis call. Plenty for a one-shot
- * structured findings pass over a ~1K-token outline.
- *
- * This id was once chosen to be DIFFERENT from the chat pipeline's, because
- * Gemini free-tier quotas are per-model and a reactive runner must not starve
- * the user-initiated chat agent. That isolation is GONE and its loss was
- * deliberate: on 2026-08-04 constants.ts moved DEFAULT_GEMINI_MODEL_ID to
- * this same id, so every caller now shares one bucket.
- *
- * Do not "restore" the isolation by moving this back to gemini-3.6-flash.
- * The numbers in constants.ts are why: flash-lite is 15 RPM / 500 per day
- * against 5 RPM / 20 per day for every alternative. A private 20-per-day
- * bucket is worse for this runner than a fifth of a 500-per-day one, and it
- * would cap the whole deployment at 20 chat turns to buy that. Shared and
- * large beats isolated and tiny.
- */
+  One settled user gesture (client watcher, use-persona-advisors.ts) fires at
+  most ONE Gemini analysis call covering ALL enabled advisory personas. The
+  prompt stacks cache-friendly (§3.4): shared static core first, then the
+  enabled personas' markdowns ordered by slug (a stable extended prefix per
+  enabled set), fresh tokens (outline + trigger summary) always last.
+
+  Structured output = per-persona findings. A finding MAY carry concrete
+  intent-level edits — property edits ({blockId, property, value}) and/or
+  copy rewrites ({blockId, text} as PLAIN TEXT) — which finding-ops.ts
+  translates deterministically into `updateBlockProperties` / `updateText`
+  operations (the llm-tool-interface principle: simple args in, structure
+  built server-side). Every op batch is DRY-RUN through the SDK's pure
+  `applyOperations` before it is surfaced; findings whose ops fail the dry-run
+  degrade to informational. Personas never dispatch anything — findings become
+  source:"analysis" suggestions client-side, and only a human clicking Apply
+  writes to the document.
+
+  Budget discipline (§5.1): per-persona cooldowns gate client-side; this
+  route adds a per-document minimum interval and an outline-unchanged skip
+  as server backstops, plus a `flock.personas.request` JSON log line so
+  tokens-per-run stay observable. Requests carrying `x-flock-mock: 1` (or any
+  request when GOOGLE_GENERATIVE_AI_API_KEY is absent — the chat route's exact
+  convention) skip the Gemini call for a deterministic mock findings set;
+  everything else in the pipeline stays real.
+
+  FORCED MOCK ON DEMO DOCUMENTS (demo-mode.md §H, stage 2). A document whose
+  row carries `isDemo` runs the mock NO MATTER WHAT THE CLIENT SENT — resolved
+  from the row this route already fetches, so it costs no extra read. /demo is
+  a public unauthenticated link onto a Gemini free-tier quota shared with
+  production; a header the client chooses to send is a request, not a guard.
+  The rule itself lives in lib/demo/mock-authority.ts.
+
+  PERSISTENCE (multi-agent v1): surviving findings are RECORDED in the
+  `personaFindings` table (convex/personaFindings.ts) rather than consumed
+  only by the initiating client — every tab/collaborator reads them
+  reactively, and dismiss/apply converge through row status. Each finding is
+  stored with `targetSnapshots` (stableStringify of every block it depends
+  on, from THIS run's doc snapshot — the exact doc the ops were dry-run
+  against) as the shared staleness baseline. Before the call, the runner
+  prunes stale open rows and feeds the fresh ones back into the prompt as
+  §5.6b turn-input dedup context — per-request data, appended in the
+  fresh-tokens-LAST position (the user message), never into a static layer.
+*/
+
+/*
+  Model for the batched persona analysis call. Plenty for a one-shot
+  structured findings pass over a ~1K-token outline.
+
+  This id was once chosen to be DIFFERENT from the chat pipeline's, because
+  Gemini free-tier quotas are per-model and a reactive runner must not starve
+  the user-initiated chat agent. That isolation is GONE and its loss was
+  deliberate: on 2026-08-04 constants.ts moved DEFAULT_GEMINI_MODEL_ID to
+  this same id, so every caller now shares one bucket.
+
+  Do not "restore" the isolation by moving this back to gemini-3.6-flash.
+  The numbers in constants.ts are why: flash-lite is 15 RPM / 500 per day
+  against 5 RPM / 20 per day for every alternative. A private 20-per-day
+  bucket is worse for this runner than a fifth of a 500-per-day one, and it
+  would cap the whole deployment at 20 chat turns to buy that. Shared and
+  large beats isolated and tiny.
+*/
 const PERSONA_MODEL_ID = "gemini-3.5-flash-lite";
 
-/** Hard timeout on the one analysis call. */
+/*
+  Hard timeout on the one analysis call.
+*/
 const GENERATION_TIMEOUT_MS = 45_000;
 
-/**
- * How much of each text block's words the outline shows the personas
- * (the generator's own default is 60). See the outline call for why the
- * copy-rewrite capability makes the default too narrow to be honest.
- */
+/*
+  How much of each text block's words the outline shows the personas
+  (the generator's own default is 60). See the outline call for why the
+  copy-rewrite capability makes the default too narrow to be honest.
+*/
 const PERSONA_OUTLINE_MAX_TEXT_CHARS = 400;
 
-/** Server backstop between runs per document (client cooldowns are the real gate). */
+/*
+  Server backstop between runs per document (client cooldowns are the real gate).
+*/
 const MIN_RUN_INTERVAL_MS = 20_000;
 
-/** Brief visible "reading" beat before the call — presentation smoothing only
- * (§3.5: the one theatrical liberty; the statuses themselves are real). */
+/*
+  Brief visible "reading" beat before the call — presentation smoothing only
+  (§3.5: the one theatrical liberty; the statuses themselves are real).
+*/
 const READING_BEAT_MS = 800;
 
-/**
- * Per-persona random stagger on the reading/thinking transition writes
- * (owner feedback 2026-07-31: personas must not flip states in lockstep —
- * the same de-synchronization ask as the client-side walk randomization,
- * applied to the phase EDGES, and server-driven so every collaborator sees
- * the same offsets). Presentation smoothing only; adds ≤ ~1s to a run.
- */
+/*
+  Per-persona random stagger on the reading/thinking transition writes
+  (owner feedback 2026-07-31: personas must not flip states in lockstep —
+  the same de-synchronization ask as the client-side walk randomization,
+  applied to the phase EDGES, and server-driven so every collaborator sees
+  the same offsets). Presentation smoothing only; adds ≤ ~1s to a run.
+*/
 const READING_STAGGER_MAX_MS = 900;
 const THINKING_STAGGER_MAX_MS = 600;
 
-/** Visible "thinking" beat for mock runs (no real model latency to show). */
+/*
+  Visible "thinking" beat for mock runs (no real model latency to show).
+*/
 const MOCK_THINKING_BEAT_MS = 1_400;
 
 const requestBodySchema = z.object({
   documentId: z.string().min(1),
   personaSlugs: z.array(z.string().min(1)).min(1).max(8),
-  /** Short human-readable note about the settled gesture(s) that triggered this run. */
+  /*
+    Short human-readable note about the settled gesture(s) that triggered this run.
+  */
   triggerSummary: z.string().max(600).optional(),
-  /**
-   * An explicit human "Check now" (persona-sweep.ts) rather than the ambient
-   * settled-edit watcher. Explicit intent is the strongest trigger there is:
-   * it bypasses the server cooldown AND the outline-unchanged skip (the user
-   * wants a fresh verdict on the document AS IS). The in-flight guard still
-   * applies — one batched analysis call per document at a time.
-   */
+  /*
+    An explicit human "Check now" (persona-sweep.ts) rather than the ambient
+    settled-edit watcher. Explicit intent is the strongest trigger there is:
+    it bypasses the server cooldown AND the outline-unchanged skip (the user
+    wants a fresh verdict on the document AS IS). The in-flight guard still
+    applies — one batched analysis call per document at a time.
+  */
   isManualSweep: z.boolean().optional(),
 });
 
-// ---------------------------------------------------------------------------
-// Model output schema — intent-level findings (deterministic translation to
-// ops happens below, never inside the model). Lives in finding-schema.ts
-// (with the long-label truncation backstop) so the reliability contract is
-// unit-testable — see that module's header for why prose fields carry NO
-// hard length caps.
-// ---------------------------------------------------------------------------
+/*
+  ---------------------------------------------------------------------------
+  Model output schema — intent-level findings (deterministic translation to
+  ops happens below, never inside the model). Lives in finding-schema.ts
+  (with the long-label truncation backstop) so the reliability contract is
+  unit-testable — see that module's header for why prose fields carry NO
+  hard length caps.
+  ---------------------------------------------------------------------------
+*/
 
-// ---------------------------------------------------------------------------
-// Shared static persona-conduct layer (byte-identical every request — part of
-// the cacheable prefix together with SYSTEM_STATIC).
-// ---------------------------------------------------------------------------
+/*
+  ---------------------------------------------------------------------------
+  Shared static persona-conduct layer (byte-identical every request — part of
+  the cacheable prefix together with SYSTEM_STATIC).
+  ---------------------------------------------------------------------------
+*/
 
 const PERSONA_CONDUCT_STATIC = `## Advisory persona review
 
@@ -164,13 +178,17 @@ Rules for every persona:
 - Whenever you propose NO edits of either kind, ALSO fill suggestedPrompt: a short ready-to-send message (1-3 sentences) the user could send to their email-editing assistant to resolve the finding. Write it in the user's first-person voice ("Replace the hero image's placeholder link — help me pick a real image URL from my website."), name the content by its visible text, and make it actionable. Omit suggestedPrompt whenever you proposed any edit.
 - Findings must be about the document as it is NOW (the outline below is current).`;
 
-// ---------------------------------------------------------------------------
-// In-memory run state (demo-scale, single instance — the brand-kit pattern)
-// ---------------------------------------------------------------------------
+/*
+  ---------------------------------------------------------------------------
+  In-memory run state (demo-scale, single instance — the brand-kit pattern)
+  ---------------------------------------------------------------------------
+*/
 
 interface DocumentRunState {
   lastRunStartedAtMs: number;
-  /** Outline + enabled-set fingerprint of the last completed run. */
+  /*
+    Outline + enabled-set fingerprint of the last completed run.
+  */
   lastRunKey: string | null;
   isRunInFlight: boolean;
 }
@@ -186,9 +204,11 @@ function getRunState(documentId: string): DocumentRunState {
   return state;
 }
 
-// ---------------------------------------------------------------------------
-// Helpers
-// ---------------------------------------------------------------------------
+/*
+  ---------------------------------------------------------------------------
+  Helpers
+  ---------------------------------------------------------------------------
+*/
 
 type PersonaRow = {
   slug: string;
@@ -207,14 +227,16 @@ interface RunnerFinding {
   description: string;
   targetBlockNames: string[];
   targetBlockIds: string[];
-  /** Dry-run-validated updateBlockProperties ops; empty = informational. */
+  /*
+    Dry-run-validated updateBlockProperties ops; empty = informational.
+  */
   ops: Operation[];
-  /**
-   * Main-agent handoff (op-less findings only): a ready-to-send chat prompt,
-   * in the user's voice, that asks the chat agent to resolve the finding. The
-   * card/modal "Ask in chat" button inserts it into the composer — never
-   * auto-sent. Absent on findings that carry ops (Apply covers those).
-   */
+  /*
+    Main-agent handoff (op-less findings only): a ready-to-send chat prompt,
+    in the user's voice, that asks the chat agent to resolve the finding. The
+    card/modal "Ask in chat" button inserts it into the composer — never
+    auto-sent. Absent on findings that carry ops (Apply covers those).
+  */
   suggestedPrompt?: string;
 }
 
@@ -303,7 +325,9 @@ function buildMockRunnerOutput({
 
 type OpenFindingRow = FunctionReturnType<typeof api.personaFindings.listOpenFindings>[number];
 
-/** Dismissal identity — MUST match the client's buildPatternKey (use-persona-advisors.ts). */
+/*
+  Dismissal identity — MUST match the client's buildPatternKey (use-persona-advisors.ts).
+*/
 function buildFindingPatternKey({
   personaSlug,
   targetBlockIds,
@@ -314,11 +338,11 @@ function buildFindingPatternKey({
   return `persona:${personaSlug}|${[...targetBlockIds].sort().join(",")}`;
 }
 
-/**
- * A persisted finding is stale when ANY snapshotted block drifted from this
- * run's doc (or vanished). Checks every `targetSnapshots` key — that map
- * covers the ops' blocks too, so fresh ⇒ the stored ops still apply.
- */
+/*
+  A persisted finding is stale when ANY snapshotted block drifted from this
+  run's doc (or vanished). Checks every `targetSnapshots` key — that map
+  covers the ops' blocks too, so fresh ⇒ the stored ops still apply.
+*/
 function isFindingStale({ doc, row }: { doc: EmailDocument; row: OpenFindingRow }): boolean {
   return Object.entries(row.targetSnapshots).some(([blockId, snapshot]) => {
     const block = doc[blockId as keyof EmailDocument];
@@ -326,11 +350,11 @@ function isFindingStale({ doc, row }: { doc: EmailDocument; row: OpenFindingRow 
   });
 }
 
-/**
- * §5.6b turn-input dedup: a persona sees its own (and its peers') still-open
- * findings so it never re-flags what it already flagged. PER-REQUEST content —
- * this string may only ever be appended in the fresh-tokens-last position.
- */
+/*
+  §5.6b turn-input dedup: a persona sees its own (and its peers') still-open
+  findings so it never re-flags what it already flagged. PER-REQUEST content —
+  this string may only ever be appended in the fresh-tokens-last position.
+*/
 function buildOpenFindingsContext(rows: OpenFindingRow[]): string | null {
   if (rows.length === 0) {
     return null;
@@ -345,9 +369,11 @@ function buildOpenFindingsContext(rows: OpenFindingRow[]): string | null {
   ].join("\n");
 }
 
-// ---------------------------------------------------------------------------
-// The route
-// ---------------------------------------------------------------------------
+/*
+  ---------------------------------------------------------------------------
+  The route
+  ---------------------------------------------------------------------------
+*/
 
 export async function POST(request: Request) {
   let json: unknown;
@@ -369,18 +395,22 @@ export async function POST(request: Request) {
   }
   const convexClient = new ConvexHttpClient(convexUrl);
 
-  // THE DOCUMENT IS FETCHED FIRST, before anything is decided about this run,
-  // because the row is what decides. `isDemo` is a spend authority
-  // (lib/demo/mock-authority.ts): /demo is a public link, and if the mock it
-  // depends on were requested by the client — which is all stage 1 could do —
-  // then stripping one header off the request would spend the deployment's
-  // shared Gemini quota through a URL published for strangers.
+  /*
+    THE DOCUMENT IS FETCHED FIRST, before anything is decided about this run,
+    because the row is what decides. `isDemo` is a spend authority
+    (lib/demo/mock-authority.ts): /demo is a public link, and if the mock it
+    depends on were requested by the client — which is all stage 1 could do —
+    then stripping one header off the request would spend the deployment's
+    shared Gemini quota through a URL published for strangers.
+  */
   //
-  // COSTING NOTHING EXTRA, deliberately. This route already had to read the
-  // document to build the outline, so the forced-mock verdict rides on a fetch
-  // that was happening anyway — no second round trip, no new query. That is
-  // also why the fetch moved ABOVE the credit charge rather than the flag
-  // being looked up separately below it.
+  /*
+    COSTING NOTHING EXTRA, deliberately. This route already had to read the
+    document to build the outline, so the forced-mock verdict rides on a fetch
+    that was happening anyway — no second round trip, no new query. That is
+    also why the fetch moved ABOVE the credit charge rather than the flag
+    being looked up separately below it.
+  */
   const document = await convexClient.query(api.documents.getDocumentByKey, {
     documentKey: documentId,
   });
@@ -395,43 +425,53 @@ export async function POST(request: Request) {
       isMockRequestedByClient: request.headers.get(MOCK_MODEL_HEADER) === "1",
     }) || !process.env.GOOGLE_GENERATIVE_AI_API_KEY;
 
-  // AI ALLOWANCE (convex/authCredits.ts). Only a MANUAL sweep costs a credit:
-  // a human clicked, so they asked for this. The ambient trigger fires off the
-  // op log without anyone asking, and charging a person for work they did not
-  // request would make their balance unpredictable and punish them for
-  // editing. The ambient path is throttled instead by the per-persona cooldown
-  // and the server backstops below — a cooldown throttles the system, a credit
-  // throttles a person.
+  /*
+    AI ALLOWANCE (convex/authCredits.ts). Only a MANUAL sweep costs a credit:
+    a human clicked, so they asked for this. The ambient trigger fires off the
+    op log without anyone asking, and charging a person for work they did not
+    request would make their balance unpredictable and punish them for
+    editing. The ambient path is throttled instead by the per-persona cooldown
+    and the server backstops below — a cooldown throttles the system, a credit
+    throttles a person.
+  */
   //
-  // Resolved BEFORE the charge, not at the model call: a run that will spend no
-  // provider quota must not bill a person for work nobody paid for — that would
-  // empty a demo visitor's whole allowance on a scripted run, or charge on a
-  // deployment with no API key configured at all. `chargeCreditForRequest`
-  // already short-circuits on that flag; this route simply was not telling it.
-  // A demo document therefore never spends a credit, whether or not its client
-  // remembered to ask for the mock.
+  /*
+    Resolved BEFORE the charge, not at the model call: a run that will spend no
+    provider quota must not bill a person for work nobody paid for — that would
+    empty a demo visitor's whole allowance on a scripted run, or charge on a
+    deployment with no API key configured at all. `chargeCreditForRequest`
+    already short-circuits on that flag; this route simply was not telling it.
+    A demo document therefore never spends a credit, whether or not its client
+    remembered to ask for the mock.
+  */
   //
-  // THE CHARGE READS A NARROWER FLAG THAN THE MODEL CALL DOES, and the gap
-  // between the two flags is the whole point of there being two. `isMockRun`
-  // above folds in `x-flock-mock: 1` (MOCK_MODEL_HEADER) — a header the CLIENT
-  // chooses to send. The exemption below folds in only what the SERVER
-  // established for itself: the document row said `isDemo`, or this deployment
-  // has no GOOGLE_GENERATIVE_AI_API_KEY at all. Those are the two runs the
-  // server can vouch for as free; a header is not one of them.
+  /*
+    THE CHARGE READS A NARROWER FLAG THAN THE MODEL CALL DOES, and the gap
+    between the two flags is the whole point of there being two. `isMockRun`
+    above folds in `x-flock-mock: 1` (MOCK_MODEL_HEADER) — a header the CLIENT
+    chooses to send. The exemption below folds in only what the SERVER
+    established for itself: the document row said `isDemo`, or this deployment
+    has no GOOGLE_GENERATIVE_AI_API_KEY at all. Those are the two runs the
+    server can vouch for as free; a header is not one of them.
+  */
   //
-  // It matters here more than anywhere else on this route because a manual
-  // sweep has deliberately given up the other backstops: it skips the server
-  // cooldown and the outline-unchanged skip below, on the grounds that
-  // explicit human intent deserves a fresh verdict. The credit is then the
-  // ONLY throttle left standing, and a client must not be able to talk its way
-  // out of the only throttle a manual sweep has — sending one header would
-  // otherwise strip every limit on the route at once, and the writes a sweep
-  // makes (findings rows, presence churn, invocations) are real whether or not
-  // a model was called.
+  /*
+    It matters here more than anywhere else on this route because a manual
+    sweep has deliberately given up the other backstops: it skips the server
+    cooldown and the outline-unchanged skip below, on the grounds that
+    explicit human intent deserves a fresh verdict. The credit is then the
+    ONLY throttle left standing, and a client must not be able to talk its way
+    out of the only throttle a manual sweep has — sending one header would
+    otherwise strip every limit on the route at once, and the writes a sweep
+    makes (findings rows, presence churn, invocations) are real whether or not
+    a model was called.
+  */
   //
-  // The header keeps its real meaning everywhere else (see the model call and
-  // the run's log line): a caller who sends it still gets the deterministic
-  // mock and no Gemini call. It just pays a credit for the run it asked for.
+  /*
+    The header keeps its real meaning everywhere else (see the model call and
+    the run's log line): a caller who sends it still gets the deterministic
+    mock and no Gemini call. It just pays a credit for the run it asked for.
+  */
   const isFreeRunTheServerVouchesFor =
     isDemoDocument || !process.env.GOOGLE_GENERATIVE_AI_API_KEY;
   if (isManualSweep) {
@@ -444,9 +484,11 @@ export async function POST(request: Request) {
     }
   }
 
-  // CAPABILITY ENFORCEMENT (proposal §4.6): only registry rows run, and only
-  // advisory ones — which is every row the v0 schema can hold. This filter is
-  // the guard that stays when v1 widens capabilityMode.
+  /*
+    CAPABILITY ENFORCEMENT (proposal §4.6): only registry rows run, and only
+    advisory ones — which is every row the v0 schema can hold. This filter is
+    the guard that stays when v1 widens capabilityMode.
+  */
   const personas = (
     await convexClient.query(api.personas.getPersonasBySlugs, { slugs: [...personaSlugs] })
   ).filter((persona): persona is PersonaRow => persona.capabilityMode === "advisory");
@@ -455,17 +497,21 @@ export async function POST(request: Request) {
   }
 
   const doc = document.doc as EmailDocument;
-  // Depth "full": every explicitly-set property as key=value. The default
-  // "blocks" depth omits styling props (a button line is just label+href),
-  // which would blind the Styling Recommender AND make the outline-unchanged
-  // skip treat pure styling edits as no-ops. Still compact (~1 line/block).
+  /*
+    Depth "full": every explicitly-set property as key=value. The default
+    "blocks" depth omits styling props (a button line is just label+href),
+    which would blind the Styling Recommender AND make the outline-unchanged
+    skip treat pure styling edits as no-ops. Still compact (~1 line/block).
+  */
   //
-  // maxTextChars is raised well past the outline default (60) because the
-  // personas may now propose COPY REWRITES, and a reviewer that can read the
-  // first 60 characters of a paragraph cannot honestly rewrite it — it would
-  // be rewriting around an ellipsis. Cost is bounded and small: a few hundred
-  // extra characters on the handful of text blocks in an email, paid once per
-  // run, in the fresh-tokens-last position that was never cacheable anyway.
+  /*
+    maxTextChars is raised well past the outline default (60) because the
+    personas may now propose COPY REWRITES, and a reviewer that can read the
+    first 60 characters of a paragraph cannot honestly rewrite it — it would
+    be rewriting around an ellipsis. Cost is bounded and small: a few hundred
+    extra characters on the handful of text blocks in an email, paid once per
+    run, in the fresh-tokens-last position that was never cacheable anyway.
+  */
   const outline = generateDocumentOutline({
     doc,
     options: { depth: "full", maxTextChars: PERSONA_OUTLINE_MAX_TEXT_CHARS },
@@ -473,14 +519,18 @@ export async function POST(request: Request) {
   const enabledKey = personas.map((persona) => persona.slug).join(",");
   const runKey = `${enabledKey}\n${outline}`;
 
-  // Server-side budget backstops (the client gates per-persona cooldowns).
+  /*
+    Server-side budget backstops (the client gates per-persona cooldowns).
+  */
   const runState = getRunState(documentId);
   const now = Date.now();
   if (runState.isRunInFlight) {
     return skippedResponse("run-in-flight");
   }
-  // A manual sweep (explicit human intent) skips the budget backstops that
-  // exist to tame the AMBIENT trigger; the in-flight guard above still holds.
+  /*
+    A manual sweep (explicit human intent) skips the budget backstops that
+    exist to tame the AMBIENT trigger; the in-flight guard above still holds.
+  */
   if (!isManualSweep) {
     if (now - runState.lastRunStartedAtMs < MIN_RUN_INTERVAL_MS) {
       return skippedResponse("server-cooldown");
@@ -491,8 +541,10 @@ export async function POST(request: Request) {
   }
   runState.isRunInFlight = true;
   runState.lastRunStartedAtMs = now;
-  // One id for this sweep — shared by the model-call record, any failure
-  // record, and the budget ledger line below.
+  /*
+    One id for this sweep — shared by the model-call record, any failure
+    record, and the budget ledger line below.
+  */
   const traceId = createTraceId();
 
   const setStatusForAll = async (
@@ -501,10 +553,12 @@ export async function POST(request: Request) {
   ): Promise<void> => {
     await Promise.all(
       personas.map(async (persona) => {
-        // Per-persona random offset on the transition write (see the
-        // READING/THINKING_STAGGER constants): the personas stop flipping
-        // states in lockstep, and because the offset rides the presence
-        // WRITE, every collaborator sees the same de-synced edges.
+        /*
+          Per-persona random offset on the transition write (see the
+          READING/THINKING_STAGGER constants): the personas stop flipping
+          states in lockstep, and because the offset rides the presence
+          WRITE, every collaborator sees the same de-synced edges.
+        */
         if (staggerMaxMs > 0) {
           await sleep(Math.random() * staggerMaxMs);
         }
@@ -518,14 +572,18 @@ export async function POST(request: Request) {
   };
 
   try {
-    // Status choreography: reading (context assembly) → thinking (call in
-    // flight) → idle. Transition-only presence writes (§3.5), with random
-    // per-persona stagger so the personas never move in lockstep.
+    /*
+      Status choreography: reading (context assembly) → thinking (call in
+      flight) → idle. Transition-only presence writes (§3.5), with random
+      per-persona stagger so the personas never move in lockstep.
+    */
     await setStatusForAll("reading", { staggerMaxMs: READING_STAGGER_MAX_MS });
 
-    // Persisted-findings maintenance (the real "reading" work): prune open
-    // rows whose target blocks drifted since they were recorded (they die
-    // quietly — §5.6), and keep the fresh ones as dedup context (§5.6b).
+    /*
+      Persisted-findings maintenance (the real "reading" work): prune open
+      rows whose target blocks drifted since they were recorded (they die
+      quietly — §5.6), and keep the fresh ones as dedup context (§5.6b).
+    */
     const openFindingRows = await convexClient.query(api.personaFindings.listOpenFindings, {
       documentId: document.documentId,
     });
@@ -544,9 +602,11 @@ export async function POST(request: Request) {
 
     await sleep(READING_BEAT_MS);
 
-    // Cache-ordered prompt (§3.4): [shared static ‖ persona layer] as the
-    // system message — stable per enabled set — and ALL per-request content
-    // (outline, trigger) in the user message, always last.
+    /*
+      Cache-ordered prompt (§3.4): [shared static ‖ persona layer] as the
+      system message — stable per enabled set — and ALL per-request content
+      (outline, trigger) in the user message, always last.
+    */
     const personaLayer = personas
       .map((persona) => `## Persona: ${persona.name} (slug: ${persona.slug})\n\n${persona.personaMarkdown}`)
       .join("\n\n");
@@ -564,10 +624,12 @@ export async function POST(request: Request) {
       .join("\n\n");
 
     await setStatusForAll("thinking", { staggerMaxMs: THINKING_STAGGER_MAX_MS });
-    // The chat route's mock convention (resolved at the top of the handler,
-    // because the credit charge depends on it): `x-flock-mock: 1` forces the
-    // deterministic mock, and an absent key falls back to it — the whole
-    // downstream pipeline (dry-run, persistence, statuses) stays real.
+    /*
+      The chat route's mock convention (resolved at the top of the handler,
+      because the credit charge depends on it): `x-flock-mock: 1` forces the
+      deterministic mock, and an absent key falls back to it — the whole
+      downstream pipeline (dry-run, persistence, statuses) stays real.
+    */
     const telemetryContext: ModelTelemetryContext = {
       operation: "personas.review",
       traceId,
@@ -577,7 +639,7 @@ export async function POST(request: Request) {
     let mockFindingSource: string | null = null;
     let usage: unknown;
     if (isMockRun) {
-      await sleep(MOCK_THINKING_BEAT_MS); // a visible thinking beat to watch
+      await sleep(MOCK_THINKING_BEAT_MS); /* a visible thinking beat to watch */
       const mock = buildMockRunnerOutput({ doc, personas });
       object = { findings: mock.findings };
       mockFindingSource = mock.findingSource;
@@ -596,34 +658,40 @@ export async function POST(request: Request) {
 
     const personasBySlug = new Map(personas.map((persona) => [persona.slug, persona]));
     const findings: RunnerFinding[] = [];
-    // Truncation backstop (finding-schema.ts): one wordy label must never
-    // cost the run, and stored findings must stay card-sized.
+    /*
+      Truncation backstop (finding-schema.ts): one wordy label must never
+      cost the run, and stored findings must stay card-sized.
+    */
     for (const finding of object.findings.map(truncateFindingProse)) {
       const persona = personasBySlug.get(finding.personaSlug);
       if (persona === undefined) {
-        continue; // hallucinated slug — drop
+        continue; /* hallucinated slug — drop */
       }
       const knownTargetBlockIds = finding.targetBlockIds.filter(
         (blockId) => doc[blockId as keyof EmailDocument] !== undefined,
       );
       if (knownTargetBlockIds.length === 0) {
-        continue; // finding points at nothing real — drop
+        continue; /* finding points at nothing real — drop */
       }
-      // The fix, whichever shape the persona expressed it in: scalar property
-      // values, plain-text copy rewrites, or both at once. finding-ops.ts
-      // translates them into real operations and dry-runs the whole batch
-      // against THIS run's doc, so a fix that would not apply becomes an
-      // informational finding rather than a broken Apply button. The demo
-      // fixture goes through the identical path — it is written in the same
-      // model-facing shape and gets no special trust.
+      /*
+        The fix, whichever shape the persona expressed it in: scalar property
+        values, plain-text copy rewrites, or both at once. finding-ops.ts
+        translates them into real operations and dry-runs the whole batch
+        against THIS run's doc, so a fix that would not apply becomes an
+        informational finding rather than a broken Apply button. The demo
+        fixture goes through the identical path — it is written in the same
+        model-facing shape and gets no special trust.
+      */
       const ops = composeFindingOps({
         doc,
         proposedEdits: finding.proposedEdits,
         proposedCopyEdits: finding.proposedCopyEdits,
       });
-      // The handoff prompt rides along ONLY while the finding is op-less
-      // (informational — including the dry-run-failed degradation): a finding
-      // with live ops is served by Apply, and the two CTAs never coexist.
+      /*
+        The handoff prompt rides along ONLY while the finding is op-less
+        (informational — including the dry-run-failed degradation): a finding
+        with live ops is served by Apply, and the two CTAs never coexist.
+      */
       const validatedOps = ops ?? [];
       const suggestedPrompt =
         validatedOps.length === 0 && finding.suggestedPrompt !== undefined
@@ -637,7 +705,9 @@ export async function POST(request: Request) {
         description: finding.description,
         targetBlockNames: finding.targetBlockNames,
         targetBlockIds: knownTargetBlockIds,
-        // ops === null → the dry-run failed → informational fallback.
+        /*
+          ops === null → the dry-run failed → informational fallback.
+        */
         ops: validatedOps,
         ...(suggestedPrompt !== undefined ? { suggestedPrompt } : {}),
       });
@@ -645,11 +715,13 @@ export async function POST(request: Request) {
 
     runState.lastRunKey = runKey;
 
-    // PERSIST the surviving findings (cross-tab/collab visibility — the
-    // clients' reactive listOpenFindings query does the rest). Snapshots are
-    // taken from THIS run's `doc` — the exact doc the ops were dry-run
-    // against — and cover the ops' blocks as well as the finding's declared
-    // targets, so any drift that could invalidate the ops reads as stale.
+    /*
+      PERSIST the surviving findings (cross-tab/collab visibility — the
+      clients' reactive listOpenFindings query does the rest). Snapshots are
+      taken from THIS run's `doc` — the exact doc the ops were dry-run
+      against — and cover the ops' blocks as well as the finding's declared
+      targets, so any drift that could invalidate the ops reads as stale.
+    */
     if (findings.length > 0) {
       await convexClient.mutation(api.personaFindings.recordFindings, {
         documentId: document.documentId,
@@ -687,8 +759,10 @@ export async function POST(request: Request) {
       });
     }
 
-    // Back to idle; each persona's block-presence chrome points at its top
-    // finding's first target block (BlockPresenceIndicator lights up free).
+    /*
+      Back to idle; each persona's block-presence chrome points at its top
+      finding's first target block (BlockPresenceIndicator lights up free).
+    */
     await Promise.all(
       personas.map((persona) => {
         const topFinding = findings.find((finding) => finding.personaSlug === persona.slug);
@@ -703,12 +777,14 @@ export async function POST(request: Request) {
       }),
     );
 
-    // The budget ledger line (plan §4.4 cost-logging convention). THE LOG
-    // STAYS BLUNT ABOUT THE MOCK even though the visitor-facing surfaces no
-    // longer are: `isMock`, `isDemoDocument` and `findingSource` are how an
-    // operator tells a scripted run from a real one after the fact, and the
-    // whole point of moving the disclosure to /demo's exit was to stop
-    // shouting at the visitor — not to stop recording.
+    /*
+      The budget ledger line (plan §4.4 cost-logging convention). THE LOG
+      STAYS BLUNT ABOUT THE MOCK even though the visitor-facing surfaces no
+      longer are: `isMock`, `isDemoDocument` and `findingSource` are how an
+      operator tells a scripted run from a real one after the fact, and the
+      whole point of moving the disclosure to /demo's exit was to stop
+      shouting at the visitor — not to stop recording.
+    */
     logRecord({
       tag: "flock.personas.request",
       traceId,
@@ -721,9 +797,11 @@ export async function POST(request: Request) {
       usage,
     });
 
-    /* The same model verdict the log line above carries, on the wire — see
-       MODEL_RESPONSE_HEADER. Only the success response names a model, because
-       it is the only one that ran (or deliberately did not run) one. */
+    /*
+      The same model verdict the log line above carries, on the wire — see
+      MODEL_RESPONSE_HEADER. Only the success response names a model, because
+      it is the only one that ran (or deliberately did not run) one.
+    */
     return Response.json(
       { isOk: true, findings, usage },
       { headers: { [MODEL_RESPONSE_HEADER]: isMockRun ? MOCK_MODEL_ID : PERSONA_MODEL_ID } },

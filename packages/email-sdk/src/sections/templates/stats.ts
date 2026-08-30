@@ -2,10 +2,10 @@ import { z } from "zod";
 import { createSectionComposer, headingNode, paragraphNode, textDocOf } from "../build-helpers";
 import { defineSectionTemplate } from "../types";
 
-/**
- * `stats` — 2–4 headline numbers side by side, each with a short label.
- * Reference: react.email/components stats patterns.
- */
+/*
+  `stats` — 2–4 headline numbers side by side, each with a short label.
+  Reference: react.email/components stats patterns.
+*/
 
 const statSchema = z
   .strictObject({

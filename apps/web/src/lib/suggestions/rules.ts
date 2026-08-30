@@ -20,54 +20,66 @@ import type {
   SuggestionRung,
 } from "./types";
 
-/**
- * The v1 deterministic rule registry (Phase 7.3). Two rules, evaluated in
- * order — the first match wins, so at most one suggestion is ever produced:
- *
- * 1. repeated-property-edit — the user set the same property to the same
- *    value on ≥ 2 blocks of one type within the recency window → offer the
- *    escalation ladder for the remaining same-type blocks (section → email),
- *    plus the confirm-gated whole-email re-theme rung when the pattern is a
- *    button recolor.
- * 2. sibling-asymmetry — rule 1's n=1 cousin: the user styled ONE block while
- *    ≥ 2 same-type siblings in the same section keep a different value →
- *    offer to match them. The ≥ 2 floor keeps it from nagging on every edit;
- *    no re-theme rung (that escalation is earned by repetition, not one edit).
- * 3. low-contrast-edit (§10 row 7) — the CRITIQUE, and the reason the list is
- *    no longer homogeneous. Rules 1 and 2 detect a pattern and offer to do
- *    MORE of it; this one detects a DEFECT in the edit that just landed and
- *    offers to undo the harm. See its own section below for why it is
- *    evaluated FIRST, why it judges agent-authored edits too, and why it
- *    dismisses per BLOCK rather than per pattern.
- *
- * Generation is mechanical — ops and copy are composed from the pattern, no
- * model call (see types.ts for the LLM-upgrade seam).
- */
+/*
+  The v1 deterministic rule registry (Phase 7.3). Two rules, evaluated in
+  order — the first match wins, so at most one suggestion is ever produced:
 
-// ---------------------------------------------------------------------------
-// Thresholds (tuned so the demo feels magical but normal editing isn't nagged)
-// ---------------------------------------------------------------------------
+  1. repeated-property-edit — the user set the same property to the same
+     value on ≥ 2 blocks of one type within the recency window → offer the
+     escalation ladder for the remaining same-type blocks (section → email),
+     plus the confirm-gated whole-email re-theme rung when the pattern is a
+     button recolor.
+  2. sibling-asymmetry — rule 1's n=1 cousin: the user styled ONE block while
+     ≥ 2 same-type siblings in the same section keep a different value →
+     offer to match them. The ≥ 2 floor keeps it from nagging on every edit;
+     no re-theme rung (that escalation is earned by repetition, not one edit).
+  3. low-contrast-edit (§10 row 7) — the CRITIQUE, and the reason the list is
+     no longer homogeneous. Rules 1 and 2 detect a pattern and offer to do
+     MORE of it; this one detects a DEFECT in the edit that just landed and
+     offers to undo the harm. See its own section below for why it is
+     evaluated FIRST, why it judges agent-authored edits too, and why it
+     dismisses per BLOCK rather than per pattern.
 
-/** Only the user's last N settled ops are pattern-searchable. */
+  Generation is mechanical — ops and copy are composed from the pattern, no
+  model call (see types.ts for the LLM-upgrade seam).
+*/
+
+/*
+  ---------------------------------------------------------------------------
+  Thresholds (tuned so the demo feels magical but normal editing isn't nagged)
+  ---------------------------------------------------------------------------
+*/
+
+/*
+  Only the user's last N settled ops are pattern-searchable.
+*/
 export const MAX_RECENT_USER_OPS = 10;
 
-/** ...and only when they happened within this window. */
+/*
+  ...and only when they happened within this window.
+*/
 export const RECENT_EDIT_WINDOW_MS = 2 * 60_000;
 
-/** Rule 1: distinct same-type blocks that must share the edit. */
+/*
+  Rule 1: distinct same-type blocks that must share the edit.
+*/
 const MIN_REPEATED_BLOCK_COUNT = 2;
 
-/** Rule 2: same-type section siblings that must still differ. */
+/*
+  Rule 2: same-type section siblings that must still differ.
+*/
 const MIN_UNSTYLED_SIBLING_COUNT = 2;
 
-// ---------------------------------------------------------------------------
-// Edit eligibility & equality
-// ---------------------------------------------------------------------------
+/*
+  ---------------------------------------------------------------------------
+  Edit eligibility & equality
+  ---------------------------------------------------------------------------
+*/
 
-/**
- * Content-carrying keys are never styling patterns — repeating a label or a
- * link across blocks is content authoring, not a theme in the making.
- */
+/*
+  Content-carrying keys are never styling patterns — repeating a label or a
+  link across blocks is content authoring, not a theme in the making.
+*/
 const CONTENT_PROPERTY_KEYS: ReadonlySet<string> = new Set([
   "label",
   "href",
@@ -76,7 +88,9 @@ const CONTENT_PROPERTY_KEYS: ReadonlySet<string> = new Set([
   "text",
 ]);
 
-/** Is this property edit a styling signal worth pattern-matching? */
+/*
+  Is this property edit a styling signal worth pattern-matching?
+*/
 export function isSuggestiblePropertyEdit({
   propertyKey,
   value,
@@ -90,7 +104,9 @@ export function isSuggestiblePropertyEdit({
 }
 
 function normalizePropertyValue(value: unknown): unknown {
-  // Colors and other string values compare case-insensitively ("#FF0000" ≡ "#ff0000").
+  /*
+    Colors and other string values compare case-insensitively ("#FF0000" ≡ "#ff0000").
+  */
   return typeof value === "string" ? value.trim().toLowerCase() : value;
 }
 
@@ -108,7 +124,9 @@ function getBlockPropertyValue({
   return (block.properties as Record<string, unknown>)[propertyKey];
 }
 
-/** Dismissal identity: block type + property, rule-agnostic (see types.ts). */
+/*
+  Dismissal identity: block type + property, rule-agnostic (see types.ts).
+*/
 export function getPatternKey({
   blockType,
   propertyKey,
@@ -119,9 +137,11 @@ export function getPatternKey({
   return `${blockType}|${propertyKey}`;
 }
 
-// ---------------------------------------------------------------------------
-// Copy helpers — suggestions name things, never block ids
-// ---------------------------------------------------------------------------
+/*
+  ---------------------------------------------------------------------------
+  Copy helpers — suggestions name things, never block ids
+  ---------------------------------------------------------------------------
+*/
 
 const PROPERTY_LABEL_OVERRIDES: Record<string, string> = {
   borderRadius: "corner radius",
@@ -154,16 +174,22 @@ function countNoun({ count, blockType }: { count: number; blockType: Block["type
   return count === 1 ? noun : `${count} ${noun}s`;
 }
 
-// ---------------------------------------------------------------------------
-// Structure helpers
-// ---------------------------------------------------------------------------
+/*
+  ---------------------------------------------------------------------------
+  Structure helpers
+  ---------------------------------------------------------------------------
+*/
 
-/** The section a block lives in (null for sections themselves and the root). */
+/*
+  The section a block lives in (null for sections themselves and the root).
+*/
 function getSectionId({ doc, blockId }: { doc: EmailDocument; blockId: BlockId }): BlockId | null {
   return getAncestorIds({ doc, blockId })[0] ?? null;
 }
 
-/** Same-type blocks whose current value for the property DIFFERS from `value`. */
+/*
+  Same-type blocks whose current value for the property DIFFERS from `value`.
+*/
 function findCandidateBlocks({
   doc,
   blockType,
@@ -182,9 +208,11 @@ function findCandidateBlocks({
   );
 }
 
-// ---------------------------------------------------------------------------
-// Ladder composition (shared by both rules)
-// ---------------------------------------------------------------------------
+/*
+  ---------------------------------------------------------------------------
+  Ladder composition (shared by both rules)
+  ---------------------------------------------------------------------------
+*/
 
 interface ComposedLadder {
   rungs: SuggestionRung[];
@@ -242,9 +270,11 @@ function composeLadder({
     targetBlockIds.add(candidate.id);
   }
 
-  // The largest rung: re-theme the whole email around the picked color.
-  // Offered only for the canonical button-recolor pattern, and always
-  // confirm-gated (approval semantics for whole-email scope).
+  /*
+    The largest rung: re-theme the whole email around the picked color.
+    Offered only for the canonical button-recolor pattern, and always
+    confirm-gated (approval semantics for whole-email scope).
+  */
   if (shouldOfferRetheme && typeof value === "string") {
     const globals = deriveAccentTheme({ doc, accentColor: value });
     if (globals !== null) {
@@ -258,7 +288,9 @@ function composeLadder({
           "per-section background overrides reset to the theme. One change — easy to revert.",
         ops: [{ name: "applyTheme", globals }],
       });
-      // The re-theme payload reads the current globals, so root changes stale it.
+      /*
+        The re-theme payload reads the current globals, so root changes stale it.
+      */
       targetBlockIds.add(ROOT_BLOCK_ID);
     }
   }
@@ -266,9 +298,11 @@ function composeLadder({
   return { rungs, targetBlockIds: [...targetBlockIds] };
 }
 
-// ---------------------------------------------------------------------------
-// Rule 1 — repeated property edit
-// ---------------------------------------------------------------------------
+/*
+  ---------------------------------------------------------------------------
+  Rule 1 — repeated property edit
+  ---------------------------------------------------------------------------
+*/
 
 const repeatedPropertyEditRule: SuggestionRule = {
   id: "repeated-property-edit",
@@ -289,9 +323,11 @@ const repeatedPropertyEditRule: SuggestionRule = {
       return null;
     }
 
-    // Distinct blocks that (a) got this same edit recently and (b) STILL
-    // carry the value now — a re-edited or reverted block is no longer part
-    // of the pattern.
+    /*
+      Distinct blocks that (a) got this same edit recently and (b) STILL
+      carry the value now — a re-edited or reverted block is no longer part
+      of the pattern.
+    */
     const matchingBlockIds = new Set<BlockId>();
     for (const edit of recentEdits) {
       const isSameEdit =
@@ -322,7 +358,9 @@ const repeatedPropertyEditRule: SuggestionRule = {
       candidates,
       shouldOfferRetheme,
     });
-    // No remaining siblings → stay quiet (a re-theme-only card would nag).
+    /*
+      No remaining siblings → stay quiet (a re-theme-only card would nag).
+    */
     if (!rungs.some((rung) => rung.id !== "retheme")) {
       return null;
     }
@@ -338,24 +376,30 @@ const repeatedPropertyEditRule: SuggestionRule = {
         blockType,
       })}. Apply it to the rest?`,
       rungs,
-      // The block whose edit triggered this evaluation — the one the user is
-      // looking at, and so where the canvas pill anchors.
+      /*
+        The block whose edit triggered this evaluation — the one the user is
+        looking at, and so where the canvas pill anchors.
+      */
       anchorBlockId: blockId,
       targetBlockIds,
     };
   },
 };
 
-// ---------------------------------------------------------------------------
-// Rule 2 — sibling asymmetry
-// ---------------------------------------------------------------------------
+/*
+  ---------------------------------------------------------------------------
+  Rule 2 — sibling asymmetry
+  ---------------------------------------------------------------------------
+*/
 
 const siblingAsymmetryRule: SuggestionRule = {
   id: "sibling-asymmetry",
   detect: (context: SuggestionRuleContext): Suggestion | null => {
     const { doc, anchorEdit, isPatternDismissed } = context;
     const { blockId, blockType, propertyKey, value } = anchorEdit;
-    /* A pattern is the user's habit — see rule 1. */
+    /*
+      A pattern is the user's habit — see rule 1.
+    */
     if (anchorEdit.author !== "user") {
       return null;
     }
@@ -364,7 +408,9 @@ const siblingAsymmetryRule: SuggestionRule = {
       return null;
     }
 
-    // The styled block must still carry the value it was just given.
+    /*
+      The styled block must still carry the value it was just given.
+    */
     const anchorBlock = doc[blockId];
     if (
       anchorBlock === undefined ||
@@ -377,7 +423,7 @@ const siblingAsymmetryRule: SuggestionRule = {
     }
     const sectionId = getSectionId({ doc, blockId });
     if (sectionId === null) {
-      return null; // sections themselves have no section siblings
+      return null; /* sections themselves have no section siblings */
     }
 
     const candidates = findCandidateBlocks({ doc, blockType, propertyKey, value });
@@ -408,16 +454,20 @@ const siblingAsymmetryRule: SuggestionRule = {
         sectionCandidates.length === 1 ? "has" : "have"
       } a different ${getPropertyLabel(propertyKey)}.`,
       rungs,
-      // The styled block — the one the user is looking at (see rule 1).
+      /*
+        The styled block — the one the user is looking at (see rule 1).
+      */
       anchorBlockId: blockId,
       targetBlockIds,
     };
   },
 };
 
-// ---------------------------------------------------------------------------
-// Rule 3 — low-contrast-edit (the critique)
-// ---------------------------------------------------------------------------
+/*
+  ---------------------------------------------------------------------------
+  Rule 3 — low-contrast-edit (the critique)
+  ---------------------------------------------------------------------------
+*/
 
 /*
   THE CRITIQUE'S DISMISSAL GRAIN IS THE BLOCK, NOT THE PATTERN.
@@ -440,9 +490,13 @@ export function getContrastCritiqueKey(blockId: BlockId): string {
 
 interface CritiqueCopy {
   title: string;
-  /** How the description opens — "Its label", "It". */
+  /*
+    How the description opens — "Its label", "It".
+  */
   subjectPhrase: string;
-  /** What the failing pair sits on, in the reader's words. */
+  /*
+    What the failing pair sits on, in the reader's words.
+  */
   againstPhrase: string;
   rungLabel: string;
 }
@@ -462,7 +516,9 @@ const CRITIQUE_COPY: Partial<Record<Block["type"], CritiqueCopy>> = {
   },
 };
 
-/** "4" / "4.5" / "2.8" — one decimal, and never a bare ".0". */
+/*
+  "4" / "4.5" / "2.8" — one decimal, and never a bare ".0".
+*/
 function formatRatio(ratio: number): string {
   return String(Math.round(ratio * 10) / 10);
 }
@@ -524,7 +580,9 @@ const lowContrastEditRule: SuggestionRule = {
         `${copy.subjectPhrase} sits at ${formatRatio(subject.ratio)}:1 against ` +
         `${copy.againstPhrase} — under the ${formatRatio(subject.minRatio)}:1 that ` +
         "counts as readable.",
-      /* One rung, and no ladder: see the "fix" note in types.ts. */
+      /*
+        One rung, and no ladder: see the "fix" note in types.ts.
+      */
       rungs: [
         {
           id: "fix",
@@ -555,9 +613,11 @@ const lowContrastEditRule: SuggestionRule = {
   },
 };
 
-// ---------------------------------------------------------------------------
-// Registry
-// ---------------------------------------------------------------------------
+/*
+  ---------------------------------------------------------------------------
+  Registry
+  ---------------------------------------------------------------------------
+*/
 
 /*
   Ordered registry — first match wins, so at most one suggestion surfaces.
@@ -575,7 +635,9 @@ export const SUGGESTION_RULES: readonly SuggestionRule[] = [
   siblingAsymmetryRule,
 ];
 
-/** Run the registry over one settled gesture; null when nothing qualifies. */
+/*
+  Run the registry over one settled gesture; null when nothing qualifies.
+*/
 export function evaluateSuggestionRules(context: SuggestionRuleContext): Suggestion | null {
   for (const rule of SUGGESTION_RULES) {
     const suggestion = rule.detect(context);

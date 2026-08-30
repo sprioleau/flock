@@ -6,49 +6,55 @@ import type { Id } from "@convex/_generated/dataModel";
 import schema from "@convex/schema";
 import { MOCK_BRAND_KIT } from "@/lib/brand-kit";
 
-/**
- * THE SECURITY TEST for convex/authIdentity.ts — the one that has to fail if
- * the fix is ever undone.
- *
- * The attack it encodes, end to end against the REAL Convex functions:
- *
- *   Two people open the same shared canvas. The presence roster publishes
- *   every member's `userId`, which IS their ownership key
- *   (apps/web/src/lib/presence.tsx:316). One of them copies the other's id out
- *   of the roster and replays it as the `sessionId` argument of every
- *   session-scoped function — brand kit, asset library, saved sections,
- *   personas, comments. Before this fix, that read and rewrote the victim's
- *   library. It is a scraped string with NO auth cookie behind it: the whole
- *   point is that the attacker never has to be the victim, only to quote them.
- *
- * Each adopter is asserted twice, because "refused" and "refused for the right
- * reason" are different results:
- *
- *   - STRICT (FLOCK_REQUIRE_AUTH_IDENTITY=true): a caller with no identity
- *     cannot name an owner at all, so the scraped id buys nothing.
- *   - AUTHENTICATED (auth on, strict off): a caller WITH an identity who
- *     quotes someone else's id is silently confined to their own rows — the
- *     argument is ignored, not merely rejected.
- *
- * The last block is the other half of the deal: with both flags off, every
- * one of these paths still behaves exactly as it did before auth existed. A
- * security fix that bricks the running app is not a fix.
- */
+/*
+  THE SECURITY TEST for convex/authIdentity.ts — the one that has to fail if
+  the fix is ever undone.
 
-// NOTE: convex-test's documented `!(*.*.*)` extglob matches nothing under
-// vitest 4 (tinyglobby has no extglob support) — the array form with negative
-// patterns is the equivalent that works.
+  The attack it encodes, end to end against the REAL Convex functions:
+
+    Two people open the same shared canvas. The presence roster publishes
+    every member's `userId`, which IS their ownership key
+    (apps/web/src/lib/presence.tsx:316). One of them copies the other's id out
+    of the roster and replays it as the `sessionId` argument of every
+    session-scoped function — brand kit, asset library, saved sections,
+    personas, comments. Before this fix, that read and rewrote the victim's
+    library. It is a scraped string with NO auth cookie behind it: the whole
+    point is that the attacker never has to be the victim, only to quote them.
+
+  Each adopter is asserted twice, because "refused" and "refused for the right
+  reason" are different results:
+
+    - STRICT (FLOCK_REQUIRE_AUTH_IDENTITY=true): a caller with no identity
+      cannot name an owner at all, so the scraped id buys nothing.
+    - AUTHENTICATED (auth on, strict off): a caller WITH an identity who
+      quotes someone else's id is silently confined to their own rows — the
+      argument is ignored, not merely rejected.
+
+  The last block is the other half of the deal: with both flags off, every
+  one of these paths still behaves exactly as it did before auth existed. A
+  security fix that bricks the running app is not a fix.
+*/
+
+/*
+  NOTE: convex-test's documented `!(*.*.*)` extglob matches nothing under
+  vitest 4 (tinyglobby has no extglob support) — the array form with negative
+  patterns is the equivalent that works.
+*/
 const modules = import.meta.glob([
   "../../../../../convex/**/*.{ts,js}",
   "!**/*.d.ts",
   "!**/*.test.ts",
 ]);
 
-/** The victim's ownership key, exactly as a collaborator would read it off the roster. */
+/*
+  The victim's ownership key, exactly as a collaborator would read it off the roster.
+*/
 const VICTIM_OWNER_ID = "user_victim";
 const ATTACKER_OWNER_ID = "user_attacker";
 
-/** A pre-auth browser's localStorage UUID — the legacy fallback key. */
+/*
+  A pre-auth browser's localStorage UUID — the legacy fallback key.
+*/
 const LEGACY_SESSION_ID = "8f0c1d2e-3a4b-4c5d-8e6f-7a8b9c0d1e2f";
 
 const STRICT_FLAG = "FLOCK_REQUIRE_AUTH_IDENTITY";
@@ -66,7 +72,9 @@ You are the Accessibility Checker.
 What you watch for:
 - Meaningful images without alt text.`;
 
-/** The smallest subtree savedSections accepts: one childless section root. */
+/*
+  The smallest subtree savedSections accepts: one childless section root.
+*/
 const SAVED_SECTION_BLOCKS = [
   { id: "sec_a1b2", type: "section", parentId: "root", childrenIds: [], properties: {} },
 ];
@@ -77,15 +85,17 @@ function createBackend() {
 
 type Backend = ReturnType<typeof createBackend>;
 
-/**
- * A backend handle bound to a caller. `withIdentity` returns a NARROWER type
- * than the root handle (it drops `withIdentity`/`registerComponent`), so
- * helpers that must accept both an anonymous `t` and an identity-bound caller
- * take this, not `Backend`.
- */
+/*
+  A backend handle bound to a caller. `withIdentity` returns a NARROWER type
+  than the root handle (it drops `withIdentity`/`registerComponent`), so
+  helpers that must accept both an anonymous `t` and an identity-bound caller
+  take this, not `Backend`.
+*/
 type Caller = ReturnType<Backend["withIdentity"]>;
 
-/** A valid kit payload — the mock variations pass completeness + contrast. */
+/*
+  A valid kit payload — the mock variations pass completeness + contrast.
+*/
 function buildKitInput(name: string) {
   return {
     name,
@@ -100,11 +110,11 @@ function buildKitInput(name: string) {
   };
 }
 
-/**
- * Everything the victim owns, written by the victim. `claimedSessionId` is
- * whatever that browser happens to send; the OWNER is decided server-side, so
- * these helpers take the caller, not the key.
- */
+/*
+  Everything the victim owns, written by the victim. `claimedSessionId` is
+  whatever that browser happens to send; the OWNER is decided server-side, so
+  these helpers take the caller, not the key.
+*/
 async function seedLibrary(
   caller: Caller,
   args: { claimedSessionId: string; kitName: string },
@@ -142,7 +152,9 @@ async function seedLibrary(
   return { savedSectionId, personaSlug: slug, storageId };
 }
 
-/** The victim's kit as stored, read straight from the table (no ownership path). */
+/*
+  The victim's kit as stored, read straight from the table (no ownership path).
+*/
 async function readStoredKitNames(t: Backend, ownerId: string): Promise<string[]> {
   return await t.run(async (ctx) => {
     const rows = await ctx.db
@@ -186,7 +198,9 @@ describe("strict mode: a scraped session id names nobody", () => {
     process.env[STRICT_FLAG] = "true";
   });
 
-  /** The best case for the attacker: they scraped the victim's REAL owner key. */
+  /*
+    The best case for the attacker: they scraped the victim's REAL owner key.
+  */
   async function setUp() {
     const t = createBackend();
     const victim = t.withIdentity({ subject: VICTIM_OWNER_ID });
@@ -201,10 +215,12 @@ describe("strict mode: a scraped session id names nobody", () => {
     const { t } = await setUp();
     const signedOut = /signed out/i;
 
-    // Reads that mount on page load answer "nobody" with the EMPTY answer
-    // rather than an exception — throwing there took the studio down for
-    // every signed-out visitor. What matters for ownership is unchanged and
-    // asserted here: the scraped id yields none of the victim's data.
+    /*
+      Reads that mount on page load answer "nobody" with the EMPTY answer
+      rather than an exception — throwing there took the studio down for
+      every signed-out visitor. What matters for ownership is unchanged and
+      asserted here: the scraped id yields none of the victim's data.
+    */
     expect(
       await t.query(api.brandKits.getActiveBrandKit, { sessionId: VICTIM_OWNER_ID }),
     ).toBeNull();
@@ -227,7 +243,9 @@ describe("strict mode: a scraped session id names nobody", () => {
   it("refuses every asset-library call made with the victim's id", async () => {
     const { t, seeded } = await setUp();
 
-    // Empty, not the victim's library — see the brand-kit case above.
+    /*
+      Empty, not the victim's library — see the brand-kit case above.
+    */
     expect(await t.query(api.assets.listForSession, { sessionId: VICTIM_OWNER_ID })).toEqual([]);
     await expect(
       t.mutation(api.assets.register, {
@@ -244,7 +262,9 @@ describe("strict mode: a scraped session id names nobody", () => {
     const { t, seeded } = await setUp();
     const signedOut = /signed out/i;
 
-    // Empty / null, not the victim's rows — see the brand-kit case above.
+    /*
+      Empty / null, not the victim's rows — see the brand-kit case above.
+    */
     expect(
       await t.query(api.savedSections.listForSession, { sessionId: VICTIM_OWNER_ID }),
     ).toEqual([]);
@@ -289,8 +309,10 @@ describe("strict mode: a scraped session id names nobody", () => {
       }),
     ).rejects.toThrow(/signed out/i);
 
-    // A listing degrades to the built-ins rather than throwing — but it must
-    // not hand the victim's copies to a caller who only quoted their id.
+    /*
+      A listing degrades to the built-ins rather than throwing — but it must
+      not hand the victim's copies to a caller who only quoted their id.
+    */
     const listed = await t.query(api.personas.listPersonas, { sessionId: VICTIM_OWNER_ID });
     expect(listed.some((persona) => persona.slug === seeded.personaSlug)).toBe(false);
     expect((await countRowsOwnedBy(t, VICTIM_OWNER_ID)).personas).toBe(1);
@@ -334,7 +356,9 @@ describe("auth on, strict off: a verified identity outranks the claimed id", () 
     delete process.env[STRICT_FLAG];
   });
 
-  /** Victim and attacker both signed in; the attacker quotes the victim's key. */
+  /*
+    Victim and attacker both signed in; the attacker quotes the victim's key.
+  */
   async function setUp() {
     const t = createBackend();
     const victim = t.withIdentity({ subject: VICTIM_OWNER_ID });
@@ -508,11 +532,15 @@ describe("comment payloads never carry an author id", () => {
     });
     await t.mutation(api.comments.resolveComment, { commentId, sessionId: LEGACY_SESSION_ID });
 
-    // The row still records who wrote it — the migration seam re-keys it.
+    /*
+      The row still records who wrote it — the migration seam re-keys it.
+    */
     const row = await t.run(async (ctx) => ctx.db.get(commentId));
     expect(row?.sessionId).toBe(LEGACY_SESSION_ID);
 
-    // What a reader of the canvas gets back must not contain it anywhere.
+    /*
+      What a reader of the canvas gets back must not contain it anywhere.
+    */
     for (const payload of [
       ...(await t.query(api.comments.listCommentsForCanvas, { canvasId })),
       ...(await t.query(api.comments.listOpenCommentsForDocument, { documentId })),
@@ -553,11 +581,13 @@ describe("both flags off: the live app is untouched", () => {
     const t = createBackend();
     await seedLibrary(t, { claimedSessionId: LEGACY_SESSION_ID, kitName: "Legacy Co" });
 
-    // With nobody signed in there is nothing to tell two callers apart: the
-    // scraped id IS the credential. This is documented, not accidental — see
-    // the roll-out order in convex/authIdentity.ts. If this ever starts
-    // failing, the app has gained a way to distinguish callers with auth off
-    // and the deploy order below it should be revisited.
+    /*
+      With nobody signed in there is nothing to tell two callers apart: the
+      scraped id IS the credential. This is documented, not accidental — see
+      the roll-out order in convex/authIdentity.ts. If this ever starts
+      failing, the app has gained a way to distinguish callers with auth off
+      and the deploy order below it should be revisited.
+    */
     await t.mutation(api.brandKits.renameBrandKit, {
       sessionId: LEGACY_SESSION_ID,
       name: "Renamed by a stranger",

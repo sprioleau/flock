@@ -68,7 +68,9 @@ interface ElementWithProps extends ReactElement {
   props: Record<string, unknown>;
 }
 
-/* Every element in the tree, following `children` and Base UI's `render`. */
+/*
+  Every element in the tree, following `children` and Base UI's `render`.
+*/
 function collectElements(node: ReactNode): ElementWithProps[] {
   const found: ElementWithProps[] = [];
   const visit = (current: ReactNode): void => {
@@ -155,7 +157,9 @@ describe("exactly one exit, in every auth state", () => {
   it("does not double up once the account menu carries the link", () => {
     for (const identity of [claimedIdentity, anonymousIdentity]) {
       authState.current = makeAuth({ isEnabled: true, identity });
-      /* The menu is on screen, so the standby must be off it. */
+      /*
+        The menu is on screen, so the standby must be off it.
+      */
       expect(DashboardLinkFallback()).toBeNull();
       expect(findDashboardLinks(UserButton())).toHaveLength(1);
     }

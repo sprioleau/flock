@@ -1,12 +1,12 @@
-/**
- * Unit tests for the brand-kit extraction pipeline (no network, no LLM).
- *
- * Run from apps/web:
- *   ../../packages/email-sdk/node_modules/.bin/tsx src/lib/brand-kit-extraction/__tests__/run-tests.ts
- *
- * Plain node:assert — the web app has no test runner; this mirrors how other
- * tsx verification scripts are run in this repo.
- */
+/*
+  Unit tests for the brand-kit extraction pipeline (no network, no LLM).
+
+  Run from apps/web:
+    ../../packages/email-sdk/node_modules/.bin/tsx src/lib/brand-kit-extraction/__tests__/run-tests.ts
+
+  Plain node:assert — the web app has no test runner; this mirrors how other
+  tsx verification scripts are run in this repo.
+*/
 
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
@@ -35,9 +35,11 @@ function check(label: string, assertion: () => void) {
   }
 }
 
-// ---------------------------------------------------------------------------
-// 1. URL guard / SSRF
-// ---------------------------------------------------------------------------
+/*
+  ---------------------------------------------------------------------------
+  1. URL guard / SSRF
+  ---------------------------------------------------------------------------
+*/
 
 console.log("url-guard");
 const rejectedUrls = [
@@ -45,17 +47,17 @@ const rejectedUrls = [
   "javascript:alert(1)",
   "http://localhost:3000",
   "http://foo.localhost",
-  "http://intranet", // no dot — internal name
+  "http://intranet", /* no dot — internal name */
   "http://127.0.0.1/admin",
   "http://10.0.0.5",
   "http://172.16.9.1",
   "http://192.168.1.1",
-  "http://169.254.169.254/latest/meta-data", // cloud metadata
+  "http://169.254.169.254/latest/meta-data", /* cloud metadata */
   "http://0.0.0.0",
   "http://[::1]/",
   "http://[fd00::1]/",
   "http://service.internal",
-  `https://example.com/${"a".repeat(3000)}`, // over length cap
+  `https://example.com/${"a".repeat(3000)}`, /* over length cap */
   "not a url",
 ];
 for (const url of rejectedUrls) {
@@ -79,9 +81,11 @@ check("allows public resolved addresses", () => {
   }
 });
 
-// ---------------------------------------------------------------------------
-// 1b. Scheme-less URL normalization (https only — NEVER http)
-// ---------------------------------------------------------------------------
+/*
+  ---------------------------------------------------------------------------
+  1b. Scheme-less URL normalization (https only — NEVER http)
+  ---------------------------------------------------------------------------
+*/
 
 console.log("normalizeWebsiteUrl");
 check("scheme-less input gets https:// (never http)", () => {
@@ -93,7 +97,7 @@ check("scheme-less input gets https:// (never http)", () => {
 check("input with a scheme is left untouched", () => {
   assert.equal(normalizeWebsiteUrl("https://cnn.com"), "https://cnn.com");
   assert.equal(normalizeWebsiteUrl("http://example.com"), "http://example.com");
-  assert.equal(normalizeWebsiteUrl("ftp://example.com"), "ftp://example.com"); // guard rejects downstream
+  assert.equal(normalizeWebsiteUrl("ftp://example.com"), "ftp://example.com"); /* guard rejects downstream */
 });
 check("normalized scheme-less internal hosts are still SSRF-rejected", () => {
   for (const raw of ["localhost", "intranet", "127.0.0.1", "192.168.1.1", "service.internal"]) {
@@ -102,9 +106,11 @@ check("normalized scheme-less internal hosts are still SSRF-rejected", () => {
   assert.equal(validateUrlSyntax(normalizeWebsiteUrl("cnn.com")).isAllowed, true);
 });
 
-// ---------------------------------------------------------------------------
-// 1c. Deterministic site identity (logo / name / social card ladder)
-// ---------------------------------------------------------------------------
+/*
+  ---------------------------------------------------------------------------
+  1c. Deterministic site identity (logo / name / social card ladder)
+  ---------------------------------------------------------------------------
+*/
 
 console.log("extract-site-identity");
 const BASE_URL = "https://acme.test/";
@@ -216,9 +222,9 @@ check("social links: JSON-LD sameAs is canonical; share URLs and dupes filtered"
     baseUrl: BASE_URL,
   });
   assert.deepEqual(identity.socialLinks, [
-    { platform: "x", url: "https://x.com/acme-canonical" }, // sameAs beats the footer anchor
-    { platform: "facebook", url: "https://facebook.com/acmeinc" }, // share link skipped
-    { platform: "instagram", url: "https://instagram.com/acme" }, // query stripped
+    { platform: "x", url: "https://x.com/acme-canonical" }, /* sameAs beats the footer anchor */
+    { platform: "facebook", url: "https://facebook.com/acmeinc" }, /* share link skipped */
+    { platform: "instagram", url: "https://instagram.com/acme" }, /* query stripped */
     { platform: "github", url: "https://github.com/acme" },
   ]);
 });
@@ -231,7 +237,7 @@ check("social links: Organization nested inside a WebPage node (CNN shape)", () 
     </script>`,
     baseUrl: BASE_URL,
   });
-  assert.equal(identity.siteName, "CNN"); // nested Organization name found too
+  assert.equal(identity.siteName, "CNN"); /* nested Organization name found too */
   assert.deepEqual(identity.socialLinks, [
     { platform: "x", url: "https://x.com/CNN" },
     { platform: "facebook", url: "https://facebook.com/cnn" },
@@ -270,9 +276,11 @@ check("identity on the saved fixture: head icons beat the masthead, name from og
   assert.equal(identity.socialImageUrl, "https://cdn.acme.test/social/og-card.png");
 });
 
-// ---------------------------------------------------------------------------
-// 2. Color normalization
-// ---------------------------------------------------------------------------
+/*
+  ---------------------------------------------------------------------------
+  2. Color normalization
+  ---------------------------------------------------------------------------
+*/
 
 console.log("color-utils");
 check("normalizes hex + rgb + hsl forms, rejects noise", () => {
@@ -280,18 +288,20 @@ check("normalizes hex + rgb + hsl forms, rejects noise", () => {
   assert.equal(normalizeCssColor("#0f4c81"), "#0f4c81");
   assert.equal(normalizeCssColor("rgb(31, 41, 55)"), "#1f2937");
   assert.equal(normalizeCssColor("rgba(224, 89, 42, 0.9)"), "#e0592a");
-  assert.equal(normalizeCssColor("rgba(0, 0, 0, 0.2)"), null); // low alpha
+  assert.equal(normalizeCssColor("rgba(0, 0, 0, 0.2)"), null); /* low alpha */
   assert.equal(normalizeCssColor("hsl(210, 70%, 40%)"), "#1f66ad");
-  assert.equal(normalizeCssColor("hsl(210 70% 40%)"), "#1f66ad"); // space syntax
+  assert.equal(normalizeCssColor("hsl(210 70% 40%)"), "#1f66ad"); /* space syntax */
   assert.equal(normalizeCssColor("hsl(0, 100%, 50%)"), "#ff0000");
-  assert.equal(normalizeCssColor("hsla(210, 70%, 40%, 0.2)"), null); // low alpha
+  assert.equal(normalizeCssColor("hsla(210, 70%, 40%, 0.2)"), null); /* low alpha */
   assert.equal(normalizeCssColor("var(--brand)"), null);
   assert.equal(normalizeCssColor("oklch(0.7 0.1 200)"), null);
 });
 
-// ---------------------------------------------------------------------------
-// 3. Harvest on a saved fixture (stubbed stylesheet fetcher)
-// ---------------------------------------------------------------------------
+/*
+  ---------------------------------------------------------------------------
+  3. Harvest on a saved fixture (stubbed stylesheet fetcher)
+  ---------------------------------------------------------------------------
+*/
 
 console.log("harvest");
 const fixtureHtml = readFileSync(
@@ -299,15 +309,19 @@ const fixtureHtml = readFileSync(
   "utf-8",
 );
 const fetchedCssUrls: string[] = [];
-// No top-level await (this script compiles as CJS): resolve synchronously
-// via then() — the stubbed fetcher makes the promise settle immediately, and
-// the trailing summary runs inside the chain.
+/*
+  No top-level await (this script compiles as CJS): resolve synchronously
+  via then() — the stubbed fetcher makes the promise settle immediately, and
+  the trailing summary runs inside the chain.
+*/
 void harvestBrandSignals({
   html: fixtureHtml,
   finalUrl: "https://acme.test/",
   fetchCss: async (url) => {
     fetchedCssUrls.push(url);
-    // Cross-origin stylesheet fails soft (null); same-origin returns CSS.
+    /*
+      Cross-origin stylesheet fails soft (null); same-origin returns CSS.
+    */
     if (!url.startsWith("https://acme.test/")) {
       return null;
     }
@@ -337,8 +351,8 @@ check("colors ranked, low-alpha + near-white/black filtered, external css includ
   assert.ok(colors.includes("#0f4c81"));
   assert.ok(colors.includes("#e0592a"));
   assert.ok(colors.includes("#1f2937"));
-  assert.ok(colors.includes("#1f66ad")); // from hsl(210, 70%, 40%)
-  assert.ok(colors.includes("#2dd4bf")); // from stubbed external stylesheet
+  assert.ok(colors.includes("#1f66ad")); /* from hsl(210, 70%, 40%) */
+  assert.ok(colors.includes("#2dd4bf")); /* from stubbed external stylesheet */
   assert.ok(!colors.includes("#ffffff"));
   const accentRank = colors.indexOf("#e0592a");
   const tealRank = colors.indexOf("#2dd4bf");
@@ -348,7 +362,7 @@ check("custom-property accent: var() references weight it to the top", () => {
   const top = signals.rankedColors[0];
   assert.equal(top.color, "#ffd23f");
   assert.equal(top.variableName, "--acme-accent");
-  assert.equal(top.count, 4, "1 definition + 3 var() references"); // effective usage
+  assert.equal(top.count, 4, "1 definition + 3 var() references"); /* effective usage */
 });
 check("accent candidates: vibrant subset, signature accent first, no grays/navies", () => {
   assert.ok(signals.accentCandidates.length > 0);
@@ -365,9 +379,11 @@ check("logo candidates: logo img first, absolute urls, no photo", () => {
   assert.ok(!urls.some((url) => url.includes("hero-photo")));
 });
 
-// ---------------------------------------------------------------------------
-// 4. Contrast repair
-// ---------------------------------------------------------------------------
+/*
+  ---------------------------------------------------------------------------
+  4. Contrast repair
+  ---------------------------------------------------------------------------
+*/
 
 console.log("contrast repair");
 check("repairs a failing light-on-light foreground", () => {
@@ -384,7 +400,7 @@ check("keeps an already-passing foreground unchanged", () => {
 });
 check("worst-case mid-gray background still repairable", () => {
   const repaired = repairForegroundContrast({ foreground: "#808080", background: "#757575" });
-  assert.ok(["#000000", "#ffffff"].includes(repaired) || true); // value free; ratio must pass:
+  assert.ok(["#000000", "#ffffff"].includes(repaired) || true); /* value free; ratio must pass: */
   const pairs = getVariationContrastPairs({
     id: "x",
     name: "x",
@@ -394,14 +410,16 @@ check("worst-case mid-gray background still repairable", () => {
   assert.ok(ratio !== null && ratio !== undefined && ratio >= MIN_THEME_CONTRAST_RATIO, `got ${ratio}`);
 });
 
-// A deliberately failing semantic palette: light gray text on white, a
-// pale accent — every guarded pairing must come back repaired to >= 4.5.
+/*
+  A deliberately failing semantic palette: light gray text on white, a
+  pale accent — every guarded pairing must come back repaired to >= 4.5.
+*/
 const expanded = expandSemanticVariation({
   semantic: {
     name: "Deliberately Bad",
     emailBackgroundColor: "#f7f3ec",
     contentBackgroundColor: "#ffffff",
-    accentColor: "#ffd9c4", // pale — link + button label both need repair
+    accentColor: "#ffd9c4", /* pale — link + button label both need repair */
     headingTextColor: "#cccccc",
     paragraphTextColor: "#bbbbbb",
   },
@@ -440,9 +458,11 @@ check("layout keys stay at renderer defaults (recolor, never reflow)", () => {
   assert.equal(expanded.globals.paragraphTextAlign, "left");
 });
 
-// ---------------------------------------------------------------------------
-// 5. Final BrandKit Zod contract
-// ---------------------------------------------------------------------------
+/*
+  ---------------------------------------------------------------------------
+  5. Final BrandKit Zod contract
+  ---------------------------------------------------------------------------
+*/
 
 console.log("brand-kit schema");
 check("MOCK_BRAND_KIT passes the contract schema", () => {

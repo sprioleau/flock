@@ -45,42 +45,54 @@ import type { CreateDraftReport, CreatedDraftReport } from "./chat-contract";
   created; it is its copy that is thin.
 */
 
-/** One draft the browser actually created, and where its copy came from. */
+/*
+  One draft the browser actually created, and where its copy came from.
+*/
 export type CreatedDraftSummary = CreatedDraftReport;
 
-/**
- * What a createDraft call did, as the browser that performed it observed it.
- * Produced by `createAgentDrafts`; consumed only here.
- */
+/*
+  What a createDraft call did, as the browser that performed it observed it.
+  Produced by `createAgentDrafts`; consumed only here.
+*/
 export interface CreateDraftOutcome {
-  /** How many drafts the resolved command asked for. */
+  /*
+    How many drafts the resolved command asked for.
+  */
   requestedCount: number;
-  /** The drafts that exist now, in creation order. */
+  /*
+    The drafts that exist now, in creation order.
+  */
   createdDrafts: CreatedDraftSummary[];
-  /** True when the call carried a composition plan (false = empty starters). */
+  /*
+    True when the call carried a composition plan (false = empty starters).
+  */
   isComposed: boolean;
-  /**
-   * Whether the source draft's copy was allowed to fill gaps this turn. False
-   * when the turn ingested an external source — see `shouldCarryOverSourceCopy`
-   * in the SDK's compose-draft.
-   */
+  /*
+    Whether the source draft's copy was allowed to fill gaps this turn. False
+    when the turn ingested an external source — see `shouldCarryOverSourceCopy`
+    in the SDK's compose-draft.
+  */
   isSourceCopyCarryOverAllowed: boolean;
-  /** A user-facing sentence when something went wrong, else null. */
+  /*
+    A user-facing sentence when something went wrong, else null.
+  */
   failureNotice: string | null;
-  /**
-   * What the call's `theme` reference resolved to, or null when it named no
-   * theme (the ordinary path: the new drafts inherit the current one).
-   *
-   * REPORTED SEPARATELY FROM THE DRAFTS because it can fail on its own. A
-   * theme name the canvas does not have must not take the draft down with it —
-   * the drafts are created regardless, wearing what they would have worn —
-   * but neither may it pass unmentioned, because the model asked for a look it
-   * did not get and would otherwise describe the draft as having it.
-   */
+  /*
+    What the call's `theme` reference resolved to, or null when it named no
+    theme (the ordinary path: the new drafts inherit the current one).
+
+    REPORTED SEPARATELY FROM THE DRAFTS because it can fail on its own. A
+    theme name the canvas does not have must not take the draft down with it —
+    the drafts are created regardless, wearing what they would have worn —
+    but neither may it pass unmentioned, because the model asked for a look it
+    did not get and would otherwise describe the draft as having it.
+  */
   theme: ThemeResolution | null;
 }
 
-/** The outcome of a call that never reached the drafts machinery. */
+/*
+  The outcome of a call that never reached the drafts machinery.
+*/
 export function createEmptyDraftOutcome(): CreateDraftOutcome {
   return {
     requestedCount: 0,
@@ -130,7 +142,9 @@ function getThemeNote(theme: ThemeResolution | null): string {
   return `The theme you asked for was NOT applied: ${cause}. ${available} The drafts kept the theme they would otherwise have had — tell the user that, and offer one of the names above. Do NOT call createDraft again; use applyThemeToDraft on the draft by name.`;
 }
 
-/** `"a", "b" and "c"` — draft names as a person would read them aloud. */
+/*
+  `"a", "b" and "c"` — draft names as a person would read them aloud.
+*/
 function toNameList(names: string[]): string {
   const quoted = names.map((name) => `"${name}"`);
   if (quoted.length <= 1) {
@@ -190,11 +204,11 @@ function getCopyProvenanceNote(outcome: CreateDraftOutcome): string {
   return notes.join(" ");
 }
 
-/**
- * The tool result for one createDraft call — the model's ONLY source of truth
- * about what is now in the drafts bar. Never throws, and never returns a shape
- * the caller should route through the error channel.
- */
+/*
+  The tool result for one createDraft call — the model's ONLY source of truth
+  about what is now in the drafts bar. Never throws, and never returns a shape
+  the caller should route through the error channel.
+*/
 export function toCreateDraftToolOutput(outcome: CreateDraftOutcome): CreateDraftReport {
   const { createdDrafts, requestedCount, failureNotice } = outcome;
   const createdCount = createdDrafts.length;

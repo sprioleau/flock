@@ -64,7 +64,9 @@ async function readKit(t: Backend) {
   return kit;
 }
 
-/* A theme the filtered picker could actually have produced. */
+/*
+  A theme the filtered picker could actually have produced.
+*/
 function buildCustomTheme({ name, takenIds }: { name: string; takenIds: string[] }) {
   const variation = buildCustomThemeVariation({
     name,
@@ -157,7 +159,9 @@ describe("setBrandAssetSuggestion — typing a logo address (§6.2)", () => {
     });
     const kit = await readKit(t);
     expect(kit.logoUrl).toBe("https://acme.com/logo.png");
-    /* Unconfirmed: decision 4 keeps it out of every document until confirmed. */
+    /*
+      Unconfirmed: decision 4 keeps it out of every document until confirmed.
+    */
     expect(kit.logoConfirmedAtMs).toBeUndefined();
   });
 
@@ -208,7 +212,9 @@ describe("updateSocialLinks — the array is finally editable (§7.2)", () => {
       { platform: "x", url: "https://twitter.com/acme", origin: "user" },
       { platform: "linkedin", url: "https://linkedin.com/company/acme", origin: "user" },
     ]);
-    /* Metadata only — no draft renders social links, so no pill re-arms. */
+    /*
+      Metadata only — no draft renders social links, so no pill re-arms.
+    */
     expect(kit.revision).toBe(1);
   });
 

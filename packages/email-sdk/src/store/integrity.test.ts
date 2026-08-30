@@ -8,7 +8,9 @@ const asDocument = (value: Record<string, unknown>) => value as unknown as Email
 const hasError = (document: EmailDocument, code: IntegrityErrorCode) =>
   checkDocumentIntegrity(document).errors.some((error) => error.code === code);
 
-/** A minimal valid doc: root > section > text. */
+/*
+  A minimal valid doc: root > section > text.
+*/
 function createMinimalDocument(): EmailDocument {
   return {
     root: {
@@ -126,7 +128,9 @@ describe("checkDocumentIntegrity — key and pointer rules", () => {
 
   it("flags a listed child whose parentId points elsewhere", () => {
     const document = createSampleDocument();
-    // btn_t9u0 is listed by col_p5q6 but claims col_m3n4 as parent.
+    /*
+      btn_t9u0 is listed by col_p5q6 but claims col_m3n4 as parent.
+    */
     (document.btn_t9u0 as { parentId: string }).parentId = "col_m3n4";
     const result = checkDocumentIntegrity(document);
     expect(result.errors.some((error) => error.code === "parent_child_mismatch")).toBe(true);
@@ -141,7 +145,9 @@ describe("checkDocumentIntegrity — key and pointer rules", () => {
 
   it("flags a child listed by two different parents", () => {
     const document = createSampleDocument();
-    // txt_r7s8 belongs to col_m3n4; also list it under col_p5q6.
+    /*
+      txt_r7s8 belongs to col_m3n4; also list it under col_p5q6.
+    */
     (document.col_p5q6!.childrenIds as string[]).push("txt_r7s8");
     expect(hasError(document, "child_multiply_referenced")).toBe(true);
   });
@@ -186,7 +192,9 @@ describe("checkDocumentIntegrity — cycles and reachability", () => {
 
   it("flags blocks not reachable from the root", () => {
     const document = createMinimalDocument();
-    // A locally-consistent island: the root never lists sec_z9y8.
+    /*
+      A locally-consistent island: the root never lists sec_z9y8.
+    */
     document.sec_z9y8 = {
       id: "sec_z9y8",
       type: "section",

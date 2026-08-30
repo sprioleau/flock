@@ -27,7 +27,9 @@ function requireStop(stopId: TourStop["id"]): TourStop {
   return stop;
 }
 
-/* A document whose every lookup is watched, so a stray click is detectable. */
+/*
+  A document whose every lookup is watched, so a stray click is detectable.
+*/
 const querySelector = vi.fn(() => null);
 
 beforeEach(() => {

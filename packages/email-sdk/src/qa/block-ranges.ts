@@ -1,63 +1,63 @@
 import { BLOCK_ANNOTATION_ATTRIBUTE } from "../render/blocks/shared";
 
-/**
- * Turning a position in rendered HTML back into the block that produced it.
- *
- * The compatibility checker (./check-compatibility) receives findings shaped
- * like "the element spanning characters 3537-4243 uses `border-radius`, which
- * Outlook ignores". The findings UI can only point at BLOCKS. This module is
- * the bridge, and it is the part of the feature most able to be quietly
- * wrong, so it is worth being precise about what it does and does not know.
- *
- * WHAT MAKES IT POSSIBLE AT ALL: the checker renders the email a second time
- * with `isBlockAnnotated`, which stamps every block's outermost element with
- * `data-flock-block-id`. Without that the correspondence does not exist in
- * any form — the renderer passes `block.id` as a React `key`, and keys are
- * not attributes (see BLOCK_ANNOTATION_ATTRIBUTE for the full note).
- *
- * WHY A TAG SCANNER AND NOT A PARSER: the answer needs element EXTENTS —
- * where each stamped element opens and where it closes — and a DOM would
- * give them only if there were a DOM to build. `apps/web` pins
- * `environment: "node"` for all of `src/**`, so there is no DOMParser and no
- * jsdom anywhere this can run. A dependency that parses to a node tree
- * (htmlparser2, say) would work, but it would be a second HTML parser in the
- * bundle to answer a question a single forward pass answers exactly: the
- * input is not arbitrary web HTML, it is output React Email just produced, so
- * every tag is well-formed and every non-void element is explicitly closed.
- *
- * WHAT IT SKIPS, AND WHY EACH ONE MATTERS
- *
- *   comments   React Email emits React's own `<!--$-->` boundary markers AND
- *              Outlook conditional comments, in two halves — the opening
- *              `<!--[if mso]><table><tr><td><![endif]-->` and, later, the
- *              matching `<!--[if mso]></td></tr></table><![endif]-->`. The
- *              CLOSING half is what makes this load-bearing: read as markup,
- *              its end tags close real elements, so an enclosing block's
- *              extent stops early and every finding after it moves to the
- *              wrong block. caniemail's parser treats these as comments too,
- *              so no finding ever points inside one.
- *   raw text   `<style>` content is CSS, where `<` is not a tag.
- *   void tags  `<img>`, `<br>`, `<hr>` and friends never close, so pushing
- *              them leaves frames on the stack that no end tag ever removes.
- *
- * HOW MUCH OF THAT IS LOAD-BEARING, measured rather than assumed. The
- * tolerant pop below — an end tag with no matching open element is ignored,
- * and a matching one unwinds to ITS frame rather than blindly to the top — is
- * the primary defence, and it absorbs both stray unclosed tags and stray end
- * tags on its own. Deleting the void-element and raw-text handling does NOT
- * change the output for any React Email document: unmatched frames left by a
- * void tag are cleaned up by the same tolerant pop, and React escapes text
- * content, so no `<` ever reaches a `<style>` or `<title>` body. They are kept
- * because a stack that mirrors the document is a much easier thing to reason
- * about than one that is routinely wrong and repaired, but the tests make no
- * claim they are necessary, because a mutation showed they are not.
- */
+/*
+  Turning a position in rendered HTML back into the block that produced it.
 
-/**
- * Elements with no end tag. An email renderer emits a small subset of these,
- * but the cost of listing all of them is nothing and the cost of missing one
- * is every range after it being wrong.
- */
+  The compatibility checker (./check-compatibility) receives findings shaped
+  like "the element spanning characters 3537-4243 uses `border-radius`, which
+  Outlook ignores". The findings UI can only point at BLOCKS. This module is
+  the bridge, and it is the part of the feature most able to be quietly
+  wrong, so it is worth being precise about what it does and does not know.
+
+  WHAT MAKES IT POSSIBLE AT ALL: the checker renders the email a second time
+  with `isBlockAnnotated`, which stamps every block's outermost element with
+  `data-flock-block-id`. Without that the correspondence does not exist in
+  any form — the renderer passes `block.id` as a React `key`, and keys are
+  not attributes (see BLOCK_ANNOTATION_ATTRIBUTE for the full note).
+
+  WHY A TAG SCANNER AND NOT A PARSER: the answer needs element EXTENTS —
+  where each stamped element opens and where it closes — and a DOM would
+  give them only if there were a DOM to build. `apps/web` pins
+  `environment: "node"` for all of `src/**`, so there is no DOMParser and no
+  jsdom anywhere this can run. A dependency that parses to a node tree
+  (htmlparser2, say) would work, but it would be a second HTML parser in the
+  bundle to answer a question a single forward pass answers exactly: the
+  input is not arbitrary web HTML, it is output React Email just produced, so
+  every tag is well-formed and every non-void element is explicitly closed.
+
+  WHAT IT SKIPS, AND WHY EACH ONE MATTERS
+
+    comments   React Email emits React's own `<!--$-->` boundary markers AND
+               Outlook conditional comments, in two halves — the opening
+               `<!--[if mso]><table><tr><td><![endif]-->` and, later, the
+               matching `<!--[if mso]></td></tr></table><![endif]-->`. The
+               CLOSING half is what makes this load-bearing: read as markup,
+               its end tags close real elements, so an enclosing block's
+               extent stops early and every finding after it moves to the
+               wrong block. caniemail's parser treats these as comments too,
+               so no finding ever points inside one.
+    raw text   `<style>` content is CSS, where `<` is not a tag.
+    void tags  `<img>`, `<br>`, `<hr>` and friends never close, so pushing
+               them leaves frames on the stack that no end tag ever removes.
+
+  HOW MUCH OF THAT IS LOAD-BEARING, measured rather than assumed. The
+  tolerant pop below — an end tag with no matching open element is ignored,
+  and a matching one unwinds to ITS frame rather than blindly to the top — is
+  the primary defence, and it absorbs both stray unclosed tags and stray end
+  tags on its own. Deleting the void-element and raw-text handling does NOT
+  change the output for any React Email document: unmatched frames left by a
+  void tag are cleaned up by the same tolerant pop, and React escapes text
+  content, so no `<` ever reaches a `<style>` or `<title>` body. They are kept
+  because a stack that mirrors the document is a much easier thing to reason
+  about than one that is routinely wrong and repaired, but the tests make no
+  claim they are necessary, because a mutation showed they are not.
+*/
+
+/*
+  Elements with no end tag. An email renderer emits a small subset of these,
+  but the cost of listing all of them is nothing and the cost of missing one
+  is every range after it being wrong.
+*/
 const VOID_ELEMENTS: ReadonlySet<string> = new Set([
   "area",
   "base",
@@ -75,15 +75,23 @@ const VOID_ELEMENTS: ReadonlySet<string> = new Set([
   "wbr",
 ]);
 
-/** Elements whose content is text, not markup, and must not be scanned. */
+/*
+  Elements whose content is text, not markup, and must not be scanned.
+*/
 const RAW_TEXT_ELEMENTS: ReadonlySet<string> = new Set(["script", "style", "title", "textarea"]);
 
-/** One stamped element's extent in the annotated HTML. */
+/*
+  One stamped element's extent in the annotated HTML.
+*/
 export interface BlockRange {
   blockId: string;
-  /** Index of the `<` that opens the element. */
+  /*
+    Index of the `<` that opens the element.
+  */
   startIndex: number;
-  /** Index one past the `>` that closes it — a half-open range. */
+  /*
+    Index one past the `>` that closes it — a half-open range.
+  */
   endIndex: number;
 }
 
@@ -134,7 +142,9 @@ export function indexBlockRanges(html: string): BlockRange[] {
       break;
     }
 
-    /* Comments and doctype/CDATA-ish declarations: skip wholesale. */
+    /*
+      Comments and doctype/CDATA-ish declarations: skip wholesale.
+    */
     if (html.startsWith("<!--", tagStart)) {
       const commentEnd = html.indexOf("-->", tagStart + 4);
       cursor = commentEnd === -1 ? html.length : commentEnd + 3;
@@ -186,7 +196,9 @@ export function indexBlockRanges(html: string): BlockRange[] {
     const isSelfClosing = html[tagEnd - 1] === "/";
     if (!isSelfClosing && !VOID_ELEMENTS.has(tagName)) {
       if (RAW_TEXT_ELEMENTS.has(tagName)) {
-        /* Jump the whole element: its content is text, not markup. */
+        /*
+          Jump the whole element: its content is text, not markup.
+        */
         const closing = html.indexOf(`</${tagName}`, tagEnd + 1);
         cursor = closing === -1 ? html.length : closing;
         continue;
@@ -209,20 +221,20 @@ export function indexBlockRanges(html: string): BlockRange[] {
   return ranges.sort((left, right) => left.startIndex - right.startIndex);
 }
 
-/**
- * The block that owns a span of the annotated HTML, or undefined when the
- * span belongs to markup no block produced.
- *
- * `undefined` is a real answer, not a failure: the `<html>`, `<head>` and
- * `<body>` elements come from the document root's own rendering, and a
- * finding about them is honestly document-level. Attaching it to whichever
- * block happened to be nearby is the one outcome worth avoiding.
- *
- * Containment is STRICT — the block's range must cover the whole span, not
- * merely overlap it. An overlapping-but-not-containing span cannot come from
- * a block's own subtree in well-formed HTML, so treating overlap as a match
- * could only ever invent an attribution.
- */
+/*
+  The block that owns a span of the annotated HTML, or undefined when the
+  span belongs to markup no block produced.
+
+  `undefined` is a real answer, not a failure: the `<html>`, `<head>` and
+  `<body>` elements come from the document root's own rendering, and a
+  finding about them is honestly document-level. Attaching it to whichever
+  block happened to be nearby is the one outcome worth avoiding.
+
+  Containment is STRICT — the block's range must cover the whole span, not
+  merely overlap it. An overlapping-but-not-containing span cannot come from
+  a block's own subtree in well-formed HTML, so treating overlap as a match
+  could only ever invent an attribution.
+*/
 export function findBlockIdAt({
   ranges,
   startIndex,
@@ -235,7 +247,9 @@ export function findBlockIdAt({
   let match: string | undefined;
   for (const range of ranges) {
     if (range.startIndex > startIndex) {
-      /* Sorted by start: nothing further can open at or before the span. */
+      /*
+        Sorted by start: nothing further can open at or before the span.
+      */
       break;
     }
     if (range.endIndex >= endIndex) {
@@ -245,16 +259,16 @@ export function findBlockIdAt({
   return match;
 }
 
-/**
- * Convert caniemail's 1-based line/column position into a half-open index
- * range over the same string.
- *
- * caniemail reports an element's FULL extent (verified against its output,
- * not assumed): start at the `<` and end at the final `>` INCLUSIVE, which is
- * why the end index adds the column rather than one less than it. Emails are
- * rendered unprettified and therefore usually a single line, but the line
- * table costs one pass and removes the need to rely on that.
- */
+/*
+  Convert caniemail's 1-based line/column position into a half-open index
+  range over the same string.
+
+  caniemail reports an element's FULL extent (verified against its output,
+  not assumed): start at the `<` and end at the final `>` INCLUSIVE, which is
+  why the end index adds the column rather than one less than it. Emails are
+  rendered unprettified and therefore usually a single line, but the line
+  table costs one pass and removes the need to rely on that.
+*/
 export function toIndexRange({
   html,
   start,

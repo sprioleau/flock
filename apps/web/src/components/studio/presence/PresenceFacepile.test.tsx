@@ -17,11 +17,11 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
  * pass, which is the only place they are real.
  */
 
-/**
- * A one-file React: `useState` slots kept by call order, mutated in place by
- * the setters, and re-read on the next call of the component. `rewind()` is the
- * start of a render; `reset()` is a fresh mount.
- */
+/*
+  A one-file React: `useState` slots kept by call order, mutated in place by
+  the setters, and re-read on the next call of the component. `rewind()` is the
+  start of a render; `reset()` is a fresh mount.
+*/
 const harness = vi.hoisted(() => {
   const slots: unknown[] = [];
   let cursor = 0;
@@ -67,7 +67,9 @@ interface ElementWithProps extends ReactElement {
   props: Record<string, unknown>;
 }
 
-/** Every element in a returned tree, fragments and arrays flattened. */
+/*
+  Every element in a returned tree, fragments and arrays flattened.
+*/
 function collectElements(node: ReactNode): ElementWithProps[] {
   const found: ElementWithProps[] = [];
   const visit = (current: ReactNode): void => {
@@ -88,7 +90,9 @@ function collectElements(node: ReactNode): ElementWithProps[] {
   return found;
 }
 
-/** All human-readable strings in the tree, for copy assertions. */
+/*
+  All human-readable strings in the tree, for copy assertions.
+*/
 function visibleText(node: ReactNode): string {
   const parts: string[] = [];
   const visit = (current: ReactNode): void => {
@@ -113,18 +117,24 @@ function visibleText(node: ReactNode): string {
 
 const CURRENT_NAME = "Swift Otter";
 
-/** One render of the row, from whatever state the last one left behind. */
+/*
+  One render of the row, from whatever state the last one left behind.
+*/
 function render(name: string = CURRENT_NAME): ReactNode {
   harness.rewind();
   return DisplayNameRow({ name });
 }
 
-/** Icon-only controls are addressed the way a screen reader would find them. */
+/*
+  Icon-only controls are addressed the way a screen reader would find them.
+*/
 function findByLabel(node: ReactNode, label: string): ElementWithProps | undefined {
   return collectElements(node).find((element) => element.props["aria-label"] === label);
 }
 
-/** The name field, present only while editing. */
+/*
+  The name field, present only while editing.
+*/
 function findField(node: ReactNode): ElementWithProps | undefined {
   return collectElements(node).find(
     (element) => element.props["data-testid"] === "presence-nickname-input",
@@ -143,7 +153,9 @@ function type(node: ReactNode, value: string): void {
   (field!.props.onChange as (event: unknown) => void)({ target: { value } });
 }
 
-/** A keypress as the field would see it, so dismissal can be asserted. */
+/*
+  A keypress as the field would see it, so dismissal can be asserted.
+*/
 function makeKeyEvent(key: string) {
   return { key, preventDefault: vi.fn(), stopPropagation: vi.fn() };
 }
@@ -201,7 +213,9 @@ describe("submitting the display name", () => {
     pressKey(render(), event);
 
     expect(setNickname).toHaveBeenCalledWith("Nimble Ibex");
-    // Otherwise the keypress also reaches whatever form or dialog is outside.
+    /*
+      Otherwise the keypress also reaches whatever form or dialog is outside.
+    */
     expect(event.preventDefault).toHaveBeenCalled();
   });
 
@@ -210,8 +224,10 @@ describe("submitting the display name", () => {
     type(render(), "   ");
     press(render(), "Save display name");
 
-    // "" is the presence layer's "drop the nickname override" (presence.tsx),
-    // which is the only way back to the session-derived name.
+    /*
+      "" is the presence layer's "drop the nickname override" (presence.tsx),
+      which is the only way back to the session-derived name.
+    */
     expect(setNickname).toHaveBeenCalledWith("");
     expect(findField(render())).toBeUndefined();
   });
@@ -222,7 +238,9 @@ describe("submitting the display name", () => {
     press(render(), "Save display name");
 
     expect(setNickname).not.toHaveBeenCalled();
-    // Still finished, though — the user asked to be done with the field.
+    /*
+      Still finished, though — the user asked to be done with the field.
+    */
     expect(findField(render())).toBeUndefined();
   });
 });
@@ -238,8 +256,10 @@ describe("abandoning the edit", () => {
     expect(findField(restored)).toBeUndefined();
     expect(visibleText(restored)).toContain(CURRENT_NAME);
     expect(setNickname).not.toHaveBeenCalled();
-    // Base UI's dismiss hook would otherwise take the same keypress and close
-    // the whole popover out from under the person still editing.
+    /*
+      Base UI's dismiss hook would otherwise take the same keypress and close
+      the whole popover out from under the person still editing.
+    */
     expect(event.stopPropagation).toHaveBeenCalled();
   });
 });

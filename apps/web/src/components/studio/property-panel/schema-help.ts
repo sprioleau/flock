@@ -14,13 +14,15 @@ import {
 } from "@flock/email-sdk";
 import type { z } from "zod";
 
-/**
- * Field help text sourced from the SDK's Zod `.describe()` strings — the
- * schemas are the single source of documentation for every property, so the
- * panel reads descriptions off the schemas instead of duplicating prose.
- */
+/*
+  Field help text sourced from the SDK's Zod `.describe()` strings — the
+  schemas are the single source of documentation for every property, so the
+  panel reads descriptions off the schemas instead of duplicating prose.
+*/
 
-/** Walk optional/default wrappers until a description is found. */
+/*
+  Walk optional/default wrappers until a description is found.
+*/
 export function getSchemaDescription(schema: z.ZodType): string | undefined {
   let current: z.ZodType | undefined = schema;
   while (current !== undefined) {
@@ -53,7 +55,9 @@ export interface BlockPropertyHelpInput {
   propertyKey: string;
 }
 
-/** Help text for one block property, from the block schema's `.describe()`. */
+/*
+  Help text for one block property, from the block schema's `.describe()`.
+*/
 export function getBlockPropertyHelp({
   blockType,
   propertyKey,
@@ -63,7 +67,9 @@ export function getBlockPropertyHelp({
   return fieldSchema === undefined ? undefined : getSchemaDescription(fieldSchema);
 }
 
-/** Help text for one global style key, from globalStylesSchema's `.describe()`. */
+/*
+  Help text for one global style key, from globalStylesSchema's `.describe()`.
+*/
 export function getGlobalStyleHelp(key: keyof GlobalStyles): string | undefined {
   const shape: Record<string, z.ZodType> = globalStylesSchema.shape;
   const fieldSchema = shape[key];

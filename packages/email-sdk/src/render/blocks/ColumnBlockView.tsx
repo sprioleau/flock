@@ -8,15 +8,17 @@ export interface ColumnBlockViewProps {
   block: ColumnBlock;
   resolvedStyles: ResolvedColumnStyles;
   children?: ReactNode;
-  /**
-   * Analysis-only stamp carrying this block's id onto the outermost element.
-   * Empty (and therefore absent from the HTML) on every ordinary render —
-   * see BLOCK_ANNOTATION_ATTRIBUTE in ./shared.
-   */
+  /*
+    Analysis-only stamp carrying this block's id onto the outermost element.
+    Empty (and therefore absent from the HTML) on every ordinary render —
+    see BLOCK_ANNOTATION_ATTRIBUTE in ./shared.
+  */
   annotation?: BlockAnnotation;
 }
 
-/** column → React Email <Column> (a td). Width omitted = equal share of the row. */
+/*
+  column → React Email <Column> (a td). Width omitted = equal share of the row.
+*/
 export function ColumnBlockView({ resolvedStyles, children, annotation = {} }: ColumnBlockViewProps) {
   return (
     <Column

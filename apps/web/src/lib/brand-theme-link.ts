@@ -69,7 +69,9 @@ import {
 } from "@flock/email-sdk";
 import { areGlobalsEqual, getLiveThemeVariations, type ThemeVariation } from "./brand-kit";
 
-/* Every global style property, as a literal key union — the diff's alphabet. */
+/*
+  Every global style property, as a literal key union — the diff's alphabet.
+*/
 export type GlobalStyleKey = keyof Required<GlobalStyles>;
 
 const GLOBAL_STYLE_KEYS = Object.keys(DEFAULT_GLOBAL_STYLES).sort() as GlobalStyleKey[];
@@ -109,7 +111,9 @@ export interface DraftThemeLink {
     sorted, so the value is stable across reads and comparable in tests.
   */
   overriddenGlobalKeys: GlobalStyleKey[];
-  /* The baseline the overrides were measured against; null when there is no parent. */
+  /*
+    The baseline the overrides were measured against; null when there is no parent.
+  */
   baselineGlobals: Required<GlobalStyles> | null;
 }
 
@@ -219,7 +223,9 @@ export function resolveDraftThemeLink({
     liveVariations.find((variation) => areGlobalsEqual({ a: globals, b: variation.globals })) ??
     null;
 
-  /* An exact payload match is identity with zero overrides, by construction. */
+  /*
+    An exact payload match is identity with zero overrides, by construction.
+  */
   if (matched !== null) {
     return {
       state: "current",

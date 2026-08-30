@@ -4,26 +4,26 @@ import type { VerifiedCaller } from "@flock/email-sdk";
 import { fetchAuthQuery } from "@/lib/auth/auth-server";
 import { isAuthEnabled } from "@/lib/auth/config";
 
-/**
- * WHO IS ASKING, on the agent path — the answer the envelope can trust.
- *
- * `ActionContext.authorId` is self-asserted: pipeline.ts writes
- * `threadId ?? "flock-agent"` into it and nothing checks. That is fine for
- * attribution and useless as authorization, so an action that requires a
- * VERIFIED caller (today: sendTestEmail) reads `context.verifiedCaller`
- * instead, and this is the only thing in the chat route that produces one.
- *
- * The check is the SAME one /api/send-test-email's `resolveCaller` runs, for
- * the same reason and against the same source of truth: the caller's signed
- * Convex token, verified by Convex behind `ctx.auth.getUserIdentity()`. It is
- * deliberately NOT the mirrored session cookie, which is JS-writable and
- * client-chosen — any caller can mint one, so treating it as a credential
- * would buy the appearance of a gate with none of the substance.
- *
- * Duplicated rather than shared with that route for now: it lives under
- * `lib/auth/`, which is being rewritten by other work in flight. Both call
- * sites make the same Convex query and would collapse into one helper cleanly.
- */
+/*
+  WHO IS ASKING, on the agent path — the answer the envelope can trust.
+
+  `ActionContext.authorId` is self-asserted: pipeline.ts writes
+  `threadId ?? "flock-agent"` into it and nothing checks. That is fine for
+  attribution and useless as authorization, so an action that requires a
+  VERIFIED caller (today: sendTestEmail) reads `context.verifiedCaller`
+  instead, and this is the only thing in the chat route that produces one.
+
+  The check is the SAME one /api/send-test-email's `resolveCaller` runs, for
+  the same reason and against the same source of truth: the caller's signed
+  Convex token, verified by Convex behind `ctx.auth.getUserIdentity()`. It is
+  deliberately NOT the mirrored session cookie, which is JS-writable and
+  client-chosen — any caller can mint one, so treating it as a credential
+  would buy the appearance of a gate with none of the substance.
+
+  Duplicated rather than shared with that route for now: it lives under
+  `lib/auth/`, which is being rewritten by other work in flight. Both call
+  sites make the same Convex query and would collapse into one helper cleanly.
+*/
 export async function resolveVerifiedCaller(): Promise<VerifiedCaller> {
   /*
     Auth off means the identity system does not exist on this deployment:

@@ -14,20 +14,28 @@ import type { Block, EmailDocument, TextDoc } from "@flock/email-sdk";
  * template randomization keeps repeat clicks from looking canned.
  */
 
-// Kept small on purpose: Gemini's free tier rate-limits aggressively, and
-// each prompt is a full real agent turn (owner-tuned from 6 → 3).
+/*
+  Kept small on purpose: Gemini's free tier rate-limits aggressively, and
+  each prompt is a full real agent turn (owner-tuned from 6 → 3).
+*/
 export const DEMO_PROMPT_COUNT = 3;
 
-/** Pick one entry at random (client-side variety; determinism not needed here). */
+/*
+  Pick one entry at random (client-side variety; determinism not needed here).
+*/
 function pickRandom<T>(options: readonly T[]): T {
   return options[Math.floor(Math.random() * options.length)]!;
 }
 
-// ---------------------------------------------------------------------------
-// Doc readers
-// ---------------------------------------------------------------------------
+/*
+  ---------------------------------------------------------------------------
+  Doc readers
+  ---------------------------------------------------------------------------
+*/
 
-/** Blocks in document tree order (root-first depth-first walk). */
+/*
+  Blocks in document tree order (root-first depth-first walk).
+*/
 function listBlocksInTreeOrder(doc: EmailDocument): Block[] {
   const blocksById = doc as Record<string, Block | undefined>;
   const ordered: Block[] = [];
@@ -47,7 +55,9 @@ function listBlocksInTreeOrder(doc: EmailDocument): Block[] {
 
 type TextBlockNode = TextDoc["content"][number];
 
-/** Plain text of one rich-text node's inline content. */
+/*
+  Plain text of one rich-text node's inline content.
+*/
 function flattenInlineText(node: TextBlockNode): string {
   return (node.content ?? [])
     .map((inline) => (inline.type === "text" ? inline.text : " "))
@@ -55,7 +65,9 @@ function flattenInlineText(node: TextBlockNode): string {
     .trim();
 }
 
-/** The first heading's text in a text block's doc, or null. */
+/*
+  The first heading's text in a text block's doc, or null.
+*/
 function findHeadingText(text: TextDoc): string | null {
   for (const node of text.content) {
     if (node.type === "heading") {
@@ -68,7 +80,9 @@ function findHeadingText(text: TextDoc): string | null {
   return null;
 }
 
-/** A short quotable phrase (first few words) from the first non-empty paragraph. */
+/*
+  A short quotable phrase (first few words) from the first non-empty paragraph.
+*/
 function findParagraphPhrase(text: TextDoc): string | null {
   for (const node of text.content) {
     if (node.type !== "paragraph") {
@@ -80,15 +94,19 @@ function findParagraphPhrase(text: TextDoc): string | null {
     }
     const words = paragraphText.split(/\s+/).filter((word) => word.length > 0);
     const phrase = words.slice(0, Math.min(5, words.length)).join(" ");
-    // Strip a trailing sentence terminator so the quote reads naturally.
+    /*
+      Strip a trailing sentence terminator so the quote reads naturally.
+    */
     return phrase.replace(/[.,;:!?]+$/, "");
   }
   return null;
 }
 
-// ---------------------------------------------------------------------------
-// Prompt builders (one per block-type category, each with template variants)
-// ---------------------------------------------------------------------------
+/*
+  ---------------------------------------------------------------------------
+  Prompt builders (one per block-type category, each with template variants)
+  ---------------------------------------------------------------------------
+*/
 
 const ACCENT_COLOR_NAMES = ["deep violet", "forest green", "warm coral", "navy blue"] as const;
 const BUTTON_LABEL_IDEAS = ["Start now", "Join the ride", "Try Flock free", "Count me in"] as const;
@@ -104,7 +122,9 @@ function buildPromptCandidates(doc: EmailDocument): string[] {
   const headingText = textBlocks
     .map((block) => findHeadingText(block.properties.text))
     .find((text) => text !== null);
-  // Prefer a phrase from a DIFFERENT text block than the heading's, when there is one.
+  /*
+    Prefer a phrase from a DIFFERENT text block than the heading's, when there is one.
+  */
   const paragraphPhrase = textBlocks
     .map((block) => findParagraphPhrase(block.properties.text))
     .find((text) => text !== null);
@@ -155,8 +175,10 @@ function buildPromptCandidates(doc: EmailDocument): string[] {
     );
   }
   if (buttonBlock !== undefined) {
-    // A second button-adjacent edit rounds out the set on the sample doc:
-    // vary between the CTA and document-wide styling.
+    /*
+      A second button-adjacent edit rounds out the set on the sample doc:
+      vary between the CTA and document-wide styling.
+    */
     candidates.push(
       pickRandom([
         `Give the "${buttonBlock.properties.label}" button rounder corners`,
@@ -167,7 +189,9 @@ function buildPromptCandidates(doc: EmailDocument): string[] {
   return candidates;
 }
 
-/** Generic prompts that apply to any document (fill when block types are missing). */
+/*
+  Generic prompts that apply to any document (fill when block types are missing).
+*/
 const FALLBACK_PROMPTS = [
   "Change the email background color to a gentle pastel",
   "Center-align all the headings",

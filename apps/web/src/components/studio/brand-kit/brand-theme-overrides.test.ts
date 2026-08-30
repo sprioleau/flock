@@ -7,20 +7,20 @@ import type { Id } from "@convex/_generated/dataModel";
 import schema from "@convex/schema";
 import { MOCK_BRAND_KIT } from "@/lib/brand-kit";
 
-/**
- * Theme identity, per-property overrides and the theme EDIT path, end to end
- * through the real Convex functions (docs/proposals/brand-kit-user-control.md
- * §14.5a). The pure resolver has its own unit suite in
- * `lib/brand-theme-link.test.ts`; what only this file can prove is that the
- * mutations, the status query and the op stream agree:
- *
- * - THE MIGRATION: every shape a `documents.brand` row can have today keeps its
- *   pill behaviour AND — the property that actually matters — keeps rendering
- *   the same bytes. A migration that restyles a draft is the failure mode.
- * - Editing a parent theme propagates to the drafts referencing it.
- * - A property the user overrode SURVIVES that propagation.
- * - A per-section background override survives it too (the block layer).
- */
+/*
+  Theme identity, per-property overrides and the theme EDIT path, end to end
+  through the real Convex functions (docs/proposals/brand-kit-user-control.md
+  §14.5a). The pure resolver has its own unit suite in
+  `lib/brand-theme-link.test.ts`; what only this file can prove is that the
+  mutations, the status query and the op stream agree:
+
+  - THE MIGRATION: every shape a `documents.brand` row can have today keeps its
+    pill behaviour AND — the property that actually matters — keeps rendering
+    the same bytes. A migration that restyles a draft is the failure mode.
+  - Editing a parent theme propagates to the drafts referencing it.
+  - A property the user overrode SURVIVES that propagation.
+  - A per-section background override survives it too (the block layer).
+*/
 
 const modules = import.meta.glob([
   "../../../../../../convex/**/*.{ts,js}",
@@ -36,7 +36,9 @@ function createBackend() {
 
 type Backend = ReturnType<typeof createBackend>;
 
-/** Two complete, WCAG-passing variation payloads from the validated mock kit. */
+/*
+  Two complete, WCAG-passing variation payloads from the validated mock kit.
+*/
 function buildKitInput({ spacingBump = 0 }: { spacingBump?: number } = {}) {
   return {
     name: "Acme",
@@ -56,7 +58,9 @@ async function saveKit(t: Backend, input: ReturnType<typeof buildKitInput>): Pro
   await t.mutation(api.brandKits.saveBrandKit, { sessionId: SESSION_ID, brandKit: input });
 }
 
-/** A bound canvas holding one draft that has already adopted the kit's first theme. */
+/*
+  A bound canvas holding one draft that has already adopted the kit's first theme.
+*/
 async function seedAppliedDraft(t: Backend): Promise<{
   documentId: Id<"documents">;
   canvasId: Id<"canvases">;
@@ -102,11 +106,11 @@ async function getDraftStatus({
   return draft;
 }
 
-/**
- * Turn a §14.5a-era row back into a LEGACY one by dropping the baseline
- * snapshot — the exact shape of every `documents.brand` row written before this
- * landed, and the only way to exercise the migration from inside the tests.
- */
+/*
+  Turn a §14.5a-era row back into a LEGACY one by dropping the baseline
+  snapshot — the exact shape of every `documents.brand` row written before this
+  landed, and the only way to exercise the migration from inside the tests.
+*/
 async function stripBaselineGlobals(t: Backend, documentId: Id<"documents">): Promise<void> {
   await t.run(async (ctx) => {
     const row = await ctx.db.get(documentId);
@@ -123,7 +127,9 @@ async function stripBaselineGlobals(t: Backend, documentId: Id<"documents">): Pr
   });
 }
 
-/** Hand-edit ONE global, the way a person nudging a color in the panel would. */
+/*
+  Hand-edit ONE global, the way a person nudging a color in the panel would.
+*/
 async function overrideOneGlobal({
   t,
   documentId,
@@ -141,11 +147,11 @@ async function overrideOneGlobal({
   });
 }
 
-/**
- * `getDocument` returns the doc through a `v.any()` payload, so the blocks
- * arrive untyped. Same boundary the sibling suite crosses (brand-stage-m.test.ts
- * shapes the root the same way) — one narrow structural type, in a test.
- */
+/*
+  `getDocument` returns the doc through a `v.any()` payload, so the blocks
+  arrive untyped. Same boundary the sibling suite crosses (brand-stage-m.test.ts
+  shapes the root the same way) — one narrow structural type, in a test.
+*/
 interface TestBlock {
   id: string;
   type: string;
@@ -157,7 +163,9 @@ async function getDocumentBlocks(t: Backend, documentId: Id<"documents">): Promi
   return Object.values(payload?.doc ?? {}) as TestBlock[];
 }
 
-/** The id of the draft's first section block (the starter email always has one). */
+/*
+  The id of the draft's first section block (the starter email always has one).
+*/
 async function getFirstSectionId(t: Backend, documentId: Id<"documents">): Promise<string> {
   const section = (await getDocumentBlocks(t, documentId)).find(
     (block) => block.type === "section",
@@ -190,7 +198,9 @@ describe("migration — a draft that renders correctly today renders identically
   });
 
   it("legacy pointer + diverged payload: reads `overridden`, renders untouched", async () => {
-    /* The old `detached`. The link was never severed, so the word was wrong. */
+    /*
+      The old `detached`. The link was never severed, so the word was wrong.
+    */
     const t = createBackend();
     const { documentId, canvasId } = await seedAppliedDraft(t);
     await overrideOneGlobal({ t, documentId, override: { buttonBackgroundColor: "#ff0000" } });
@@ -201,7 +211,9 @@ describe("migration — a draft that renders correctly today renders identically
     expect(draft.state).toBe("overridden");
     expect(draft.parentVariation?.name).toBe("Classic Light");
     expect(draft.overriddenGlobalKeys).toEqual(["buttonBackgroundColor"]);
-    /* Reading a status never writes; the draft is byte-identical. */
+    /*
+      Reading a status never writes; the draft is byte-identical.
+    */
     expect(await getRootGlobals(t, documentId)).toEqual(before);
   });
 
@@ -248,7 +260,9 @@ describe("migration — a draft that renders correctly today renders identically
       await ctx.db.patch(documentId, {
         brand: { kitId: otherKitId, revision: 1, variationId: "midnight" },
       });
-      /* Diverge the payload so equality cannot supply an identity instead. */
+      /*
+        Diverge the payload so equality cannot supply an identity instead.
+      */
     });
     await overrideOneGlobal({ t, documentId, override: { buttonBackgroundColor: "#ff0000" } });
 
@@ -306,7 +320,9 @@ describe("editing a parent theme — the payoff", () => {
       globals: editedGlobals,
     });
 
-    /* An edit gives referencing drafts something to adopt, so the pill arms. */
+    /*
+      An edit gives referencing drafts something to adopt, so the pill arms.
+    */
     const pending = await getDraftStatus({ t, canvasId, documentId });
     expect(pending.state).toBe("outdated");
     expect(pending.parentVariation?.id).toBe("classic-light");
@@ -318,9 +334,13 @@ describe("editing a parent theme — the payoff", () => {
       sessionId: SESSION_ID,
     });
     const globals = await getRootGlobals(t, documentId);
-    /* The property nobody touched adopts the edit... */
+    /*
+      The property nobody touched adopts the edit...
+    */
     expect(globals.baseSpacing).toBe(40);
-    /* ...and the one the person chose is still theirs, not the theme's new blue. */
+    /*
+      ...and the one the person chose is still theirs, not the theme's new blue.
+    */
     expect(globals.buttonBackgroundColor).toBe("#ff0000");
 
     const settled = await getDraftStatus({ t, canvasId, documentId });
@@ -427,7 +447,9 @@ describe("the block layer — per-section background overrides", () => {
     );
     expect(section?.type).toBe("section");
     expect(section?.properties.innerBackgroundColor).toBe("#101820");
-    /* The globals update still landed — preserving is not the same as skipping. */
+    /*
+      The globals update still landed — preserving is not the same as skipping.
+    */
     expect((await getRootGlobals(t, documentId)).baseSpacing).toBe(
       buildKitInput({ spacingBump: 6 }).variations[0]!.globals.baseSpacing,
     );

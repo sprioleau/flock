@@ -81,7 +81,9 @@ vi.mock("@dnd-kit/core", () => ({
   }),
 }));
 
-/* Selection chrome and presence chrome are their own components' business. */
+/*
+  Selection chrome and presence chrome are their own components' business.
+*/
 vi.mock("./BlockActionRow", () => ({ BlockActionRow: () => null }));
 vi.mock("./BlockBreadcrumb", () => ({ BlockBreadcrumb: () => null }));
 vi.mock("./BlockSuggestionPill", () => ({ BlockSuggestionPill: () => null }));
@@ -173,7 +175,9 @@ describe("the chip-hover preview", () => {
   });
 
   it("differs from the selected outline ONLY in stroke style", () => {
-    /* Clicking the chip must not make the outline move, resize, or recolour. */
+    /*
+      Clicking the chip must not make the outline move, resize, or recolour.
+    */
     editorState.selectedBlockId = leaf.id;
     editorState.hoverPreviewBlockId = section.id;
     const previewed = shellClassName(section);
@@ -186,7 +190,9 @@ describe("the chip-hover preview", () => {
   });
 
   it("never dashes the block that is ALSO the selection", () => {
-    /* A stale preview id must not downgrade the real selection's outline. */
+    /*
+      A stale preview id must not downgrade the real selection's outline.
+    */
     editorState.selectedBlockId = section.id;
     editorState.hoverPreviewBlockId = section.id;
     const className = shellClassName(section);

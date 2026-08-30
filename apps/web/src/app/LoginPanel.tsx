@@ -8,25 +8,25 @@ import { Label } from "@/components/ui/label";
 import { authClient } from "@/lib/auth/auth-client";
 import { AUTH_CALLBACK_PATH, STUDIO_PATH } from "@/lib/auth/config";
 
-/**
- * The front door's two ways in.
- *
- * Better Auth ships no prebuilt UI (checked against its docs — there is no
- * official component package), so this is a plain centered form, which is what
- * a one-input flow deserves anyway.
- *
- *   Continue with email     → a magic link. For people COMING BACK, on any
- *                             device, including one that has never seen this
- *                             app before.
- *   Continue without an     → an anonymous session, right now, no fields.
- *   account                   The demo's zero-friction path, kept first-class.
- *
- * The reassurance line under the anonymous option is load-bearing, not
- * decoration: the single reason someone hesitates at "without an account" is
- * fear of losing what they make. Saying up front that they can attach an email
- * later, and that their work follows, is what makes the low-friction path the
- * comfortable one instead of the risky one.
- */
+/*
+  The front door's two ways in.
+
+  Better Auth ships no prebuilt UI (checked against its docs — there is no
+  official component package), so this is a plain centered form, which is what
+  a one-input flow deserves anyway.
+
+    Continue with email     → a magic link. For people COMING BACK, on any
+                              device, including one that has never seen this
+                              app before.
+    Continue without an     → an anonymous session, right now, no fields.
+    account                   The demo's zero-friction path, kept first-class.
+
+  The reassurance line under the anonymous option is load-bearing, not
+  decoration: the single reason someone hesitates at "without an account" is
+  fear of losing what they make. Saying up front that they can attach an email
+  later, and that their work follows, is what makes the low-friction path the
+  comfortable one instead of the risky one.
+*/
 export function LoginPanel() {
   const router = useRouter();
   const [email, setEmail] = useState("");

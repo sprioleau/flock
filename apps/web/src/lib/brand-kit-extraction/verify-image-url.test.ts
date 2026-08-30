@@ -2,7 +2,9 @@ import { describe, expect, it, vi } from "vitest";
 import type { AssetProbeMethod, AssetProbeResult } from "./fetch-page";
 import { isImageUrlRenderable, pickFirstRenderableImageUrl } from "./verify-image-url";
 
-/** Build a stub probe from per-method canned results (call log included). */
+/*
+  Build a stub probe from per-method canned results (call log included).
+*/
 function makeProbe(results: Partial<Record<AssetProbeMethod, AssetProbeResult | Error>>) {
   const calls: { url: string; method: AssetProbeMethod }[] = [];
   const probe = vi.fn(async ({ url, method }: { url: string; method: AssetProbeMethod }) => {

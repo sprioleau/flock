@@ -147,11 +147,13 @@ describe("rowBlockSchema", () => {
     expect(rowBlockSchema.safeParse({ ...validRow, parentId: "col_a1b2" }).success).toBe(false);
   });
 
-  // Rows carry all four padding sides and a background, like sections and
-  // columns. Both used to be rejected because RowBlockView only emitted its
-  // wrapping <td> for vertical padding; that wrapper now carries every side
-  // plus the background, so the schema no longer has a reason to be narrower
-  // than the surface the renderer can actually paint.
+  /*
+    Rows carry all four padding sides and a background, like sections and
+    columns. Both used to be rejected because RowBlockView only emitted its
+    wrapping <td> for vertical padding; that wrapper now carries every side
+    plus the background, so the schema no longer has a reason to be narrower
+    than the surface the renderer can actually paint.
+  */
   it("accepts padding on all four sides", () => {
     const row = {
       ...validRow,

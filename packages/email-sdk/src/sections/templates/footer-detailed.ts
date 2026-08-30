@@ -3,12 +3,12 @@ import type { TextMark } from "../../schema/text";
 import { createSectionComposer, paragraphNode, textDocOf, textRun } from "../build-helpers";
 import { defineSectionTemplate } from "../types";
 
-/**
- * `footer-detailed` — two-column footer over a divider: company identity on
- * the left, a stack of helpful links on the right, then a centered
- * unsubscribe/preferences line. Reference: react.email/components
- * "footer-with-two-columns".
- */
+/*
+  `footer-detailed` — two-column footer over a divider: company identity on
+  the left, a stack of helpful links on the right, then a centered
+  unsubscribe/preferences line. Reference: react.email/components
+  "footer-with-two-columns".
+*/
 
 const FOOTER_FONT_SIZE_MARK: TextMark = { type: "textStyle", attrs: { fontSize: "12px" } };
 
@@ -79,7 +79,9 @@ export const footerDetailedTemplate = defineSectionTemplate({
     listParams: [{ param: "links", minimumCount: 1 }],
     imageCount: 0,
   },
-  /* As `footer`: the gallery shows the address line, a real footer states only a real one. */
+  /*
+    As `footer`: the gallery shows the address line, a real footer states only a real one.
+  */
   previewParams: { address: "123 Market Street, Suite 400, San Francisco, CA" },
   build: ({ params, random }) => {
     const composer = createSectionComposer(random);
@@ -97,7 +99,9 @@ export const footerDetailedTemplate = defineSectionTemplate({
               ...(params.tagline !== undefined
                 ? [paragraphNode([textRun(params.tagline, [FOOTER_FONT_SIZE_MARK])])]
                 : []),
-              /* No address line at all rather than a street the sender is not on. */
+              /*
+                No address line at all rather than a street the sender is not on.
+              */
               ...(params.address !== undefined
                 ? [paragraphNode([textRun(params.address, [FOOTER_FONT_SIZE_MARK])])]
                 : []),

@@ -48,7 +48,9 @@ import type { BrandColor, BrandKit, BrandToneOfVoice, ThemeVariation } from "./b
 import { MOCK_BRAND_KIT } from "./brand-kit";
 import { FLOCK_LOGO_DATA_URI } from "./flock-logo-svg";
 
-/** The starter kit's name — also the string the panel's Starter badge guards. */
+/*
+  The starter kit's name — also the string the panel's Starter badge guards.
+*/
 export const DEFAULT_BRAND_KIT_NAME = "Flock";
 
 /*

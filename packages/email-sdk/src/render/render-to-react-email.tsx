@@ -18,15 +18,17 @@ import { LinkBlockView } from "./blocks/LinkBlockView";
 import { CodeBlockView } from "./blocks/CodeBlockView";
 import { SpacerBlockView } from "./blocks/SpacerBlockView";
 
-/**
- * Recursive traversal of the inflated tree: each block type renders through
- * its wrapper view with styles resolved from
- * DEFAULT_GLOBAL_STYLES → root.properties.globals → block overrides.
- */
+/*
+  Recursive traversal of the inflated tree: each block type renders through
+  its wrapper view with styles resolved from
+  DEFAULT_GLOBAL_STYLES → root.properties.globals → block overrides.
+*/
 interface RenderTreeNodeOptions {
   node: EmailTreeNode;
   globals: GlobalStyles | undefined;
-  /* Stamp each block's outermost element with its id — analysis renders only. */
+  /*
+    Stamp each block's outermost element with its id — analysis renders only.
+  */
   isBlockAnnotated: boolean;
 }
 
@@ -112,34 +114,34 @@ function renderTreeNode({ node, globals, isBlockAnnotated }: RenderTreeNodeOptio
   }
 }
 
-/**
- * Render a flat email document to a React Email element tree.
- *
- * Validates referential integrity first and throws DocumentIntegrityError
- * (with the structured error list) on failure, then inflates and traverses:
- * root → Html/Head/Body (emailBackgroundColor) → per-section full-width band
- * + centered Container (contentWidth) → rows/columns/leaves.
- */
+/*
+  Render a flat email document to a React Email element tree.
+
+  Validates referential integrity first and throws DocumentIntegrityError
+  (with the structured error list) on failure, then inflates and traverses:
+  root → Html/Head/Body (emailBackgroundColor) → per-section full-width band
+  + centered Container (contentWidth) → rows/columns/leaves.
+*/
 export interface RenderToReactEmailOptions {
-  /**
-   * Stamp every block's outermost element with `data-flock-block-id`.
-   *
-   * ANALYSIS ONLY. The pre-send compatibility check renders a second,
-   * throwaway copy of the email with this on so it can trace a finding about
-   * a `<td>` back to the block that produced it; the render that becomes the
-   * message never sets it, and so never carries the attribute. Default false.
-   */
+  /*
+    Stamp every block's outermost element with `data-flock-block-id`.
+
+    ANALYSIS ONLY. The pre-send compatibility check renders a second,
+    throwaway copy of the email with this on so it can trace a finding about
+    a `<td>` back to the block that produced it; the render that becomes the
+    message never sets it, and so never carries the attribute. Default false.
+  */
   isBlockAnnotated?: boolean;
-  /**
-   * The email's subject line, also emitted as the document `<title>` inside
-   * `<Head>` — a `<title>` is an accessibility requirement React Email leaves
-   * to the caller.
-   *
-   * Rendered only when present and non-empty after trimming; an absent, empty,
-   * or whitespace-only value leaves `<Head>` exactly as it is by default (the
-   * two React Email meta tags, no `<title>`), keeping the output byte-identical
-   * to a render that never knew about a subject.
-   */
+  /*
+    The email's subject line, also emitted as the document `<title>` inside
+    `<Head>` — a `<title>` is an accessibility requirement React Email leaves
+    to the caller.
+
+    Rendered only when present and non-empty after trimming; an absent, empty,
+    or whitespace-only value leaves `<Head>` exactly as it is by default (the
+    two React Email meta tags, no `<title>`), keeping the output byte-identical
+    to a render that never knew about a subject.
+  */
   subject?: string;
   /**
    * Preheader text — the preview a client shows next to the subject in the

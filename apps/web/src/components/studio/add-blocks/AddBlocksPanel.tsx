@@ -17,24 +17,26 @@ import { SavedSectionsManagerDialog } from "./SavedSectionsManagerDialog";
 import { SectionTemplatePreview } from "./SectionTemplatePreview";
 import { useClickToAdd } from "./use-click-to-add";
 
-/**
- * The Blocks tab of the right rail: the full add-blocks palette — Content and
- * Layout block tiles, then a three-entry Sections area (progressive
- * disclosure): "Empty section", "Section gallery", and "Saved" (the
- * session's saved reusable sections, managed in a modal). The gallery entry
- * drills into a second view of the panel (back affordance up top) listing
- * every catalog template by category — each tile draggable AND
- * click-to-add, exactly like every other palette item. A preview toggle
- * switches the gallery tiles to rendered miniatures styled with the active
- * draft's theme (SectionTemplatePreview); hovering an icon tile shows the
- * same miniature in a hover card. THE single add-blocks surface — the old
- * per-section ghost "+ Add block" menu is gone; only the doc-foot "Add
- * section" pill remains on the canvas.
- */
+/*
+  The Blocks tab of the right rail: the full add-blocks palette — Content and
+  Layout block tiles, then a three-entry Sections area (progressive
+  disclosure): "Empty section", "Section gallery", and "Saved" (the
+  session's saved reusable sections, managed in a modal). The gallery entry
+  drills into a second view of the panel (back affordance up top) listing
+  every catalog template by category — each tile draggable AND
+  click-to-add, exactly like every other palette item. A preview toggle
+  switches the gallery tiles to rendered miniatures styled with the active
+  draft's theme (SectionTemplatePreview); hovering an icon tile shows the
+  same miniature in a hover card. THE single add-blocks surface — the old
+  per-section ghost "+ Add block" menu is gone; only the doc-foot "Add
+  section" pill remains on the canvas.
+*/
 export function AddBlocksPanel() {
   const addPaletteItem = useClickToAdd();
   const [isGalleryOpen, setIsGalleryOpen] = useState(false);
-  // Lifted above the gallery view so the choice survives drilling in and out.
+  /*
+    Lifted above the gallery view so the choice survives drilling in and out.
+  */
   const [isPreviewModeOn, setIsPreviewModeOn] = useState(false);
   const [isSavedSectionsOpen, setIsSavedSectionsOpen] = useState(false);
 
@@ -77,7 +79,9 @@ export function AddBlocksPanel() {
             onClick={() => setIsGalleryOpen(true)}
             title="Browse ready-made sections by category."
             className={cn(
-              // min-height matches PaletteTile so the Sections row stays even.
+              /*
+                min-height matches PaletteTile so the Sections row stays even.
+              */
               "relative flex min-h-[3.75rem] cursor-pointer flex-col items-center justify-center gap-1.5 rounded-md border bg-background p-3 text-center transition-colors",
               "hover:border-ring/60 hover:bg-muted/60",
               "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
@@ -88,23 +92,29 @@ export function AddBlocksPanel() {
             <span className="line-clamp-1 max-w-full text-xs font-medium leading-tight text-foreground">
               Section gallery
             </span>
-            {/* Corner arrow (owner ask): reads as "takes you elsewhere in the
-                app", not a plain disclosure — tucked in the top-right corner,
-                clear of the centered icon+label even at narrow rail widths. */}
+            {/*
+              Corner arrow (owner ask): reads as "takes you elsewhere in the
+              app", not a plain disclosure — tucked in the top-right corner,
+              clear of the centered icon+label even at narrow rail widths.
+            */}
             <ArrowUpRightIcon
               className="absolute top-1 right-1 size-3 text-muted-foreground/70"
               aria-hidden
             />
           </button>
-          {/* Saved sections live behind a card like the gallery (owner ask):
-              same tile styling + corner arrow (reveals more UI, not
-              draggable). Opens the saved-sections manager modal. */}
+          {/*
+            Saved sections live behind a card like the gallery (owner ask):
+            same tile styling + corner arrow (reveals more UI, not
+            draggable). Opens the saved-sections manager modal.
+          */}
           <button
             type="button"
             onClick={() => setIsSavedSectionsOpen(true)}
             title="Reuse sections you saved from any draft."
             className={cn(
-              // min-height matches PaletteTile so the Sections row stays even.
+              /*
+                min-height matches PaletteTile so the Sections row stays even.
+              */
               "relative flex min-h-[3.75rem] cursor-pointer flex-col items-center justify-center gap-1.5 rounded-md border bg-background p-3 text-center transition-colors",
               "hover:border-ring/60 hover:bg-muted/60",
               "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
@@ -126,21 +136,23 @@ export function AddBlocksPanel() {
           onOpenChange={setIsSavedSectionsOpen}
         />
       </section>
-      {/* Last, under a rule of its own: everything above ADDS to the email,
-          this one empties it. Separated so it is never mistaken for a tile. */}
+      {/*
+        Last, under a rule of its own: everything above ADDS to the email,
+        this one empties it. Separated so it is never mistaken for a tile.
+      */}
       <div className="h-px bg-border" aria-hidden />
       <ClearContentAction />
     </div>
   );
 }
 
-/**
- * The drilled-in gallery: back affordance, the preview-mode switch, then the
- * catalog templates grouped by category. Icon tiles get a themed hover-card
- * miniature; preview mode swaps every tile body for the miniature itself.
- * Previews render lazily — nothing is instantiated until preview mode turns
- * on or a hover card opens.
- */
+/*
+  The drilled-in gallery: back affordance, the preview-mode switch, then the
+  catalog templates grouped by category. Icon tiles get a themed hover-card
+  miniature; preview mode swaps every tile body for the miniature itself.
+  Previews render lazily — nothing is instantiated until preview mode turns
+  on or a hover card opens.
+*/
 function SectionGalleryView({
   isPreviewModeOn,
   onTogglePreviewMode,
@@ -223,12 +235,12 @@ function SectionGalleryView({
   );
 }
 
-/**
- * Icon-mode gallery tile: the standard PaletteTile inside a hover-card
- * trigger whose tooltip shows the themed miniature. The trigger renders as a
- * plain wrapper div so the tile's own drag listeners and click-to-add stay
- * untouched; the card content only mounts while open (lazy).
- */
+/*
+  Icon-mode gallery tile: the standard PaletteTile inside a hover-card
+  trigger whose tooltip shows the themed miniature. The trigger renders as a
+  plain wrapper div so the tile's own drag listeners and click-to-add stay
+  untouched; the card content only mounts while open (lazy).
+*/
 function GalleryIconTile({
   item,
   onAdd,

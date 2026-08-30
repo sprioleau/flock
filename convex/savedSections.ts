@@ -10,22 +10,22 @@ import {
   validateSavedSectionSubtree,
 } from "./model/savedSections";
 
-/**
- * Saved reusable sections (schema.ts `savedSections`): a session's bookmarked
- * section subtrees — save from the section action row, re-insert from the
- * Blocks palette's Saved group. Session-scoped exactly like `assets` (the
- * demoable-identity model): every canvas/draft of the session reads one list.
- *
- * The subtree is stored VERBATIM (original ids, restoreBlocks shape, root
- * first). Fresh ids are minted client-side at INSERT time — the
- * duplicate-block pattern — so a saved section can be inserted into any
- * document any number of times without id collisions, and the stored row
- * never needs rewriting.
- *
- * OWNERSHIP: `sessionId` is a claim, not a credential. Every read and write
- * here is keyed by resolveOwnerId (convex/authIdentity.ts), which prefers the
- * caller's verified identity and ignores the argument once one exists.
- */
+/*
+  Saved reusable sections (schema.ts `savedSections`): a session's bookmarked
+  section subtrees — save from the section action row, re-insert from the
+  Blocks palette's Saved group. Session-scoped exactly like `assets` (the
+  demoable-identity model): every canvas/draft of the session reads one list.
+
+  The subtree is stored VERBATIM (original ids, restoreBlocks shape, root
+  first). Fresh ids are minted client-side at INSERT time — the
+  duplicate-block pattern — so a saved section can be inserted into any
+  document any number of times without id collisions, and the stored row
+  never needs rewriting.
+
+  OWNERSHIP: `sessionId` is a claim, not a credential. Every read and write
+  here is keyed by resolveOwnerId (convex/authIdentity.ts), which prefers the
+  caller's verified identity and ignores the argument once one exists.
+*/
 
 const savedSectionRowValidator = v.object({
   _id: v.id("savedSections"),
@@ -42,11 +42,11 @@ const savedSectionRowValidator = v.object({
   updatedAtMs: v.number(),
 });
 
-/**
- * Load a row and require that the CALLER owns it (shared by all row ops).
- * Takes the claimed session id and resolves it — never trust the argument on
- * its own.
- */
+/*
+  Load a row and require that the CALLER owns it (shared by all row ops).
+  Takes the claimed session id and resolves it — never trust the argument on
+  its own.
+*/
 async function requireOwnedRow(
   ctx: MutationCtx,
   args: { sessionId: string; savedSectionId: Id<"savedSections"> },
@@ -62,17 +62,21 @@ async function requireOwnedRow(
   return row;
 }
 
-/**
- * Save one section subtree into the session's list. The blocks payload is
- * validated with the email-sdk Zod schemas + a subtree-closure check BEFORE
- * the row is written (the v.any() column's runtime guard — house policy).
- */
+/*
+  Save one section subtree into the session's list. The blocks payload is
+  validated with the email-sdk Zod schemas + a subtree-closure check BEFORE
+  the row is written (the v.any() column's runtime guard — house policy).
+*/
 export const save = mutation({
   args: {
     sessionId: v.string(),
-    /** Display name; seeded to "Saved section" when absent/blank. */
+    /*
+      Display name; seeded to "Saved section" when absent/blank.
+    */
     name: v.optional(v.string()),
-    /** The section's flat subtree, root first (restoreBlocks shape). */
+    /*
+      The section's flat subtree, root first (restoreBlocks shape).
+    */
     blocks: v.array(v.any()),
   },
   returns: v.object({ savedSectionId: v.id("savedSections") }),
@@ -95,19 +99,21 @@ export const save = mutation({
   },
 });
 
-/**
- * The session's saved sections, newest first, bounded (see
- * MAX_SAVED_SECTIONS_LISTED_PER_SESSION). Rows carry the full blocks payload
- * so insert is one local op — no second fetch at click time.
- */
+/*
+  The session's saved sections, newest first, bounded (see
+  MAX_SAVED_SECTIONS_LISTED_PER_SESSION). Rows carry the full blocks payload
+  so insert is one local op — no second fetch at click time.
+*/
 export const listForSession = query({
   args: { sessionId: v.string() },
   returns: v.array(savedSectionRowValidator),
   handler: async (ctx, args) => {
-    // Runs on mount for every visitor, so "nobody is signed in" needs a real
-    // answer rather than an exception — under strict identity that state is
-    // normal, not a glitch. An empty library is the truthful one; refusing to
-    // name an owner from the client-supplied session id is the point.
+    /*
+      Runs on mount for every visitor, so "nobody is signed in" needs a real
+      answer rather than an exception — under strict identity that state is
+      normal, not a glitch. An empty library is the truthful one; refusing to
+      name an owner from the client-supplied session id is the point.
+    */
     const ownerId = await resolveOwnerIdOrNull(ctx, { claimedSessionId: args.sessionId });
     if (ownerId === null) {
       return [];
@@ -120,7 +126,9 @@ export const listForSession = query({
   },
 });
 
-/** One row by id, session-checked (the enrichment route's read). Null when gone. */
+/*
+  One row by id, session-checked (the enrichment route's read). Null when gone.
+*/
 export const getForSession = query({
   args: { sessionId: v.string(), savedSectionId: v.id("savedSections") },
   returns: v.union(savedSectionRowValidator, v.null()),
@@ -134,7 +142,9 @@ export const getForSession = query({
   },
 });
 
-/** Rename one saved section (manager modal). Blank names reseed the default. */
+/*
+  Rename one saved section (manager modal). Blank names reseed the default.
+*/
 export const rename = mutation({
   args: { sessionId: v.string(), savedSectionId: v.id("savedSections"), name: v.string() },
   returns: v.null(),
@@ -148,11 +158,11 @@ export const rename = mutation({
   },
 });
 
-/**
- * Record one insert (palette group, manager modal, or agent scaffold) —
- * `useCount`/`lastUsedAtMs` feed the compose context's TIEBREAKER stat.
- * Deliberately does NOT touch updatedAtMs: usage is not an edit.
- */
+/*
+  Record one insert (palette group, manager modal, or agent scaffold) —
+  `useCount`/`lastUsedAtMs` feed the compose context's TIEBREAKER stat.
+  Deliberately does NOT touch updatedAtMs: usage is not an edit.
+*/
 export const recordUse = mutation({
   args: { sessionId: v.string(), savedSectionId: v.id("savedSections") },
   returns: v.null(),
@@ -166,12 +176,12 @@ export const recordUse = mutation({
   },
 });
 
-/**
- * Patch the async LLM enrichment (useWhen + description) onto a row — the
- * fails-soft tail of a save (/api/saved-sections/enrich). Truncation is the
- * storage backstop (ENRICHMENT_TEXT_CAPS); length guidance lives in the
- * generation prompt.
- */
+/*
+  Patch the async LLM enrichment (useWhen + description) onto a row — the
+  fails-soft tail of a save (/api/saved-sections/enrich). Truncation is the
+  storage backstop (ENRICHMENT_TEXT_CAPS); length guidance lives in the
+  generation prompt.
+*/
 export const applyEnrichment = mutation({
   args: {
     sessionId: v.string(),
@@ -194,7 +204,9 @@ export const applyEnrichment = mutation({
   },
 });
 
-/** Delete one saved section. Only the owning session may remove its rows. */
+/*
+  Delete one saved section. Only the owning session may remove its rows.
+*/
 export const remove = mutation({
   args: { sessionId: v.string(), savedSectionId: v.id("savedSections") },
   returns: v.null(),
@@ -202,7 +214,7 @@ export const remove = mutation({
     const ownerId = await resolveOwnerId(ctx, { claimedSessionId: args.sessionId });
     const row = await ctx.db.get(args.savedSectionId);
     if (row === null) {
-      return null; // already gone — deletes are idempotent
+      return null; /* already gone — deletes are idempotent */
     }
     if (row.sessionId !== ownerId) {
       throw new ConvexError("That saved section belongs to a different session.");

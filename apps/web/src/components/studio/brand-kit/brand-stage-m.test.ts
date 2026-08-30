@@ -7,17 +7,17 @@ import type { Doc, Id } from "@convex/_generated/dataModel";
 import schema from "@convex/schema";
 import { MOCK_BRAND_KIT } from "@/lib/brand-kit";
 
-/**
- * Brand-kit Stage M backend (docs/proposals/brand-kit-architecture.md §3–§8,
- * owner decisions 1–4): canvas binding restyles nothing; propagation is one
- * per-draft batch through the one history spine with PRESERVE-VARIATION
- * semantics; the staleness query composes payload-equality with the advisory
- * pointer; role:"logo" images re-source to the CONFIRMED logo only; and the
- * Stage-S storage deletes became registry-aware (registered files survive).
- *
- * Runs the REAL Convex functions against convex-test's in-memory backend.
- * Kits are seeded deterministically from MOCK_BRAND_KIT (validated payloads).
- */
+/*
+  Brand-kit Stage M backend (docs/proposals/brand-kit-architecture.md §3–§8,
+  owner decisions 1–4): canvas binding restyles nothing; propagation is one
+  per-draft batch through the one history spine with PRESERVE-VARIATION
+  semantics; the staleness query composes payload-equality with the advisory
+  pointer; role:"logo" images re-source to the CONFIRMED logo only; and the
+  Stage-S storage deletes became registry-aware (registered files survive).
+
+  Runs the REAL Convex functions against convex-test's in-memory backend.
+  Kits are seeded deterministically from MOCK_BRAND_KIT (validated payloads).
+*/
 
 const modules = import.meta.glob([
   "../../../../../../convex/**/*.{ts,js}",
@@ -33,19 +33,25 @@ function createBackend() {
 
 type Backend = ReturnType<typeof createBackend>;
 
-/** A complete, WCAG-passing variation payload (from the validated mock kit). */
+/*
+  A complete, WCAG-passing variation payload (from the validated mock kit).
+*/
 function mockVariationGlobals(index: number): Record<string, unknown> {
   return { ...MOCK_BRAND_KIT.variations[index]!.globals };
 }
 
-/** Deterministic kit input: mock variations under stable test-owned ids. */
+/*
+  Deterministic kit input: mock variations under stable test-owned ids.
+*/
 function buildKitInput({
   variationCount = 2,
   spacingBump = 0,
   logoUrl,
 }: {
   variationCount?: number;
-  /** Bump baseSpacing to change variation payloads WITHOUT touching contrast. */
+  /*
+    Bump baseSpacing to change variation payloads WITHOUT touching contrast.
+  */
   spacingBump?: number;
   logoUrl?: string;
 } = {}) {
@@ -115,7 +121,9 @@ async function storePngFile(t: Backend, bytes: number[]): Promise<Id<"_storage">
   });
 }
 
-/** Confirm the kit's logo suggestion into storage (the route's mutation half). */
+/*
+  Confirm the kit's logo suggestion into storage (the route's mutation half).
+*/
 async function confirmLogo(
   t: Backend,
   { sourceUrl }: { sourceUrl: string },
@@ -157,7 +165,9 @@ describe("canvas brand binding", () => {
     const resolved = await t.query(api.brandKits.getBrandKitForCanvas, { canvasId });
     expect(resolved?.source).toBe("binding");
     expect(resolved?.kit.name).toBe("Acme");
-    // Unbind → falls back to the canvas creator-session's kit (legacy chain).
+    /*
+      Unbind → falls back to the canvas creator-session's kit (legacy chain).
+    */
     await t.mutation(api.brandKits.unbindCanvasBrandKit, { canvasId });
     const fallback = await t.query(api.brandKits.getBrandKitForCanvas, { canvasId });
     expect(fallback?.source).toBe("session");
@@ -183,13 +193,17 @@ describe("applyBrandToDocuments — the explicit propagation", () => {
       const expectedBatchId = `brand:${kitId}:r1:${documentId}`;
       const ops = await getAllOperations(t, documentId);
       const brandOps = ops.filter((op) => op.batchId === expectedBatchId);
-      expect(brandOps).toHaveLength(1); // exactly one applyTheme, one batch
+      expect(brandOps).toHaveLength(1); /* exactly one applyTheme, one batch */
       expect(brandOps[0]?.author).toBe("user");
       expect(brandOps[0]?.authorId).toBe(SESSION_ID);
-      // Never-applied drafts get the kit's FIRST variation.
+      /*
+        Never-applied drafts get the kit's FIRST variation.
+      */
       expect(await getRootGlobals(t, documentId)).toEqual(buildKitInput().variations[0]!.globals);
-      // Theme link written in the same transaction, carrying the §14.5a
-      // baseline snapshot the per-property override diff is measured against.
+      /*
+        Theme link written in the same transaction, carrying the §14.5a
+        baseline snapshot the per-property override diff is measured against.
+      */
       const row = await getDocumentRow(t, documentId);
       expect(row.brand).toEqual({
         kitId,
@@ -211,8 +225,10 @@ describe("applyBrandToDocuments — the explicit propagation", () => {
       documentIds: [draft1, draft2],
       sessionId: SESSION_ID,
     });
-    // draft2 moves to "Midnight" the way the theme menu does: an applyTheme op
-    // plus the advisory pointer record.
+    /*
+      draft2 moves to "Midnight" the way the theme menu does: an applyTheme op
+      plus the advisory pointer record.
+    */
     const midnightGlobals = buildKitInput().variations[1]!.globals;
     await t.mutation(api.documents.applyOperations, {
       documentId: draft2,
@@ -224,7 +240,9 @@ describe("applyBrandToDocuments — the explicit propagation", () => {
       variationId: "midnight",
     });
 
-    // Kit revision 2: both variation payloads change (baseSpacing bump).
+    /*
+      Kit revision 2: both variation payloads change (baseSpacing bump).
+    */
     const updatedKit = buildKitInput({ spacingBump: 4 });
     await saveKit(t, updatedKit);
     const statusBefore = await t.query(api.brandKits.getCanvasBrandStatus, { canvasId });
@@ -238,12 +256,16 @@ describe("applyBrandToDocuments — the explicit propagation", () => {
       documentIds: [draft1, draft2],
       sessionId: SESSION_ID,
     });
-    // Midnight stays midnight (updated payload); classic-light stays classic-light.
+    /*
+      Midnight stays midnight (updated payload); classic-light stays classic-light.
+    */
     expect(await getRootGlobals(t, draft1)).toEqual(updatedKit.variations[0]!.globals);
     expect(await getRootGlobals(t, draft2)).toEqual(updatedKit.variations[1]!.globals);
     expect((await getDocumentRow(t, draft2)).brand?.variationId).toBe("midnight");
 
-    // Kit revision 3 drops "Midnight" entirely → draft2 falls back to theme 1.
+    /*
+      Kit revision 3 drops "Midnight" entirely → draft2 falls back to theme 1.
+    */
     const shrunkKit = buildKitInput({ variationCount: 1, spacingBump: 8 });
     await saveKit(t, shrunkKit);
     await t.mutation(api.brandKits.applyBrandToDocuments, {
@@ -256,8 +278,10 @@ describe("applyBrandToDocuments — the explicit propagation", () => {
       kitId,
       revision: 3,
       variationId: "classic-light",
-      // The baseline moves to the theme just applied: from here the draft's
-      // overrides are measured against THIS payload, not the vanished one.
+      /*
+        The baseline moves to the theme just applied: from here the draft's
+        overrides are measured against THIS payload, not the vanished one.
+      */
       baselineGlobals: shrunkKit.variations[0]!.globals,
     });
   });
@@ -292,8 +316,10 @@ describe("applyBrandToDocuments — the explicit propagation", () => {
     const { documentId, canvasId } = await createDraft(t);
     const { kitId } = await bindKit(t, canvasId);
 
-    // A role-marked image block (the palette's Logo preset shape) inside the
-    // starter doc's first section.
+    /*
+      A role-marked image block (the palette's Logo preset shape) inside the
+      starter doc's first section.
+    */
     const payload = await t.query(api.documents.getDocument, { documentId });
     const sectionId = Object.values(payload!.doc as Record<string, { id: string; type: string }>)
       .find((block) => block.type === "section")!.id;
@@ -318,7 +344,9 @@ describe("applyBrandToDocuments — the explicit propagation", () => {
     });
     expect(JSON.stringify(!applied.isOk ? applied : "")).toBe('""');
 
-    // Unconfirmed logo (suggestion only): propagation must NOT touch the image.
+    /*
+      Unconfirmed logo (suggestion only): propagation must NOT touch the image.
+    */
     await t.mutation(api.brandKits.applyBrandToDocuments, {
       canvasId,
       documentIds: [documentId],
@@ -329,7 +357,9 @@ describe("applyBrandToDocuments — the explicit propagation", () => {
       (afterUnconfirmed!.doc[logoBlockId] as { properties: { src: string } }).properties.src,
     ).toBe("https://placehold.co/240x80");
 
-    // Confirm the logo (revision bumps) and propagate again.
+    /*
+      Confirm the logo (revision bumps) and propagate again.
+    */
     const { url: confirmedUrl } = await confirmLogo(t, { sourceUrl });
     await t.mutation(api.brandKits.applyBrandToDocuments, {
       canvasId,
@@ -343,8 +373,10 @@ describe("applyBrandToDocuments — the explicit propagation", () => {
     expect(logoBlock.properties.src).toBe(confirmedUrl);
     expect(logoBlock.properties.alt).toBe("Acme logo");
     expect(logoBlock.properties.role).toBe("logo");
-    // The re-source rode the same per-draft batch as the pointer refresh:
-    // exactly one brand batch exists for revision 2 (r2 after the confirm bump).
+    /*
+      The re-source rode the same per-draft batch as the pointer refresh:
+      exactly one brand batch exists for revision 2 (r2 after the confirm bump).
+    */
     const ops = await getAllOperations(t, documentId);
     const r2BatchIds = new Set(
       ops
@@ -369,7 +401,9 @@ describe("getCanvasBrandStatus — pill states", () => {
     const currentStatus = await t.query(api.brandKits.getCanvasBrandStatus, { canvasId });
     expect(currentStatus.drafts[0]?.state).toBe("current");
 
-    // Revision bump (payload change) → the pill arms.
+    /*
+      Revision bump (payload change) → the pill arms.
+    */
     await saveKit(t, buildKitInput({ spacingBump: 4 }));
     const staleStatus = await t.query(api.brandKits.getCanvasBrandStatus, { canvasId });
     expect(staleStatus.drafts[0]?.state).toBe("outdated");
@@ -382,9 +416,11 @@ describe("getCanvasBrandStatus — pill states", () => {
     const updatedStatus = await t.query(api.brandKits.getCanvasBrandStatus, { canvasId });
     expect(updatedStatus.drafts[0]?.state).toBe("current");
 
-    // A deliberate hand-edit away from the brand: OVERRIDDEN (§14.5a — the
-    // link is intact, one property is the user's), never "outdated". The
-    // parent theme and the exact overridden property come back with it.
+    /*
+      A deliberate hand-edit away from the brand: OVERRIDDEN (§14.5a — the
+      link is intact, one property is the user's), never "outdated". The
+      parent theme and the exact overridden property come back with it.
+    */
     const customGlobals = {
       ...buildKitInput({ spacingBump: 4 }).variations[0]!.globals,
       baseSpacing: 99,
@@ -416,7 +452,9 @@ describe("registry-aware kit storage lifecycle (Stage-S conversion)", () => {
     const sourceUrl = "https://example.com/logo.png";
     await saveKit(t, buildKitInput({ logoUrl: sourceUrl }));
     const { storageId: registeredId } = await confirmLogo(t, { sourceUrl });
-    // The confirm-asset route registers every confirmed binary — simulate it.
+    /*
+      The confirm-asset route registers every confirmed binary — simulate it.
+    */
     await t.mutation(api.assets.register, {
       sessionId: SESSION_ID,
       storageId: registeredId,
@@ -424,19 +462,25 @@ describe("registry-aware kit storage lifecycle (Stage-S conversion)", () => {
     });
 
     await t.mutation(api.brandKits.removeBrandKitAsset, { sessionId: SESSION_ID, kind: "logo" });
-    // Registered → retained: the Library still renders it.
+    /*
+      Registered → retained: the Library still renders it.
+    */
     const registeredUrl = await t.run(async (ctx) => ctx.storage.getUrl(registeredId));
     expect(registeredUrl).not.toBeNull();
     const library = await t.query(api.assets.listForSession, { sessionId: SESSION_ID });
     expect(library.some((asset) => asset.storageId === registeredId)).toBe(true);
 
-    // An UNREGISTERED confirmed file keeps the old immediate delete.
+    /*
+      An UNREGISTERED confirmed file keeps the old immediate delete.
+    */
     await saveKit(t, buildKitInput({ logoUrl: sourceUrl, spacingBump: 4 }));
     const { storageId: unregisteredId } = await confirmLogo(t, { sourceUrl });
     await t.mutation(api.brandKits.clearBrandKit, { sessionId: SESSION_ID });
     const unregisteredUrl = await t.run(async (ctx) => ctx.storage.getUrl(unregisteredId));
     expect(unregisteredUrl).toBeNull();
-    // The registered file survives clearBrandKit too.
+    /*
+      The registered file survives clearBrandKit too.
+    */
     expect(await t.run(async (ctx) => ctx.storage.getUrl(registeredId))).not.toBeNull();
   });
 });

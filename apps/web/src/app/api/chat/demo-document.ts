@@ -43,8 +43,10 @@ export async function resolveIsDemoDocument({
   }
   const convexUrl = process.env.NEXT_PUBLIC_CONVEX_URL;
   if (convexUrl === undefined) {
-    /* No Convex configured at all is a local/test shape, not an outage: there
-       are no demo documents to protect because there are no documents. */
+    /*
+      No Convex configured at all is a local/test shape, not an outage: there
+      are no demo documents to protect because there are no documents.
+    */
     return false;
   }
   try {

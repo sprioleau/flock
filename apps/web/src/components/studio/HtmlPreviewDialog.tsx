@@ -30,7 +30,9 @@ export type RenderState =
   | { status: "ok"; render: RenderResponseBody }
   | { status: "error"; message: string };
 
-/** How long the "Copied" confirmation stays up before the button resets. */
+/*
+  How long the "Copied" confirmation stays up before the button resets.
+*/
 const COPY_CONFIRMATION_MS = 2000;
 
 type CopyStatus = "idle" | "copied" | "failed";
@@ -68,8 +70,10 @@ export function HtmlPreviewDialog({ isIconTrigger = false }: { isIconTrigger?: b
   const copyResetRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const sendControl = useSendTestEmail();
 
-  // The confirmation is the only thing on a timer; it must not outlive the
-  // dialog (or fire into an unmounted tree) if the user closes it mid-glow.
+  /*
+    The confirmation is the only thing on a timer; it must not outlive the
+    dialog (or fire into an unmounted tree) if the user closes it mid-glow.
+  */
   useEffect(() => {
     return () => {
       if (copyResetRef.current !== null) {
@@ -102,7 +106,9 @@ export function HtmlPreviewDialog({ isIconTrigger = false }: { isIconTrigger?: b
       startRender();
       sendControl.prepareToSend();
     } else {
-      // Orphan both in-flight responses so neither can set state after close.
+      /*
+        Orphan both in-flight responses so neither can set state after close.
+      */
       requestIdRef.current += 1;
       sendControl.discardInFlightSend();
     }
@@ -110,8 +116,10 @@ export function HtmlPreviewDialog({ isIconTrigger = false }: { isIconTrigger?: b
 
   const selectView = (viewId: PreviewViewId) => {
     setActiveViewId(viewId);
-    // Each tab owns its own Copy button; a stale "Copied" on arrival would be
-    // confirming something the user never did here.
+    /*
+      Each tab owns its own Copy button; a stale "Copied" on arrival would be
+      confirming something the user never did here.
+    */
     setCopyStatus("idle");
   };
 

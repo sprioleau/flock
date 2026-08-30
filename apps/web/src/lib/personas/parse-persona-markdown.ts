@@ -1,17 +1,21 @@
-/**
- * Display-side parsing of the persona markdown format: a frontmatter-ish
- * header (--- fenced key: value lines) + freeform behavior text. The Convex
- * row's typed fields are the RUNTIME source of truth (name, color, cooldown);
- * the frontmatter only feeds display strings the row doesn't carry — the
- * picker's one-line `description` — and the body preview. Deliberately not a
- * YAML parser: one failure-proof line scan (proposal §4.5 — frontmatter is
- * the interchange face, never parsed inside mutations).
- */
+/*
+  Display-side parsing of the persona markdown format: a frontmatter-ish
+  header (--- fenced key: value lines) + freeform behavior text. The Convex
+  row's typed fields are the RUNTIME source of truth (name, color, cooldown);
+  the frontmatter only feeds display strings the row doesn't carry — the
+  picker's one-line `description` — and the body preview. Deliberately not a
+  YAML parser: one failure-proof line scan (proposal §4.5 — frontmatter is
+  the interchange face, never parsed inside mutations).
+*/
 
 export interface ParsedPersonaMarkdown {
-  /** One-liner for the picker (frontmatter `description:`), or null. */
+  /*
+    One-liner for the picker (frontmatter `description:`), or null.
+  */
   description: string | null;
-  /** The freeform behavior text below the frontmatter fence. */
+  /*
+    The freeform behavior text below the frontmatter fence.
+  */
   body: string;
 }
 
@@ -40,20 +44,20 @@ export function parsePersonaMarkdown(personaMarkdown: string): ParsedPersonaMark
   return { description, body };
 }
 
-/**
- * Size cap on a persona's markdown (~8 KB). Mirrors the server-side cap in
- * convex/personas.ts (updatePersonaMarkdown) — the client checks first for a
- * friendly inline message; the mutation is the trust boundary.
- */
+/*
+  Size cap on a persona's markdown (~8 KB). Mirrors the server-side cap in
+  convex/personas.ts (updatePersonaMarkdown) — the client checks first for a
+  friendly inline message; the mutation is the trust boundary.
+*/
 export const MAX_PERSONA_MARKDOWN_LENGTH = 8192;
 
-/**
- * Pre-save validation for the in-app persona editor. Returns a friendly
- * error message, or null when the markdown is saveable. Deliberately the
- * same checks as the mutation: non-empty, size-capped, and — when the text
- * opens with a frontmatter fence — a closed fence with a non-empty behavior
- * body below it (the body is the persona's actual prompt layer).
- */
+/*
+  Pre-save validation for the in-app persona editor. Returns a friendly
+  error message, or null when the markdown is saveable. Deliberately the
+  same checks as the mutation: non-empty, size-capped, and — when the text
+  opens with a frontmatter fence — a closed fence with a non-empty behavior
+  body below it (the body is the persona's actual prompt layer).
+*/
 export function validatePersonaMarkdown(personaMarkdown: string): string | null {
   const trimmed = personaMarkdown.trim();
   if (trimmed.length === 0) {
@@ -65,8 +69,10 @@ export function validatePersonaMarkdown(personaMarkdown: string): string | null 
   if (trimmed.startsWith(FRONTMATTER_FENCE)) {
     const closeIndex = trimmed.indexOf(`\n${FRONTMATTER_FENCE}`, FRONTMATTER_FENCE.length);
     if (closeIndex === -1) {
-      // User-facing copy (persona editor): "settings header", never the
-      // internal term "frontmatter".
+      /*
+        User-facing copy (persona editor): "settings header", never the
+        internal term "frontmatter".
+      */
       return "The settings header starts with --- but is never closed with a matching --- line.";
     }
     const body = trimmed.slice(closeIndex + 1 + FRONTMATTER_FENCE.length).trim();
@@ -77,53 +83,87 @@ export function validatePersonaMarkdown(personaMarkdown: string): string | null 
   return null;
 }
 
-// ---------------------------------------------------------------------------
-// Structured form view over the markdown (the in-app persona editor)
-// ---------------------------------------------------------------------------
+/*
+  ---------------------------------------------------------------------------
+  Structured form view over the markdown (the in-app persona editor)
+  ---------------------------------------------------------------------------
+*/
 //
-// The owner's editing model: users edit LABELED FORM FIELDS, never raw
-// markdown — but markdown stays the storage/interchange format (marketplace
-// portability, §4.5). So the form is a pure VIEW: parsePersonaMarkdownToForm
-// maps markdown → fields, serializePersonaForm maps fields → markdown, and
-// the pair is byte-lossless for the seeded built-ins (unit-tested), because
-// persona markdown is a prompt-cache layer — an untouched form must not
-// re-serialize to different bytes. Content the form can't map degrades
-// gracefully: unknown frontmatter lines ride along verbatim (the "Advanced"
-// field), and structurally unparseable markdown falls back to raw editing.
+/*
+  The owner's editing model: users edit LABELED FORM FIELDS, never raw
+  markdown — but markdown stays the storage/interchange format (marketplace
+  portability, §4.5). So the form is a pure VIEW: parsePersonaMarkdownToForm
+  maps markdown → fields, serializePersonaForm maps fields → markdown, and
+  the pair is byte-lossless for the seeded built-ins (unit-tested), because
+  persona markdown is a prompt-cache layer — an untouched form must not
+  re-serialize to different bytes. Content the form can't map degrades
+  gracefully: unknown frontmatter lines ride along verbatim (the "Advanced"
+  field), and structurally unparseable markdown falls back to raw editing.
+*/
 
-/** One labeled behavior section ("What you watch for:" + its lines). */
+/*
+  One labeled behavior section ("What you watch for:" + its lines).
+*/
 export interface PersonaBodySection {
-  /** Heading text WITHOUT the trailing colon ("What you watch for"). */
+  /*
+    Heading text WITHOUT the trailing colon ("What you watch for").
+  */
   heading: string;
-  /** The section's text below the heading (blank-edge trimmed). */
+  /*
+    The section's text below the heading (blank-edge trimmed).
+  */
   content: string;
 }
 
-/** The form's model — a lossless structured view over one persona markdown. */
+/*
+  The form's model — a lossless structured view over one persona markdown.
+*/
 export interface PersonaFormModel {
-  /** Frontmatter display name, or null when the markdown carries none. */
+  /*
+    Frontmatter display name, or null when the markdown carries none.
+  */
   name: string | null;
-  /** Frontmatter accent color (quotes stripped), or null. */
+  /*
+    Frontmatter accent color (quotes stripped), or null.
+  */
   color: string | null;
-  /** Frontmatter cooldown seconds, or null. */
+  /*
+    Frontmatter cooldown seconds, or null.
+  */
   cooldownSeconds: number | null;
-  /** Frontmatter one-line description, or null. */
+  /*
+    Frontmatter one-line description, or null.
+  */
   description: string | null;
-  /** Behavior text before the first labeled section ("Behavior guidelines"). */
+  /*
+    Behavior text before the first labeled section ("Behavior guidelines").
+  */
   intro: string;
-  /** Labeled behavior sections, in document order. */
+  /*
+    Labeled behavior sections, in document order.
+  */
   sections: PersonaBodySection[];
-  /** Frontmatter lines the form can't map — round-tripped verbatim. */
+  /*
+    Frontmatter lines the form can't map — round-tripped verbatim.
+  */
   unmappedFrontmatterLines: string[];
-  /** Whether the source markdown had a frontmatter block at all. */
+  /*
+    Whether the source markdown had a frontmatter block at all.
+  */
   hasFrontmatter: boolean;
-  /** False ⇒ structurally unparseable; edit rawMarkdown directly instead. */
+  /*
+    False ⇒ structurally unparseable; edit rawMarkdown directly instead.
+  */
   isStructured: boolean;
-  /** The original markdown (the fallback editing surface). */
+  /*
+    The original markdown (the fallback editing surface).
+  */
   rawMarkdown: string;
 }
 
-/** Frontmatter keys the form maps to dedicated fields. */
+/*
+  Frontmatter keys the form maps to dedicated fields.
+*/
 const KNOWN_FRONTMATTER_KEYS = new Set([
   "name",
   "color",
@@ -136,12 +176,12 @@ function stripEdgeQuotes(value: string): string {
   return value.replace(/^["']|["']$/g, "");
 }
 
-/**
- * A body line opens a labeled section when it sits at column 0 (not a list
- * item or wrapped continuation — those are indented or dash-prefixed), ends
- * with a colon, and follows a blank line (or opens the body). This is the
- * built-ins' own convention ("What you watch for:", "How you respond:").
- */
+/*
+  A body line opens a labeled section when it sits at column 0 (not a list
+  item or wrapped continuation — those are indented or dash-prefixed), ends
+  with a colon, and follows a blank line (or opens the body). This is the
+  built-ins' own convention ("What you watch for:", "How you respond:").
+*/
 function checkIsSectionHeading({ lines, index }: { lines: string[]; index: number }): boolean {
   const line = lines[index]!;
   if (!/^[^\s-].{0,78}:$/.test(line)) {
@@ -162,7 +202,9 @@ function trimBlankEdges(lines: string[]): string {
   return lines.slice(start, end).join("\n");
 }
 
-/** Parse persona markdown into the structured form model (never throws). */
+/*
+  Parse persona markdown into the structured form model (never throws).
+*/
 export function parsePersonaMarkdownToForm(personaMarkdown: string): PersonaFormModel {
   const model: PersonaFormModel = {
     name: null,
@@ -183,7 +225,9 @@ export function parsePersonaMarkdownToForm(personaMarkdown: string): PersonaForm
   if (trimmed.startsWith(FRONTMATTER_FENCE)) {
     const closeIndex = trimmed.indexOf(`\n${FRONTMATTER_FENCE}`, FRONTMATTER_FENCE.length);
     if (closeIndex === -1) {
-      // Unclosed fence: structurally unparseable — raw fallback only.
+      /*
+        Unclosed fence: structurally unparseable — raw fallback only.
+      */
       return model;
     }
     model.hasFrontmatter = true;
@@ -213,8 +257,10 @@ export function parsePersonaMarkdownToForm(personaMarkdown: string): PersonaForm
           model.cooldownSeconds = parsedSeconds;
         }
       } else if (key === "capabilities" && value !== "advisory") {
-        // Canonical serialization always re-emits `capabilities: advisory`
-        // (the schema literal) — preserve a divergent line rather than eat it.
+        /*
+          Canonical serialization always re-emits `capabilities: advisory`
+          (the schema literal) — preserve a divergent line rather than eat it.
+        */
         model.unmappedFrontmatterLines.push(line);
       }
     }
@@ -238,13 +284,13 @@ export function parsePersonaMarkdownToForm(personaMarkdown: string): PersonaForm
   return model;
 }
 
-/**
- * Serialize the form model back to canonical persona markdown. Deterministic
- * and byte-stable for unchanged built-ins: fixed frontmatter field order
- * (name, color, capabilities, cooldownSeconds, description, then unmapped
- * lines), one blank line between blocks. Unstructured models pass their raw
- * markdown through untouched.
- */
+/*
+  Serialize the form model back to canonical persona markdown. Deterministic
+  and byte-stable for unchanged built-ins: fixed frontmatter field order
+  (name, color, capabilities, cooldownSeconds, description, then unmapped
+  lines), one blank line between blocks. Unstructured models pass their raw
+  markdown through untouched.
+*/
 export function serializePersonaForm(model: PersonaFormModel): string {
   if (!model.isStructured) {
     return model.rawMarkdown;

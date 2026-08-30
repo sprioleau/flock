@@ -28,42 +28,42 @@ import { StudioShortcuts } from "./shortcuts/StudioShortcuts";
 import { StudioToolbar } from "./StudioToolbar";
 import { StudioTour } from "./tour/StudioTour";
 
-/**
- * The /studio product surface: AI chat panel | toolbar + canvas | property
- * panel slot — now gated on a live Convex document.
- *
- * Document lifecycle: `/studio?doc=<id>` loads that document (the id is the
- * capability). No param → create one for this browser's anonymous session
- * (seeded with the designed starter email, "Draft 1") and replaceState the
- * URL so a reload restores
- * it. An invalid or deleted id → a clean error state with a create-new
- * action. The reactive `getDocumentByKey` subscription is THE live feed:
- * every snapshot (own ops confirming, other tabs, agent edits) flows into
- * the store, which rebases its pending local overlay on top.
- *
- * Draft ACTIVATION (§10.2 frames UX — clicking a sibling frame, the selector
- * dropdown, or a nav arrow): pushes the new ?doc= via the native history API
- * (Next syncs useSearchParams with pushState — a SHALLOW navigation, no
- * server round-trip, back/forward walks drafts), the query re-subscribes,
- * and when the new draft's first snapshot arrives its store is connected +
- * made ACTIVE in ONE synchronous batch — the shell (chat panel, presence
- * provider) never unmounts and no loading gate flashes; the active frame
- * simply moves. "Last frame clicked" = the store-connected document = what
- * the preview toggle, HTML export, history, presence, and chat all target.
- * `isDocumentReady` only gates the INITIAL load.
- *
- * Store LIFECYCLE (drafts v2, the per-document factory): this shell is the
- * lifecycle owner. Each snapshot's document gets THE store instance for its
- * id from the refcounted registry (acquireEditorStore); the instance is
- * connected once, fed every snapshot, and swapped in as the ACTIVE store —
- * the one `useEditorStore`'s compat surface (shell chrome, chat, panels)
- * resolves to. On a draft switch the shell releases its hold on the outgoing
- * instance: with no other holder it is disposed (sibling frame previews read
- * Convex queries directly, not stores), matching the old reset semantics;
- * when another holder retains it (a chat turn pinned to that draft), the
- * instance — overlay, selection, in-flight ops — survives and is simply
- * re-fed snapshots when the draft is reactivated.
- */
+/*
+  The /studio product surface: AI chat panel | toolbar + canvas | property
+  panel slot — now gated on a live Convex document.
+
+  Document lifecycle: `/studio?doc=<id>` loads that document (the id is the
+  capability). No param → create one for this browser's anonymous session
+  (seeded with the designed starter email, "Draft 1") and replaceState the
+  URL so a reload restores
+  it. An invalid or deleted id → a clean error state with a create-new
+  action. The reactive `getDocumentByKey` subscription is THE live feed:
+  every snapshot (own ops confirming, other tabs, agent edits) flows into
+  the store, which rebases its pending local overlay on top.
+
+  Draft ACTIVATION (§10.2 frames UX — clicking a sibling frame, the selector
+  dropdown, or a nav arrow): pushes the new ?doc= via the native history API
+  (Next syncs useSearchParams with pushState — a SHALLOW navigation, no
+  server round-trip, back/forward walks drafts), the query re-subscribes,
+  and when the new draft's first snapshot arrives its store is connected +
+  made ACTIVE in ONE synchronous batch — the shell (chat panel, presence
+  provider) never unmounts and no loading gate flashes; the active frame
+  simply moves. "Last frame clicked" = the store-connected document = what
+  the preview toggle, HTML export, history, presence, and chat all target.
+  `isDocumentReady` only gates the INITIAL load.
+
+  Store LIFECYCLE (drafts v2, the per-document factory): this shell is the
+  lifecycle owner. Each snapshot's document gets THE store instance for its
+  id from the refcounted registry (acquireEditorStore); the instance is
+  connected once, fed every snapshot, and swapped in as the ACTIVE store —
+  the one `useEditorStore`'s compat surface (shell chrome, chat, panels)
+  resolves to. On a draft switch the shell releases its hold on the outgoing
+  instance: with no other holder it is disposed (sibling frame previews read
+  Convex queries directly, not stores), matching the old reset semantics;
+  when another holder retains it (a chat turn pinned to that draft), the
+  instance — overlay, selection, in-flight ops — survives and is simply
+  re-fed snapshots when the draft is reactivated.
+*/
 export function StudioShell() {
   const router = useRouter();
   const searchParams = useSearchParams();
@@ -76,7 +76,9 @@ export function StudioShell() {
   const isCreateRequestedRef = useRef(false);
   const documentKey = requestedDocumentKey ?? createdDocumentKey;
 
-  // No ?doc= param → create a fresh seeded draft once, then adopt its id.
+  /*
+    No ?doc= param → create a fresh seeded draft once, then adopt its id.
+  */
   useEffect(() => {
     if (documentKey !== null || isCreateRequestedRef.current) {
       return;
@@ -97,7 +99,9 @@ export function StudioShell() {
       });
   }, [documentKey, convexClient, createAttempt]);
 
-  /** The gate's "create new" escape hatch: detach and start a fresh draft. */
+  /*
+    The gate's "create new" escape hatch: detach and start a fresh draft.
+  */
   const startNewDraft = (): void => {
     useEditorStore.getState().resetDocumentState();
     isCreateRequestedRef.current = false;
@@ -107,35 +111,45 @@ export function StudioShell() {
     router.push("/studio");
   };
 
-  // The live document feed. undefined = loading, null = invalid/missing id.
+  /*
+    The live document feed. undefined = loading, null = invalid/missing id.
+  */
   const snapshot = useQuery(
     api.documents.getDocumentByKey,
     documentKey !== null ? { documentKey } : "skip",
   );
 
-  // The connected draft. Sourced from the store (not `snapshot`, which goes
-  // undefined while a switch's new subscription loads) so presence/history/
-  // the drafts bar hold the outgoing draft until the incoming one is live.
+  /*
+    The connected draft. Sourced from the store (not `snapshot`, which goes
+    undefined while a switch's new subscription loads) so presence/history/
+    the drafts bar hold the outgoing draft until the incoming one is live.
+  */
   const documentId = useEditorStore((state) => state.documentId);
   const authorId = useEditorStore((state) => state.authorId);
   const isDocumentReady = useEditorStore((state) => state.isDocumentReady);
 
-  // The document this shell currently holds a registry reference for.
+  /*
+    The document this shell currently holds a registry reference for.
+  */
   const heldDocumentIdRef = useRef<Id<"documents"> | null>(null);
 
-  // Feed every snapshot into ITS document's store instance (acquire + connect
-  // on first sight; on a draft switch, activate the incoming instance and
-  // release the outgoing one). Connect + snapshot + active-swap run in one
-  // synchronous effect, so consumers see the incoming draft fully ready in a
-  // single render batch — `isDocumentReady` never flickers false.
+  /*
+    Feed every snapshot into ITS document's store instance (acquire + connect
+    on first sight; on a draft switch, activate the incoming instance and
+    release the outgoing one). Connect + snapshot + active-swap run in one
+    synchronous effect, so consumers see the incoming draft fully ready in a
+    single render batch — `isDocumentReady` never flickers false.
+  */
   useEffect(() => {
     if (snapshot === undefined || snapshot === null) {
       return;
     }
     const previousDocumentId = heldDocumentIdRef.current;
     const isDraftSwitch = previousDocumentId !== snapshot.documentId;
-    // `peek ?? acquire` on the non-switch path is a backstop (e.g. the hold
-    // was torn down by a StrictMode unmount between snapshots).
+    /*
+      `peek ?? acquire` on the non-switch path is a backstop (e.g. the hold
+      was torn down by a StrictMode unmount between snapshots).
+    */
     const store = isDraftSwitch
       ? acquireEditorStore(snapshot.documentId)
       : (peekEditorStore(snapshot.documentId) ?? acquireEditorStore(snapshot.documentId));
@@ -151,9 +165,11 @@ export function StudioShell() {
       doc: snapshot.doc as EmailDocument,
       headVersion: snapshot.headVersion,
     });
-    // Activate BEFORE releasing the outgoing hold: swap-surviving
-    // subscriptions (persona advisors, suggestions) re-attach to the ready
-    // incoming instance and never observe the outgoing instance's disposal.
+    /*
+      Activate BEFORE releasing the outgoing hold: swap-surviving
+      subscriptions (persona advisors, suggestions) re-attach to the ready
+      incoming instance and never observe the outgoing instance's disposal.
+    */
     setActiveEditorStore(store);
     if (isDraftSwitch) {
       heldDocumentIdRef.current = snapshot.documentId;
@@ -163,7 +179,9 @@ export function StudioShell() {
     }
   }, [snapshot, convexClient]);
 
-  // Drop the shell's registry hold on unmount (leaving /studio).
+  /*
+    Drop the shell's registry hold on unmount (leaving /studio).
+  */
   useEffect(
     () => () => {
       if (heldDocumentIdRef.current !== null) {
@@ -174,7 +192,9 @@ export function StudioShell() {
     [],
   );
 
-  /** Drafts-bar switch: shallow ?doc= update; the snapshot effect does the rest. */
+  /*
+    Drafts-bar switch: shallow ?doc= update; the snapshot effect does the rest.
+  */
   const switchToDraft = (nextDocumentId: Id<"documents">): void => {
     if (nextDocumentId === documentKey) {
       return;
@@ -182,7 +202,9 @@ export function StudioShell() {
     window.history.pushState(null, "", `/studio?doc=${nextDocumentId}`);
   };
 
-  // Reactive undo/redo enablement for THIS author, fed into the store.
+  /*
+    Reactive undo/redo enablement for THIS author, fed into the store.
+  */
   const historyAvailability = useQuery(
     api.history.canUndoRedo,
     documentId !== null && authorId !== null ? { documentId, authorId } : "skip",
@@ -223,9 +245,11 @@ export function StudioShell() {
     );
   }
 
-  // The dnd context wraps the WHOLE studio row — not just the canvas — so
-  // the right rail's Blocks-tab palette tiles and the canvas blocks register
-  // against ONE @dnd-kit context (palette → canvas drags need both ends).
+  /*
+    The dnd context wraps the WHOLE studio row — not just the canvas — so
+    the right rail's Blocks-tab palette tiles and the canvas blocks register
+    against ONE @dnd-kit context (palette → canvas drags need both ends).
+  */
   const studioLayout = (
     <CanvasDndContext>
       <div className="flex h-dvh w-full overflow-hidden">
@@ -235,31 +259,39 @@ export function StudioShell() {
             <HistoryPanel />
           </StudioToolbar>
           <DraftFramesCanvas onActivateDraft={switchToDraft} />
-          {/* The /demo narration, docked over the canvas. Inside <main> on
-              purpose: a viewport-fixed bar would cover either the chat panel
-              (where the agents' recommendation cards land — the exact thing it
-              is pointing at) or the property panel. Renders null on every
-              document that is not the demo's own scratch draft. */}
+          {/*
+            The /demo narration, docked over the canvas. Inside <main> on
+            purpose: a viewport-fixed bar would cover either the chat panel
+            (where the agents' recommendation cards land — the exact thing it
+            is pointing at) or the property panel. Renders null on every
+            document that is not the demo's own scratch draft.
+          */}
           <DemoRunPanel />
           <EditorNotice />
         </main>
         <PropertyPanelSlot />
       </div>
-      {/* Keyboard layer: global shortcuts + the slash-summon / hold-A
-          surfaces. Inside the gate on purpose — no bindings before the
-          document is ready. */}
+      {/*
+        Keyboard layer: global shortcuts + the slash-summon / hold-A
+        surfaces. Inside the gate on purpose — no bindings before the
+        document is ready.
+      */}
       <StudioShortcuts />
-      {/* First-run walkthrough: a card anchored to each surface's CLOSED
-          toolbar trigger, with an arrow pointing at it. Same reason it sits
-          here rather than in the root layout — its anchors are this shell's
-          toolbar, and inside the gate means no card can point at chrome that
-          has not rendered. Renders null once the tour is skipped or finished
-          (progress lives in localStorage, so anonymous visitors keep it). */}
+      {/*
+        First-run walkthrough: a card anchored to each surface's CLOSED
+        toolbar trigger, with an arrow pointing at it. Same reason it sits
+        here rather than in the root layout — its anchors are this shell's
+        toolbar, and inside the gate means no card can point at chrome that
+        has not rendered. Renders null once the tour is skipped or finished
+        (progress lives in localStorage, so anonymous visitors keep it).
+      */}
       <StudioTour />
     </CanvasDndContext>
   );
 
-  // Phase 6.2 presence: one room per open document (roomId = the document id).
+  /*
+    Phase 6.2 presence: one room per open document (roomId = the document id).
+  */
   return documentId !== null ? (
     <PresenceProvider documentId={documentId}>{studioLayout}</PresenceProvider>
   ) : (
@@ -267,7 +299,9 @@ export function StudioShell() {
   );
 }
 
-/** Centered full-viewport frame for the loading / error gate states. */
+/*
+  Centered full-viewport frame for the loading / error gate states.
+*/
 function StudioGateScreen({ children }: { children: React.ReactNode }) {
   return (
     <div className="flex h-dvh w-full flex-col items-center justify-center gap-3 text-center">
@@ -276,7 +310,9 @@ function StudioGateScreen({ children }: { children: React.ReactNode }) {
   );
 }
 
-/** Transient store notice (undo/redo conflicts, rolled-back saves). */
+/*
+  Transient store notice (undo/redo conflicts, rolled-back saves).
+*/
 function EditorNotice() {
   const notice = useEditorStore((state) => state.notice);
   const dismissNotice = useEditorStore((state) => state.dismissNotice);

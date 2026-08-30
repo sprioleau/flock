@@ -9,12 +9,12 @@ import {
 } from "../build-helpers";
 import { defineSectionTemplate } from "../types";
 
-/**
- * `header-centered` — centered brand lockup: the logo on its own line with
- * the navigation links centered beneath it. Reference pattern:
- * react.email/components "header-with-centered-menu" (kept single-column —
- * logo above links — which is the email-safe reading of "centered").
- */
+/*
+  `header-centered` — centered brand lockup: the logo on its own line with
+  the navigation links centered beneath it. Reference pattern:
+  react.email/components "header-with-centered-menu" (kept single-column —
+  logo above links — which is the email-safe reading of "centered").
+*/
 
 const navLinkSchema = z
   .strictObject({

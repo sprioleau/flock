@@ -77,7 +77,9 @@ describe("POST /api/personas — manual sweep credit charge", () => {
 
     expect(chargeCreditForRequestMock).toHaveBeenCalledTimes(1);
     expect(chargeCreditForRequestMock.mock.calls[0]![0]).toMatchObject({ isMockRun: false });
-    /* The charge was real, so refusing it stops the sweep. */
+    /*
+      The charge was real, so refusing it stops the sweep.
+    */
     expect(response.status).toBe(429);
   });
 });

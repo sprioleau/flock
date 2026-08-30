@@ -6,20 +6,20 @@ import type { UIMessageStreamWriter } from "ai";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { FlockChatMessage } from "@/lib/chat-contract";
 
-/**
- * Phase 7.4 END TO END on the deterministic tier — the owner's flagship
- * prompt, "add a new section based on my new article at <url>", driven
- * through the REAL chat pipeline (streamText → tool execution → validation →
- * UI stream) with only the network boundary stubbed.
- *
- * What this proves that the unit tests cannot:
- * - the model's first move on a URL is to FETCH, not to write;
- * - the section that follows is composed from the page that was actually
- *   fetched — its real title, its real canonical URL, its stored image;
- * - and when the page cannot be read, the turn produces the refusal sentence
- *   and ZERO document operations. That last one is the plan's hardest rule,
- *   and this is where it is pinned.
- */
+/*
+  Phase 7.4 END TO END on the deterministic tier — the owner's flagship
+  prompt, "add a new section based on my new article at <url>", driven
+  through the REAL chat pipeline (streamText → tool execution → validation →
+  UI stream) with only the network boundary stubbed.
+
+  What this proves that the unit tests cannot:
+  - the model's first move on a URL is to FETCH, not to write;
+  - the section that follows is composed from the page that was actually
+    fetched — its real title, its real canonical URL, its stored image;
+  - and when the page cannot be read, the turn produces the refusal sentence
+    and ZERO document operations. That last one is the plan's hardest rule,
+    and this is where it is pinned.
+*/
 
 const fetchPageMock = vi.hoisted(() => vi.fn());
 const isFetchAllowedByRobotsMock = vi.hoisted(() => vi.fn());
@@ -93,7 +93,9 @@ async function runTurn(lastUserText: string): Promise<RecordedChunk[]> {
   return chunks;
 }
 
-/** The tool names that reached input-available, in order. */
+/*
+  The tool names that reached input-available, in order.
+*/
 function toolCallSequence(chunks: RecordedChunk[]): string[] {
   return chunks
     .filter((chunk) => chunk.type === "tool-input-available")
@@ -106,13 +108,13 @@ function firstToolInput(chunks: RecordedChunk[], toolName: string): unknown {
   )?.input;
 }
 
-/**
- * The page payload readWebPage handed back, as the model would receive it.
- *
- * Matched by toolCallId rather than by name: a `tool-output-available` chunk
- * carries the id, not the tool's name, so filtering on name silently finds
- * nothing.
- */
+/*
+  The page payload readWebPage handed back, as the model would receive it.
+
+  Matched by toolCallId rather than by name: a `tool-output-available` chunk
+  carries the id, not the tool's name, so filtering on name silently finds
+  nothing.
+*/
 function readPagePayload(chunks: RecordedChunk[]): Record<string, unknown> {
   const toolCallId = chunks.find(
     (chunk) => chunk.type === "tool-input-available" && chunk.toolName === "readWebPage",
@@ -167,7 +169,9 @@ describe('"add a new section based on my new article at <url>"', () => {
     };
     const serialized = JSON.stringify(operation);
 
-    // The page's real headline and real sentences — not a template's copy.
+    /*
+      The page's real headline and real sentences — not a template's copy.
+    */
     expect(serialized).toContain("City to build solar canopy over downtown parking");
     expect(serialized).toContain("voted 8-1 on Tuesday");
     expect(serialized).toContain("The Daily Meridian");
@@ -314,7 +318,9 @@ describe("a page that cannot be read produces NO edits", () => {
     expect(toolCallSequence(chunks)).toEqual(["readWebPage"]);
     expect(fetchPageMock).not.toHaveBeenCalled();
     expect(streamedText(chunks)).toContain("robots.txt");
-    // The load-bearing assertion: nothing was written into the document.
+    /*
+      The load-bearing assertion: nothing was written into the document.
+    */
     expect(JSON.stringify(chunks)).not.toContain('"addSection"');
   });
 

@@ -1,17 +1,17 @@
 import { z } from "zod";
 
-/**
- * Global styles — block-type-scoped defaults carried on
- * `root.properties.globals` and resolved at render time as
- * `globals → block-level overrides` (docs/decisions/canvas-architecture.md).
- *
- * Every field is optional. When a field is absent the renderer falls back to
- * the matching value in DEFAULT_GLOBAL_STYLES (exported below), so the
- * defaults documented in each `.describe()` are a contract with the Phase 1.4
- * renderer, not just prose.
- *
- * A theme switch is a single operation replacing this one object.
- */
+/*
+  Global styles — block-type-scoped defaults carried on
+  `root.properties.globals` and resolved at render time as
+  `globals → block-level overrides` (docs/decisions/canvas-architecture.md).
+
+  Every field is optional. When a field is absent the renderer falls back to
+  the matching value in DEFAULT_GLOBAL_STYLES (exported below), so the
+  defaults documented in each `.describe()` are a contract with the Phase 1.4
+  renderer, not just prose.
+
+  A theme switch is a single operation replacing this one object.
+*/
 
 const cssColor = (what: string, fallback: string) =>
   z
@@ -27,7 +27,9 @@ const fontFamily = (what: string, fallback: string) =>
       `${what} A CSS font-family stack of email-safe fonts. Renderer default: "${fallback}".`,
     );
 
-/** Horizontal text alignment. */
+/*
+  Horizontal text alignment.
+*/
 export const textAlignSchema = z
   .enum(["left", "center", "right"])
   .describe('Horizontal alignment: "left", "center", or "right".');
@@ -41,12 +43,14 @@ const textAlign = (what: string, fallback: TextAlign) =>
 
 const DEFAULT_FONT_STACK = "Helvetica, Arial, sans-serif";
 
-/**
- * Schema for `root.properties.globals`. Strict: unknown keys fail validation.
- */
+/*
+  Schema for `root.properties.globals`. Strict: unknown keys fail validation.
+*/
 export const globalStylesSchema = z
   .strictObject({
-    // Canvas
+    /*
+      Canvas
+    */
     emailBackgroundColor: cssColor(
       "Background color of the email canvas, behind the centered content area.",
       '"#f4f4f4"',
@@ -72,7 +76,9 @@ export const globalStylesSchema = z
         "Base vertical spacing unit in pixels used between blocks when a block sets no explicit padding. Renderer default: 24.",
       ),
 
-    // Buttons
+    /*
+      Buttons
+    */
     buttonBackgroundColor: cssColor("Fill color of all buttons.", '"#000000"').optional(),
     buttonTextColor: cssColor("Label text color of all buttons.", '"#ffffff"').optional(),
     buttonBorderRadius: z
@@ -102,7 +108,9 @@ export const globalStylesSchema = z
       ),
     buttonFontFamily: fontFamily("Font of all button labels.", DEFAULT_FONT_STACK).optional(),
 
-    // Images
+    /*
+      Images
+    */
     imageBorderRadius: z
       .number()
       .min(0)
@@ -111,7 +119,9 @@ export const globalStylesSchema = z
         "Corner radius of all images in pixels — the brand's image shape, the counterpart of buttonBorderRadius. Renderer default: 0 (square corners).",
       ),
 
-    // Headings (levels 1–3, matching heading nodes inside text blocks)
+    /*
+      Headings (levels 1–3, matching heading nodes inside text blocks)
+    */
     heading1FontFamily: fontFamily("Font of level-1 headings.", DEFAULT_FONT_STACK).optional(),
     heading1TextColor: cssColor("Text color of level-1 headings.", '"#111111"').optional(),
     heading1TextAlign: textAlign("Alignment of level-1 headings.", "left").optional(),
@@ -122,12 +132,16 @@ export const globalStylesSchema = z
     heading3TextColor: cssColor("Text color of level-3 headings.", '"#111111"').optional(),
     heading3TextAlign: textAlign("Alignment of level-3 headings.", "left").optional(),
 
-    // Paragraphs
+    /*
+      Paragraphs
+    */
     paragraphFontFamily: fontFamily("Font of paragraph text.", DEFAULT_FONT_STACK).optional(),
     paragraphTextColor: cssColor("Text color of paragraph text.", '"#333333"').optional(),
     paragraphTextAlign: textAlign("Alignment of paragraph text.", "left").optional(),
 
-    // Inline / misc
+    /*
+      Inline / misc
+    */
     linkTextColor: cssColor("Color of hyperlinks inside text blocks.", '"#067df7"').optional(),
     dividerColor: cssColor("Line color of all divider blocks.", '"#e6e6e6"').optional(),
   })
@@ -137,10 +151,10 @@ export const globalStylesSchema = z
 
 export type GlobalStyles = z.infer<typeof globalStylesSchema>;
 
-/**
- * The renderer's fallback for every global style field. Blocks resolve final
- * styles as: DEFAULT_GLOBAL_STYLES → root.properties.globals → block overrides.
- */
+/*
+  The renderer's fallback for every global style field. Blocks resolve final
+  styles as: DEFAULT_GLOBAL_STYLES → root.properties.globals → block overrides.
+*/
 export const DEFAULT_GLOBAL_STYLES: Required<GlobalStyles> = {
   emailBackgroundColor: "#f4f4f4",
   contentBackgroundColor: "#ffffff",

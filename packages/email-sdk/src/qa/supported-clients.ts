@@ -49,11 +49,11 @@ export const CHECKED_EMAIL_CLIENTS = [
 
 export type CheckedEmailClient = (typeof CHECKED_EMAIL_CLIENTS)[number];
 
-/**
- * Human labels for the clients above. caniemail's own ids are `provider.platform`
- * slugs; a finding shown to a user says "Outlook (Windows)", not
- * `outlook.windows`.
- */
+/*
+  Human labels for the clients above. caniemail's own ids are `provider.platform`
+  slugs; a finding shown to a user says "Outlook (Windows)", not
+  `outlook.windows`.
+*/
 export const CHECKED_EMAIL_CLIENT_LABELS: Readonly<Record<CheckedEmailClient, string>> = {
   "apple-mail.ios": "Apple Mail (iOS)",
   "apple-mail.macos": "Apple Mail (macOS)",
@@ -66,12 +66,12 @@ export const CHECKED_EMAIL_CLIENT_LABELS: Readonly<Record<CheckedEmailClient, st
   "yahoo.desktop-webmail": "Yahoo Mail (web)",
 };
 
-/**
- * Every client in `clients` for which the shipped caniemail dataset is
- * missing at least one feature — i.e. every client that can make
- * `caniemail()` throw. An empty result is the invariant this module exists
- * to hold.
- */
+/*
+  Every client in `clients` for which the shipped caniemail dataset is
+  missing at least one feature — i.e. every client that can make
+  `caniemail()` throw. An empty result is the invariant this module exists
+  to hold.
+*/
 export function findClientsWithIncompleteData(
   clients: readonly string[],
 ): { client: string; missingFeatureTitles: string[] }[] {

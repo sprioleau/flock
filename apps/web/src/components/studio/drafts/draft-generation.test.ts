@@ -14,20 +14,22 @@ import {
   readSourceThemeGlobals,
 } from "./draft-generation";
 
-/**
- * The user-facing half of the drafts-menu AI actions. The regression these
- * pin: the message that lands in the chat thread used to be the whole model
- * brief, so the bubble rendered block ids, hex colours, font stacks and a
- * numbered instruction list. It must now read as a sentence a person wrote —
- * everything internal is assembled server-side (api/chat/generation-brief.ts).
- */
+/*
+  The user-facing half of the drafts-menu AI actions. The regression these
+  pin: the message that lands in the chat thread used to be the whole model
+  brief, so the bubble rendered block ids, hex colours, font stacks and a
+  numbered instruction list. It must now read as a sentence a person wrote —
+  everything internal is assembled server-side (api/chat/generation-brief.ts).
+*/
 
-/** Anything that would betray the machine half if it leaked into the bubble. */
+/*
+  Anything that would betray the machine half if it leaked into the bubble.
+*/
 const INTERNAL_LANGUAGE = [
-  /#[0-9a-f]{6}/i, // hex colours
-  /\b(?:sec|txt|img|btn|row|col|div|lnk)_[a-z0-9]+/i, // block ids
-  /globals|emailBackgroundColor|buttonBorderRadius/i, // theme property names
-  /KEEP THE WORDS|CHANGE THE STRUCTURE|templateId/, // instruction vocabulary
+  /#[0-9a-f]{6}/i, /* hex colours */
+  /\b(?:sec|txt|img|btn|row|col|div|lnk)_[a-z0-9]+/i, /* block ids */
+  /globals|emailBackgroundColor|buttonBorderRadius/i, /* theme property names */
+  /KEEP THE WORDS|CHANGE THE STRUCTURE|templateId/, /* instruction vocabulary */
 ];
 
 function expectNoInternalLanguage(text: string): void {
@@ -44,9 +46,11 @@ describe("buildIdeatePromptText", () => {
   });
 
   it("keeps the person's own direction, now that ideate has a field to type it in", () => {
-    // Ideate used to fire straight from the menu item with no input at all,
-    // which made every run a blind reroll. The words they typed are theirs to
-    // see reflected back in the thread, exactly like a variation's.
+    /*
+      Ideate used to fire straight from the menu item with no input at all,
+      which made every run a blind reroll. The words they typed are theirs to
+      see reflected back in the thread, exactly like a variation's.
+    */
     const text = buildIdeatePromptText({
       sourceDraftName: "RenderATL 2026",
       direction: "  aim it at first-time attendees  ",
@@ -66,12 +70,16 @@ describe("buildIdeatePromptText", () => {
 
 describe("MAX_GENERATION_DIRECTION_INPUT_LENGTH", () => {
   it("fits inside the wire's own cap, so the UI can never build an unsendable request", () => {
-    // The wire accepts 2,000 (MAX_GENERATION_DIRECTION_LENGTH, chat-contract),
-    // which is why raising the field from 200 needed no schema change — but a
-    // UI cap ABOVE the wire's would produce a message the server rejects, and
-    // the person would only find out after the draft was created.
+    /*
+      The wire accepts 2,000 (MAX_GENERATION_DIRECTION_LENGTH, chat-contract),
+      which is why raising the field from 200 needed no schema change — but a
+      UI cap ABOVE the wire's would produce a message the server rejects, and
+      the person would only find out after the draft was created.
+    */
     expect(MAX_GENERATION_DIRECTION_INPUT_LENGTH).toBeLessThanOrEqual(2_000);
-    // The owner asked for "about 500" over the old 200.
+    /*
+      The owner asked for "about 500" over the old 200.
+    */
     expect(MAX_GENERATION_DIRECTION_INPUT_LENGTH).toBeGreaterThan(200);
   });
 });
@@ -103,7 +111,9 @@ describe("buildVariationPromptText", () => {
   });
 
   it("never carries the source draft's content or theme", () => {
-    // The bug in one assertion: a 4,000-character brief used to travel here.
+    /*
+      The bug in one assertion: a 4,000-character brief used to travel here.
+    */
     const text = buildVariationPromptText({
       sourceDraftName: "RenderATL 2026",
       direction: "brighter colors",
@@ -130,8 +140,10 @@ describe("readSourceThemeGlobals", () => {
   });
 
   it("carries nothing from a draft that is still on the shared defaults", () => {
-    // Both drafts render identically already; copying `{}` would only add a
-    // no-op to the new draft's history.
+    /*
+      Both drafts render identically already; copying `{}` would only add a
+      no-op to the new draft's history.
+    */
     expect(readSourceThemeGlobals(createEmptyDocument())).toBeNull();
     expect(readSourceThemeGlobals(createStarterDocument())).toBeNull();
   });
@@ -142,7 +154,9 @@ describe("readSourceThemeGlobals", () => {
 });
 
 describe("pickVariationTheme", () => {
-  /** A kit holding exactly the named MOCK themes, in that order. */
+  /*
+    A kit holding exactly the named MOCK themes, in that order.
+  */
   function createKit(ids: string[]): BrandKit {
     return {
       ...MOCK_BRAND_KIT,
@@ -156,7 +170,9 @@ describe("pickVariationTheme", () => {
     };
   }
 
-  /** The globals of a mock theme, as a source draft would be wearing them. */
+  /*
+    The globals of a mock theme, as a source draft would be wearing them.
+  */
   function globalsOf(id: string): GlobalStyles {
     const variation = MOCK_BRAND_KIT.variations.find((entry) => entry.id === id);
     if (variation === undefined) {
@@ -165,7 +181,9 @@ describe("pickVariationTheme", () => {
     return variation.globals;
   }
 
-  /** Every theme this picker lands on as the random value sweeps its range. */
+  /*
+    Every theme this picker lands on as the random value sweeps its range.
+  */
   function sweepPickedIds({
     brandKit,
     sourceGlobals,

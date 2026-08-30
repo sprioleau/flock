@@ -1,12 +1,12 @@
 import { describe, expect, it } from "vitest";
 import { extractPage, MAX_PAGE_CONTENT_CHARS } from "../extract-page";
 
-/**
- * The budget's whole value is that it is PREDICTABLE. Two things are therefore
- * pinned here: the drop order fires 1→6 and never out of order, and the
- * identity of the page survives any budget at all — including one that cannot
- * possibly be met.
- */
+/*
+  The budget's whole value is that it is PREDICTABLE. Two things are therefore
+  pinned here: the drop order fires 1→6 and never out of order, and the
+  identity of the page survives any budget at all — including one that cannot
+  possibly be met.
+*/
 
 const BUDGET_URL = "https://studiomarrow.example/record";
 
@@ -16,11 +16,11 @@ const FULL_ITEMS_PER_LIST = 15;
 const FULL_STRUCTURED_DATA_COUNT = 7;
 const FULL_IMAGE_COUNT = 21;
 
-/**
- * A page far over any budget in every channel at once, so each drop step has
- * something to bite on. Sizes are chosen so the steps are separable: dropping
- * everything step 1 can drop still leaves the page over budget, and so on down.
- */
+/*
+  A page far over any budget in every channel at once, so each drop step has
+  something to bite on. Sizes are chosen so the steps are separable: dropping
+  everything step 1 can drop still leaves the page over budget, and so on down.
+*/
 function buildOverCapPage(): string {
   const paragraphs = Array.from(
     { length: 40 },
@@ -87,7 +87,9 @@ function scrapeAt(maxContentChars: number) {
   return result.scrape;
 }
 
-/** Which of the six drop steps are observably done, in order. */
+/*
+  Which of the six drop steps are observably done, in order.
+*/
 function readFiredSteps(scrape: ReturnType<typeof scrapeAt>): boolean[] {
   return [
     scrape.blocks.length < FULL_BLOCK_COUNT,

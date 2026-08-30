@@ -15,40 +15,40 @@ import {
   type CommitEntry,
 } from "./model/emailDocuments";
 
-/**
- * Phase 4.3 groundwork — per-user undo/redo and one-click AI-batch revert.
- *
- * History model: undo NEVER rewrites the log. Undoing an op applies its
- * stored inverse as a NEW operation (a new version, kind "undo"), and the
- * original row is marked `isUndone`/`undoneByVersion`. Redo applies the undo
- * entry's inverse as a NEW op (kind "redo"), un-marks the original edit, and
- * marks the undo entry as undone. The version sequence therefore stays
- * append-only and dense — which is exactly what makes point-in-time reads
- * (getDocumentAtVersion) trivially correct.
- *
- * Per-user semantics (plan 4.3): undo targets the REQUESTING author's latest
- * not-yet-undone "edit" op, not the globally-latest op. Cross-user conflicts
- * are possible — another author may have changed or removed the target block
- * since — in which case the SDK apply of the inverse fails and the structured
- * errors are returned (reason "conflict") for the caller to surface; the
- * document is never partially modified.
- *
- * TEXT-BLOCK BOUNDARY INVARIANT (Phase 5.4, "session op + mirror"):
- *   - While a text block's ProseMirror sync doc exists, the sync doc is the
- *     LIVE text truth (per-keystroke OT steps).
- *   - `properties.text` is its debounced (~1s) MIRROR — a derived cache, no
- *     op rows (prosemirror.ts onSnapshot).
- *   - The op log records text at SESSION/AGENT-ACTION granularity
- *     (`updateText` ops) and remains the one history spine.
- *   - HISTORY REWRITES (every mutation in this file) are authoritative: each
- *     passes `shouldForceTextSyncDocs: true` to commitVersions, which forces the
- *     sync doc of every text block whose properties.text changed to match,
- *     via replaceSyncDocContent (clientId HISTORY_CLIENT_ID) — whole-doc
- *     replacement that MAY clobber in-flight typing, by design. Normal
- *     forward op application never writes back.
- *   - Renderers, the outline, and AI context read ONLY properties.text,
- *     never live sync state.
- */
+/*
+  Phase 4.3 groundwork — per-user undo/redo and one-click AI-batch revert.
+
+  History model: undo NEVER rewrites the log. Undoing an op applies its
+  stored inverse as a NEW operation (a new version, kind "undo"), and the
+  original row is marked `isUndone`/`undoneByVersion`. Redo applies the undo
+  entry's inverse as a NEW op (kind "redo"), un-marks the original edit, and
+  marks the undo entry as undone. The version sequence therefore stays
+  append-only and dense — which is exactly what makes point-in-time reads
+  (getDocumentAtVersion) trivially correct.
+
+  Per-user semantics (plan 4.3): undo targets the REQUESTING author's latest
+  not-yet-undone "edit" op, not the globally-latest op. Cross-user conflicts
+  are possible — another author may have changed or removed the target block
+  since — in which case the SDK apply of the inverse fails and the structured
+  errors are returned (reason "conflict") for the caller to surface; the
+  document is never partially modified.
+
+  TEXT-BLOCK BOUNDARY INVARIANT (Phase 5.4, "session op + mirror"):
+    - While a text block's ProseMirror sync doc exists, the sync doc is the
+      LIVE text truth (per-keystroke OT steps).
+    - `properties.text` is its debounced (~1s) MIRROR — a derived cache, no
+      op rows (prosemirror.ts onSnapshot).
+    - The op log records text at SESSION/AGENT-ACTION granularity
+      (`updateText` ops) and remains the one history spine.
+    - HISTORY REWRITES (every mutation in this file) are authoritative: each
+      passes `shouldForceTextSyncDocs: true` to commitVersions, which forces the
+      sync doc of every text block whose properties.text changed to match,
+      via replaceSyncDocContent (clientId HISTORY_CLIENT_ID) — whole-doc
+      replacement that MAY clobber in-flight typing, by design. Normal
+      forward op application never writes back.
+    - Renderers, the outline, and AI context read ONLY properties.text,
+      never live sync state.
+*/
 
 const historyFailureValidator = v.object({
   isOk: v.literal(false),
@@ -63,7 +63,9 @@ const historyFailureValidator = v.object({
   errors: v.optional(v.array(operationErrorValidator)),
 });
 
-/** Newest not-yet-undone row of `kind` in one index scan, or null. */
+/*
+  Newest not-yet-undone row of `kind` in one index scan, or null.
+*/
 async function findLatestEligibleInScan({
   rowsNewestFirst,
   kind,
@@ -84,18 +86,18 @@ async function findLatestEligibleInScan({
   return null;
 }
 
-/**
- * The requester's latest operation row matching `kind` that is not itself
- * undone.
- *
- * "Theirs" is two things, not one: rows they AUTHORED, and rows authored on
- * their behalf — an agent turn they prompted, a suggestion they applied —
- * which carry their session in `undoOwnerId` while `authorId` names the agent
- * for attribution. Both are indexed, so this is two bounded newest-first
- * scans and the newer eligible row wins. Undoing only the first would leave
- * the user's own older edit reachable while the agent's newer one sat there
- * unreachable, which is exactly the "undo did nothing" the fix is for.
- */
+/*
+  The requester's latest operation row matching `kind` that is not itself
+  undone.
+
+  "Theirs" is two things, not one: rows they AUTHORED, and rows authored on
+  their behalf — an agent turn they prompted, a suggestion they applied —
+  which carry their session in `undoOwnerId` while `authorId` names the agent
+  for attribution. Both are indexed, so this is two bounded newest-first
+  scans and the newer eligible row wins. Undoing only the first would leave
+  the user's own older edit reachable while the agent's newer one sat there
+  unreachable, which is exactly the "undo did nothing" the fix is for.
+*/
 async function findLatestEligible({
   ctx,
   documentId,
@@ -136,9 +138,11 @@ async function findLatestEligible({
   return ownedOnTheirBehalf.version > authored.version ? ownedOnTheirBehalf : authored;
 }
 
-// ---------------------------------------------------------------------------
-// canUndoRedo — reactive enabled/disabled state for the toolbar buttons
-// ---------------------------------------------------------------------------
+/*
+  ---------------------------------------------------------------------------
+  canUndoRedo — reactive enabled/disabled state for the toolbar buttons
+  ---------------------------------------------------------------------------
+*/
 
 export const canUndoRedo = query({
   args: {
@@ -147,8 +151,10 @@ export const canUndoRedo = query({
   },
   returns: v.object({ canUndo: v.boolean(), canRedo: v.boolean() }),
   handler: async (ctx, args) => {
-    // Mirrors exactly what undo/redo would target: the author's latest
-    // not-yet-undone "edit" (undo) / "undo" (redo) entry.
+    /*
+      Mirrors exactly what undo/redo would target: the author's latest
+      not-yet-undone "edit" (undo) / "undo" (redo) entry.
+    */
     const [undoTarget, redoTarget] = await Promise.all([
       findLatestEligible({ ctx, documentId: args.documentId, authorId: args.authorId, kind: "edit" }),
       findLatestEligible({ ctx, documentId: args.documentId, authorId: args.authorId, kind: "undo" }),
@@ -157,22 +163,30 @@ export const canUndoRedo = query({
   },
 });
 
-// ---------------------------------------------------------------------------
-// undo
-// ---------------------------------------------------------------------------
+/*
+  ---------------------------------------------------------------------------
+  undo
+  ---------------------------------------------------------------------------
+*/
 
 export const undo = mutation({
   args: {
     documentId: v.id("documents"),
-    /** The requesting author: only THEIR latest not-undone edit is undone. */
+    /*
+      The requesting author: only THEIR latest not-undone edit is undone.
+    */
     authorId: v.string(),
   },
   returns: v.union(
     v.object({
       isOk: v.literal(true),
-      /** The version of the original edit that was undone. */
+      /*
+        The version of the original edit that was undone.
+      */
       undoneVersion: v.number(),
-      /** The version of the new undo entry. */
+      /*
+        The version of the new undo entry.
+      */
       newVersion: v.number(),
       headVersion: v.number(),
     }),
@@ -192,8 +206,10 @@ export const undo = mutation({
     if (target === null) {
       return { isOk: false as const, reason: "nothing_to_undo" as const };
     }
-    // Rebase-by-revalidation: the inverse may no longer apply cleanly if
-    // another author changed the target since. The SDK decides.
+    /*
+      Rebase-by-revalidation: the inverse may no longer apply cleanly if
+      another author changed the target since. The SDK decides.
+    */
     const result = applyOperation(state.doc, target.inverse as Operation);
     if (!result.isOk) {
       return {
@@ -214,7 +230,9 @@ export const undo = mutation({
           undoesVersion: target.version,
         },
       ],
-      // The undo entry is authored by the requester through the UI.
+      /*
+        The undo entry is authored by the requester through the UI.
+      */
       context: { authorId: args.authorId, author: "user", caller: "frontend" },
       shouldForceTextSyncDocs: true,
     });
@@ -229,9 +247,11 @@ export const undo = mutation({
   },
 });
 
-// ---------------------------------------------------------------------------
-// redo
-// ---------------------------------------------------------------------------
+/*
+  ---------------------------------------------------------------------------
+  redo
+  ---------------------------------------------------------------------------
+*/
 
 export const redo = mutation({
   args: {
@@ -241,11 +261,17 @@ export const redo = mutation({
   returns: v.union(
     v.object({
       isOk: v.literal(true),
-      /** The version of the undo entry that was reversed. */
+      /*
+        The version of the undo entry that was reversed.
+      */
       redoneUndoVersion: v.number(),
-      /** The version of the original edit whose effect was restored. */
+      /*
+        The version of the original edit whose effect was restored.
+      */
       restoredVersion: v.number(),
-      /** The version of the new redo entry. */
+      /*
+        The version of the new redo entry.
+      */
       newVersion: v.number(),
       headVersion: v.number(),
     }),
@@ -265,7 +291,9 @@ export const redo = mutation({
     if (undoEntry === null || undoEntry.undoesVersion === undefined) {
       return { isOk: false as const, reason: "nothing_to_redo" as const };
     }
-    // The undo entry's inverse re-applies the original edit's effect.
+    /*
+      The undo entry's inverse re-applies the original edit's effect.
+    */
     const result = applyOperation(state.doc, undoEntry.inverse as Operation);
     if (!result.isOk) {
       return {
@@ -290,8 +318,10 @@ export const redo = mutation({
       shouldForceTextSyncDocs: true,
     });
     const newVersion = commit.appliedVersions[0]!;
-    // The undo entry is now itself undone; the original edit is live again
-    // (so a further undo targets it once more).
+    /*
+      The undo entry is now itself undone; the original edit is live again
+      (so a further undo targets it once more).
+    */
     await ctx.db.patch(undoEntry._id, { isUndone: true, undoneByVersion: newVersion });
     const originalEdit = await ctx.db
       .query("operations")
@@ -312,24 +342,34 @@ export const redo = mutation({
   },
 });
 
-// ---------------------------------------------------------------------------
-// revertBatch — one-click AI-batch revert
-// ---------------------------------------------------------------------------
+/*
+  ---------------------------------------------------------------------------
+  revertBatch — one-click AI-batch revert
+  ---------------------------------------------------------------------------
+*/
 
 export const revertBatch = mutation({
   args: {
     documentId: v.id("documents"),
-    /** The batchId the AI turn's ops were applied under. */
+    /*
+      The batchId the AI turn's ops were applied under.
+    */
     batchId: v.string(),
-    /** The requester; the revert entries are authored by them. */
+    /*
+      The requester; the revert entries are authored by them.
+    */
     authorId: v.string(),
   },
   returns: v.union(
     v.object({
       isOk: v.literal(true),
-      /** Versions of the original batch edits that were reverted (newest first). */
+      /*
+        Versions of the original batch edits that were reverted (newest first).
+      */
       revertedVersions: v.array(v.number()),
-      /** Versions of the new undo entries, in application order. */
+      /*
+        Versions of the new undo entries, in application order.
+      */
       appliedVersions: v.array(v.number()),
       headVersion: v.number(),
     }),
@@ -340,7 +380,9 @@ export const revertBatch = mutation({
     if (state === null) {
       return { isOk: false as const, reason: "document_not_found" as const };
     }
-    // A batch is one AI turn: bounded by MAX_OPERATIONS_PER_CALL, safe to collect.
+    /*
+      A batch is one AI turn: bounded by MAX_OPERATIONS_PER_CALL, safe to collect.
+    */
     const batchRows = await ctx.db
       .query("operations")
       .withIndex("by_documentId_and_batchId", (q) =>
@@ -350,15 +392,19 @@ export const revertBatch = mutation({
     if (batchRows.length === 0) {
       return { isOk: false as const, reason: "batch_not_found" as const };
     }
-    // Skip bookkeeping entries and edits already undone individually.
+    /*
+      Skip bookkeeping entries and edits already undone individually.
+    */
     const targets = batchRows
       .filter((row) => row.kind === "edit" && row.isUndone !== true)
       .sort((a, b) => b.version - a.version);
     if (targets.length === 0) {
       return { isOk: false as const, reason: "nothing_to_revert" as const };
     }
-    // Apply the inverses newest-first (LIFO), all-or-nothing. If any inverse
-    // no longer applies (cross-user conflict), nothing is written.
+    /*
+      Apply the inverses newest-first (LIFO), all-or-nothing. If any inverse
+      no longer applies (cross-user conflict), nothing is written.
+    */
     const inverseOps = targets.map((row) => row.inverse as Operation);
     const result = applyOperationsToDocument(state.doc, inverseOps);
     if (!result.isOk) {
@@ -373,7 +419,9 @@ export const revertBatch = mutation({
       inverse: result.inverses[targets.length - 1 - targetIndex]!,
       kind: "undo" as const,
       undoesVersion: row.version,
-      // Group the revert itself so it is attributable as one action.
+      /*
+        Group the revert itself so it is attributable as one action.
+      */
       batchId: `revert:${args.batchId}`,
     }));
     const commit = await commitVersions({
@@ -399,9 +447,11 @@ export const revertBatch = mutation({
   },
 });
 
-// ---------------------------------------------------------------------------
-// rollbackToVersion — restore the document to a historical version
-// ---------------------------------------------------------------------------
+/*
+  ---------------------------------------------------------------------------
+  rollbackToVersion — restore the document to a historical version
+  ---------------------------------------------------------------------------
+*/
 
 const rollbackFailureValidator = v.object({
   isOk: v.literal(false),
@@ -415,39 +465,47 @@ const rollbackFailureValidator = v.object({
   errors: v.optional(v.array(operationErrorValidator)),
 });
 
-/**
- * Restore the document to the exact state it had at `version`, WITHOUT
- * rewriting history: the stored inverses of every operation row newer than
- * `version` are applied newest-first (LIFO) as NEW op rows — same style as
- * revertBatch. Because each inverse was generated against the exact document
- * state its op transformed, a full LIFO unwind is deterministic: the result
- * equals `getDocumentAtVersion(version)` and, unlike a partial unwind, it is
- * conflict-free by construction. All-or-nothing.
- *
- * ALL rows in the range are unwound — including undo/redo bookkeeping entries
- * and edits already marked undone (their reversing entry is in the range too,
- * so the pair cancels). Undo-semantics bookkeeping: every unwound row not
- * already `isUndone` is marked undone by its rollback entry, so per-author
- * undo/redo targeting stays consistent afterwards.
- *
- * The rollback entries share batchId `rollback:<version>`: the restore shows
- * up in history as one attributable group and is itself reversible — restore
- * the pre-rollback head version (or redo) to step back.
- */
+/*
+  Restore the document to the exact state it had at `version`, WITHOUT
+  rewriting history: the stored inverses of every operation row newer than
+  `version` are applied newest-first (LIFO) as NEW op rows — same style as
+  revertBatch. Because each inverse was generated against the exact document
+  state its op transformed, a full LIFO unwind is deterministic: the result
+  equals `getDocumentAtVersion(version)` and, unlike a partial unwind, it is
+  conflict-free by construction. All-or-nothing.
+
+  ALL rows in the range are unwound — including undo/redo bookkeeping entries
+  and edits already marked undone (their reversing entry is in the range too,
+  so the pair cancels). Undo-semantics bookkeeping: every unwound row not
+  already `isUndone` is marked undone by its rollback entry, so per-author
+  undo/redo targeting stays consistent afterwards.
+
+  The rollback entries share batchId `rollback:<version>`: the restore shows
+  up in history as one attributable group and is itself reversible — restore
+  the pre-rollback head version (or redo) to step back.
+*/
 export const rollbackToVersion = mutation({
   args: {
     documentId: v.id("documents"),
-    /** The historical version to restore (0 = the document as created). */
+    /*
+      The historical version to restore (0 = the document as created).
+    */
     version: v.number(),
-    /** The requester; the rollback entries are authored by them. */
+    /*
+      The requester; the rollback entries are authored by them.
+    */
     authorId: v.string(),
   },
   returns: v.union(
     v.object({
       isOk: v.literal(true),
-      /** The version whose state the document was restored to. */
+      /*
+        The version whose state the document was restored to.
+      */
       restoredVersion: v.number(),
-      /** Versions of the new rollback entries, in application order. */
+      /*
+        Versions of the new rollback entries, in application order.
+      */
       appliedVersions: v.array(v.number()),
       headVersion: v.number(),
     }),
@@ -465,8 +523,10 @@ export const rollbackToVersion = mutation({
     if (args.version === headVersion) {
       return { isOk: false as const, reason: "nothing_to_restore" as const };
     }
-    // Every op row newer than the target version, newest first (LIFO unwind
-    // order). Versions are dense, so this is exactly head - version rows.
+    /*
+      Every op row newer than the target version, newest first (LIFO unwind
+      order). Versions are dense, so this is exactly head - version rows.
+    */
     const targets = await ctx.db
       .query("operations")
       .withIndex("by_documentId_and_version", (q) =>
@@ -480,8 +540,10 @@ export const rollbackToVersion = mutation({
     if (targets.length === 0) {
       return { isOk: false as const, reason: "nothing_to_restore" as const };
     }
-    // Unreachable in practice (see doc comment) but the SDK still arbitrates;
-    // on any failure nothing is written.
+    /*
+      Unreachable in practice (see doc comment) but the SDK still arbitrates;
+      on any failure nothing is written.
+    */
     const inverseOps = targets.map((row) => row.inverse as Operation);
     const result = applyOperationsToDocument(state.doc, inverseOps);
     if (!result.isOk) {

@@ -3,18 +3,20 @@ import { imageBlockIdSchema } from "../schema/ids";
 import { createDraftCommandSchema } from "./compose-draft";
 import { applyThemeToDraftCommandSchema } from "./theme-target";
 
-/**
- * Editor commands — the typed client-command channel (plan §3.4).
- *
- * `kind: "editor"` actions have NO document effect. Their `run` produces one
- * of these command payloads, which Phase 3 transports to the frontend as
- * streamed data parts; a frontend dispatcher executes them against the editor
- * UI (flip the viewport, trigger a test send, …). This discriminated union is
- * the versioned contract shared by both ends — extend it here when adding a
- * new editor action.
- */
+/*
+  Editor commands — the typed client-command channel (plan §3.4).
 
-// --- showPreview -------------------------------------------------------------
+  `kind: "editor"` actions have NO document effect. Their `run` produces one
+  of these command payloads, which Phase 3 transports to the frontend as
+  streamed data parts; a frontend dispatcher executes them against the editor
+  UI (flip the viewport, trigger a test send, …). This discriminated union is
+  the versioned contract shared by both ends — extend it here when adding a
+  new editor action.
+*/
+
+/*
+  --- showPreview -------------------------------------------------------------
+*/
 
 export const PREVIEW_MODES = ["desktop", "mobile"] as const;
 
@@ -41,7 +43,9 @@ export const showPreviewCommandSchema = z
 
 export type ShowPreviewCommand = z.infer<typeof showPreviewCommandSchema>;
 
-// --- sendTestEmail -------------------------------------------------------------
+/*
+  --- sendTestEmail -------------------------------------------------------------
+*/
 
 export const sendTestEmailInputSchema = z
   .strictObject({
@@ -62,9 +66,13 @@ export const sendTestEmailCommandSchema = z
 
 export type SendTestEmailCommand = z.infer<typeof sendTestEmailCommandSchema>;
 
-// --- generateImage -------------------------------------------------------------
+/*
+  --- generateImage -------------------------------------------------------------
+*/
 
-/** Longest prompt accepted for image generation (intent-level, model-facing). */
+/*
+  Longest prompt accepted for image generation (intent-level, model-facing).
+*/
 export const GENERATE_IMAGE_MAX_PROMPT_LENGTH = 2000;
 
 export const generateImageInputSchema = z
@@ -87,14 +95,14 @@ export const generateImageInputSchema = z
 
 export type GenerateImageInput = z.infer<typeof generateImageInputSchema>;
 
-/**
- * The generateImage command travels the data-parts channel in two states:
- * `run` produces the UNFULFILLED intent ({ blockId, prompt }); the app-side
- * executor generates the image, uploads it to durable storage, and streams the
- * FULFILLED command (src + alt present). The client dispatcher commits the
- * fulfilled command as one updateBlockProperties operation through the normal
- * validated dispatch spine — image bytes/data URIs never enter the document.
- */
+/*
+  The generateImage command travels the data-parts channel in two states:
+  `run` produces the UNFULFILLED intent ({ blockId, prompt }); the app-side
+  executor generates the image, uploads it to durable storage, and streams the
+  FULFILLED command (src + alt present). The client dispatcher commits the
+  fulfilled command as one updateBlockProperties operation through the normal
+  validated dispatch spine — image bytes/data URIs never enter the document.
+*/
 export const generateImageCommandSchema = z
   .strictObject({
     type: z.literal("generateImage").describe("Command discriminator."),
@@ -116,14 +124,16 @@ export const generateImageCommandSchema = z
 
 export type GenerateImageCommand = z.infer<typeof generateImageCommandSchema>;
 
-// --- openPanel -----------------------------------------------------------------
+/*
+  --- openPanel -----------------------------------------------------------------
+*/
 
-/**
- * The UI surfaces the agent can open on the user's behalf — one enum value per
- * named surface in the studio (dialogs, the history sheet, the right-rail
- * tabs). The client's ui-surfaces module store maps each value to the actual
- * open mechanism; extend BOTH ends when adding a surface.
- */
+/*
+  The UI surfaces the agent can open on the user's behalf — one enum value per
+  named surface in the studio (dialogs, the history sheet, the right-rail
+  tabs). The client's ui-surfaces module store maps each value to the actual
+  open mechanism; extend BOTH ends when adding a surface.
+*/
 export const UI_PANELS = [
   "theme",
   "brand-kit",
@@ -164,7 +174,9 @@ export const openPanelCommandSchema = z
 
 export type OpenPanelCommand = z.infer<typeof openPanelCommandSchema>;
 
-// --- undo / redo ---------------------------------------------------------------
+/*
+  --- undo / redo ---------------------------------------------------------------
+*/
 
 export const undoInputSchema = z
   .strictObject({})
@@ -194,7 +206,9 @@ export const redoCommandSchema = z
 
 export type RedoCommand = z.infer<typeof redoCommandSchema>;
 
-// --- goToVersion ---------------------------------------------------------------
+/*
+  --- goToVersion ---------------------------------------------------------------
+*/
 
 export const goToVersionInputSchema = z
   .strictObject({
@@ -219,12 +233,16 @@ export const goToVersionCommandSchema = z
 
 export type GoToVersionCommand = z.infer<typeof goToVersionCommandSchema>;
 
-// --- createDraft ---------------------------------------------------------------
+/*
+  --- createDraft ---------------------------------------------------------------
+*/
 //
-// The createDraft input/command pair lives in ./compose-draft, next to the
-// plan→operations translation that gives it meaning (a composed draft is a
-// whole email, themed and content-aware). Re-exported here so the editor
-// command channel still reads as one file.
+/*
+  The createDraft input/command pair lives in ./compose-draft, next to the
+  plan→operations translation that gives it meaning (a composed draft is a
+  whole email, themed and content-aware). Re-exported here so the editor
+  command channel still reads as one file.
+*/
 
 export {
   MAX_CREATE_DRAFT_COUNT,
@@ -233,7 +251,9 @@ export {
 } from "./compose-draft";
 export type { CreateDraftInput, CreateDraftCommand } from "./compose-draft";
 
-// --- applyThemeToDraft ---------------------------------------------------------
+/*
+  --- applyThemeToDraft ---------------------------------------------------------
+*/
 
 /*
   Re-exported from ./theme-target, where the reference vocabulary lives.
@@ -252,7 +272,9 @@ export {
 } from "./theme-target";
 export type { ApplyThemeToDraftInput, ApplyThemeToDraftCommand } from "./theme-target";
 
-// --- createPersona -------------------------------------------------------------
+/*
+  --- createPersona -------------------------------------------------------------
+*/
 
 export const PERSONA_NAME_MAX_LENGTH = 60;
 export const PERSONA_DESCRIPTION_MAX_LENGTH = 300;
@@ -286,13 +308,13 @@ export const createPersonaInputSchema = z
 
 export type CreatePersonaInput = z.infer<typeof createPersonaInputSchema>;
 
-/**
- * Like generateImage, this command travels in two states: `run` produces the
- * UNFULFILLED intent (name/description/behavior); the app-side executor
- * creates the session-owned persona row (server-enforced advisory capability
- * + quota) and streams the FULFILLED command with the new `slug`, which the
- * client uses to enable the persona locally.
- */
+/*
+  Like generateImage, this command travels in two states: `run` produces the
+  UNFULFILLED intent (name/description/behavior); the app-side executor
+  creates the session-owned persona row (server-enforced advisory capability
+  + quota) and streams the FULFILLED command with the new `slug`, which the
+  client uses to enable the persona locally.
+*/
 export const createPersonaCommandSchema = z
   .strictObject({
     type: z.literal("createPersona").describe("Command discriminator."),
@@ -308,9 +330,13 @@ export const createPersonaCommandSchema = z
 
 export type CreatePersonaCommand = z.infer<typeof createPersonaCommandSchema>;
 
-// --- Union -------------------------------------------------------------------
+/*
+  --- Union -------------------------------------------------------------------
+*/
 
-/** Any editor command — the versioned Zod contract for the data-parts channel. */
+/*
+  Any editor command — the versioned Zod contract for the data-parts channel.
+*/
 export const editorCommandSchema = z
   .discriminatedUnion("type", [
     showPreviewCommandSchema,

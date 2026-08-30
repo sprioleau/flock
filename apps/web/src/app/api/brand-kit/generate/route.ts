@@ -3,31 +3,31 @@ import { chargeCreditForRequest } from "@/lib/auth/credits";
 import { generateBrandKit } from "@/lib/brand-kit-extraction/generate-brand-kit";
 import { MAX_URL_LENGTH } from "@/lib/brand-kit-extraction/url-guard";
 
-/**
- * POST /api/brand-kit/generate — Phase 7.4 brand-kit ingestion.
- *
- * Contract (the brand-kit panel codes against exactly this):
- *   request:  { url: string }
- *   response: { isOk: true, brandKit: BrandKit }
- *           | { isOk: false, message: string }   // friendly, user-facing
- *
- * The body always carries the contract shape; failure statuses are 4xx/5xx
- * (400 bad request, 429 cooldown, 422 unreadable site, 5xx generation) so
- * callers may branch on either `isOk` or `response.ok`.
- *
- * Pipeline: src/lib/brand-kit-extraction/ — guarded fetch → deterministic
- * signal harvest → one Gemini structured call → deterministic contrast
- * enforcement → Zod-validated BrandKit.
- */
+/*
+  POST /api/brand-kit/generate — Phase 7.4 brand-kit ingestion.
+
+  Contract (the brand-kit panel codes against exactly this):
+    request:  { url: string }
+    response: { isOk: true, brandKit: BrandKit }
+            | { isOk: false, message: string }   // friendly, user-facing
+
+  The body always carries the contract shape; failure statuses are 4xx/5xx
+  (400 bad request, 429 cooldown, 422 unreadable site, 5xx generation) so
+  callers may branch on either `isOk` or `response.ok`.
+
+  Pipeline: src/lib/brand-kit-extraction/ — guarded fetch → deterministic
+  signal harvest → one Gemini structured call → deterministic contrast
+  enforcement → Zod-validated BrandKit.
+*/
 
 const requestBodySchema = z.object({
   url: z.string().min(1).max(MAX_URL_LENGTH),
 });
 
-/**
- * Demo-scale abuse guard: one generation per instance per 5s. In-memory by
- * design (single dev/demo instance) — real rate limiting is a later concern.
- */
+/*
+  Demo-scale abuse guard: one generation per instance per 5s. In-memory by
+  design (single dev/demo instance) — real rate limiting is a later concern.
+*/
 const COOLDOWN_MS = 5_000;
 let lastRequestStartedAtMs = 0;
 
@@ -62,9 +62,11 @@ export async function POST(request: Request) {
     });
   }
 
-  // Scraping and summarising a site is real inference — it costs a credit.
-  // A deployment with no API key can only 503 below, so it is billed as a
-  // mock run (free) rather than charging for a request that cannot succeed.
+  /*
+    Scraping and summarising a site is real inference — it costs a credit.
+    A deployment with no API key can only 503 below, so it is billed as a
+    mock run (free) rather than charging for a request that cannot succeed.
+  */
   const charge = await chargeCreditForRequest({
     request,
     isMockRun: !process.env.GOOGLE_GENERATIVE_AI_API_KEY,

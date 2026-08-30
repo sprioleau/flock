@@ -2,25 +2,25 @@
 
 import { useEffect, useRef } from 'react';
 
-/**
- * Standalone Interactive Vector Line Grid Component
- * Automatically synchronized with your playground settings.
- * All properties are exposed as top-level variables for easy customization.
- *
- * This renders as a full-bleed BACKGROUND LAYER: it fills its nearest
- * positioned ancestor, paints underneath the page's content, and is
- * `pointer-events: none` so every click, focus and text selection lands on the
- * UI in front of it. Pointer tracking therefore cannot live on this element —
- * see the listener setup in the effect below for why.
- */
 /*
- * The two mode knobs are written `"x" as Mode` rather than `: Mode = "x"`.
- * With a plain annotation TypeScript still narrows a never-reassigned const to
- * its initializer's literal type, which makes every other branch of the
- * switches below provably unreachable and a compile error — the exact opposite
- * of what a hand-editable knob needs. Asserting the wider type keeps all the
- * modes live so switching one is a one-word edit.
- */
+  Standalone Interactive Vector Line Grid Component
+  Automatically synchronized with your playground settings.
+  All properties are exposed as top-level variables for easy customization.
+
+  This renders as a full-bleed BACKGROUND LAYER: it fills its nearest
+  positioned ancestor, paints underneath the page's content, and is
+  `pointer-events: none` so every click, focus and text selection lands on the
+  UI in front of it. Pointer tracking therefore cannot live on this element —
+  see the listener setup in the effect below for why.
+*/
+/*
+  The two mode knobs are written `"x" as Mode` rather than `: Mode = "x"`.
+  With a plain annotation TypeScript still narrows a never-reassigned const to
+  its initializer's literal type, which makes every other branch of the
+  switches below provably unreachable and a compile error — the exact opposite
+  of what a hand-editable knob needs. Asserting the wider type keeps all the
+  modes live so switching one is a one-word edit.
+*/
 type DistortionMode = 'pointer' | 'pull' | 'push' | 'vortex' | 'ripple';
 type AngleAtRestMode = 'horizontal' | 'vertical' | 'diagonal' | 'wave';
 
@@ -29,43 +29,53 @@ export const InteractiveLineGrid = () => {
   const containerRef = useRef<HTMLDivElement>(null);
   const pointerRef = useRef({ x: -1000, y: -1000, isActive: false, isDirect: false });
 
-  // ==========================================
-  // 1. GRID GEOMETRY & SIZING
-  // ==========================================
-  const GRID_SPACING = 32;              // Distance between grid lines (px)
-  const LINE_LENGTH = 14;               // Base length of each vector line (px)
-  const LINE_WIDTH = 1.5;                 // Stroke thickness (px)
+  /*
+    ==========================================
+    1. GRID GEOMETRY & SIZING
+    ==========================================
+  */
+  const GRID_SPACING = 32;              /* Distance between grid lines (px) */
+  const LINE_LENGTH = 14;               /* Base length of each vector line (px) */
+  const LINE_WIDTH = 1.5;                 /* Stroke thickness (px) */
 
-  // ==========================================
-  // 2. INTERACTION & PHYSICS
-  // ==========================================
-  const INFLUENCE_RADIUS = 220;         // Radius of pointer magnetic field (px)
-  const SMOOTHING = 0.12;               // Interpolation fluidity (0.01 = viscous, 0.5 = snappy)
-  const DISTORTION_MODE = "pointer" as DistortionMode;       // 'pointer' | 'pull' | 'push' | 'vortex' | 'ripple'
+  /*
+    ==========================================
+    2. INTERACTION & PHYSICS
+    ==========================================
+  */
+  const INFLUENCE_RADIUS = 220;         /* Radius of pointer magnetic field (px) */
+  const SMOOTHING = 0.12;               /* Interpolation fluidity (0.01 = viscous, 0.5 = snappy) */
+  const DISTORTION_MODE = "pointer" as DistortionMode;       /* 'pointer' | 'pull' | 'push' | 'vortex' | 'ripple' */
 
-  // ==========================================
-  // 3. ORIENTATION & MOTION
-  // ==========================================
-  const ANGLE_AT_REST = 0;            // Base resting angle in radians (0°)
-  const ANGLE_AT_REST_MODE = "diagonal" as AngleAtRestMode;   // 'horizontal' | 'vertical' | 'diagonal' | 'wave'
-  const IS_AMBIENT_MOTION_ENABLED = true; // Floating ambient pointer demo when idle
+  /*
+    ==========================================
+    3. ORIENTATION & MOTION
+    ==========================================
+  */
+  const ANGLE_AT_REST = 0;            /* Base resting angle in radians (0°) */
+  const ANGLE_AT_REST_MODE = "diagonal" as AngleAtRestMode;   /* 'horizontal' | 'vertical' | 'diagonal' | 'wave' */
+  const IS_AMBIENT_MOTION_ENABLED = true; /* Floating ambient pointer demo when idle */
 
-  // ==========================================
-  // 4. APPEARANCE, COLOR & OPACITY
-  // ==========================================
-  const BASE_OPACITY = 0.15;                     // Alpha transparency when line is at rest
-  const TARGET_OPACITY = 0.6;                    // Alpha transparency when line is active near cursor
-  const OPACITY_RANGE = TARGET_OPACITY - BASE_OPACITY; // Dynamic opacity boost amount (0.65)
-  const BACKGROUND_COLOR = "transparent";           // Container & canvas background color
-  const COLOR_BY_PROXIMITY = true;           // Smoothly shift color by proximity
-  const SHOW_DEBUG_CURSOR = false;            // Display radius ring indicator
+  /*
+    ==========================================
+    4. APPEARANCE, COLOR & OPACITY
+    ==========================================
+  */
+  const BASE_OPACITY = 0.15;                     /* Alpha transparency when line is at rest */
+  const TARGET_OPACITY = 0.6;                    /* Alpha transparency when line is active near cursor */
+  const OPACITY_RANGE = TARGET_OPACITY - BASE_OPACITY; /* Dynamic opacity boost amount (0.65) */
+  const BACKGROUND_COLOR = "transparent";           /* Container & canvas background color */
+  const COLOR_BY_PROXIMITY = true;           /* Smoothly shift color by proximity */
+  const SHOW_DEBUG_CURSOR = false;            /* Display radius ring indicator */
 
   useEffect(() => {
-    // ==========================================
-    // 4. APPEARANCE, COLOR & OPACITY
-    // ==========================================
-    const STROKE_COLOR_REST = [128, 128, 128];       // RGB color array at rest
-    const STROKE_COLOR_ACTIVE = [80, 80, 80];     // RGB color array when pointer is near
+    /*
+      ==========================================
+      4. APPEARANCE, COLOR & OPACITY
+      ==========================================
+    */
+    const STROKE_COLOR_REST = [128, 128, 128];       /* RGB color array at rest */
+    const STROKE_COLOR_ACTIVE = [80, 80, 80];     /* RGB color array when pointer is near */
 
     const canvas = canvasRef.current;
     const container = containerRef.current;
@@ -152,22 +162,22 @@ export const InteractiveLineGrid = () => {
     resizeObserver.observe(container);
 
     /*
-     * Pointer tracking is listened for on `window`, not on this component's own
-     * element, and that is the whole trick to this layer.
-     *
-     * The grid has to be behind the login card AND stay alive while the pointer
-     * is over that card. As a React `onPointerMove` prop on the container those
-     * two are mutually exclusive: to stop the full-size layer from swallowing
-     * clicks it needs `pointer-events: none`, and an element that ignores
-     * pointer events is also never the target of one, so the handler goes
-     * silent and the grid freezes. Anything in front of it (the card, the
-     * heading, the buttons) would block the events even without that.
-     *
-     * `window` sits above every one of those, so the coordinates arrive no
-     * matter what the pointer is over; they get projected into the container's
-     * local space with the same getBoundingClientRect() maths the element
-     * handler used.
-     */
+      Pointer tracking is listened for on `window`, not on this component's own
+      element, and that is the whole trick to this layer.
+
+      The grid has to be behind the login card AND stay alive while the pointer
+      is over that card. As a React `onPointerMove` prop on the container those
+      two are mutually exclusive: to stop the full-size layer from swallowing
+      clicks it needs `pointer-events: none`, and an element that ignores
+      pointer events is also never the target of one, so the handler goes
+      silent and the grid freezes. Anything in front of it (the card, the
+      heading, the buttons) would block the events even without that.
+
+      `window` sits above every one of those, so the coordinates arrive no
+      matter what the pointer is over; they get projected into the container's
+      local space with the same getBoundingClientRect() maths the element
+      handler used.
+    */
     const handleWindowPointerMove = (event: PointerEvent) => {
       const rect = container.getBoundingClientRect();
       pointerRef.current = {
@@ -178,9 +188,11 @@ export const InteractiveLineGrid = () => {
       };
     };
 
-    // Fires only when the pointer leaves the document itself — moving between
-    // elements inside the page does not reach here — so this is the honest
-    // "the pointer is gone" signal that hands the grid back to ambient motion.
+    /*
+      Fires only when the pointer leaves the document itself — moving between
+      elements inside the page does not reach here — so this is the honest
+      "the pointer is gone" signal that hands the grid back to ambient motion.
+    */
     const handleDocumentPointerLeave = () => {
       pointerRef.current.isActive = false;
       pointerRef.current.isDirect = false;
@@ -189,7 +201,9 @@ export const InteractiveLineGrid = () => {
     window.addEventListener('pointermove', handleWindowPointerMove, { passive: true });
     document.documentElement.addEventListener('pointerleave', handleDocumentPointerLeave);
 
-    // Animation Loop
+    /*
+      Animation Loop
+    */
     const render = () => {
       const rect = container.getBoundingClientRect();
       const width = rect.width;
@@ -197,7 +211,9 @@ export const InteractiveLineGrid = () => {
 
       time += 0.016;
 
-      // Idle Ambient Motion demo when pointer is inactive
+      /*
+        Idle Ambient Motion demo when pointer is inactive
+      */
       if (!pointerRef.current.isDirect && IS_AMBIENT_MOTION_ENABLED) {
         idleTime += 0.012;
         const cx = width / 2;
@@ -210,7 +226,9 @@ export const InteractiveLineGrid = () => {
         pointerRef.current.isActive = true;
       }
 
-      // Smooth pointer lerp
+      /*
+        Smooth pointer lerp
+      */
       if (pointerRef.current.isActive) {
         if (smoothPointer.x === -1000) {
           smoothPointer.x = pointerRef.current.x;
@@ -308,7 +326,9 @@ export const InteractiveLineGrid = () => {
 
       ctx.globalAlpha = 1.0;
 
-      // Draw optional debug radius indicator
+      /*
+        Draw optional debug radius indicator
+      */
       if (SHOW_DEBUG_CURSOR && pointerRef.current.isActive) {
         ctx.beginPath();
         ctx.arc(px, py, radius, 0, Math.PI * 2);
@@ -347,13 +367,13 @@ export const InteractiveLineGrid = () => {
       ref={containerRef}
       style={{ backgroundColor: BACKGROUND_COLOR }}
       /*
-       * `absolute inset-0` because this is a backdrop, not a block in the flow:
-       * left in the flow it stacks above the page content and pushes it down.
-       * `z-0` against the content's `z-10` states the paint order outright
-       * instead of leaving it to DOM order, and `pointer-events-none` keeps the
-       * layer out of hit-testing entirely — the effect above is what keeps it
-       * responsive without it.
-       */
+        `absolute inset-0` because this is a backdrop, not a block in the flow:
+        left in the flow it stacks above the page content and pushes it down.
+        `z-0` against the content's `z-10` states the paint order outright
+        instead of leaving it to DOM order, and `pointer-events-none` keeps the
+        layer out of hit-testing entirely — the effect above is what keeps it
+        responsive without it.
+      */
       className="pointer-events-none absolute inset-0 z-0 overflow-hidden select-none"
       aria-hidden
     >

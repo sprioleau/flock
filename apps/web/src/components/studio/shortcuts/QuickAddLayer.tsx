@@ -11,18 +11,20 @@ import {
   type HoldToQuickAdd,
 } from "./use-hold-to-quick-add";
 
-/**
- * The hold-A quick-add chrome, body-portaled like the drag layer so canvas
- * clipping never cuts it off: the SAME indicator line the dnd layer draws
- * (where the block will land) plus a floating menu of the palette's leaf
- * blocks at the pointer. While TRACKING (key held) the menu ignores pointer
- * events — document.elementFromPoint must see the canvas through it; once
- * PINNED (key released over a valid spot) it becomes clickable.
- */
+/*
+  The hold-A quick-add chrome, body-portaled like the drag layer so canvas
+  clipping never cuts it off: the SAME indicator line the dnd layer draws
+  (where the block will land) plus a floating menu of the palette's leaf
+  blocks at the pointer. While TRACKING (key held) the menu ignores pointer
+  events — document.elementFromPoint must see the canvas through it; once
+  PINNED (key released over a valid spot) it becomes clickable.
+*/
 export function QuickAddLayer({ quickAdd }: { quickAdd: HoldToQuickAdd }) {
   const { session, insertItem } = quickAdd;
   const menuRef = useRef<HTMLDivElement | null>(null);
-  // Measured once mounted; estimates cover the very first frame.
+  /*
+    Measured once mounted; estimates cover the very first frame.
+  */
   const [menuSize, setMenuSize] = useState({ width: 176, height: 160 });
 
   const isVisible = session !== null && session.dropTarget !== null;

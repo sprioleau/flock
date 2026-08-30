@@ -1,8 +1,8 @@
-/**
- * Stage S row-plan logic (convex/model/brandKitAssets.ts) + the decision-4
- * confirmed-only gate: pure functions, tested here because the web app owns
- * the vitest runner (the convex dir has none).
- */
+/*
+  Stage S row-plan logic (convex/model/brandKitAssets.ts) + the decision-4
+  confirmed-only gate: pure functions, tested here because the web app owns
+  the vitest runner (the convex dir has none).
+*/
 import { describe, expect, it } from "vitest";
 import {
   collectRowStorageIds,
@@ -15,11 +15,11 @@ import { getConfirmedBrandAssetUrl, MOCK_BRAND_KIT } from "@/lib/brand-kit";
 
 const confirmedLogoRow = {
   revision: 3,
-  logoUrl: "https://storage.convex.cloud/abc", // durable — the confirmed state
+  logoUrl: "https://storage.convex.cloud/abc", /* durable — the confirmed state */
   logoStorageId: "st_logo_1",
   logoSourceUrl: "https://acme.test/logo.png",
   logoConfirmedAtMs: 1_000,
-  socialImageUrl: "https://acme.test/og.png", // still just a suggestion
+  socialImageUrl: "https://acme.test/og.png", /* still just a suggestion */
 };
 
 describe("getEffectiveRevision", () => {
@@ -37,15 +37,15 @@ describe("planBrandKitSavePatch", () => {
       incomingSocialImageUrl: undefined,
       hasRenderableChange: true,
     });
-    expect(patch.revision).toBe(2); // absent = 1 → 2
+    expect(patch.revision).toBe(2); /* absent = 1 → 2 */
   });
 
-  /**
-   * brand-kit-user-control §8.3 / risk 3. `revision` re-arms the "Updated
-   * brand available" pill on every draft of every bound canvas. Once colors,
-   * names and tone of voice are human-editable, kit writes become frequent
-   * and small — so only changes a DRAFT COULD RENDER may bump it.
-   */
+  /*
+    brand-kit-user-control §8.3 / risk 3. `revision` re-arms the "Updated
+    brand available" pill on every draft of every bound canvas. Once colors,
+    names and tone of voice are human-editable, kit writes become frequent
+    and small — so only changes a DRAFT COULD RENDER may bump it.
+  */
   it("does NOT bump revision for a metadata-only save (no pill churn)", () => {
     const { patch } = planBrandKitSavePatch({
       existing: { revision: 3 },
@@ -63,7 +63,7 @@ describe("planBrandKitSavePatch", () => {
       incomingSocialImageUrl: undefined,
       hasRenderableChange: false,
     });
-    expect(patch.revision).toBe(4); // drafts re-source logos from this
+    expect(patch.revision).toBe(4); /* drafts re-source logos from this */
   });
 
   it("keeps a confirmation when the incoming URL is unchanged", () => {
@@ -73,23 +73,25 @@ describe("planBrandKitSavePatch", () => {
       incomingSocialImageUrl: confirmedLogoRow.socialImageUrl,
       hasRenderableChange: true,
     });
-    expect(patch).toEqual({ revision: 4 }); // nothing but the bump
+    expect(patch).toEqual({ revision: 4 }); /* nothing but the bump */
     expect(storageIdsToDelete).toEqual([]);
   });
 
   it("clears a confirmation (and surrenders its file) when a new suggestion arrives", () => {
     const { patch, storageIdsToDelete } = planBrandKitSavePatch({
       existing: confirmedLogoRow,
-      incomingLogoUrl: "https://acme.test/new-logo.svg", // a re-scrape
+      incomingLogoUrl: "https://acme.test/new-logo.svg", /* a re-scrape */
       incomingSocialImageUrl: confirmedLogoRow.socialImageUrl,
       hasRenderableChange: false,
     });
     expect(patch.logoUrl).toBe("https://acme.test/new-logo.svg");
-    expect(patch).toHaveProperty("logoStorageId", undefined); // field removals
+    expect(patch).toHaveProperty("logoStorageId", undefined); /* field removals */
     expect(patch).toHaveProperty("logoConfirmedAtMs", undefined);
     expect(patch).toHaveProperty("logoSourceUrl", undefined);
     expect(storageIdsToDelete).toEqual(["st_logo_1"]);
-    // The unchanged social suggestion is untouched.
+    /*
+      The unchanged social suggestion is untouched.
+    */
     expect(patch).not.toHaveProperty("socialImageUrl");
   });
 
@@ -101,7 +103,7 @@ describe("planBrandKitSavePatch", () => {
       hasRenderableChange: false,
     });
     expect(patch).toHaveProperty("socialImageUrl", undefined);
-    expect(patch).not.toHaveProperty("logoUrl"); // was absent, stays absent
+    expect(patch).not.toHaveProperty("logoUrl"); /* was absent, stays absent */
   });
 });
 
@@ -148,7 +150,7 @@ describe("planAssetConfirmationPatch", () => {
     });
     expect(patch.socialImageUrl).toBe("https://storage.convex.cloud/soc");
     expect(patch.socialImageConfirmedAtMs).toBe(7_000);
-    expect(patch).not.toHaveProperty("logoUrl"); // the logo is untouched
+    expect(patch).not.toHaveProperty("logoUrl"); /* the logo is untouched */
   });
 });
 

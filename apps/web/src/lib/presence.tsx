@@ -48,38 +48,42 @@ export interface PresenceData {
   name: string;
   color: string;
   isAgent?: boolean;
-  /**
-   * Live lifecycle status for non-human roster members (multi-agent canvas
-   * v0 — persona presence, userId prefix `persona:`). Written server-side on
-   * state TRANSITIONS only (convex/personas.ts): "reading" while the runner
-   * assembles document context, "thinking" while its batched analysis call is
-   * in flight, "idle" otherwise. Humans never broadcast this field.
-   */
+  /*
+    Live lifecycle status for non-human roster members (multi-agent canvas
+    v0 — persona presence, userId prefix `persona:`). Written server-side on
+    state TRANSITIONS only (convex/personas.ts): "reading" while the runner
+    assembles document context, "thinking" while its batched analysis call is
+    in flight, "idle" otherwise. Humans never broadcast this field.
+  */
   status?: "idle" | "reading" | "thinking";
-  /** Block whose inline editor this user has open (or the agent is mutating). */
+  /*
+    Block whose inline editor this user has open (or the agent is mutating).
+  */
   editingBlockId?: string;
-  /**
-   * Block this user has SELECTED on the canvas (any block type — divider,
-   * image, section, …). Weaker signal than editingBlockId; when a user both
-   * selects and edits one block, the editing treatment wins in the UI.
-   */
+  /*
+    Block this user has SELECTED on the canvas (any block type — divider,
+    image, section, …). Weaker signal than editingBlockId; when a user both
+    selects and edits one block, the editing treatment wins in the UI.
+  */
   selectedBlockId?: string;
-  /** Live text selection inside a block's synced ProseMirror doc (6.2b). */
+  /*
+    Live text selection inside a block's synced ProseMirror doc (6.2b).
+  */
   selection?: {
     blockId: string;
     anchor: number;
     head: number;
     version?: number;
   };
-  /**
-   * Live mouse pointer on the editing canvas (pointer presence). `x`/`y` are
-   * 0..1 fractions of the anchor rect: the innermost `[data-block-id]`
-   * element under the pointer, or the `[data-dnd-canvas-root]` surface when
-   * `blockId` is null (off-block hover). Block anchoring makes the position
-   * land on the same CONTENT across clients with different canvas widths.
-   * The sender clears this key (broadcasts `pointer: undefined`) on canvas
-   * leave, window blur, and pointer idle.
-   */
+  /*
+    Live mouse pointer on the editing canvas (pointer presence). `x`/`y` are
+    0..1 fractions of the anchor rect: the innermost `[data-block-id]`
+    element under the pointer, or the `[data-dnd-canvas-root]` surface when
+    `blockId` is null (off-block hover). Block anchoring makes the position
+    land on the same CONTENT across clients with different canvas widths.
+    The sender clears this key (broadcasts `pointer: undefined`) on canvas
+    leave, window blur, and pointer idle.
+  */
   pointer?: {
     blockId: string | null;
     x: number;
@@ -94,15 +98,21 @@ export interface PresenceRosterEntry {
   data: PresenceData;
 }
 
-/** Trailing-throttle window for updateRoomUser writes. */
+/*
+  Trailing-throttle window for updateRoomUser writes.
+*/
 const BROADCAST_THROTTLE_MS = 200;
 
-/** localStorage key for the user-chosen nickname override. */
+/*
+  localStorage key for the user-chosen nickname override.
+*/
 export const DISPLAY_NAME_STORAGE_KEY = "flock_display_name";
 
-// ---------------------------------------------------------------------------
-// Derived identity: stable adjective-animal name + hue from the session id
-// ---------------------------------------------------------------------------
+/*
+  ---------------------------------------------------------------------------
+  Derived identity: stable adjective-animal name + hue from the session id
+  ---------------------------------------------------------------------------
+*/
 
 const IDENTITY_ADJECTIVES = [
   "Amber",
@@ -142,7 +152,9 @@ const IDENTITY_ANIMALS = [
   "Wren",
 ] as const;
 
-/** FNV-1a 32-bit — tiny, stable, good enough spread for names and hues. */
+/*
+  FNV-1a 32-bit — tiny, stable, good enough spread for names and hues.
+*/
 function hashString(input: string): number {
   let hash = 0x811c9dc5;
   for (let index = 0; index < input.length; index += 1) {
@@ -152,39 +164,39 @@ function hashString(input: string): number {
   return hash >>> 0;
 }
 
-/**
- * The roster id for a human, derived from their Flock session id.
- *
- * THE SESSION ID MUST NEVER GO ON THE WIRE HERE. The roster is published to
- * every holder of the document link, so whatever we put in `userId` is handed
- * to every collaborator — it is even rendered into the DOM as
- * `data-presence-user` (PresenceFacepile). The session id is also the
- * pre-auth ownership key for brand kits, assets, saved sections and personas
- * (convex/authIdentity.ts), so publishing it raw handed strangers a key to
- * those rows. Publishing a one-way derivation instead keeps everything the
- * roster actually needs — a stable per-browser id, equal across tabs and
- * reloads, distinct between users — while naming nothing the server accepts
- * as an owner.
- *
- * Two FNV-1a passes over differently-salted inputs give 64 bits, which is
- * ample against accidental collision at room scale. This is obfuscation of a
- * capability, not a substitute for one: it removes the trivial "read it off
- * the roster" path, and real ownership still comes from the verified identity.
- */
+/*
+  The roster id for a human, derived from their Flock session id.
+
+  THE SESSION ID MUST NEVER GO ON THE WIRE HERE. The roster is published to
+  every holder of the document link, so whatever we put in `userId` is handed
+  to every collaborator — it is even rendered into the DOM as
+  `data-presence-user` (PresenceFacepile). The session id is also the
+  pre-auth ownership key for brand kits, assets, saved sections and personas
+  (convex/authIdentity.ts), so publishing it raw handed strangers a key to
+  those rows. Publishing a one-way derivation instead keeps everything the
+  roster actually needs — a stable per-browser id, equal across tabs and
+  reloads, distinct between users — while naming nothing the server accepts
+  as an owner.
+
+  Two FNV-1a passes over differently-salted inputs give 64 bits, which is
+  ample against accidental collision at room scale. This is obfuscation of a
+  capability, not a substitute for one: it removes the trivial "read it off
+  the roster" path, and real ownership still comes from the verified identity.
+*/
 export function derivePresenceUserId(sessionId: string): string {
   const high = hashString(`flock-presence-1|${sessionId}`);
   const low = hashString(`flock-presence-2|${sessionId}`);
   return `${high.toString(16).padStart(8, "0")}${low.toString(16).padStart(8, "0")}`;
 }
 
-/**
- * Stable auto-generated identity for any presence userId (self or remote):
- * same id → same adjective-animal name and same hue, on every client.
- *
- * Callers must pass the ROSTER id (derivePresenceUserId output for humans,
- * `persona:<slug>` for agents) — never a raw session id, or a user's own
- * name/colour would disagree with what everyone else renders for them.
- */
+/*
+  Stable auto-generated identity for any presence userId (self or remote):
+  same id → same adjective-animal name and same hue, on every client.
+
+  Callers must pass the ROSTER id (derivePresenceUserId output for humans,
+  `persona:<slug>` for agents) — never a raw session id, or a user's own
+  name/colour would disagree with what everyone else renders for them.
+*/
 export function deriveIdentity(userId: string): { name: string; color: string } {
   const hash = hashString(userId);
   const adjective = IDENTITY_ADJECTIVES[hash % IDENTITY_ADJECTIVES.length];
@@ -198,17 +210,19 @@ function readStoredNickname(): string | null {
   return stored !== null && stored.trim().length > 0 ? stored.trim() : null;
 }
 
-// ---------------------------------------------------------------------------
-// Throttled + single-flighted updateRoomUser writer
-// ---------------------------------------------------------------------------
+/*
+  ---------------------------------------------------------------------------
+  Throttled + single-flighted updateRoomUser writer
+  ---------------------------------------------------------------------------
+*/
 
-/**
- * Module-level factory (NOT a hook) for the presence write path: trailing
- * throttle (~200ms), single-flight (at most one mutation in the air; a write
- * requested mid-flight re-schedules once), and no-op skipping (the serialized
- * payload most recently accepted by the server is remembered in
- * `lastSentRef`; setting it to null forces a resend).
- */
+/*
+  Module-level factory (NOT a hook) for the presence write path: trailing
+  throttle (~200ms), single-flight (at most one mutation in the air; a write
+  requested mid-flight re-schedules once), and no-op skipping (the serialized
+  payload most recently accepted by the server is remembered in
+  `lastSentRef`; setting it to null forces a resend).
+*/
 interface ThrottledPresenceSender {
   schedule: () => void;
   cancel: () => void;
@@ -239,11 +253,13 @@ function createThrottledPresenceSender({
     if (payloadRef.current === null) {
       return;
     }
-    // ONE source of truth for the display name, resolved AT SEND TIME:
-    // localStorage nickname override, else the session-derived name. Never
-    // trust the in-memory copy — a tab whose payload was captured before a
-    // rename in another tab would otherwise re-broadcast the old name and
-    // make the avatar oscillate (two-tabs-one-user share one payload row).
+    /*
+      ONE source of truth for the display name, resolved AT SEND TIME:
+      localStorage nickname override, else the session-derived name. Never
+      trust the in-memory copy — a tab whose payload was captured before a
+      rename in another tab would otherwise re-broadcast the old name and
+      make the avatar oscillate (two-tabs-one-user share one payload row).
+    */
     const resolvedName = readStoredNickname() ?? deriveIdentity(userId).name;
     if (payloadRef.current.name !== resolvedName) {
       payloadRef.current = { ...payloadRef.current, name: resolvedName };
@@ -251,7 +267,7 @@ function createThrottledPresenceSender({
     const payload = payloadRef.current;
     const serialized = JSON.stringify(payload);
     if (serialized === lastSentRef.current) {
-      return; // no-op write, skip
+      return; /* no-op write, skip */
     }
     isSendInFlight = true;
     try {
@@ -292,14 +308,18 @@ function createThrottledPresenceSender({
   return { schedule, cancel };
 }
 
-// ---------------------------------------------------------------------------
-// Provider + hooks
-// ---------------------------------------------------------------------------
+/*
+  ---------------------------------------------------------------------------
+  Provider + hooks
+  ---------------------------------------------------------------------------
+*/
 
 interface PresenceContextValue {
   roster: PresenceRosterEntry[];
   broadcast: (partial: Partial<PresenceData>) => void;
-  /** Persist a nickname override (empty string reverts to the derived name) and broadcast it. */
+  /*
+    Persist a nickname override (empty string reverts to the derived name) and broadcast it.
+  */
   setNickname: (nickname: string) => void;
 }
 
@@ -309,33 +329,43 @@ export function PresenceProvider({
   documentId,
   children,
 }: {
-  /** The Convex document id string — the presence room. */
+  /*
+    The Convex document id string — the presence room.
+  */
   documentId: string;
   children: React.ReactNode;
 }) {
   const convexClient = useConvex();
-  // The roster id, NOT the session id — see {@link derivePresenceUserId}.
-  // Nothing below may publish `getOrCreateSessionId()` itself.
+  /*
+    The roster id, NOT the session id — see {@link derivePresenceUserId}.
+    Nothing below may publish `getOrCreateSessionId()` itself.
+  */
   const [presenceUserId] = useState(() => derivePresenceUserId(getOrCreateSessionId()));
   const [initialIdentity] = useState<PresenceData>(() => {
     const derived = deriveIdentity(presenceUserId);
     return { ...derived, name: readStoredNickname() ?? derived.name };
   });
 
-  // The full local payload, merged across broadcasts. Identity first.
+  /*
+    The full local payload, merged across broadcasts. Identity first.
+  */
   const payloadRef = useRef<PresenceData | null>(initialIdentity);
 
   const presenceState = usePresence(api.presence, documentId, presenceUserId);
 
-  // --- throttled + single-flighted updateRoomUser writes ---
-  // The serialized payload most recently ACCEPTED by the server (null forces
-  // a resend — e.g. writes dropped before our first heartbeat landed).
+  /*
+    --- throttled + single-flighted updateRoomUser writes ---
+    The serialized payload most recently ACCEPTED by the server (null forces
+    a resend — e.g. writes dropped before our first heartbeat landed).
+  */
   const lastSentRef = useRef<string | null>(null);
 
-  // One throttle controller per (client, room, user), created LAZILY from
-  // event handlers/effects (never during render — React Compiler contract);
-  // the mutable timer / in-flight state lives in a module-level factory
-  // closure (see {@link createThrottledPresenceSender}).
+  /*
+    One throttle controller per (client, room, user), created LAZILY from
+    event handlers/effects (never during render — React Compiler contract);
+    the mutable timer / in-flight state lives in a module-level factory
+    closure (see {@link createThrottledPresenceSender}).
+  */
   const senderRef = useRef<{ key: string; sender: ThrottledPresenceSender } | null>(null);
   const scheduleFlush = useCallback((): void => {
     const key = `${documentId}|${presenceUserId}`;
@@ -356,8 +386,10 @@ export function PresenceProvider({
   }, [convexClient, documentId, presenceUserId]);
 
   useEffect(() => {
-    // A new room (document switch) has no memory of what we sent to the old
-    // one; also drop any timer still aimed at the previous room on unmount.
+    /*
+      A new room (document switch) has no memory of what we sent to the old
+      one; also drop any timer still aimed at the previous room on unmount.
+    */
     lastSentRef.current = null;
     return () => {
       senderRef.current?.sender.cancel();
@@ -385,28 +417,32 @@ export function PresenceProvider({
     [scheduleFlush],
   );
 
-  // Bootstrap convergence: updateRoomUser silently drops writes until the
-  // first heartbeat creates our presence row, so if our self entry ever shows
-  // up with NO data at all (fresh room, dropped first write), force a resend
-  // of the full merged payload. Deliberately narrow — it never compares field
-  // values, because two tabs of one user share one payload and value-level
-  // "corrections" make the tabs clobber each other forever (each tab would
-  // re-assert its own stale copy).
+  /*
+    Bootstrap convergence: updateRoomUser silently drops writes until the
+    first heartbeat creates our presence row, so if our self entry ever shows
+    up with NO data at all (fresh room, dropped first write), force a resend
+    of the full merged payload. Deliberately narrow — it never compares field
+    values, because two tabs of one user share one payload and value-level
+    "corrections" make the tabs clobber each other forever (each tab would
+    re-assert its own stale copy).
+  */
   const isSelfServerDataMissing =
     presenceState !== undefined &&
     presenceState.some((entry) => entry.userId === presenceUserId && entry.data === undefined);
   useEffect(() => {
     if (isSelfServerDataMissing) {
-      lastSentRef.current = null; // an earlier write was dropped server-side
+      lastSentRef.current = null; /* an earlier write was dropped server-side */
       scheduleFlush();
     }
   }, [isSelfServerDataMissing, scheduleFlush]);
 
-  // Cross-tab nickname sync: when ANOTHER tab of this browser saves a
-  // nickname (`storage` fires only in the tabs that didn't write), adopt it
-  // into the local payload SILENTLY — the writing tab already broadcast it,
-  // and rebroadcasting from here would clobber that tab's ephemeral fields
-  // (its editingBlockId) with this tab's copy.
+  /*
+    Cross-tab nickname sync: when ANOTHER tab of this browser saves a
+    nickname (`storage` fires only in the tabs that didn't write), adopt it
+    into the local payload SILENTLY — the writing tab already broadcast it,
+    and rebroadcasting from here would clobber that tab's ephemeral fields
+    (its editingBlockId) with this tab's copy.
+  */
   useEffect(() => {
     const handleStorage = (event: StorageEvent): void => {
       if (event.key !== DISPLAY_NAME_STORAGE_KEY) {
@@ -425,10 +461,12 @@ export function PresenceProvider({
     return () => window.removeEventListener("storage", handleStorage);
   }, [presenceUserId]);
 
-  // This provider OWNS the human editingBlockId/selectedBlockId signals:
-  // broadcast when this client's inline text-editing session opens/closes or
-  // its canvas selection changes (read-only store subscriptions; the store
-  // itself is never touched from here).
+  /*
+    This provider OWNS the human editingBlockId/selectedBlockId signals:
+    broadcast when this client's inline text-editing session opens/closes or
+    its canvas selection changes (read-only store subscriptions; the store
+    itself is never touched from here).
+  */
   const editingBlockId = useEditorStore((state) => state.editingBlockId);
   useEffect(() => {
     broadcast({ editingBlockId: editingBlockId ?? undefined });
@@ -480,34 +518,36 @@ function usePresenceContext(hookName: string): PresenceContextValue {
   return context;
 }
 
-/**
- * The live roster for the open document: every known room member (self
- * first, per the component's ordering), with online/offline state and the
- * normalized PresenceData payload (name/color always present — derived
- * fallback when the member hasn't broadcast yet).
- */
+/*
+  The live roster for the open document: every known room member (self
+  first, per the component's ordering), with online/offline state and the
+  normalized PresenceData payload (name/color always present — derived
+  fallback when the member hasn't broadcast yet).
+*/
 export function usePresenceRoster(): PresenceRosterEntry[] {
   return usePresenceContext("usePresenceRoster").roster;
 }
 
-/**
- * Write half of the contract: merge a partial PresenceData into this user's
- * payload and send it (throttled ~200ms trailing, single-flighted, no-op
- * writes skipped). `undefined` values clear their key.
- */
+/*
+  Write half of the contract: merge a partial PresenceData into this user's
+  payload and send it (throttled ~200ms trailing, single-flighted, no-op
+  writes skipped). `undefined` values clear their key.
+*/
 export function useBroadcastPresence(): (partial: Partial<PresenceData>) => void {
   return usePresenceContext("useBroadcastPresence").broadcast;
 }
 
-/** Persist + broadcast a nickname override (empty string reverts to the derived name). */
+/*
+  Persist + broadcast a nickname override (empty string reverts to the derived name).
+*/
 export function useSetNickname(): (nickname: string) => void {
   return usePresenceContext("useSetNickname").setNickname;
 }
 
-/**
- * Non-throwing roster read for chrome that may render outside an open
- * document (returns null when no provider is mounted).
- */
+/*
+  Non-throwing roster read for chrome that may render outside an open
+  document (returns null when no provider is mounted).
+*/
 export function useOptionalPresenceRoster(): PresenceRosterEntry[] | null {
   return useContext(PresenceContext)?.roster ?? null;
 }

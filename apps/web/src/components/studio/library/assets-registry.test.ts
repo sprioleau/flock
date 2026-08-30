@@ -11,18 +11,20 @@ import {
 } from "@convex/model/cleanup";
 import schema from "@convex/schema";
 
-/**
- * Content Studio Stage S backend: assets.register (idempotency, URL
- * resolution, metadata denormalization, name seeding), the bounded
- * session-scoped listing, and the cleanup cascade's retain rule (registered
- * files survive their documents; unregistered legacy files don't).
- *
- * Runs the REAL Convex functions against convex-test's in-memory backend.
- */
+/*
+  Content Studio Stage S backend: assets.register (idempotency, URL
+  resolution, metadata denormalization, name seeding), the bounded
+  session-scoped listing, and the cleanup cascade's retain rule (registered
+  files survive their documents; unregistered legacy files don't).
 
-// NOTE: convex-test's documented `!(*.*.*)` extglob matches nothing under
-// vitest 4 (tinyglobby has no extglob support) — the array form with negative
-// patterns is the equivalent that works.
+  Runs the REAL Convex functions against convex-test's in-memory backend.
+*/
+
+/*
+  NOTE: convex-test's documented `!(*.*.*)` extglob matches nothing under
+  vitest 4 (tinyglobby has no extglob support) — the array form with negative
+  patterns is the equivalent that works.
+*/
 const modules = import.meta.glob([
   "../../../../../../convex/**/*.{ts,js}",
   "!**/*.d.ts",
@@ -80,9 +82,11 @@ describe("assets.register", () => {
     });
     expect(url.length).toBeGreaterThan(0);
     const row = await t.run(async (ctx) => ctx.db.get(assetId));
-    // NOTE: no mimeType assertion — convex-test's in-memory storage does not
-    // record a contentType (real Convex denormalizes it from the upload POST;
-    // the register mutation copies it only when the system doc carries one).
+    /*
+      NOTE: no mimeType assertion — convex-test's in-memory storage does not
+      record a contentType (real Convex denormalizes it from the upload POST;
+      the register mutation copies it only when the system doc carries one).
+    */
     expect(row).toMatchObject({
       sessionId: SESSION_ID,
       storageId,
@@ -189,7 +193,9 @@ describe("document-cascade retain rule (model/cleanup.ts)", () => {
     process.env.CONVEX_CLOUD_URL = originalCloudUrl;
   });
 
-  /** One canvas+document whose single section holds image blocks for `urls`. */
+  /*
+    One canvas+document whose single section holds image blocks for `urls`.
+  */
   async function seedDocumentWithImages(t: Backend, urls: string[]): Promise<Id<"documents">> {
     return await t.run(async (ctx) => {
       const nowMs = Date.now();
@@ -234,7 +240,9 @@ describe("document-cascade retain rule (model/cleanup.ts)", () => {
     const legacyUrl = await t.run(async (ctx) => ctx.storage.getUrl(legacyStorageId));
     expect(legacyUrl).not.toBeNull();
 
-    // The cascade only considers THIS deployment's serving URLs.
+    /*
+      The cascade only considers THIS deployment's serving URLs.
+    */
     process.env.CONVEX_CLOUD_URL = registeredUrl.split("/api/storage/")[0];
 
     const documentId = await seedDocumentWithImages(t, [registeredUrl, legacyUrl!]);
@@ -253,12 +261,18 @@ describe("document-cascade retain rule (model/cleanup.ts)", () => {
       await ctx.db.system.get(registeredStorageId),
       await ctx.db.system.get(legacyStorageId),
     ]);
-    // Registered: the library owns it — the document cascade must not touch it.
+    /*
+      Registered: the library owns it — the document cascade must not touch it.
+    */
     expect(registeredFile).not.toBeNull();
-    // Unregistered legacy file: pre-registry cascade behavior, deleted.
+    /*
+      Unregistered legacy file: pre-registry cascade behavior, deleted.
+    */
     expect(legacyFile).toBeNull();
 
-    // The asset row itself survives, still serving the library grid.
+    /*
+      The asset row itself survives, still serving the library grid.
+    */
     const listed = await t.query(api.assets.listForSession, { sessionId: SESSION_ID });
     expect(listed.map((asset) => asset.name)).toEqual(["keep-me.png"]);
   });

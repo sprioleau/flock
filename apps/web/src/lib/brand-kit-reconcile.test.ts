@@ -1,13 +1,13 @@
-/**
- * Re-scrape reconciliation (docs/proposals/brand-kit-user-control.md §8) —
- * the load-bearing problem in the whole proposal. Before this, a save was a
- * wholesale replace: scrape a site, rename its colors, re-scrape, and every
- * name you typed was gone silently.
- *
- * These tests pin the property that fixes it: ANYTHING A HUMAN TOUCHED
- * SURVIVES A RE-SCRAPE, and what was kept is reportable so the panel can say
- * it out loud.
- */
+/*
+  Re-scrape reconciliation (docs/proposals/brand-kit-user-control.md §8) —
+  the load-bearing problem in the whole proposal. Before this, a save was a
+  wholesale replace: scrape a site, rename its colors, re-scrape, and every
+  name you typed was gone silently.
+
+  These tests pin the property that fixes it: ANYTHING A HUMAN TOUCHED
+  SURVIVES A RE-SCRAPE, and what was kept is reportable so the panel can say
+  it out loud.
+*/
 import { describe, expect, it } from "vitest";
 import {
   buildBrandColorId,
@@ -41,7 +41,7 @@ describe("reconcileBrandColors — human edits survive the scrape", () => {
       color({ hex: "#0b1120", name: "Ink", origin: "agent" }),
     ];
     const incoming = [
-      color({ hex: "#ffc400", name: "Yellow" }), // the scrape's blander name
+      color({ hex: "#ffc400", name: "Yellow" }), /* the scrape's blander name */
       color({ hex: "#123456", name: "Steel" }),
     ];
     const { colors, keptUserEditedCount, adoptedFromSiteCount } = reconcileBrandColors({
@@ -51,8 +51,10 @@ describe("reconcileBrandColors — human edits survive the scrape", () => {
     expect(colors.map(({ name }) => name)).toEqual(["Banana", "Steel"]);
     expect(keptUserEditedCount).toBe(1);
     expect(adoptedFromSiteCount).toBe(1);
-    // The machine entry from the PREVIOUS scrape is gone — that is what a
-    // re-scrape is for.
+    /*
+      The machine entry from the PREVIOUS scrape is gone — that is what a
+      re-scrape is for.
+    */
     expect(colors.some(({ name }) => name === "Ink")).toBe(false);
   });
 
@@ -68,7 +70,9 @@ describe("reconcileBrandColors — human edits survive the scrape", () => {
   it("never lets an incoming color duplicate a hex the human already claimed", () => {
     const stored = [color({ hex: "#FFC400", name: "Banana", origin: "user" })];
     const { colors } = reconcileBrandColors({
-      // Same color, different casing/shorthand — still the human's.
+      /*
+        Same color, different casing/shorthand — still the human's.
+      */
       existing: stored,
       incoming: [color({ hex: "#ffc400", name: "Yellow" })],
     });
@@ -151,7 +155,9 @@ describe("reconcileSocialLinks — a typed link outlives the scraper", () => {
   it("keeps the human's link for a platform the scrape disagrees about", () => {
     const { socialLinks, keptUserEditedCount } = reconcileSocialLinks({
       existing: [
-        /* The real company page, typed after the scraper found the CEO's. */
+        /*
+          The real company page, typed after the scraper found the CEO's.
+        */
         { platform: "linkedin", url: "https://linkedin.com/company/acme", origin: "user" },
         { platform: "x", url: "https://x.com/acme-old" },
       ],
@@ -161,7 +167,9 @@ describe("reconcileSocialLinks — a typed link outlives the scraper", () => {
       ],
     });
     expect(socialLinks).toEqual([
-      /* Display order, not merge order. */
+      /*
+        Display order, not merge order.
+      */
       { platform: "x", url: "https://x.com/acme" },
       { platform: "linkedin", url: "https://linkedin.com/company/acme", origin: "user" },
     ]);

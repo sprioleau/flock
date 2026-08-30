@@ -25,59 +25,69 @@
   decoding cannot emit a key that is not a declared property.
 */
 
-/** One list-shaped param and the fewest real entries it needs to be worth rendering. */
+/*
+  One list-shaped param and the fewest real entries it needs to be worth rendering.
+*/
 export interface SectionListRequirement {
-  /** The param's name, as `paramsSchema` spells it (`features`, `stats`, `images`). */
+  /*
+    The param's name, as `paramsSchema` spells it (`features`, `stats`, `images`).
+  */
   param: string;
-  /** How many entries the caller must supply. Always at least one. */
+  /*
+    How many entries the caller must supply. Always at least one.
+  */
   minimumCount: number;
 }
 
-/**
- * What one template needs to render real content, in the three shapes content
- * actually arrives in: prose, lists, and pictures.
- */
+/*
+  What one template needs to render real content, in the three shapes content
+  actually arrives in: prose, lists, and pictures.
+*/
 export interface SectionContentRequirements {
-  /**
-   * Params that must arrive as non-blank copy — the words that carry the
-   * section's substance and would otherwise be asserted by a default.
-   *
-   * Structural chrome is deliberately absent: an unsubscribe merge tag, a
-   * postal address, a nav bar, a code fence's language, or a button label on
-   * a section whose substance is its prose are furniture the sender is
-   * expected to configure, not claims invented about a subject.
-   *
-   * Absent from HERE is not the same as unguarded. Requiring the chrome would
-   * drop nearly every hero and every footer, and a dropped footer takes the
-   * unsubscribe link with it — so the chrome that names a PLACE (a
-   * destination, a postal address) is guarded the other way instead: it
-   * carries no `.default()` at all, and `build` leaves the element out when
-   * the caller named nothing. See `previewParams` in `sections/types` for how
-   * the catalog gallery still shows a hero's button and a footer's address.
-   */
+  /*
+    Params that must arrive as non-blank copy — the words that carry the
+    section's substance and would otherwise be asserted by a default.
+
+    Structural chrome is deliberately absent: an unsubscribe merge tag, a
+    postal address, a nav bar, a code fence's language, or a button label on
+    a section whose substance is its prose are furniture the sender is
+    expected to configure, not claims invented about a subject.
+
+    Absent from HERE is not the same as unguarded. Requiring the chrome would
+    drop nearly every hero and every footer, and a dropped footer takes the
+    unsubscribe link with it — so the chrome that names a PLACE (a
+    destination, a postal address) is guarded the other way instead: it
+    carries no `.default()` at all, and `build` leaves the element out when
+    the caller named nothing. See `previewParams` in `sections/types` for how
+    the catalog gallery still shows a hero's button and a footer's address.
+  */
   copyParams: readonly string[];
-  /** List-shaped params and the fewest entries each needs. */
+  /*
+    List-shaped params and the fewest entries each needs.
+  */
   listParams: readonly SectionListRequirement[];
-  /**
-   * How many images the built section shows. Declared for the record — the
-   * catalog test holds it to what `build` really emits, and the forward-looking
-   * image-reuse policy will read it — but NOT part of the eligibility test:
-   * image SOURCES are the pipeline's job, never the model's, and the fallback
-   * is a visibly grey `placehold.co` box rather than invented content.
-   */
+  /*
+    How many images the built section shows. Declared for the record — the
+    catalog test holds it to what `build` really emits, and the forward-looking
+    image-reuse policy will read it — but NOT part of the eligibility test:
+    image SOURCES are the pipeline's job, never the model's, and the fallback
+    is a visibly grey `placehold.co` box rather than invented content.
+  */
   imageCount: number;
 }
 
-/** A supplied copy param counts only when it is a string with something in it. */
+/*
+  A supplied copy param counts only when it is a string with something in it.
+*/
 function hasCopy(value: unknown): boolean {
   return typeof value === "string" && value.trim().length > 0;
 }
 
-/**
- * Whether the params the caller SUPPLIED satisfy one template's declared
- * requirements. Defaults take no part: the input is the raw params object, so
- * an absent field is absent, not "the sample value".
- */
+/*
+  Whether the params the caller SUPPLIED satisfy one template's declared
+  requirements. Defaults take no part: the input is the raw params object, so
+  an absent field is absent, not "the sample value".
+*/
 export function isContentRequirementSatisfied({
   requirements,
   params,

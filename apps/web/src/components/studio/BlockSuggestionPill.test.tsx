@@ -4,20 +4,20 @@ import type { BlockId } from "@flock/email-sdk";
 import type { Id } from "@convex/_generated/dataModel";
 import type { BlockSuggestionAnchor } from "@/lib/suggestions/suggestion-surface-store";
 
-/**
- * The pill's SHAPE, checked the way this app checks components: there is no
- * DOM here (vitest.config.ts pins `environment: "node"`), so the component is
- * called as a plain function over stubbed hooks and the element tree it
- * returns is walked. Placement is CSS and belongs to the browser pass; what
- * this suite can prove is everything that would be a real bug:
- *
- * - it renders nothing at all when the live suggestion is about another block;
- * - its × is labelled as HIDING, not dismissing (the localStorage write is a
- *   whole-document, permanent consequence and must stay on the chat card);
- * - every click stops propagation, because the shell underneath turns a click
- *   on an already-selected button into "open the label editor";
- * - it offers exactly ONE action, the default rung, in the rules' own words.
- */
+/*
+  The pill's SHAPE, checked the way this app checks components: there is no
+  DOM here (vitest.config.ts pins `environment: "node"`), so the component is
+  called as a plain function over stubbed hooks and the element tree it
+  returns is walked. Placement is CSS and belongs to the browser pass; what
+  this suite can prove is everything that would be a real bug:
+
+  - it renders nothing at all when the live suggestion is about another block;
+  - its × is labelled as HIDING, not dismissing (the localStorage write is a
+    whole-document, permanent consequence and must stay on the chat card);
+  - every click stops propagation, because the shell underneath turns a click
+    on an already-selected button into "open the label editor";
+  - it offers exactly ONE action, the default rung, in the rules' own words.
+*/
 
 const anchorRef: { current: BlockSuggestionAnchor | null } = { current: null };
 const hideAnchoredSuggestion = vi.hoisted(() => vi.fn());
@@ -37,7 +37,9 @@ vi.mock("@/lib/suggestions/suggestion-surface-store", () => ({
 
 vi.mock("react", async () => {
   const actual = await vi.importActual<typeof import("react")>("react");
-  // The mount registration is a side effect with no bearing on the tree.
+  /*
+    The mount registration is a side effect with no bearing on the tree.
+  */
   return { ...actual, useEffect: () => {} };
 });
 
@@ -108,7 +110,9 @@ function makeAnchor(overrides: Partial<BlockSuggestionAnchor> = {}): BlockSugges
   };
 }
 
-/** A click as the shell would see it, so propagation can be asserted. */
+/*
+  A click as the shell would see it, so propagation can be asserted.
+*/
 function makeClickEvent() {
   return { stopPropagation: vi.fn(), preventDefault: vi.fn() };
 }
@@ -152,14 +156,18 @@ describe("the pill", () => {
     const event = makeClickEvent();
     (apply!.props.onClick as (event: unknown) => void)(event);
     expect(applyDefaultRung).toHaveBeenCalledTimes(1);
-    // Without this the shell also opens the button's inline label editor.
+    /*
+      Without this the shell also opens the button's inline label editor.
+    */
     expect(event.stopPropagation).toHaveBeenCalled();
     expect(event.preventDefault).toHaveBeenCalled();
   });
 
   it("uses plain buttons, never a Base UI control", () => {
-    // Base UI warnings are thrown errors in production; the sibling chat card
-    // holds the same line.
+    /*
+      Base UI warnings are thrown errors in production; the sibling chat card
+      holds the same line.
+    */
     for (const testId of ["block-suggestion-apply", "block-suggestion-hide"]) {
       const button = findByTestId(BlockSuggestionPill({ blockId }), testId);
       expect(button!.type).toBe("button");
@@ -172,8 +180,10 @@ describe("the ×", () => {
   it("says HIDE, because that is all it does", () => {
     const hide = findByTestId(BlockSuggestionPill({ blockId }), "block-suggestion-hide");
     expect(hide!.props["aria-label"]).toBe("Hide this suggestion");
-    // "Dismiss" is the chat card's word for the permanent, whole-document
-    // pattern dismissal. These two must not read as the same action.
+    /*
+      "Dismiss" is the chat card's word for the permanent, whole-document
+      pattern dismissal. These two must not read as the same action.
+    */
     expect(String(hide!.props["aria-label"])).not.toMatch(/dismiss/i);
   });
 

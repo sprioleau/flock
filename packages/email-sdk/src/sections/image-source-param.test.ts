@@ -17,7 +17,9 @@ import { getModelFacingParamsSchema, type SectionTemplate } from "./types";
     against the real union in actions/scaffold-section.test.ts.
 */
 
-/** Deterministic LCG so ids are reproducible. */
+/*
+  Deterministic LCG so ids are reproducible.
+*/
 function createSeededRandom(seed = 5): RandomFn {
   let state = seed;
   return () => {
@@ -26,7 +28,9 @@ function createSeededRandom(seed = 5): RandomFn {
   };
 }
 
-/** A URL shaped like what the rehost step hands back — never a placehold.co address. */
+/*
+  A URL shaped like what the rehost step hands back — never a placehold.co address.
+*/
 const REHOSTED_IMAGE_URL = "https://storage.example.com/rehosted/portrait-9f2c.png";
 
 function imageSourcesOf(
@@ -50,9 +54,13 @@ function templateOf(templateId: string): SectionTemplate {
 
 interface SingleImageTemplateCase {
   templateId: string;
-  /** Params the template needs before it renders an image at all. */
+  /*
+    Params the template needs before it renders an image at all.
+  */
   imageEnablingParams: Record<string, unknown>;
-  /** The exact placeholder this template has always emitted — dimensions included. */
+  /*
+    The exact placeholder this template has always emitted — dimensions included.
+  */
   placeholderSrc: string;
 }
 
@@ -149,7 +157,9 @@ describe("template image-gallery image sources", () => {
     const withSource = { images: [{ alt: "One", src: REHOSTED_IMAGE_URL }, { alt: "Two" }] };
     expect(template.paramsSchema.safeParse(withSource).success).toBe(true);
     expect(getModelFacingParamsSchema(template).safeParse(withSource).success).toBe(false);
-    /* The rest of a gallery image is untouched: alt and href still validate. */
+    /*
+      The rest of a gallery image is untouched: alt and href still validate.
+    */
     expect(
       getModelFacingParamsSchema(template).safeParse({
         images: [{ alt: "One", href: "https://example.com" }, { alt: "Two" }],

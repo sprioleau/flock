@@ -36,16 +36,18 @@
 import { EMAIL_SAFE_FONT_OPTIONS } from "../components/studio/text-editor/email-safe-fonts";
 import type { BrandKitFonts, ThemeVariation } from "./brand-kit";
 
-/** True when `stack` is one of the email-safe stacks, byte for byte. */
+/*
+  True when `stack` is one of the email-safe stacks, byte for byte.
+*/
 export function isEmailSafeFontStack(stack: string): boolean {
   return EMAIL_SAFE_FONT_OPTIONS.some((option) => option.value === stack);
 }
 
-/**
- * Hard (blocking) problems with a fonts payload, as messages a person can
- * act on. Empty array = valid. Shared by the panel and the Convex mutation,
- * exactly like getBrandColorsValidationErrors.
- */
+/*
+  Hard (blocking) problems with a fonts payload, as messages a person can
+  act on. Empty array = valid. Shared by the panel and the Convex mutation,
+  exactly like getBrandColorsValidationErrors.
+*/
 export function getBrandFontsValidationErrors(fonts: BrandKitFonts): string[] {
   const errors: string[] = [];
   const roles = [
@@ -66,13 +68,13 @@ export function getBrandFontsValidationErrors(fonts: BrandKitFonts): string[] {
   return errors;
 }
 
-/**
- * Re-font every variation from the kit's fonts, using the SAME role mapping
- * the extraction pipeline uses (expand-variations.ts): headings 1–3 take the
- * heading stack; paragraphs and button labels take the body stack. Colors,
- * spacing and every other global are untouched — a font edit re-fonts, it
- * never recolors or reflows.
- */
+/*
+  Re-font every variation from the kit's fonts, using the SAME role mapping
+  the extraction pipeline uses (expand-variations.ts): headings 1–3 take the
+  heading stack; paragraphs and button labels take the body stack. Colors,
+  spacing and every other global are untouched — a font edit re-fonts, it
+  never recolors or reflows.
+*/
 export function applyBrandFontsToVariations({
   variations,
   fonts,

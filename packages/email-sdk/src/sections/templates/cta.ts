@@ -2,13 +2,13 @@ import { z } from "zod";
 import { createSectionComposer, headingNode, paragraphNode, textDocOf } from "../build-helpers";
 import { defineSectionTemplate } from "../types";
 
-/**
- * `cta` — a focused call-to-action banner: short headline, optional
- * supporting line, and ONE button, all centered, with a spacer giving the
- * button air. Reference: react.email/components marketing/CTA patterns.
- * (This also covers the "text-only hero" shape — one centered ask — so the
- * catalog carries a single template for it rather than two look-alikes.)
- */
+/*
+  `cta` — a focused call-to-action banner: short headline, optional
+  supporting line, and ONE button, all centered, with a spacer giving the
+  button air. Reference: react.email/components marketing/CTA patterns.
+  (This also covers the "text-only hero" shape — one centered ask — so the
+  catalog carries a single template for it rather than two look-alikes.)
+*/
 
 export const ctaParamsSchema = z
   .strictObject({

@@ -53,7 +53,9 @@ describe("seedNameFromSectionSubtree", () => {
     const subtree = getSavedFooterSubtree();
     const name = seedNameFromSectionSubtree(subtree);
     expect(name.length).toBeGreaterThan(0);
-    // The name must be real content from a text block inside the subtree.
+    /*
+      The name must be real content from a text block inside the subtree.
+    */
     const hasTextSource = subtree.some(
       (block) =>
         block.type === "text" &&
@@ -106,7 +108,9 @@ describe("buildInsertSavedSectionPlan (one op, fresh ids)", () => {
     if (!result.isOk) {
       return;
     }
-    // Inserted at the bottom (no selection), same subtree size, properties intact.
+    /*
+      Inserted at the bottom (no selection), same subtree size, properties intact.
+    */
     const newRoot = result.doc[ROOT_BLOCK_ID]!;
     expect(newRoot.childrenIds.at(-1)).toBe(plan!.sectionId);
     expect(Object.keys(result.doc)).toHaveLength(Object.keys(sampleDoc).length + savedBlocks.length);
@@ -177,7 +181,9 @@ describe("buildInsertSavedSectionPlan (one op, fresh ids)", () => {
     });
     expect(anchoredPlan!.op.index).toBe(root.childrenIds.indexOf(firstSectionId as never) + 1);
 
-    // A bad anchor returns null (the agent path reports a retryable error).
+    /*
+      A bad anchor returns null (the agent path reports a retryable error).
+    */
     const badAnchorPlan = buildInsertSavedSectionPlan({
       doc: sampleDoc,
       savedBlocks,
@@ -201,7 +207,9 @@ describe("buildStandaloneSectionDoc (previews + enrichment outline)", () => {
     expect((docRoot.properties as { globals: { backgroundColor: string } }).globals.backgroundColor).toBe(
       "#112233",
     );
-    // Every saved block is present; the section root is re-parented to root.
+    /*
+      Every saved block is present; the section root is re-parented to root.
+    */
     for (const block of savedBlocks) {
       expect(doc![block.id]).toBeDefined();
     }

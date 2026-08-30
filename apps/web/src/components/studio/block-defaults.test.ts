@@ -55,7 +55,9 @@ describe("createDefaultLeafBlock", () => {
     expect(DEFAULT_IMAGE_PADDING_PX).toBe(12);
     const block = createDefaultLeafBlock({ type: "image", id: "img_zzzz", parentId, doc });
     if (block.type !== "image") throw new Error("expected image");
-    // Sample doc content width is 600 → 360.
+    /*
+      Sample doc content width is 600 → 360.
+    */
     expect(block.properties.width).toBe(getDefaultImageWidth(doc));
     expect(getDefaultImageWidth(doc)).toBe(360);
     expect(block.properties.paddingTop).toBe(12);

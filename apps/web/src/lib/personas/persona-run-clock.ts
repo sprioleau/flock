@@ -2,31 +2,33 @@
 
 import { useSyncExternalStore } from "react";
 
-/**
- * Persona run clock — the client-side source for the facepile popover's
- * "time until next check" line. The advisors runner (use-persona-advisors.ts)
- * records when each persona's run STARTED (the same instant it stamps its
- * in-memory cooldown); the popover derives "checks again in about Ns" from
- * lastRunAtMs + the persona's registry cooldownSeconds.
- *
- * Scope & honesty:
- * - localStorage-backed per (documentId, slug), so every tab of THIS browser
- *   shares one clock (a `storage` listener keeps them reactive) — matching
- *   how runs actually behave: any tab's run consumes the shared budget.
- * - It deliberately does NOT see other collaborators' browsers. That is
- *   acceptable honesty for a countdown: each client triggers its own runs,
- *   and the server re-checks cooldowns regardless.
- * - ZERO presence writes — this is pure local bookkeeping (presence fan-out
- *   pushes the full roster to every subscriber; a ticking countdown must
- *   never ride that channel).
- *
- * The user-facing label logic (buildNextCheckLabel) lives here too so it is
- * unit-testable: internal states map to user language, never raw ms.
- */
+/*
+  Persona run clock — the client-side source for the facepile popover's
+  "time until next check" line. The advisors runner (use-persona-advisors.ts)
+  records when each persona's run STARTED (the same instant it stamps its
+  in-memory cooldown); the popover derives "checks again in about Ns" from
+  lastRunAtMs + the persona's registry cooldownSeconds.
+
+  Scope & honesty:
+  - localStorage-backed per (documentId, slug), so every tab of THIS browser
+    shares one clock (a `storage` listener keeps them reactive) — matching
+    how runs actually behave: any tab's run consumes the shared budget.
+  - It deliberately does NOT see other collaborators' browsers. That is
+    acceptable honesty for a countdown: each client triggers its own runs,
+    and the server re-checks cooldowns regardless.
+  - ZERO presence writes — this is pure local bookkeeping (presence fan-out
+    pushes the full roster to every subscriber; a ticking countdown must
+    never ride that channel).
+
+  The user-facing label logic (buildNextCheckLabel) lives here too so it is
+  unit-testable: internal states map to user language, never raw ms.
+*/
 
 const RUN_CLOCK_STORAGE_KEY = "flock_persona_last_run";
 
-/** Bound on retained entries — old documents' stamps get evicted. */
+/*
+  Bound on retained entries — old documents' stamps get evicted.
+*/
 const MAX_RUN_CLOCK_ENTRIES = 64;
 
 type RunClockMap = Record<string, number>;
@@ -55,7 +57,9 @@ function readMapFromStorage(): RunClockMap {
     );
     return Object.fromEntries(entries);
   } catch {
-    // localStorage unavailable (SSR, privacy mode) or corrupt — no stamps.
+    /*
+      localStorage unavailable (SSR, privacy mode) or corrupt — no stamps.
+    */
     return {};
   }
 }
@@ -89,7 +93,9 @@ function subscribe(listener: () => void): () => void {
   };
 }
 
-/** Stamp a persona's run start (called where the runner stamps its cooldown). */
+/*
+  Stamp a persona's run start (called where the runner stamps its cooldown).
+*/
 export function recordPersonaRunStart({
   documentId,
   slug,
@@ -103,7 +109,9 @@ export function recordPersonaRunStart({
   const next: RunClockMap = { ...current, [buildEntryKey({ documentId, slug })]: atMs };
   const keys = Object.keys(next);
   if (keys.length > MAX_RUN_CLOCK_ENTRIES) {
-    // Evict the oldest stamps (stale documents) to keep the record bounded.
+    /*
+      Evict the oldest stamps (stale documents) to keep the record bounded.
+    */
     const sortedByAge = keys.sort((a, b) => (next[a] ?? 0) - (next[b] ?? 0));
     for (const key of sortedByAge.slice(0, keys.length - MAX_RUN_CLOCK_ENTRIES)) {
       delete next[key];
@@ -114,22 +122,26 @@ export function recordPersonaRunStart({
   try {
     window.localStorage.setItem(RUN_CLOCK_STORAGE_KEY, JSON.stringify(next));
   } catch {
-    // In-memory stamp still applies for this tab.
+    /*
+      In-memory stamp still applies for this tab.
+    */
   }
   notifyListeners();
 }
 
-// ---------------------------------------------------------------------------
-// Last-checked watch-scope hash (item 27 hash-gated checks)
-// ---------------------------------------------------------------------------
+/*
+  ---------------------------------------------------------------------------
+  Last-checked watch-scope hash (item 27 hash-gated checks)
+  ---------------------------------------------------------------------------
+*/
 
-/**
- * Beside the run clock: the last watch-scope hash each (document, persona)
- * was checked against. The runner skips a due persona entirely — no API
- * call, no presence churn — when its scope hash hasn't changed since the
- * last check. localStorage so reloads and sibling tabs share the baseline;
- * non-reactive on purpose (only the runner reads it, at call time).
- */
+/*
+  Beside the run clock: the last watch-scope hash each (document, persona)
+  was checked against. The runner skips a due persona entirely — no API
+  call, no presence churn — when its scope hash hasn't changed since the
+  last check. localStorage so reloads and sibling tabs share the baseline;
+  non-reactive on purpose (only the runner reads it, at call time).
+*/
 const CHECKED_HASH_STORAGE_KEY = "flock_persona_last_hash";
 
 interface CheckedHashEntry {
@@ -170,7 +182,9 @@ function getHashMap(): CheckedHashMap {
   return cachedHashMap;
 }
 
-/** The last-checked scope hash for one (document, persona), or null. */
+/*
+  The last-checked scope hash for one (document, persona), or null.
+*/
 export function getPersonaCheckedHash({
   documentId,
   slug,
@@ -181,7 +195,9 @@ export function getPersonaCheckedHash({
   return getHashMap()[buildEntryKey({ documentId, slug })]?.hash ?? null;
 }
 
-/** Stamp the scope hash a check ran against (called beside the run stamp). */
+/*
+  Stamp the scope hash a check ran against (called beside the run stamp).
+*/
 export function recordPersonaCheckedHash({
   documentId,
   slug,
@@ -208,16 +224,18 @@ export function recordPersonaCheckedHash({
   try {
     window.localStorage.setItem(CHECKED_HASH_STORAGE_KEY, JSON.stringify(next));
   } catch {
-    // In-memory stamp still applies for this tab.
+    /*
+      In-memory stamp still applies for this tab.
+    */
   }
 }
 
 const NO_RUN_AT_MS = null;
 
-/**
- * Reactive last-run stamp for one persona on one document (null = this
- * browser has never triggered a run for it).
- */
+/*
+  Reactive last-run stamp for one persona on one document (null = this
+  browser has never triggered a run for it).
+*/
 export function usePersonaLastRunAtMs({
   documentId,
   slug,
@@ -235,22 +253,24 @@ export function usePersonaLastRunAtMs({
   );
 }
 
-// ---------------------------------------------------------------------------
-// User-facing "next check" label
-// ---------------------------------------------------------------------------
+/*
+  ---------------------------------------------------------------------------
+  User-facing "next check" label
+  ---------------------------------------------------------------------------
+*/
 
-/**
- * The popover's one-line answer to "when does this agent check again?" —
- * user-facing language only (owner principle: never internal names or raw
- * timings):
- * - paused                          → "Paused — check manually" (the manual
- *   "Check now" button beside it still works while paused)
- * - a run in flight (reading/
- *   thinking presence status)       → "Checking now…"
- * - inside the cooldown window      → "Checks again in about Ns" (or minutes)
- * - past cooldown / never ran       → "Waiting for changes" (honest: a check
- *   fires on the next edit, not on a timer)
- */
+/*
+  The popover's one-line answer to "when does this agent check again?" —
+  user-facing language only (owner principle: never internal names or raw
+  timings):
+  - paused                          → "Paused — check manually" (the manual
+    "Check now" button beside it still works while paused)
+  - a run in flight (reading/
+    thinking presence status)       → "Checking now…"
+  - inside the cooldown window      → "Checks again in about Ns" (or minutes)
+  - past cooldown / never ran       → "Waiting for changes" (honest: a check
+    fires on the next edit, not on a timer)
+*/
 export function buildNextCheckLabel({
   isPaused,
   personaStatus,

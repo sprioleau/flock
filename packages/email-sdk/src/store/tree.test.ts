@@ -80,7 +80,9 @@ describe("deflate", () => {
 
   it("treats the tree shape as authoritative and rewrites pointers", () => {
     const tree = inflate(createSampleDocument());
-    // Manually reorder the root's sections without touching childrenIds.
+    /*
+      Manually reorder the root's sections without touching childrenIds.
+    */
     tree.children.reverse();
     const document = deflate(tree);
     expect(document.root!.childrenIds).toEqual(["sec_e5f6", "sec_c3d4", "sec_a1b2"]);
@@ -88,7 +90,9 @@ describe("deflate", () => {
 
   it("rewrites stale parentId/childrenIds embedded in tree blocks", () => {
     const tree = inflate(createSampleDocument());
-    // Move the button node from its column up into the hero section.
+    /*
+      Move the button node from its column up into the hero section.
+    */
     const row = tree.children[1]!.children[0]!;
     const buttonColumn = row.children[1]!;
     const buttonNode = buttonColumn.children.pop()!;
@@ -113,6 +117,6 @@ describe("deflate", () => {
     const original = document.txt_e5f6 as Block;
     const copy = roundTripped.txt_e5f6 as Block;
     expect(copy.properties).toEqual(original.properties);
-    expect(copy).not.toBe(original); // deflate builds fresh block records
+    expect(copy).not.toBe(original); /* deflate builds fresh block records */
   });
 });

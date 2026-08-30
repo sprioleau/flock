@@ -10,15 +10,15 @@ import { buildDefaultBrandKit, DEFAULT_BRAND_KIT_NAME } from "./brand-kit-defaul
 import { decodeSvgDataUri, isSvgMarkupSafe } from "./brand-kit-extraction/confirm-asset";
 import { getEligibleThemeBackgrounds, getPaletteHexes } from "./brand-theme-builder";
 
-/**
- * The STARTER kit (§14.5c) — Flock's own brand, seeded so a user whose site
- * cannot be scraped is not locked out of every editor in the panel.
- *
- * These assertions are the ones that would be real bugs in production: a kit
- * the server would refuse to store, a palette that cannot build a theme, a
- * logo that cannot be confirmed, or provenance that would make the starter
- * outlive the user's own scrape of their own website.
- */
+/*
+  The STARTER kit (§14.5c) — Flock's own brand, seeded so a user whose site
+  cannot be scraped is not locked out of every editor in the panel.
+
+  These assertions are the ones that would be real bugs in production: a kit
+  the server would refuse to store, a palette that cannot build a theme, a
+  logo that cannot be confirmed, or provenance that would make the starter
+  outlive the user's own scrape of their own website.
+*/
 
 describe("the default Flock brand kit", () => {
   it("passes the same contract gate a scraped kit does", () => {
@@ -45,7 +45,9 @@ describe("the default Flock brand kit", () => {
       MOCK_BRAND_KIT.variations.map((variation) => variation.id),
     );
     expect(kit.variations.map((variation) => variation.name)).toContain("Midnight");
-    /* Copied, not aliased: a kit row owns its variations. */
+    /*
+      Copied, not aliased: a kit row owns its variations.
+    */
     expect(kit.variations[0]).not.toBe(MOCK_BRAND_KIT.variations[0]);
   });
 
@@ -88,7 +90,9 @@ describe("the default Flock brand kit", () => {
   });
 
   it("does not lock its colors against the user's own scrape", () => {
-    /* Same reasoning as the tone: a scrape must be able to sweep these away. */
+    /*
+      Same reasoning as the tone: a scrape must be able to sweep these away.
+    */
     const colors = buildDefaultBrandKit().colors ?? [];
     expect(colors.length).toBeGreaterThan(0);
     expect(colors.some((color) => isHumanOwnedColor(color))).toBe(false);
@@ -108,7 +112,9 @@ describe("the default Flock brand kit", () => {
     const decoded = decodeSvgDataUri(kit.logoUrl ?? "");
     expect(decoded).not.toBeNull();
     expect(decoded?.svgText.startsWith("<svg")).toBe(true);
-    /* And the same safety gate a scraped inline SVG has to clear. */
+    /*
+      And the same safety gate a scraped inline SVG has to clear.
+    */
     expect(isSvgMarkupSafe(decoded?.svgText ?? "")).toBe(true);
   });
 });

@@ -6,26 +6,28 @@ import {
 import { z } from "zod";
 import type { ImageCandidate, PageScrape } from "./page-scrape";
 
-/**
- * Read a scraped page and say what it is, how much that reading can be
- * trusted, and which of its images are worth keeping.
- *
- * THE CONSTRAINT THIS MODULE EXISTS TO SATISFY: the classifier never sees the
- * user's message. Not "is told to ignore it" — it is not passed.
- * `buildClassificationPrompt` takes a `PageScrape` and nothing else, so there
- * is no parameter through which a phrasing could arrive. That is a property of
- * the signature rather than of anyone's discipline, and widening it is the one
- * change to this file that should never be made quietly.
- *
- * THE OTHER RULE: `pageType` is an OUTPUT. Nothing downstream may branch on
- * it. The one exception is named honestly in the confidence handling below —
- * a low-confidence reading STOPS, and that stop is a behaviour change driven
- * by the reading rather than by the label.
- */
+/*
+  Read a scraped page and say what it is, how much that reading can be
+  trusted, and which of its images are worth keeping.
 
-// ---------------------------------------------------------------------------
-// The vocabulary
-// ---------------------------------------------------------------------------
+  THE CONSTRAINT THIS MODULE EXISTS TO SATISFY: the classifier never sees the
+  user's message. Not "is told to ignore it" — it is not passed.
+  `buildClassificationPrompt` takes a `PageScrape` and nothing else, so there
+  is no parameter through which a phrasing could arrive. That is a property of
+  the signature rather than of anyone's discipline, and widening it is the one
+  change to this file that should never be made quietly.
+
+  THE OTHER RULE: `pageType` is an OUTPUT. Nothing downstream may branch on
+  it. The one exception is named honestly in the confidence handling below —
+  a low-confidence reading STOPS, and that stop is a behaviour change driven
+  by the reading rather than by the label.
+*/
+
+/*
+  ---------------------------------------------------------------------------
+  The vocabulary
+  ---------------------------------------------------------------------------
+*/
 
 /*
   Nine values. The discipline that produced them: no label enters the set
@@ -64,58 +66,74 @@ export interface ImageAssignment {
   subject?: string;
 }
 
-/**
- * One email section the page's own content would make.
- *
- * `params` is deliberately loose. The catalog's own schemas fill every field
- * they were not given, so a param the reader misnames falls back to the
- * template's SAMPLE copy — which is the original defect wearing a better
- * payload. `validateSections` reports those, so the failure is at least
- * visible rather than silent.
- */
+/*
+  One email section the page's own content would make.
+
+  `params` is deliberately loose. The catalog's own schemas fill every field
+  they were not given, so a param the reader misnames falls back to the
+  template's SAMPLE copy — which is the original defect wearing a better
+  payload. `validateSections` reports those, so the failure is at least
+  visible rather than silent.
+*/
 export interface MappedSection {
   templateId: string;
   params: Record<string, unknown>;
-  /**
-   * Which numbered CONTENT lines this section's copy came from.
-   *
-   * The faithfulness mitigation, and an honest one: it makes fabrication
-   * VISIBLE, not impossible. A determined confabulation can cite block 3 and
-   * write something block 3 does not say. What it does buy is that a section
-   * imitated from a worked example has nothing on the page to point at — so
-   * the commonest failure mode of an example-steered prompt is catchable.
-   */
+  /*
+    Which numbered CONTENT lines this section's copy came from.
+
+    The faithfulness mitigation, and an honest one: it makes fabrication
+    VISIBLE, not impossible. A determined confabulation can cite block 3 and
+    write something block 3 does not say. What it does buy is that a section
+    imitated from a worked example has nothing on the page to point at — so
+    the commonest failure mode of an example-steered prompt is catchable.
+  */
   sourceBlockIndices: number[];
-  /** One short line: what on the page this section is. */
+  /*
+    One short line: what on the page this section is.
+  */
   rationale: string;
 }
 
 export interface PageClassification {
   pageType: PageType;
-  /** Required when pageType is "other" — what the page actually is. */
+  /*
+    Required when pageType is "other" — what the page actually is.
+  */
   pageTypeNote?: string;
   confidence: PageConfidence;
-  /** Required when confidence is "medium" — the one thing that is unclear. */
+  /*
+    Required when confidence is "medium" — the one thing that is unclear.
+  */
   uncertaintyNote?: string;
-  /** The reader's own account of the page, so a human can tell if the right page was read. */
+  /*
+    The reader's own account of the page, so a human can tell if the right page was read.
+  */
   sourceSummary: string;
-  /** False when there is not enough here to build an honest email from. */
+  /*
+    False when there is not enough here to build an honest email from.
+  */
   isPlanUsable: boolean;
-  /** What to tell the user when isPlanUsable is false. */
+  /*
+    What to tell the user when isPlanUsable is false.
+  */
   message?: string;
   images: ImageAssignment[];
-  /** The email this page's content would make, in reading order. */
+  /*
+    The email this page's content would make, in reading order.
+  */
   sections: MappedSection[];
-  /**
-   * A subject whose public record would add something. Consumed only when web
-   * search is switched on; absent is the normal case.
-   */
+  /*
+    A subject whose public record would add something. Consumed only when web
+    search is switched on; absent is the normal case.
+  */
   searchSubject?: string;
 }
 
-// ---------------------------------------------------------------------------
-// The model-facing schema
-// ---------------------------------------------------------------------------
+/*
+  ---------------------------------------------------------------------------
+  The model-facing schema
+  ---------------------------------------------------------------------------
+*/
 
 /*
   GENEROUS BOUNDS, CLAMPED LATER — and the reason is measured, not theoretical.
@@ -183,22 +201,32 @@ const sectionCopySchema = z.object({
   ctaLabel: z.string().max(GENEROUS).optional(),
   ctaHref: z.string().max(GENEROUS).optional(),
   imageAlt: z.string().max(GENEROUS).optional(),
-  /* Repeated content: feature lists and columns, stats, plan features. */
+  /*
+    Repeated content: feature lists and columns, stats, plan features.
+  */
   items: z
     .array(z.object({ title: z.string().max(GENEROUS), body: z.string().max(GENEROUS).optional() }))
     .max(6)
     .optional(),
-  /* One alt text per gallery image, in order. */
+  /*
+    One alt text per gallery image, in order.
+  */
   imageAlts: z.array(z.string().max(GENEROUS)).max(6).optional(),
-  /* A single purchasable thing. */
+  /*
+    A single purchasable thing.
+  */
   name: z.string().max(GENEROUS).optional(),
   description: z.string().max(GENEROUS).optional(),
   price: z.string().max(GENEROUS).optional(),
-  /* Somebody quoted. */
+  /*
+    Somebody quoted.
+  */
   quote: z.string().max(GENEROUS).optional(),
   attribution: z.string().max(GENEROUS).optional(),
   role: z.string().max(GENEROUS).optional(),
-  /* A code sample. */
+  /*
+    A code sample.
+  */
   code: z.string().max(GENEROUS).optional(),
   language: z.string().max(GENEROUS).optional(),
 });
@@ -296,7 +324,9 @@ function toTemplateParams({
       break;
     case "stats":
       put("headline", copy.headline);
-      /* stats take value/label, not title/body — the same content, renamed. */
+      /*
+        stats take value/label, not title/body — the same content, renamed.
+      */
       put(
         "stats",
         copy.items?.map((item) => ({ value: item.title, label: item.body ?? item.title })),
@@ -316,7 +346,9 @@ function toTemplateParams({
     case "pricing":
       put("planName", copy.name ?? copy.headline);
       put("price", copy.price);
-      /* pricing features are bare strings, not objects. */
+      /*
+        pricing features are bare strings, not objects.
+      */
       put("features", copy.items?.map((item) => item.title));
       put("ctaLabel", copy.ctaLabel);
       put("ctaHref", ctaHref);
@@ -376,9 +408,11 @@ export const pageClassificationSchema = z.object({
   searchSubject: z.string().max(GENEROUS).optional(),
 });
 
-// ---------------------------------------------------------------------------
-// Rendering the page for the reader
-// ---------------------------------------------------------------------------
+/*
+  ---------------------------------------------------------------------------
+  Rendering the page for the reader
+  ---------------------------------------------------------------------------
+*/
 
 function renderStructuredData(nodes: Record<string, unknown>[]): string {
   if (nodes.length === 0) {
@@ -405,13 +439,13 @@ function renderImage(candidate: ImageCandidate): string {
   return parts.filter((part) => part !== undefined).join("  ");
 }
 
-/**
- * Render one scraped page for the reader.
- *
- * ONE PARAMETER. See the module header: this signature is the guarantee that
- * no user phrasing can reach the classifier, and it is asserted by a test that
- * exists specifically to fail if someone widens it.
- */
+/*
+  Render one scraped page for the reader.
+
+  ONE PARAMETER. See the module header: this signature is the guarantee that
+  no user phrasing can reach the classifier, and it is asserted by a test that
+  exists specifically to fail if someone widens it.
+*/
 export function buildClassificationPrompt(scrape: PageScrape): string {
   const contentLines: string[] = [];
   let index = 0;
@@ -449,9 +483,11 @@ ${images}
 ${scrape.isTruncated ? "\n(This page was long. Trailing content was cut.)" : ""}`;
 }
 
-// ---------------------------------------------------------------------------
-// The instructions
-// ---------------------------------------------------------------------------
+/*
+  ---------------------------------------------------------------------------
+  The instructions
+  ---------------------------------------------------------------------------
+*/
 
 /*
   Nothing in this text is a user phrasing. There is no "my portfolio", no
@@ -766,21 +802,23 @@ Deciding there is not enough here is a correct answer, and this is what it looks
 ${renderCatalog()}`;
 }
 
-// ---------------------------------------------------------------------------
-// Validation — deterministic, pure, and never trusting
-// ---------------------------------------------------------------------------
+/*
+  ---------------------------------------------------------------------------
+  Validation — deterministic, pure, and never trusting
+  ---------------------------------------------------------------------------
+*/
 
-/**
- * One line per catalog template, generated from SECTION_TEMPLATES.
- *
- * Built from the MODEL-FACING schema, not the full one, so the image-source
- * field the pipeline writes never appears here. That is the same guarantee
- * `scaffoldSection` makes, held in a second place because this listing is a
- * second model-facing surface — and a catalog that advertised `imageSrc` would
- * hand back exactly the URL-writing ability the rest of this design removes.
- *
- * Generated rather than written, so it cannot drift from the real catalog.
- */
+/*
+  One line per catalog template, generated from SECTION_TEMPLATES.
+
+  Built from the MODEL-FACING schema, not the full one, so the image-source
+  field the pipeline writes never appears here. That is the same guarantee
+  `scaffoldSection` makes, held in a second place because this listing is a
+  second model-facing surface — and a catalog that advertised `imageSrc` would
+  hand back exactly the URL-writing ability the rest of this design removes.
+
+  Generated rather than written, so it cannot drift from the real catalog.
+*/
 function renderCatalog(): string {
   return SECTION_TEMPLATES.map((template) => {
     const schema = getModelFacingParamsSchema(template);
@@ -790,14 +828,16 @@ function renderCatalog(): string {
   }).join("\n");
 }
 
-/**
- * Reconcile a section plan against the catalog and the page.
- *
- * Every rule here is about COHERENCE, and none of them reads `pageType`. A
- * section naming a template that does not exist, or citing a line the page
- * does not have, is wrong whatever kind of page it came from.
- */
-/** One section exactly as the reader wrote it, before translation. */
+/*
+  Reconcile a section plan against the catalog and the page.
+
+  Every rule here is about COHERENCE, and none of them reads `pageType`. A
+  section naming a template that does not exist, or citing a line the page
+  does not have, is wrong whatever kind of page it came from.
+*/
+/*
+  One section exactly as the reader wrote it, before translation.
+*/
 export interface PlannedSection {
   templateId: string;
   copy: SectionCopy;
@@ -812,7 +852,9 @@ export function validateSections({
   sections: PlannedSection[];
   scrape: PageScrape;
 }): { sections: MappedSection[]; droppedParamNames: string[]; rejectedTemplateIds: string[] } {
-  /* Blocks and lists are numbered as one sequence in the prompt. */
+  /*
+    Blocks and lists are numbered as one sequence in the prompt.
+  */
   const citableCount = scrape.blocks.length + scrape.lists.length;
   const droppedParamNames: string[] = [];
   const rejectedTemplateIds: string[] = [];
@@ -904,7 +946,9 @@ export function validateSections({
   return { sections: kept, droppedParamNames, rejectedTemplateIds };
 }
 
-/** Trim to a size, on a word boundary where one is close enough to help. */
+/*
+  Trim to a size, on a word boundary where one is close enough to help.
+*/
 function clampText(text: string | undefined, limit: number): string | undefined {
   if (text === undefined || text.length <= limit) {
     return text;
@@ -914,18 +958,18 @@ function clampText(text: string | undefined, limit: number): string | undefined 
   return (lastSpace > limit * 0.8 ? cut.slice(0, lastSpace) : cut).trimEnd();
 }
 
-/**
- * Reconcile what the reader said against what is actually on the page.
- *
- * Everything here is a rule about COHERENCE, not about page kind. An answer
- * naming an image the page does not have, or claiming high confidence while
- * refusing to build, is incoherent whatever kind of page it read.
- */
-/**
- * The reading exactly as it came back, before translation or reconciliation.
- * Its sections carry the flat copy vocabulary; `PageClassification`'s carry
- * real catalog params, produced here.
- */
+/*
+  Reconcile what the reader said against what is actually on the page.
+
+  Everything here is a rule about COHERENCE, not about page kind. An answer
+  naming an image the page does not have, or claiming high confidence while
+  refusing to build, is incoherent whatever kind of page it read.
+*/
+/*
+  The reading exactly as it came back, before translation or reconciliation.
+  Its sections carry the flat copy vocabulary; `PageClassification`'s carry
+  real catalog params, produced here.
+*/
 export type RawClassification = z.infer<typeof pageClassificationSchema>;
 
 export function validateClassification({
@@ -964,23 +1008,29 @@ export function validateClassification({
     reinstating the exact incoherent answer rule 3 exists to remove.
   */
 
-  /* 1. A "medium" with nothing to say is really a "high". The agent is
-        expected to relay the note, so a medium without one says nothing. */
+  /*
+    1. A "medium" with nothing to say is really a "high". The agent is
+    expected to relay the note, so a medium without one says nothing.
+  */
   if (confidence === "medium" && (classification.uncertaintyNote ?? "").trim().length === 0) {
     confidence = "high";
   }
 
-  /* 2. Low confidence means STOP, whatever else came back. This is the one
-        place a reading changes behaviour rather than shape, and it is the
-        reason for asking about confidence at all. */
+  /*
+    2. Low confidence means STOP, whatever else came back. This is the one
+    place a reading changes behaviour rather than shape, and it is the
+    reason for asking about confidence at all.
+  */
   if (confidence === "low") {
     isPlanUsable = false;
   }
 
-  /* 3. "I am completely sure, and also there is nothing here" is incoherent.
-        The confidence is what gives way — a refusal we trust less is still a
-        refusal, whereas downgrading the refusal instead would build from a
-        page the reader just said it could not use. */
+  /*
+    3. "I am completely sure, and also there is nothing here" is incoherent.
+    The confidence is what gives way — a refusal we trust less is still a
+    refusal, whereas downgrading the refusal instead would build from a
+    page the reader just said it could not use.
+  */
   if (!isPlanUsable && confidence === "high") {
     confidence = "medium";
   }
@@ -1002,8 +1052,10 @@ export function validateClassification({
 
   return {
     ...classification,
-    /* The sizes the prompt asks for, applied deterministically rather than
-       used to reject an otherwise good answer. */
+    /*
+      The sizes the prompt asks for, applied deterministically rather than
+      used to reject an otherwise good answer.
+    */
     sourceSummary: clampText(classification.sourceSummary, 400) ?? "",
     ...(classification.pageTypeNote === undefined
       ? {}
@@ -1021,29 +1073,31 @@ export function validateClassification({
   };
 }
 
-// ---------------------------------------------------------------------------
-// The call
-// ---------------------------------------------------------------------------
+/*
+  ---------------------------------------------------------------------------
+  The call
+  ---------------------------------------------------------------------------
+*/
 
-/**
- * The classifier's ONLY model dependency. Production passes a generateObject
- * wrapper; tests pass a function returning a canned object, or one that
- * throws. That makes the prompt, the validation, the floor, and everything
- * downstream exercisable without a live call — which matters because the free
- * tier is shared with production.
- */
+/*
+  The classifier's ONLY model dependency. Production passes a generateObject
+  wrapper; tests pass a function returning a canned object, or one that
+  throws. That makes the prompt, the validation, the floor, and everything
+  downstream exercisable without a live call — which matters because the free
+  tier is shared with production.
+*/
 export type ClassifyFn = (input: { prompt: string }) => Promise<unknown>;
 
-/**
- * What comes back when the reading could not happen at all — a timeout, an
- * exhausted quota, a schema the model did not satisfy, or a run with no model
- * behind it.
- *
- * It is a SUCCESSFUL, usable answer, not an error. The page was fetched and
- * read; only the interpretation is missing. So the floor keeps everything the
- * scrape already knows and simply declines to claim more, and it says the
- * reading was shallow rather than pretending otherwise.
- */
+/*
+  What comes back when the reading could not happen at all — a timeout, an
+  exhausted quota, a schema the model did not satisfy, or a run with no model
+  behind it.
+
+  It is a SUCCESSFUL, usable answer, not an error. The page was fetched and
+  read; only the interpretation is missing. So the floor keeps everything the
+  scrape already knows and simply declines to claim more, and it says the
+  reading was shallow rather than pretending otherwise.
+*/
 /*
   Origins that may stand in as a lead when nothing read the page, best first.
   A preference over EVIDENCE — where the publisher put the image — not over
@@ -1102,14 +1156,14 @@ export function buildDeterministicFloor(scrape: PageScrape): PageClassification 
   };
 }
 
-/**
- * Classify one scraped page. Never throws.
- *
- * A page that was fetched successfully always produces a usable answer — the
- * floor when the reading fails. Throwing here would put a page we DID read
- * onto the error path, where the model is invited to retry a call that will
- * fail the same way and cost the same quota.
- */
+/*
+  Classify one scraped page. Never throws.
+
+  A page that was fetched successfully always produces a usable answer — the
+  floor when the reading fails. Throwing here would put a page we DID read
+  onto the error path, where the model is invited to retry a call that will
+  fail the same way and cost the same quota.
+*/
 export async function classifyPage({
   scrape,
   classify,

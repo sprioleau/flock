@@ -1,50 +1,64 @@
 import { fetchTextResource } from "../brand-kit-extraction/fetch-page";
 
-/**
- * robots.txt compliance for the Phase 7.4 ingestion pipeline.
- *
- * The plan's faithfulness rules name robots.txt alongside paywalls and blocks
- * as a reason a page CANNOT be read — and the required behavior is identical:
- * say so and stop, never invent content. So the check happens BEFORE the page
- * fetch, and a disallowed path never reaches the network.
- *
- * Scope (deliberately small, honest about it):
- * - Only `User-agent` / `Disallow` / `Allow` are interpreted. Crawl-delay,
- *   sitemaps, and wildcards-in-user-agent-names are ignored.
- * - Our own group (FLOCK_USER_AGENT_TOKEN) wins over the `*` group, matching
- *   the standard's "most specific group" rule.
- * - Longest-match-wins between Allow and Disallow (the widely-implemented
- *   Google/Bing precedence), with Allow winning ties.
- * - `*` and `$` in paths are supported; everything else is a literal prefix.
- *
- * Fail-open on fetch failure is the correct default here and is what every
- * mainstream crawler does: a missing or unreachable robots.txt means "no
- * stated restrictions". A robots.txt that we DID read and that disallows the
- * path is a hard stop.
- */
+/*
+  robots.txt compliance for the Phase 7.4 ingestion pipeline.
 
-/** The product token this app identifies itself with in robots.txt groups. */
+  The plan's faithfulness rules name robots.txt alongside paywalls and blocks
+  as a reason a page CANNOT be read — and the required behavior is identical:
+  say so and stop, never invent content. So the check happens BEFORE the page
+  fetch, and a disallowed path never reaches the network.
+
+  Scope (deliberately small, honest about it):
+  - Only `User-agent` / `Disallow` / `Allow` are interpreted. Crawl-delay,
+    sitemaps, and wildcards-in-user-agent-names are ignored.
+  - Our own group (FLOCK_USER_AGENT_TOKEN) wins over the `*` group, matching
+    the standard's "most specific group" rule.
+  - Longest-match-wins between Allow and Disallow (the widely-implemented
+    Google/Bing precedence), with Allow winning ties.
+  - `*` and `$` in paths are supported; everything else is a literal prefix.
+
+  Fail-open on fetch failure is the correct default here and is what every
+  mainstream crawler does: a missing or unreachable robots.txt means "no
+  stated restrictions". A robots.txt that we DID read and that disallows the
+  path is a hard stop.
+*/
+
+/*
+  The product token this app identifies itself with in robots.txt groups.
+*/
 export const FLOCK_USER_AGENT_TOKEN = "flock";
 
-/** robots.txt bodies bigger than this are ignored (fail-open). */
+/*
+  robots.txt bodies bigger than this are ignored (fail-open).
+*/
 const MAX_ROBOTS_BYTES = 128 * 1024;
 
 const ROBOTS_TIMEOUT_MS = 5_000;
 
-/** How long a fetched robots.txt stays usable in this server process. */
+/*
+  How long a fetched robots.txt stays usable in this server process.
+*/
 const ROBOTS_CACHE_TTL_MS = 10 * 60 * 1000;
 
 interface RobotsRule {
-  /** True for Allow, false for Disallow. */
+  /*
+    True for Allow, false for Disallow.
+  */
   isAllowRule: boolean;
-  /** The raw path pattern, `*`/`$` included. */
+  /*
+    The raw path pattern, `*`/`$` included.
+  */
   pattern: string;
 }
 
 interface RobotsGroups {
-  /** Rules for our own product token, when the file names it. */
+  /*
+    Rules for our own product token, when the file names it.
+  */
   flockRules: RobotsRule[] | null;
-  /** Rules for the catch-all `*` group, when the file has one. */
+  /*
+    Rules for the catch-all `*` group, when the file has one.
+  */
   wildcardRules: RobotsRule[] | null;
 }
 
@@ -55,18 +69,22 @@ interface CachedRobots {
 
 const robotsCacheByOrigin = new Map<string, CachedRobots>();
 
-/** Drop every cached robots.txt (tests; not used at runtime). */
+/*
+  Drop every cached robots.txt (tests; not used at runtime).
+*/
 export function clearRobotsCache(): void {
   robotsCacheByOrigin.clear();
 }
 
-/**
- * Parse a robots.txt body into the two groups we care about. Consecutive
- * `User-agent` lines share one rule block, per the standard.
- */
+/*
+  Parse a robots.txt body into the two groups we care about. Consecutive
+  `User-agent` lines share one rule block, per the standard.
+*/
 export function parseRobotsTxt(body: string): RobotsGroups {
   const groups: RobotsGroups = { flockRules: null, wildcardRules: null };
-  /** Agents named by the User-agent lines immediately preceding current rules. */
+  /*
+    Agents named by the User-agent lines immediately preceding current rules.
+  */
   let activeAgents: string[] = [];
   let isCollectingAgents = false;
 
@@ -99,8 +117,10 @@ export function parseRobotsTxt(body: string): RobotsGroups {
         isCollectingAgents = true;
       }
       activeAgents.push(agent);
-      // An empty group (User-agent with no rules) still needs to exist so a
-      // later "most specific group wins" lookup sees it.
+      /*
+        An empty group (User-agent with no rules) still needs to exist so a
+        later "most specific group wins" lookup sees it.
+      */
       if (agent === "*") {
         groups.wildcardRules = groups.wildcardRules ?? [];
       } else if (agent === FLOCK_USER_AGENT_TOKEN) {
@@ -110,11 +130,13 @@ export function parseRobotsTxt(body: string): RobotsGroups {
     }
     isCollectingAgents = false;
     if (activeAgents.length === 0) {
-      continue; // rules before any User-agent line are not addressed to anyone
+      continue; /* rules before any User-agent line are not addressed to anyone */
     }
     if (field === "disallow") {
-      // "Disallow:" with an empty value means "nothing is disallowed" — it is
-      // a rule that matches nothing, so it is simply not recorded.
+      /*
+        "Disallow:" with an empty value means "nothing is disallowed" — it is
+        a rule that matches nothing, so it is simply not recorded.
+      */
       if (value.length > 0) {
         appendRule({ isAllowRule: false, pattern: value });
       }
@@ -125,7 +147,9 @@ export function parseRobotsTxt(body: string): RobotsGroups {
   return groups;
 }
 
-/** Turn a robots path pattern (`*` wildcards, `$` end-anchor) into a regex. */
+/*
+  Turn a robots path pattern (`*` wildcards, `$` end-anchor) into a regex.
+*/
 function toPatternRegExp(pattern: string): RegExp {
   const hasEndAnchor = pattern.endsWith("$");
   const body = hasEndAnchor ? pattern.slice(0, -1) : pattern;
@@ -136,15 +160,17 @@ function toPatternRegExp(pattern: string): RegExp {
   return new RegExp(`^${escaped}${hasEndAnchor ? "$" : ""}`);
 }
 
-/** Length of the matched pattern, or -1 when the rule does not apply. */
+/*
+  Length of the matched pattern, or -1 when the rule does not apply.
+*/
 function matchLength({ rule, path }: { rule: RobotsRule; path: string }): number {
   return toPatternRegExp(rule.pattern).test(path) ? rule.pattern.length : -1;
 }
 
-/**
- * Evaluate a parsed robots.txt against one path. Longest match wins; Allow
- * wins ties; no matching rule means allowed.
- */
+/*
+  Evaluate a parsed robots.txt against one path. Longest match wins; Allow
+  wins ties; no matching rule means allowed.
+*/
 export function isPathAllowedByRules({
   groups,
   path,
@@ -172,17 +198,17 @@ export function isPathAllowedByRules({
   return bestAllowLength >= bestDisallowLength;
 }
 
-/**
- * Check whether robots.txt lets us fetch `rawUrl`. Fails OPEN — an
- * unreachable, oversized, or unparseable robots.txt is treated as "no stated
- * restrictions" — and fails CLOSED only on an explicit Disallow.
- */
+/*
+  Check whether robots.txt lets us fetch `rawUrl`. Fails OPEN — an
+  unreachable, oversized, or unparseable robots.txt is treated as "no stated
+  restrictions" — and fails CLOSED only on an explicit Disallow.
+*/
 export async function isFetchAllowedByRobots(rawUrl: string): Promise<boolean> {
   let target: URL;
   try {
     target = new URL(rawUrl);
   } catch {
-    return true; // malformed URLs are the URL guard's business, not ours
+    return true; /* malformed URLs are the URL guard's business, not ours */
   }
   const { origin } = target;
   const cached = robotsCacheByOrigin.get(origin);

@@ -7,14 +7,14 @@ import { Input } from "@/components/ui/input";
 import { cn } from "@/lib/utils";
 import type { CommentThread } from "./comment-context";
 
-/**
- * One comment thread, rendered identically in the canvas pin popover and the
- * review panel: placement context header (with the orphaned badge when the
- * anchor block is gone), the entries, a respond composer, and — for OPEN
- * threads — the per-comment review actions: Fix with AI (dispatch the agent),
- * Resolve (accept), Dismiss. Closed threads show their status and stay
- * respondable (a reply is conversation, not a reopen).
- */
+/*
+  One comment thread, rendered identically in the canvas pin popover and the
+  review panel: placement context header (with the orphaned badge when the
+  anchor block is gone), the entries, a respond composer, and — for OPEN
+  threads — the per-comment review actions: Fix with AI (dispatch the agent),
+  Resolve (accept), Dismiss. Closed threads show their status and stay
+  respondable (a reply is conversation, not a reopen).
+*/
 export function CommentThreadView({
   comment,
   isOrphaned,
@@ -26,9 +26,13 @@ export function CommentThreadView({
   onRespond,
 }: {
   comment: CommentThread;
-  /** True when the anchor block no longer exists in the active draft's doc. */
+  /*
+    True when the anchor block no longer exists in the active draft's doc.
+  */
   isOrphaned: boolean;
-  /** False disables "Fix with AI" (e.g. the comment's draft isn't active). */
+  /*
+    False disables "Fix with AI" (e.g. the comment's draft isn't active).
+  */
   isDispatchEnabled: boolean;
   dispatchDisabledReason?: string;
   onFix: () => void;
@@ -50,7 +54,9 @@ export function CommentThreadView({
 
   return (
     <div className="flex w-full flex-col gap-2" data-testid={`comment-thread-${comment.commentId}`}>
-      {/* Placement context: what the comment was anchored to, frozen at creation. */}
+      {/*
+        Placement context: what the comment was anchored to, frozen at creation.
+      */}
       <div className="flex flex-wrap items-center gap-1.5 text-[11px] text-muted-foreground">
         <span className="font-medium text-foreground">
           {comment.context.blockType !== undefined
@@ -84,7 +90,9 @@ export function CommentThreadView({
         )}
       </div>
 
-      {/* The conversation. */}
+      {/*
+        The conversation.
+      */}
       <div className="flex max-h-56 flex-col gap-2 overflow-y-auto">
         {comment.thread.map((entry, index) => (
           <div key={`${entry.createdAtMs}-${index}`} className="flex flex-col gap-0.5">
@@ -107,7 +115,9 @@ export function CommentThreadView({
         ))}
       </div>
 
-      {/* Respond (thread reply — never a status change). */}
+      {/*
+        Respond (thread reply — never a status change).
+      */}
       <div className="flex items-center gap-1.5">
         <Input
           value={replyText}
@@ -176,7 +186,9 @@ export function CommentThreadView({
   );
 }
 
-/** Compact absolute time — unambiguous across days without a relative-time engine. */
+/*
+  Compact absolute time — unambiguous across days without a relative-time engine.
+*/
 function formatEntryTime(createdAtMs: number): string {
   return new Date(createdAtMs).toLocaleString(undefined, {
     month: "short",

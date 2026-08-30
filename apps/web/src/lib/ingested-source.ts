@@ -27,11 +27,11 @@ import type { FlockChatMessage } from "./chat-contract";
 
 type MessagePart = FlockChatMessage["parts"][number];
 
-/**
- * True when this part is an ingestion tool call that actually returned
- * content. Narrowing on the part type is what makes `output` typed here — the
- * check reads the real result shape rather than casting to it.
- */
+/*
+  True when this part is an ingestion tool call that actually returned
+  content. Narrowing on the part type is what makes `output` typed here — the
+  check reads the real result shape rather than casting to it.
+*/
 function getIsFulfilledIngestionPart(part: MessagePart): boolean {
   if (part.type === "tool-readWebPage") {
     return part.state === "output-available" && part.output.isFound && part.output.data.isOk;
@@ -39,14 +39,14 @@ function getIsFulfilledIngestionPart(part: MessagePart): boolean {
   return false;
 }
 
-/**
- * True when the CURRENT turn has successfully ingested an external source —
- * a page fetched in this turn.
- *
- * Read at the moment a draft is composed, not at send time: the ingestion tool
- * result and the createDraft call arrive in the same assistant message, so the
- * answer only becomes true partway through the turn.
- */
+/*
+  True when the CURRENT turn has successfully ingested an external source —
+  a page fetched in this turn.
+
+  Read at the moment a draft is composed, not at send time: the ingestion tool
+  result and the createDraft call arrive in the same assistant message, so the
+  answer only becomes true partway through the turn.
+*/
 export function getHasIngestedSourceInTurn({
   messages,
 }: {

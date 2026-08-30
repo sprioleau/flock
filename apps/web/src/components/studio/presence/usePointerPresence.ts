@@ -3,34 +3,38 @@
 import { useEffect, type RefObject } from "react";
 import { useBroadcastPresence, type PresenceData } from "@/lib/presence";
 
-/**
- * Pointer-presence CAPTURE (write half). Listens for pointer movement on the
- * editing canvas root (`[data-dnd-canvas-root]`) and broadcasts hybrid
- * block-anchored coordinates through the presence provider:
- *
- * - primary anchor: the innermost `[data-block-id]` on the event's target
- *   chain (same hit-test family as dnd's drop-target resolution, but
- *   `event.target.closest()` — no elementFromPoint needed on a real pointer
- *   event), with `x`/`y` as 0..1 fractions of that block's rect;
- * - fallback anchor (`blockId: null`): fractions of the canvas root rect
- *   itself, so the cursor never blinks out in the gutters between blocks.
- *
- * Every position update goes straight to `broadcast` — the provider's ~200ms
- * trailing throttle is the ONLY pacing (never a local debounce; owner latency
- * law). This hook additionally skips no-op positions so a resting-but-jittery
- * pointer writes nothing.
- *
- * Sender-side clears (`pointer: undefined`, i.e. the key is removed): canvas
- * `pointerleave`, window blur, and >3s without movement. Timers here exist
- * only for CLEARING — they never delay a position update.
- */
+/*
+  Pointer-presence CAPTURE (write half). Listens for pointer movement on the
+  editing canvas root (`[data-dnd-canvas-root]`) and broadcasts hybrid
+  block-anchored coordinates through the presence provider:
+
+  - primary anchor: the innermost `[data-block-id]` on the event's target
+    chain (same hit-test family as dnd's drop-target resolution, but
+    `event.target.closest()` — no elementFromPoint needed on a real pointer
+    event), with `x`/`y` as 0..1 fractions of that block's rect;
+  - fallback anchor (`blockId: null`): fractions of the canvas root rect
+    itself, so the cursor never blinks out in the gutters between blocks.
+
+  Every position update goes straight to `broadcast` — the provider's ~200ms
+  trailing throttle is the ONLY pacing (never a local debounce; owner latency
+  law). This hook additionally skips no-op positions so a resting-but-jittery
+  pointer writes nothing.
+
+  Sender-side clears (`pointer: undefined`, i.e. the key is removed): canvas
+  `pointerleave`, window blur, and >3s without movement. Timers here exist
+  only for CLEARING — they never delay a position update.
+*/
 
 type PointerPresencePayload = NonNullable<PresenceData["pointer"]>;
 
-/** Idle time without pointer movement before the pointer is cleared for peers. */
+/*
+  Idle time without pointer movement before the pointer is cleared for peers.
+*/
 const IDLE_CLEAR_MS = 3000;
 
-/** Clamp to the anchor rect and round to ~0.1% so micro-jitter becomes a no-op. */
+/*
+  Clamp to the anchor rect and round to ~0.1% so micro-jitter becomes a no-op.
+*/
 function toAnchorFraction(args: {
   pointerCoordinate: number;
   rectStart: number;
@@ -43,7 +47,9 @@ function toAnchorFraction(args: {
 export function usePointerPresence({
   canvasRootRef,
 }: {
-  /** The `[data-dnd-canvas-root]` element (the email surface). */
+  /*
+    The `[data-dnd-canvas-root]` element (the email surface).
+  */
   canvasRootRef: RefObject<HTMLElement | null>;
 }): void {
   const broadcast = useBroadcastPresence();
@@ -67,7 +73,7 @@ export function usePointerPresence({
     const clearPointer = (): void => {
       cancelIdleTimer();
       if (lastSentPointer === null) {
-        return; // already cleared — zero writes while idle
+        return; /* already cleared — zero writes while idle */
       }
       lastSentPointer = null;
       broadcast({ pointer: undefined });
@@ -117,7 +123,7 @@ export function usePointerPresence({
       canvasRoot.removeEventListener("pointermove", handlePointerMove);
       canvasRoot.removeEventListener("pointerleave", handlePointerLeave);
       window.removeEventListener("blur", handleWindowBlur);
-      clearPointer(); // don't leave a ghost cursor behind on unmount
+      clearPointer(); /* don't leave a ghost cursor behind on unmount */
     };
   }, [broadcast, canvasRootRef]);
 }

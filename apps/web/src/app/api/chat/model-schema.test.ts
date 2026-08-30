@@ -3,13 +3,13 @@ import { describe, expect, it } from "vitest";
 import { z } from "zod";
 import { toModelInputSchema, unwrapStringifiedToolInput } from "./model-schema";
 
-/**
- * Regression for the live Gemini tool-call mangle (owner repro, complex
- * multi-section prompt): `function_call.args` arrived as ONE JSON-escaped
- * string of the whole argument object (name included), Zod rejected the
- * string, and the repair spiral ended in a terminal turn failure. The unwrap
- * makes such calls validate directly — no repair round needed.
- */
+/*
+  Regression for the live Gemini tool-call mangle (owner repro, complex
+  multi-section prompt): `function_call.args` arrived as ONE JSON-escaped
+  string of the whole argument object (name included), Zod rejected the
+  string, and the repair spiral ended in a terminal turn failure. The unwrap
+  makes such calls validate directly — no repair round needed.
+*/
 
 const addSectionish = z.object({
   name: z.literal("addSection"),
@@ -72,12 +72,12 @@ describe("toModelInputSchema validate", () => {
   });
 });
 
-/**
- * The second deterministic pre-validation coercion at this seam (see
- * tool-input-normalizer.ts): the live conformance miss where the model sent a
- * text block's rich-text doc at the block's top level, with no childrenIds, no
- * properties, and no operation `name`.
- */
+/*
+  The second deterministic pre-validation coercion at this seam (see
+  tool-input-normalizer.ts): the live conformance miss where the model sent a
+  text block's rich-text doc at the block's top level, with no childrenIds, no
+  properties, and no operation `name`.
+*/
 describe("toModelInputSchema validate — tool-input normalization", () => {
   const validate = toModelInputSchema(addSectionOperationSchema).validate!;
 
@@ -117,13 +117,13 @@ describe("toModelInputSchema validate — tool-input normalization", () => {
     });
   });
 
-  /**
-   * The mock model's "schema-invalid tool call" probe (mock-model.ts) sends an
-   * addSection whose `name` is present but WRONG ("section") and whose section
-   * is a container missing childrenIds. Both are repairs this module refuses on
-   * purpose, so that probe must keep failing exactly as it does today — the
-   * observability path that reads its Zod issues is not disturbed.
-   */
+  /*
+    The mock model's "schema-invalid tool call" probe (mock-model.ts) sends an
+    addSection whose `name` is present but WRONG ("section") and whose section
+    is a container missing childrenIds. Both are repairs this module refuses on
+    purpose, so that probe must keep failing exactly as it does today — the
+    observability path that reads its Zod issues is not disturbed.
+  */
   it("leaves the mock model's schema-invalid probe payload rejected", async () => {
     const result = await validate({
       name: "section",
@@ -151,8 +151,10 @@ describe("toModelInputSchema validate — tool-input normalization", () => {
         childrenIds: ["btn_h101"],
         properties: {},
       },
-      // A button with no href: the destination is content the model never
-      // sent, and inventing one is not repair.
+      /*
+        A button with no href: the destination is content the model never
+        sent, and inventing one is not repair.
+      */
       children: [{ id: "btn_h101", type: "button", parentId: "sec_h101", label: "Buy now" }],
     });
     expect(result.success).toBe(false);

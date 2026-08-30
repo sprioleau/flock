@@ -49,7 +49,9 @@ export function BrandThemeBuilder({
 }: {
   colors: BrandColor[];
   fonts: BrandKitFonts;
-  /* Inherited from the kit's existing themes — never a choice we ask for. */
+  /*
+    Inherited from the kit's existing themes — never a choice we ask for.
+  */
   buttonShape: ButtonShape;
   /*
     Every id already spoken for, INCLUDING soft-deleted themes' (§14.5b): a
@@ -76,12 +78,20 @@ export function BrandThemeBuilder({
   */
   const [roles, setRoles] = useState<ThemeColorRoles | null>(() => candidates[0]?.roles ?? null);
   const [currentKey, setCurrentKey] = useState<string | null>(() => candidates[0]?.key ?? null);
-  /* Undefined = "follow the picked colors"; a string = the user typed a name. */
+  /*
+    Undefined = "follow the picked colors"; a string = the user typed a name.
+  */
   const [typedName, setTypedName] = useState<string | undefined>(undefined);
 
-  /* Reactive resync (the BrandColorsEditor idiom): editing the palette can */
-  /* invalidate the current pick, so re-seed DURING render rather than in an */
-  /* effect, which would paint an impossible theme first and correct it after. */
+  /*
+    Reactive resync (the BrandColorsEditor idiom): editing the palette can
+  */
+  /*
+    invalidate the current pick, so re-seed DURING render rather than in an
+  */
+  /*
+    effect, which would paint an impossible theme first and correct it after.
+  */
   const paletteKey = paletteHexes.join(",");
   const [seededFrom, setSeededFrom] = useState(paletteKey);
   if (seededFrom !== paletteKey) {
@@ -116,8 +126,12 @@ export function BrandThemeBuilder({
     }
     setRoles(next.roles);
     setCurrentKey(next.key);
-    /* A shuffled theme gets the shuffled name — a name the user typed for a */
-    /* theme they have since shuffled away from would be a lie on the swatch. */
+    /*
+      A shuffled theme gets the shuffled name — a name the user typed for a
+    */
+    /*
+      theme they have since shuffled away from would be a lie on the swatch.
+    */
     setTypedName(undefined);
   };
 

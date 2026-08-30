@@ -35,27 +35,29 @@ import { useFlockChat } from "./use-flock-chat";
 const EXPANDED_WIDTH_PX = 360;
 const COLLAPSED_WIDTH_PX = 48;
 
-/**
- * The Phase 3 chat panel: a real AI chat whose streamed operations apply live
- * to the studio canvas. Collapsible with an animated width transition —
- * COLLAPSED by default (owner decision: the canvas is the product; the rail
- * badge keeps recommendations visible), with the persisted per-browser
- * preference winning after the first expand/collapse (panel-preferences.ts).
- * The rail and the panel body cross-fade so neither state pops in. ⌘B
- * toggles the panel (StudioShortcuts); ⌘K and the slash-summon overlay reach
- * the composer through the handoff seam below.
- *
- * Chat-UX layer (this file wires, the hooks decide):
- * - Submitting while the agent is busy QUEUES the message (FIFO, editable
- *   until sent — see use-message-queue.ts); the composer is never disabled.
- * - ArrowUp/ArrowDown recall prompt history (see use-prompt-history.ts).
- * - "Busy" includes a pending sendTestEmail approval — queued messages hold
- *   until the user approves/denies, and hold again if a turn errors.
- */
+/*
+  The Phase 3 chat panel: a real AI chat whose streamed operations apply live
+  to the studio canvas. Collapsible with an animated width transition —
+  COLLAPSED by default (owner decision: the canvas is the product; the rail
+  badge keeps recommendations visible), with the persisted per-browser
+  preference winning after the first expand/collapse (panel-preferences.ts).
+  The rail and the panel body cross-fade so neither state pops in. ⌘B
+  toggles the panel (StudioShortcuts); ⌘K and the slash-summon overlay reach
+  the composer through the handoff seam below.
+
+  Chat-UX layer (this file wires, the hooks decide):
+  - Submitting while the agent is busy QUEUES the message (FIFO, editable
+    until sent — see use-message-queue.ts); the composer is never disabled.
+  - ArrowUp/ArrowDown recall prompt history (see use-prompt-history.ts).
+  - "Busy" includes a pending sendTestEmail approval — queued messages hold
+    until the user approves/denies, and hold again if a turn errors.
+*/
 export function ChatPanel() {
-  // Persisted per-browser expand state — collapsed on a fresh profile, the
-  // user's last choice afterwards. Every toggle writes through the
-  // preference, so clicks and shortcuts persist alike.
+  /*
+    Persisted per-browser expand state — collapsed on a fresh profile, the
+    user's last choice afterwards. Every toggle writes through the
+    preference, so clicks and shortcuts persist alike.
+  */
   const isExpanded = usePanelPreferences().isChatPanelExpanded;
   const setIsExpanded = useCallback((nextIsExpanded: boolean): void => {
     updatePanelPreferences({ isChatPanelExpanded: nextIsExpanded });
@@ -63,29 +65,37 @@ export function ChatPanel() {
   const [draftText, setDraftText] = useState("");
   const composerTextareaRef = useRef<HTMLTextAreaElement | null>(null);
 
-  // Live submit path for the SEND handoff (registered once below; the ref is
-  // refreshed every render so a queued-vs-direct decision never goes stale).
+  /*
+    Live submit path for the SEND handoff (registered once below; the ref is
+    refreshed every render so a queued-vs-direct decision never goes stale).
+  */
   const submitPromptTextRef = useRef<(text: string) => void>(() => {});
 
-  // SEND + SETTLEMENT bookkeeping (comments-mode fix dispatch): callbacks
-  // queued by the handoff fire when the agent NEXT returns to full idle
-  // (ready + empty queue + no pending approval) after having been busy; an
-  // error pause DROPS them (no "agent responded" note for a failed turn).
+  /*
+    SEND + SETTLEMENT bookkeeping (comments-mode fix dispatch): callbacks
+    queued by the handoff fire when the agent NEXT returns to full idle
+    (ready + empty queue + no pending approval) after having been busy; an
+    error pause DROPS them (no "agent responded" note for a failed turn).
+  */
   const settlementCallbacksRef = useRef<Array<() => void>>([]);
   const hasBeenBusySinceSettlementDispatchRef = useRef(false);
 
-  // The composer-handoff seam (composer-handoff.ts): INSERT — persona finding
-  // cards and the recommendations modal insert a ready-to-send prompt HERE —
-  // focused, caret at the end, editable, never auto-sent. SEND — the
-  // slash-summon overlay submits through the composer's own send path. FOCUS
-  // — the ⌘K shortcut. All three expand first, so a handoff works while the
-  // panel is collapsed.
+  /*
+    The composer-handoff seam (composer-handoff.ts): INSERT — persona finding
+    cards and the recommendations modal insert a ready-to-send prompt HERE —
+    focused, caret at the end, editable, never auto-sent. SEND — the
+    slash-summon overlay submits through the composer's own send path. FOCUS
+    — the ⌘K shortcut. All three expand first, so a handoff works while the
+    panel is collapsed.
+  */
   useEffect(() => {
     return registerComposerHandoffHandlers({
       insertPrompt: (prompt) => {
         setIsExpanded(true);
         setDraftText(prompt);
-        // Focus after React commits the value (and the panel un-hides).
+        /*
+          Focus after React commits the value (and the panel un-hides).
+        */
         requestAnimationFrame(() => {
           const textarea = composerTextareaRef.current;
           if (textarea !== null) {
@@ -109,15 +119,19 @@ export function ChatPanel() {
       },
     });
   }, [setIsExpanded]);
-  // Suggestion controllers live HERE (not in SuggestionCard): the collapsed
-  // rail's notification badge needs the pending count, and each hook must
-  // mount exactly once (usePersonaAdvisors hosts the persona presence
-  // heartbeat + the batched runner). ChatPanel always mounts, collapsed or
-  // not, so hosting here preserves the always-on behavior.
+  /*
+    Suggestion controllers live HERE (not in SuggestionCard): the collapsed
+    rail's notification badge needs the pending count, and each hook must
+    mount exactly once (usePersonaAdvisors hosts the persona presence
+    heartbeat + the batched runner). ChatPanel always mounts, collapsed or
+    not, so hosting here preserves the always-on behavior.
+  */
   const suggestions = useSuggestions();
-  // ...and it feeds a SECOND surface: the pill under the block that was just
-  // edited. Same controller, mirrored across a module store because the
-  // canvas is a different subtree entirely (suggestion-surface-store.ts).
+  /*
+    ...and it feeds a SECOND surface: the pill under the block that was just
+    edited. Same controller, mirrored across a module store because the
+    canvas is a different subtree entirely (suggestion-surface-store.ts).
+  */
   usePublishBlockSuggestion(suggestions);
   const personaAdvisors = usePersonaAdvisors();
   const pendingRecommendationCount =
@@ -134,18 +148,22 @@ export function ChatPanel() {
   } = useFlockChat();
   const promptHistory = usePromptHistory();
 
-  // The composer's selection-context chip: the selected block's TYPE (ids are
-  // never user-facing). The selection itself already rides along as request
-  // context — the transport reads selectedBlockId from the store at send time
-  // and the system prompt targets it for "this"/"the selected block" edits;
-  // the chip makes that context visible and dismissable.
+  /*
+    The composer's selection-context chip: the selected block's TYPE (ids are
+    never user-facing). The selection itself already rides along as request
+    context — the transport reads selectedBlockId from the store at send time
+    and the system prompt targets it for "this"/"the selected block" edits;
+    the chip makes that context visible and dismissable.
+  */
   const selectedBlockType = useEditorStore((state) =>
     state.selectedBlockId !== null ? state.doc[state.selectedBlockId]?.type : undefined,
   );
   const selectBlock = useEditorStore((state) => state.selectBlock);
 
-  // Every send funnels through here — direct sends AND queue auto-dispatches
-  // record prompt history with the FINAL text (queued edits included).
+  /*
+    Every send funnels through here — direct sends AND queue auto-dispatches
+    record prompt history with the FINAL text (queued edits included).
+  */
   const sendUserMessage = (text: string): void => {
     promptHistory.recordPrompt(text);
     promptHistory.resetNavigation();
@@ -154,14 +172,18 @@ export function ChatPanel() {
 
   const isAgentBusy = status === "submitted" || status === "streaming" || hasPendingApproval;
   const isErrorPaused = status === "error";
-  // Broadcast for surfaces outside this panel (drafts menu AI items) —
-  // see agent-status.ts.
+  /*
+    Broadcast for surfaces outside this panel (drafts menu AI items) —
+    see agent-status.ts.
+  */
   useEffect(() => {
     publishAgentBusyState(isAgentBusy);
   }, [isAgentBusy]);
-  // Queues are scoped per document: the panel survives drafts-bar switches,
-  // so an unscoped queue would fire into whichever draft is active when the
-  // agent goes idle (see use-message-queue.ts).
+  /*
+    Queues are scoped per document: the panel survives drafts-bar switches,
+    so an unscoped queue would fire into whichever draft is active when the
+    agent goes idle (see use-message-queue.ts).
+  */
   const documentId = useEditorStore((state) => state.documentId);
   const queue = useMessageQueue({
     documentId,
@@ -173,10 +195,12 @@ export function ChatPanel() {
   });
   const hasQueuedMessages = queue.queuedMessages.length > 0;
 
-  // Queue behind existing items even when momentarily idle (FIFO fairness);
-  // an error pause with an EMPTY queue sends directly (send clears the
-  // error), matching how native chats let you just try again. Shared by the
-  // composer submit and the slash-summon SEND handoff.
+  /*
+    Queue behind existing items even when momentarily idle (FIFO fairness);
+    an error pause with an EMPTY queue sends directly (send clears the
+    error), matching how native chats let you just try again. Shared by the
+    composer submit and the slash-summon SEND handoff.
+  */
   const submitPromptText = (text: string): void => {
     const trimmedText = text.trim();
     if (trimmedText.length === 0) {
@@ -192,11 +216,13 @@ export function ChatPanel() {
     submitPromptTextRef.current = submitPromptText;
   });
 
-  // The settlement watcher (see settlementCallbacksRef): observes every
-  // render (no dep array — the flags it reads are plain derivations), fires
-  // pending callbacks on the busy→fully-idle edge, drops them on error. The
-  // "has been busy" latch keeps the idle render BETWEEN dispatch and the
-  // turn's first "submitted" status from settling instantly.
+  /*
+    The settlement watcher (see settlementCallbacksRef): observes every
+    render (no dep array — the flags it reads are plain derivations), fires
+    pending callbacks on the busy→fully-idle edge, drops them on error. The
+    "has been busy" latch keeps the idle render BETWEEN dispatch and the
+    turn's first "submitted" status from settling instantly.
+  */
   useEffect(() => {
     if (settlementCallbacksRef.current.length === 0) {
       return;
@@ -221,12 +247,14 @@ export function ChatPanel() {
     }
   });
 
-  // Voice input (Web Speech API, feature-detected — the mic renders only in
-  // supporting browsers): toggle-to-record from the button ONLY, so the
-  // single-key studio shortcuts never trip a recording; dictation streams
-  // into the draft appended after whatever was typed, stays editable, and is
-  // NEVER auto-sent. Stops on toggle, on silence (single-utterance mode), or
-  // on Escape below.
+  /*
+    Voice input (Web Speech API, feature-detected — the mic renders only in
+    supporting browsers): toggle-to-record from the button ONLY, so the
+    single-key studio shortcuts never trip a recording; dictation streams
+    into the draft appended after whatever was typed, stays editable, and is
+    NEVER auto-sent. Stops on toggle, on silence (single-utterance mode), or
+    on Escape below.
+  */
   const { isSpeechSupported, isListening, speechErrorMessage, stopListening, toggleListening } =
     useSpeechInput({ onTranscriptChange: setDraftText });
 
@@ -260,11 +288,13 @@ export function ChatPanel() {
       selectionEnd: textarea.selectionEnd,
     });
     if (recalledText === null) {
-      return; // fall through: normal caret movement inside the draft
+      return; /* fall through: normal caret movement inside the draft */
     }
     event.preventDefault();
     setDraftText(recalledText);
-    // Caret to the end of the recalled text after React commits the value.
+    /*
+      Caret to the end of the recalled text after React commits the value.
+    */
     requestAnimationFrame(() => {
       textarea.setSelectionRange(recalledText.length, recalledText.length);
     });
@@ -275,7 +305,9 @@ export function ChatPanel() {
       className="relative shrink-0 overflow-hidden border-r bg-background transition-[width] duration-300 ease-in-out"
       style={{ width: isExpanded ? EXPANDED_WIDTH_PX : COLLAPSED_WIDTH_PX }}
     >
-      {/* Collapsed rail */}
+      {/*
+        Collapsed rail
+      */}
       <div
         className={cn(
           "absolute inset-y-0 left-0 flex w-12 flex-col items-center py-3 transition-opacity duration-200",
@@ -302,10 +334,12 @@ export function ChatPanel() {
               }
             >
               <MessagesSquareIcon />
-              {/* Pending-recommendation badge: suggestion cards live inside the
-                  panel, so while collapsed this is their only signal. Reactive by
-                  construction (the count derives from the live controllers);
-                  renders nothing at zero. */}
+              {/*
+                Pending-recommendation badge: suggestion cards live inside the
+                panel, so while collapsed this is their only signal. Reactive by
+                construction (the count derives from the live controllers);
+                renders nothing at zero.
+              */}
               {pendingRecommendationCount > 0 && (
                 <span
                   className={cn(
@@ -326,7 +360,9 @@ export function ChatPanel() {
         </TooltipProvider>
       </div>
 
-      {/* Expanded panel body (fixed inner width so text never reflows mid-animation) */}
+      {/*
+        Expanded panel body (fixed inner width so text never reflows mid-animation)
+      */}
       <div
         className={cn(
           "flex h-full flex-col transition-opacity duration-200",
@@ -373,10 +409,12 @@ export function ChatPanel() {
           isErrorPaused={isErrorPaused}
         />
 
-        {/* Demo mode (settings FAB toggle): one click sends the first of six
-            doc-derived prompts and queues the rest — real chat turns, drained
-            one per completed turn by the queue. Renders null when demo mode
-            is off. */}
+        {/*
+          Demo mode (settings FAB toggle): one click sends the first of six
+          doc-derived prompts and queues the rest — real chat turns, drained
+          one per completed turn by the queue. Renders null when demo mode
+          is off.
+        */}
         <DemoQueueButton
           isAgentBusy={isAgentBusy}
           hasQueuedMessages={hasQueuedMessages}
@@ -385,29 +423,37 @@ export function ChatPanel() {
           isPanelExpanded={isExpanded}
         />
 
-        {/* Phase 7.3 proactive suggestions: quiet, dismissible cards above
-            the composer (controllers owned above — see the hooks note);
-            renders null when nothing is suggested. */}
+        {/*
+          Phase 7.3 proactive suggestions: quiet, dismissible cards above
+          the composer (controllers owned above — see the hooks note);
+          renders null when nothing is suggested.
+        */}
         <SuggestionCard
           isPanelExpanded={isExpanded}
           suggestions={suggestions}
           personaAdvisors={personaAdvisors}
         />
 
-        {/* §10.2 frames UX: which draft the agent will edit — activation IS
-            retargeting (ops go to the store-connected document); this makes
-            it visible right above the composer. */}
+        {/*
+          §10.2 frames UX: which draft the agent will edit — activation IS
+          retargeting (ops go to the store-connected document); this makes
+          it visible right above the composer.
+        */}
         <ActiveDraftIndicator />
 
-        {/* Composer: a single bordered box holding the selection-context chip
-            (when a block is selected) above a borderless textarea; the send
-            button sits beside it, bottom-aligned. Without a chip the box is
-            exactly 36px (size-9) single-line — py-1.75 + one text-sm line +
-            1px borders — matching the size-9 send button. */}
-        {/* data-testid is also the onboarding tour's anchor for its chat stop
-            (lib/tour/tour-stops.ts) — the card hangs off this box. Note the
-            tour has to expand this panel first: while collapsed everything
-            below is still mounted, just clipped inside the 48px rail. */}
+        {/*
+          Composer: a single bordered box holding the selection-context chip
+          (when a block is selected) above a borderless textarea; the send
+          button sits beside it, bottom-aligned. Without a chip the box is
+          exactly 36px (size-9) single-line — py-1.75 + one text-sm line +
+          1px borders — matching the size-9 send button.
+        */}
+        {/*
+          data-testid is also the onboarding tour's anchor for its chat stop
+          (lib/tour/tour-stops.ts) — the card hangs off this box. Note the
+          tour has to expand this panel first: while collapsed everything
+          below is still mounted, just clipped inside the 48px rail.
+        */}
         <div className="shrink-0 border-t p-3" data-testid="chat-composer">
           {speechErrorMessage !== null && (
             <p className="pb-2 text-xs text-destructive" data-testid="composer-speech-error">
@@ -496,12 +542,14 @@ export function ChatPanel() {
               disabled={draftText.trim().length === 0}
               size="icon-lg"
               aria-label={isAgentBusy || hasQueuedMessages ? "Queue message" : "Send message"}
-              /* The one control on this panel with no stable accessible handle:
-                 the label above flips to "Queue message" the moment a turn is in
-                 flight, so an end-to-end test querying it by role+name would
-                 pass or fail on timing. The textarea beside it keeps
-                 aria-label="Chat message" in every state and is queried that
-                 way — no testid needed there. */
+              /*
+                The one control on this panel with no stable accessible handle:
+                the label above flips to "Queue message" the moment a turn is in
+                flight, so an end-to-end test querying it by role+name would
+                pass or fail on timing. The textarea beside it keeps
+                aria-label="Chat message" in every state and is queried that
+                way — no testid needed there.
+              */
               data-testid="chat-composer-send"
               tabIndex={isExpanded ? 0 : -1}
               onClick={submitDraft}
@@ -512,8 +560,10 @@ export function ChatPanel() {
         </div>
       </div>
 
-      {/* App-wide settings FAB (fixed to the viewport, so its position is
-          independent of this panel's width animation). */}
+      {/*
+        App-wide settings FAB (fixed to the viewport, so its position is
+        independent of this panel's width animation).
+      */}
       <SettingsFab />
     </aside>
   );

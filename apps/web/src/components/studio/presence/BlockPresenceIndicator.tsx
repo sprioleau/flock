@@ -7,41 +7,41 @@ import { useOptionalPresenceRoster, type PresenceRosterEntry } from "@/lib/prese
 import { cn } from "@/lib/utils";
 import { extractPersonaSlugFromPresenceUserId } from "./persona-cursor-helpers";
 
-/**
- * Phase 6.2a block-level "someone is here" chrome (merge-notify part 1), two
- * strengths per remote ONLINE room member:
- *
- *  - EDITING (`data.editingBlockId` = this block): solid 2px border in their
- *    color + a name tag riding the block's top edge; the agent's pulses.
- *  - SELECTED (`data.selectedBlockId` = this block, any block type): the
- *    LIGHTER sibling treatment — same border/tag family at reduced opacity,
- *    never pulsing. A user who both selected AND is editing this block gets
- *    only the stronger editing treatment (no double chrome).
- *
- * PERSONA SELECTIONS ARE DELAYED (owner feedback 2026-07-31 — the legible
- * wander → dwell → select → post flow): when a persona's presence
- * `selectedBlockId` lands on this block (the runner points it at its top
- * finding's target), the selected treatment appears only after
- * FINDING_DWELL_MS of local receipt time — while the persona's cursor is
- * visibly dwell-hovering the block — so the SELECT beat lands as its own
- * moment, just before the recommendation card posts. Still 100% the
- * presence-level selection mechanism (same data, same chrome, same room);
- * only the reveal timing is gated, and the human's local selection state is
- * never touched. Human selections stay instant.
- *
- * MERGE-NOTIFY: pure indication — it never blocks interaction
- * (pointer-events-none) and stays visually SECONDARY to local selection: it
- * sits below BlockShell's z-10 selection ring, and while the block is locally
- * selected only the name tags render (the border yields to the ring).
- */
+/*
+  Phase 6.2a block-level "someone is here" chrome (merge-notify part 1), two
+  strengths per remote ONLINE room member:
 
-/**
- * Which persona selections on this block have finished their dwell delay.
- * Local-receipt timing (~createdAtMs + mutation latency ≈ the cursor's
- * server-stamped dwell clock — cosmetically consistent across tabs): one
- * timeout per newly-seen persona selection; a selection that moves away and
- * comes back dwells again.
- */
+   - EDITING (`data.editingBlockId` = this block): solid 2px border in their
+     color + a name tag riding the block's top edge; the agent's pulses.
+   - SELECTED (`data.selectedBlockId` = this block, any block type): the
+     LIGHTER sibling treatment — same border/tag family at reduced opacity,
+     never pulsing. A user who both selected AND is editing this block gets
+     only the stronger editing treatment (no double chrome).
+
+  PERSONA SELECTIONS ARE DELAYED (owner feedback 2026-07-31 — the legible
+  wander → dwell → select → post flow): when a persona's presence
+  `selectedBlockId` lands on this block (the runner points it at its top
+  finding's target), the selected treatment appears only after
+  FINDING_DWELL_MS of local receipt time — while the persona's cursor is
+  visibly dwell-hovering the block — so the SELECT beat lands as its own
+  moment, just before the recommendation card posts. Still 100% the
+  presence-level selection mechanism (same data, same chrome, same room);
+  only the reveal timing is gated, and the human's local selection state is
+  never touched. Human selections stay instant.
+
+  MERGE-NOTIFY: pure indication — it never blocks interaction
+  (pointer-events-none) and stays visually SECONDARY to local selection: it
+  sits below BlockShell's z-10 selection ring, and while the block is locally
+  selected only the name tags render (the border yields to the ring).
+*/
+
+/*
+  Which persona selections on this block have finished their dwell delay.
+  Local-receipt timing (~createdAtMs + mutation latency ≈ the cursor's
+  server-stamped dwell clock — cosmetically consistent across tabs): one
+  timeout per newly-seen persona selection; a selection that moves away and
+  comes back dwells again.
+*/
 function useRevealedPersonaSelections({
   personaUserIds,
 }: {
@@ -52,9 +52,11 @@ function useRevealedPersonaSelections({
     signature: string;
     revealedUserIds: ReadonlySet<string>;
   }>({ signature, revealedUserIds: new Set() });
-  // Render-time state adjustment (the codebase's document-switch pattern): a
-  // selection that ended is forgotten immediately, so a later re-selection
-  // of this block dwells again.
+  /*
+    Render-time state adjustment (the codebase's document-switch pattern): a
+    selection that ended is forgotten immediately, so a later re-selection
+    of this block dwells again.
+  */
   if (revealState.signature !== signature) {
     const currentUserIds = new Set(signature === "" ? [] : signature.split("\n"));
     setRevealState({
@@ -69,15 +71,19 @@ function useRevealedPersonaSelections({
   useEffect(() => {
     const currentUserIds = new Set(signature === "" ? [] : signature.split("\n"));
     const timers = timersRef.current;
-    // A selection that ended cancels its pending reveal timer.
+    /*
+      A selection that ended cancels its pending reveal timer.
+    */
     for (const [userId, timerId] of [...timers]) {
       if (!currentUserIds.has(userId)) {
         window.clearTimeout(timerId);
         timers.delete(userId);
       }
     }
-    // One dwell timer per newly-seen persona selection. (An already-revealed
-    // id may re-arm a timer after roster churn — its fire is a no-op.)
+    /*
+      One dwell timer per newly-seen persona selection. (An already-revealed
+      id may re-arm a timer after roster churn — its fire is a no-op.)
+    */
     for (const userId of currentUserIds) {
       if (timers.has(userId)) {
         continue;
@@ -97,7 +103,9 @@ function useRevealedPersonaSelections({
     }
   }, [signature]);
 
-  // Unmount: drop every pending reveal timer.
+  /*
+    Unmount: drop every pending reveal timer.
+  */
   useEffect(() => {
     const timers = timersRef.current;
     return () => {
@@ -120,8 +128,10 @@ export function BlockPresenceIndicator({
 }) {
   const roster = useOptionalPresenceRoster();
 
-  // Persona selections pointed at THIS block (candidates for the delayed
-  // reveal). Computed before any early return so hook order stays stable.
+  /*
+    Persona selections pointed at THIS block (candidates for the delayed
+    reveal). Computed before any early return so hook order stays stable.
+  */
   const pendingPersonaUserIds = (roster ?? []).flatMap((entry) => {
     const isPersonaSelectionHere =
       extractPersonaSlugFromPresenceUserId(entry.userId) !== null &&
@@ -147,7 +157,7 @@ export function BlockPresenceIndicator({
     } else if (entry.data.selectedBlockId === blockId) {
       const isPersonaEntry = extractPersonaSlugFromPresenceUserId(entry.userId) !== null;
       if (isPersonaEntry && !revealedPersonaUserIds.has(entry.userId)) {
-        continue; // persona selection still inside its dwell beat
+        continue; /* persona selection still inside its dwell beat */
       }
       visitors.push({ entry, isEditingHere: false });
     }
@@ -155,7 +165,9 @@ export function BlockPresenceIndicator({
   if (visitors.length === 0) {
     return null;
   }
-  // Editing outranks selecting for the (single) border.
+  /*
+    Editing outranks selecting for the (single) border.
+  */
   const primary = visitors.find((visitor) => visitor.isEditingHere) ?? visitors[0];
   return (
     <div

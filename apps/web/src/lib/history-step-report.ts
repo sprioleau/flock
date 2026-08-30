@@ -36,28 +36,30 @@ import {
      same reason `not_authorized` is classified terminal in the SDK taxonomy.
 */
 
-/**
- * What a history step actually did, as the editor store observed it. Mirrors
- * the `history.undo`/`history.redo` return shape, widened with the reasons a
- * step can fail before it ever reaches Convex.
- */
+/*
+  What a history step actually did, as the editor store observed it. Mirrors
+  the `history.undo`/`history.redo` return shape, widened with the reasons a
+  step can fail before it ever reaches Convex.
+*/
 export type HistoryStepOutcome =
   | { isOk: true }
   | { isOk: false; reason: HistoryStepFailureReason };
 
-/** Which history direction was asked for — chooses the copy, nothing else. */
+/*
+  Which history direction was asked for — chooses the copy, nothing else.
+*/
 export type HistoryStepDirection = "undo" | "redo";
 
 function getIsKnownFailureReason(reason: string): reason is HistoryStepFailureReason {
   return HISTORY_STEP_FAILURE_REASONS.some((known) => known === reason);
 }
 
-/**
- * Normalize a raw `history.undo` / `history.redo` return value into an
- * outcome. An unrecognised server reason degrades to `"failed"` rather than
- * being passed through: the copy below is written per reason, and a reason
- * with no copy must not turn into a sentence nobody wrote.
- */
+/*
+  Normalize a raw `history.undo` / `history.redo` return value into an
+  outcome. An unrecognised server reason degrades to `"failed"` rather than
+  being passed through: the copy below is written per reason, and a reason
+  with no copy must not turn into a sentence nobody wrote.
+*/
 export function toHistoryStepOutcome(
   result: { isOk: true } | { isOk: false; reason: string },
 ): HistoryStepOutcome {
@@ -109,10 +111,10 @@ function getFailureNote({
   }
 }
 
-/**
- * The tool result for one history step — the model's ONLY source of truth
- * about whether the step happened.
- */
+/*
+  The tool result for one history step — the model's ONLY source of truth
+  about whether the step happened.
+*/
 export function toHistoryStepToolOutput({
   direction,
   outcome,

@@ -29,7 +29,9 @@ function userMessage(text: string): FlockChatMessage {
   return { id: `user_${text.length}`, role: "user", parts: [{ type: "text", text }] };
 }
 
-/** One assistant turn carrying a readWebPage result, with or without a theme. */
+/*
+  One assistant turn carrying a readWebPage result, with or without a theme.
+*/
 function assistantWithPage({
   id,
   url,
@@ -144,7 +146,9 @@ describe("readTurnPageTheme", () => {
     expect(readTurnPageTheme({ messages })).toBeNull();
   });
 
-  /* Two fetches in one turn: "page" means the one it just read. */
+  /*
+    Two fetches in one turn: "page" means the one it just read.
+  */
   it("takes the LAST page when a turn read several", () => {
     const messages = [
       userMessage("compare these two sites"),

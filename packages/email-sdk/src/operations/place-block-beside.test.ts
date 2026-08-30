@@ -9,17 +9,17 @@ import {
 } from "./apply";
 import type { Operation, PlaceBlockBesideOperation } from "./ops";
 
-/**
- * placeBlockBeside / unplaceBlockBeside — the drag-to-create-columns op pair.
- *
- * Sample document shape (createSampleDocument):
- *   root
- *   ├─ sec_a1b2: [txt_e5f6, img_g7h8, div_i9j0]          (leaves directly in a section)
- *   ├─ sec_c3d4: [row_k1l2]
- *   │   ├─ col_m3n4 (60%): [txt_r7s8]
- *   │   └─ col_p5q6 (40%): [btn_t9u0]
- *   └─ sec_e5f6: [txt_v1w2, cod_x3y4, spc_z5a6, lnk_b7c8]
- */
+/*
+  placeBlockBeside / unplaceBlockBeside — the drag-to-create-columns op pair.
+
+  Sample document shape (createSampleDocument):
+    root
+    ├─ sec_a1b2: [txt_e5f6, img_g7h8, div_i9j0]          (leaves directly in a section)
+    ├─ sec_c3d4: [row_k1l2]
+    │   ├─ col_m3n4 (60%): [txt_r7s8]
+    │   └─ col_p5q6 (40%): [btn_t9u0]
+    └─ sec_e5f6: [txt_v1w2, cod_x3y4, spc_z5a6, lnk_b7c8]
+*/
 
 function applyOrThrow(document: EmailDocument, operation: Operation) {
   const result = applyOperation(document, operation);
@@ -50,7 +50,9 @@ function expectErrorCode({
   return result;
 }
 
-/** Purity + exact inverse round trip — the same bar every op is held to. */
+/*
+  Purity + exact inverse round trip — the same bar every op is held to.
+*/
 function expectPureInverseRoundTrip(document: EmailDocument, operation: Operation) {
   const before = structuredClone(document);
   const applied = applyOrThrow(document, operation);
@@ -63,12 +65,14 @@ function expectPureInverseRoundTrip(document: EmailDocument, operation: Operatio
 const NEW_DIVIDER: DividerBlock = {
   id: "div_zz01",
   type: "divider",
-  parentId: "col_zz02", // overwritten with newColumnId on apply
+  parentId: "col_zz02", /* overwritten with newColumnId on apply */
   childrenIds: [],
   properties: {},
 };
 
-/** A palette-style wrap-case drop: new divider on img_g7h8's right edge. */
+/*
+  A palette-style wrap-case drop: new divider on img_g7h8's right edge.
+*/
 const WRAP_NEW_BLOCK_OP: PlaceBlockBesideOperation = {
   name: "placeBlockBeside",
   targetBlockId: "img_g7h8",
@@ -89,7 +93,9 @@ describe("placeBlockBeside — wrap case (target directly in a section)", () => 
 
     const row = doc.row_zz03 as RowBlock;
     expect(row.parentId).toBe("sec_a1b2");
-    // side "right": target column first, content column second.
+    /*
+      side "right": target column first, content column second.
+    */
     expect(row.childrenIds).toEqual(["col_zz04", "col_zz02"]);
 
     const targetColumn = doc.col_zz04 as ColumnBlock;
@@ -178,12 +184,16 @@ describe("placeBlockBeside — insert case (target inside a column)", () => {
 
     const row = doc.row_k1l2 as RowBlock;
     expect(row.childrenIds).toEqual(["col_m3n4", "col_zz02", "col_p5q6"]);
-    // Equal split: every explicit width stripped (undo restores 60/40 —
-    // asserted by the round-trip deep-equal above).
+    /*
+      Equal split: every explicit width stripped (undo restores 60/40 —
+      asserted by the round-trip deep-equal above).
+    */
     expect((doc.col_m3n4 as ColumnBlock).properties.widthPercent).toBeUndefined();
     expect((doc.col_p5q6 as ColumnBlock).properties.widthPercent).toBeUndefined();
     expect((doc.col_zz02 as ColumnBlock).properties.widthPercent).toBeUndefined();
-    // Untouched non-width properties survive the strip.
+    /*
+      Untouched non-width properties survive the strip.
+    */
     expect((doc.col_m3n4 as ColumnBlock).properties.verticalAlign).toBe("middle");
     expect(doc.div_zz01!.parentId).toBe("col_zz02");
   });
@@ -212,7 +222,9 @@ describe("placeBlockBeside — insert case (target inside a column)", () => {
 
   it(`caps rows at ${MAX_COLUMNS_PER_ROW} columns`, () => {
     let document: EmailDocument = createSampleDocument();
-    // Grow the 2-column row to the cap, one placement at a time.
+    /*
+      Grow the 2-column row to the cap, one placement at a time.
+    */
     for (let columnCount = 2; columnCount < MAX_COLUMNS_PER_ROW; columnCount += 1) {
       const suffix = `zz0${columnCount}`;
       document = applyOrThrow(document, {
@@ -297,7 +309,9 @@ describe("unplaceBlockBeside — inverse fidelity", () => {
       const placed = applyOrThrow(document, { ...WRAP_NEW_BLOCK_OP, content });
       const undone = applyOrThrow(placed.doc, placed.inverse);
       expect(undone.doc).toEqual(document);
-      // The undo's inverse is a placeBlockBeside that restores the placement.
+      /*
+        The undo's inverse is a placeBlockBeside that restores the placement.
+      */
       expect(undone.inverse.name).toBe("placeBlockBeside");
       const redone = applyOrThrow(undone.doc, undone.inverse);
       expect(redone.doc).toEqual(placed.doc);

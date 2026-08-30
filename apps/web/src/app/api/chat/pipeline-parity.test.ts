@@ -6,26 +6,30 @@ import { MOCK_MODEL_ID } from "./constants";
 import { createMockChatModel } from "./mock-model";
 import { runChatPipeline } from "./pipeline";
 
-/**
- * Agent-parity UI actions through the REAL pipeline (streamText → editor
- * dispatch → data-editor-command writes), driven by the scripted mock:
- *
- * - openPanel executes server-side and writes one typed `data-editor-command`
- *   part for the client dispatcher.
- * - undo / redo / createDraft are CLIENT-RESULT actions: the server streams
- *   the call and answers for nothing, because only the browser can see the
- *   outcome. No command part, and no tool output.
- * - goToVersion is approval-gated: the turn halts with a tool-approval
- *   request and NO command is written until the human approves.
- *
- * (createPersona's executor needs a Convex deployment, so its dispatch is
- * covered by the SDK builtins tests + browser verification instead.)
- */
+/*
+  Agent-parity UI actions through the REAL pipeline (streamText → editor
+  dispatch → data-editor-command writes), driven by the scripted mock:
+
+  - openPanel executes server-side and writes one typed `data-editor-command`
+    part for the client dispatcher.
+  - undo / redo / createDraft are CLIENT-RESULT actions: the server streams
+    the call and answers for nothing, because only the browser can see the
+    outcome. No command part, and no tool output.
+  - goToVersion is approval-gated: the turn halts with a tool-approval
+    request and NO command is written until the human approves.
+
+  (createPersona's executor needs a Convex deployment, so its dispatch is
+  covered by the SDK builtins tests + browser verification instead.)
+*/
 
 interface PipelineProbeResult {
-  /** Every part the pipeline wrote directly (data-editor-command, errors). */
+  /*
+    Every part the pipeline wrote directly (data-editor-command, errors).
+  */
   writtenParts: { type: string; data?: unknown }[];
-  /** Every chunk type on the merged UI-message stream. */
+  /*
+    Every chunk type on the merged UI-message stream.
+  */
   streamedChunkTypes: string[];
 }
 
@@ -115,7 +119,9 @@ describe("agent-parity UI actions through the chat pipeline", () => {
     expect(getEditorCommands(undone)).toEqual([]);
     expect(undone.streamedChunkTypes).toContain("tool-input-available");
     expect(undone.streamedChunkTypes).not.toContain("tool-output-available");
-    /* Silence is not a hang: the turn still ends, awaiting the client's report. */
+    /*
+      Silence is not a hang: the turn still ends, awaiting the client's report.
+    */
     expect(undone.streamedChunkTypes).toContain("finish");
 
     const redone = await runPipelineProbe("Actually, redo it");
@@ -145,7 +151,9 @@ describe("agent-parity UI actions through the chat pipeline", () => {
     expect(getEditorCommands(single)).toEqual([]);
     expect(single.streamedChunkTypes).toContain("tool-input-available");
     expect(single.streamedChunkTypes).not.toContain("tool-output-available");
-    /* Silence is not a hang: the turn still ends, awaiting the client's report. */
+    /*
+      Silence is not a hang: the turn still ends, awaiting the client's report.
+    */
     expect(single.streamedChunkTypes).toContain("finish");
 
     const several = await runPipelineProbe("Create 3 new blank drafts to compare");
@@ -155,9 +163,11 @@ describe("agent-parity UI actions through the chat pipeline", () => {
 
   it("createPersona without a Convex deployment fails the tool call, not the turn", async () => {
     const result = await runPipelineProbe('Create a persona called "Tone Checker"');
-    // The executor refused (no session/deployment in tests) → tool error
-    // round-trips to the model; no command part is written and the turn
-    // still finishes (the mock's continuation step closes it).
+    /*
+      The executor refused (no session/deployment in tests) → tool error
+      round-trips to the model; no command part is written and the turn
+      still finishes (the mock's continuation step closes it).
+    */
     expect(getEditorCommands(result)).toEqual([]);
     expect(result.streamedChunkTypes).toContain("tool-output-error");
     expect(result.streamedChunkTypes).toContain("finish");

@@ -34,7 +34,9 @@ describe("classifySocialUrl", () => {
     expect(classifySocialUrl("https://example.com/acme")).toBeNull();
     expect(classifySocialUrl("mailto:hi@acme.com")).toBeNull();
     expect(classifySocialUrl("not a url")).toBeNull();
-    // linkedin needs a profile-ish first segment
+    /*
+      linkedin needs a profile-ish first segment
+    */
     expect(classifySocialUrl("https://www.linkedin.com/jobs/view/123")).toBeNull();
   });
 
@@ -53,7 +55,7 @@ describe("dedupeSocialLinks", () => {
       { platform: "github", url: "https://github.com/acme" },
     ]);
     expect(deduped).toEqual([
-      { platform: "x", url: "https://x.com/acme" }, // first x won; ordered first
+      { platform: "x", url: "https://x.com/acme" }, /* first x won; ordered first */
       { platform: "instagram", url: "https://instagram.com/acme" },
       { platform: "github", url: "https://github.com/acme" },
     ]);

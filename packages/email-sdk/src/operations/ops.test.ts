@@ -7,7 +7,9 @@ import {
   type Operation,
 } from "./ops";
 
-/** One valid sample of every operation in the union. */
+/*
+  One valid sample of every operation in the union.
+*/
 const sampleOperations: Operation[] = [
   { name: "updateBlockProperties", blockId: "btn_a1b2", properties: { label: "Go" } },
   {

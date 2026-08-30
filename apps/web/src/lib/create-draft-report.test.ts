@@ -13,7 +13,9 @@ import {
   note composed from the plan cannot represent a shortfall at all.
 */
 
-/** A draft whose every section came from the model's own plan. */
+/*
+  A draft whose every section came from the model's own plan.
+*/
 const FULLY_PLANNED = {
   plannedSectionCount: 4,
   carriedOverSectionCount: 0,
@@ -197,7 +199,9 @@ describe("toCreateDraftToolOutput", () => {
       "Portfolio 3",
       "Bold launch",
     ]);
-    /* Three asked for, three landed — no shortfall language. */
+    /*
+      Three asked for, three landed — no shortfall language.
+    */
     expect(output.note).toContain("Created 3 new drafts");
     expect(output.note).toContain("current draft is untouched");
     expect(output.note).not.toContain("Only 3 of the");
@@ -239,7 +243,9 @@ describe("toCreateDraftToolOutput", () => {
     expect(output.note).toContain("SAMPLE text");
     expect(output.note).toContain("3 sections");
     expect(output.note).toContain("filled from the draft the user is already looking at");
-    /* And the call as a whole may NOT be described as fully written. */
+    /*
+      And the call as a whole may NOT be described as fully written.
+    */
     expect(output.note).not.toContain("Every section was built from the copy you passed");
   });
 

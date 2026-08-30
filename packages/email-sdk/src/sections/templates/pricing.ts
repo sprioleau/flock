@@ -8,12 +8,12 @@ import {
 } from "../build-helpers";
 import { defineSectionTemplate } from "../types";
 
-/**
- * `pricing` — one plan, one price, what's included, one signup button — all
- * centered like a pricing card. Reference: react.email/components
- * "pricing-with-single-tier" (the multi-tier table does not read well at
- * email width, so the catalog ships the single-tier card).
- */
+/*
+  `pricing` — one plan, one price, what's included, one signup button — all
+  centered like a pricing card. Reference: react.email/components
+  "pricing-with-single-tier" (the multi-tier table does not read well at
+  email width, so the catalog ships the single-tier card).
+*/
 
 export const pricingParamsSchema = z
   .strictObject({
@@ -70,7 +70,9 @@ export const pricingTemplate = defineSectionTemplate({
     listParams: [{ param: "features", minimumCount: 1 }],
     imageCount: 0,
   },
-  /* The gallery shows the signup button; a real card only gets one you can sign up through. */
+  /*
+    The gallery shows the signup button; a real card only gets one you can sign up through.
+  */
   previewParams: { ctaLabel: "Start free trial", ctaHref: "https://example.com/pricing" },
   build: ({ params, random }) => {
     const composer = createSectionComposer(random);

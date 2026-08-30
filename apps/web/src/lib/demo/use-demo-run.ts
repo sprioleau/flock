@@ -83,7 +83,9 @@ export function useDemoRun({ documentId }: { documentId: string | null }): DemoR
     setRunState((current) => startNextTurn(current));
   }, [documentId]);
 
-  /* Fire whichever turn is running, and chain on its completion. */
+  /*
+    Fire whichever turn is running, and chain on its completion.
+  */
   useEffect(() => {
     const runningIndex = selectRunningTurnIndex(runState);
     const runningTurn = runningIndex === null ? null : runState.turns[runningIndex];
@@ -103,7 +105,9 @@ export function useDemoRun({ documentId }: { documentId: string | null }): DemoR
         statuses in the same two seconds, and the demo is about being able to
         watch one agent take a turn while you type.
       */
-      /* Redundant since the row became the authority — see the header. */
+      /*
+        Redundant since the row became the authority — see the header.
+      */
       isMockRun: true,
     }).then((result) => {
       if (!isMountedRef.current) {

@@ -19,7 +19,9 @@ const crons = cronJobs();
 
 crons.daily(
   "cleanup stale unclaimed documents",
-  // 08:47 UTC — an off-peak, non-round time to avoid thundering-herd slots.
+  /*
+    08:47 UTC — an off-peak, non-round time to avoid thundering-herd slots.
+  */
   { hourUTC: 8, minuteUTC: 47 },
   internal.cleanup.cleanupStaleDocuments,
   {},

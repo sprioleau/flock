@@ -33,7 +33,9 @@ function apply(doc: EmailDocument, op: Operation): EmailDocument {
   return result.doc;
 }
 
-/* root > sec_aaaa > [btn_aaaa, row_aaaa > col_aaaa > lnk_aaaa] */
+/*
+  root > sec_aaaa > [btn_aaaa, row_aaaa > col_aaaa > lnk_aaaa]
+*/
 function buildDoc(): EmailDocument {
   let doc = createEmptyDocument();
   doc = apply(doc, { name: "addSection", section: createDefaultSection(id("sec_aaaa")), index: 0 });
@@ -196,7 +198,9 @@ describe("the background a block actually sits on", () => {
 });
 
 describe("the WCAG large-text exemption", () => {
-  /* #ffffff on #898989 is 3.50:1 — under AA for body text, over it for large. */
+  /*
+    #ffffff on #898989 is 3.50:1 — under AA for body text, over it for large.
+  */
   function subjectForLink(fontSize: number) {
     let doc = setProperties({
       doc: buildDoc(),
@@ -251,7 +255,9 @@ describe("which edits can even produce a contrast defect", () => {
   });
 
   it("ignores block types whose correct threshold is not knowable", () => {
-    /* Text blocks mix heading and paragraph sizes, so one number cannot judge them. */
+    /*
+      Text blocks mix heading and paragraph sizes, so one number cannot judge them.
+    */
     expect(getIsContrastCritiqueProperty({ blockType: "text", propertyKey: "textColor" })).toBe(
       false,
     );

@@ -57,8 +57,10 @@ import type { RunnerOutputFinding } from "./finding-schema";
   what it describes.
 */
 
-/* The seed, materialised once: it is deterministic, and this module compares
-   against it on every mocked run. */
+/*
+  The seed, materialised once: it is deterministic, and this module compares
+  against it on every mocked run.
+*/
 const SEED_DOCUMENT = createDemoDocument();
 
 function seedSnapshotFor(blockId: string): string {
@@ -81,7 +83,9 @@ const REWRITTEN_URGENCY_PARAGRAPH =
 
 interface SeededFinding {
   finding: RunnerOutputFinding;
-  /* Blocks that must still match the seed for this finding to be served. */
+  /*
+    Blocks that must still match the seed for this finding to be served.
+  */
   requiredSeedBlockIds: readonly string[];
 }
 
@@ -109,14 +113,18 @@ const SEEDED_FINDINGS_BY_SLUG: Readonly<Record<string, SeededFinding>> = {
         'the button labeled "Shop the spring lineup"',
         'the button labeled "Reserve your bag"',
       ],
-      /* The block being CHANGED comes first: the route points each persona's
-         block-presence chrome at `targetBlockIds[0]`, so this is what the
-         avatar parks on. */
+      /*
+        The block being CHANGED comes first: the route points each persona's
+        block-presence chrome at `targetBlockIds[0]`, so this is what the
+        avatar parks on.
+      */
       targetBlockIds: ["btn_scnd", "btn_prim"],
-      /* Three scalar values on one block — the route groups them into a
-         single `updateBlockProperties` op, so this is still one press and one
-         undo. `borderRadius` travels as the string "6" because that is what
-         the model-facing schema takes; the route coerces it back to a number. */
+      /*
+        Three scalar values on one block — the route groups them into a
+        single `updateBlockProperties` op, so this is still one press and one
+        undo. `borderRadius` travels as the string "6" because that is what
+        the model-facing schema takes; the route coerces it back to a number.
+      */
       proposedEdits: [
         { blockId: "btn_scnd", property: "backgroundColor", value: "#1f6f5c" },
         { blockId: "btn_scnd", property: "borderRadius", value: "6" },

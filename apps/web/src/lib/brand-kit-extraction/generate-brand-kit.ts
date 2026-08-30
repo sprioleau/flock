@@ -1,30 +1,30 @@
-/**
- * Brand-kit generation pipeline (Phase 7.4, brand/theme mode):
- *
- *   fetchPage (guarded, reusable primitive)
- *     → harvestBrandSignals (deterministic, no LLM)
- *       → ONE Gemini structured call (semantic assignments only)
- *         → deterministic expand + contrast repair (expand-variations.ts)
- *           → Zod validation of the final BrandKit
- *
- * Faithfulness: the model only ever sees — and is told to only use — colors,
- * fonts and logo URLs that were literally harvested from the page. The logo
- * URL is re-checked against the candidate list after the call (never
- * invented), and unreadable pages fail honestly upstream of any model call.
- *
- * Brand-kit-user-control additions: the same one call now also NAMES and
- * CATEGORIZES the brand's palette (§3 — the owner's `--banana` idea, whose
- * signal harvest.ts was already collecting and the prompt was already showing)
- * and reads TONE OF VOICE off a deterministic copy sample (§5). Both degrade
- * honestly: an unharvested color is dropped, and a page with no readable copy
- * gets no tone field rather than an invented voice.
- *
- * Site identity (name / logo / social card) is extracted DETERMINISTICALLY
- * head-first (extract-site-identity.ts) and takes precedence over the model's
- * picks — the head metadata is authoritative; the model only fills gaps.
- * User input is normalized first: scheme-less "cnn.com" becomes https://
- * (never http) before the SSRF guard judges it.
- */
+/*
+  Brand-kit generation pipeline (Phase 7.4, brand/theme mode):
+
+    fetchPage (guarded, reusable primitive)
+      → harvestBrandSignals (deterministic, no LLM)
+        → ONE Gemini structured call (semantic assignments only)
+          → deterministic expand + contrast repair (expand-variations.ts)
+            → Zod validation of the final BrandKit
+
+  Faithfulness: the model only ever sees — and is told to only use — colors,
+  fonts and logo URLs that were literally harvested from the page. The logo
+  URL is re-checked against the candidate list after the call (never
+  invented), and unreadable pages fail honestly upstream of any model call.
+
+  Brand-kit-user-control additions: the same one call now also NAMES and
+  CATEGORIZES the brand's palette (§3 — the owner's `--banana` idea, whose
+  signal harvest.ts was already collecting and the prompt was already showing)
+  and reads TONE OF VOICE off a deterministic copy sample (§5). Both degrade
+  honestly: an unharvested color is dropped, and a page with no readable copy
+  gets no tone field rather than an invented voice.
+
+  Site identity (name / logo / social card) is extracted DETERMINISTICALLY
+  head-first (extract-site-identity.ts) and takes precedence over the model's
+  picks — the head metadata is authoritative; the model only fills gaps.
+  User input is normalized first: scheme-less "cnn.com" becomes https://
+  (never http) before the SSRF guard judges it.
+*/
 
 import { google } from "@ai-sdk/google";
 import { globalStylesSchema } from "@flock/email-sdk";
@@ -77,40 +77,42 @@ const MIN_VARIATIONS = 3;
 */
 const GENERATION_TIMEOUT_MS = 120_000;
 
-/**
- * Model for the one structured brand-kit call. Chosen empirically on
- * 2026-07-30: 3.5-flash was 503-ing ("high demand") and 2.5-flash is retired
- * for new API users; 3.5-flash-lite is available and plenty for a one-shot
- * structured palette-assignment task.
- *
- * It was ALSO chosen to be different from the chat pipeline's model, because
- * Gemini free-tier quotas are per-model and a busy chat session was observed
- * starving brand-kit generation out of a 20-req/day bucket. That isolation no
- * longer exists: on 2026-08-04 constants.ts moved DEFAULT_GEMINI_MODEL_ID to
- * this same id for the request headroom, and every caller now shares it.
- *
- * Losing it is the right trade and it should stay lost — see constants.ts for
- * the measured numbers. The only ids that would buy separation back are 5 RPM
- * / 20 per day; this one is 15 RPM / 500. There is no arrangement of two tiny
- * buckets that beats sharing the large one.
- */
+/*
+  Model for the one structured brand-kit call. Chosen empirically on
+  2026-07-30: 3.5-flash was 503-ing ("high demand") and 2.5-flash is retired
+  for new API users; 3.5-flash-lite is available and plenty for a one-shot
+  structured palette-assignment task.
+
+  It was ALSO chosen to be different from the chat pipeline's model, because
+  Gemini free-tier quotas are per-model and a busy chat session was observed
+  starving brand-kit generation out of a 20-req/day bucket. That isolation no
+  longer exists: on 2026-08-04 constants.ts moved DEFAULT_GEMINI_MODEL_ID to
+  this same id for the request headroom, and every caller now shares it.
+
+  Losing it is the right trade and it should stay lost — see constants.ts for
+  the measured numbers. The only ids that would buy separation back are 5 RPM
+  / 20 per day; this one is 15 RPM / 500. There is no arrangement of two tiny
+  buckets that beats sharing the large one.
+*/
 const BRAND_KIT_MODEL_ID = "gemini-3.5-flash-lite";
 
-// ---------------------------------------------------------------------------
-// LLM output schema — intent-level, semantic. The deterministic post-pass
-// (expand-variations.ts) translates it into the full globals contract.
-// ---------------------------------------------------------------------------
+/*
+  ---------------------------------------------------------------------------
+  LLM output schema — intent-level, semantic. The deterministic post-pass
+  (expand-variations.ts) translates it into the full globals contract.
+  ---------------------------------------------------------------------------
+*/
 
 const FONT_LABELS = EMAIL_SAFE_FONT_OPTIONS.map((option) => option.label) as [
   string,
   ...string[],
 ];
 
-/**
- * The scrape proposes tone words from the SAME vocabulary the brand kit panel
- * offers (brand-kit-v2 §4), so a scraped voice arrives as chips the user can
- * toggle rather than free text they can only delete.
- */
+/*
+  The scrape proposes tone words from the SAME vocabulary the brand kit panel
+  offers (brand-kit-v2 §4), so a scraped voice arrives as chips the user can
+  toggle rather than free text they can only delete.
+*/
 const VOICE_DESCRIPTORS = [...BRAND_VOICE_DESCRIPTOR_OPTIONS] as [string, ...string[]];
 
 const hexColor = z
@@ -136,14 +138,14 @@ const semanticVariationSchema = z.object({
   paragraphTextColor: hexColor.describe("Body text color; must read clearly on the content background."),
 });
 
-/**
- * The AUTHORED palette the model proposes (brand-kit-user-control §3.4 rung
- * 2). The model's job here is NAMING and CATEGORIZING colors it was shown —
- * `buildBrandColors` drops any hex that wasn't harvested, exactly like the
- * logo pick. Names are constrained by the prompt to the declared CSS variable
- * name or a plain description of the color; there is a deterministic fallback
- * for both, so a poor answer degrades instead of failing.
- */
+/*
+  The AUTHORED palette the model proposes (brand-kit-user-control §3.4 rung
+  2). The model's job here is NAMING and CATEGORIZING colors it was shown —
+  `buildBrandColors` drops any hex that wasn't harvested, exactly like the
+  logo pick. Names are constrained by the prompt to the declared CSS variable
+  name or a plain description of the color; there is a deterministic fallback
+  for both, so a poor answer degrades instead of failing.
+*/
 const modelBrandColorSchema = z.object({
   hex: hexColor.describe("One of the harvested palette colors, copied verbatim."),
   name: z
@@ -160,13 +162,13 @@ const modelBrandColorSchema = z.object({
     ),
 });
 
-/**
- * Tone of voice (§5). Asked for in the SAME call — the prompt already carries
- * the page, and a second round trip on a free-tier-quota-sensitive model is
- * not worth it. Returned unconditionally by the schema but DISCARDED by the
- * pipeline when the page had no copy signals, so "no copy found, no tone
- * field" holds and the model never gets to invent a voice from nothing.
- */
+/*
+  Tone of voice (§5). Asked for in the SAME call — the prompt already carries
+  the page, and a second round trip on a free-tier-quota-sensitive model is
+  not worth it. Returned unconditionally by the schema but DISCARDED by the
+  pipeline when the page had no copy signals, so "no copy found, no tone
+  field" holds and the model never gets to invent a voice from nothing.
+*/
 const modelToneOfVoiceSchema = z.object({
   descriptors: z
     .array(z.enum(VOICE_DESCRIPTORS))
@@ -216,11 +218,15 @@ const brandKitModelOutputSchema = z.object({
     .describe("3-4 distinct theme variations. Include at least one light theme; a dark one if the palette supports it."),
 });
 
-// ---------------------------------------------------------------------------
-// Final BrandKit validation — the wire contract, checked before returning.
-// ---------------------------------------------------------------------------
+/*
+  ---------------------------------------------------------------------------
+  Final BrandKit validation — the wire contract, checked before returning.
+  ---------------------------------------------------------------------------
+*/
 
-/** `Required<GlobalStyles>` as a runtime schema (complete-payload invariant). */
+/*
+  `Required<GlobalStyles>` as a runtime schema (complete-payload invariant).
+*/
 const requiredGlobalsSchema = globalStylesSchema.required();
 
 export const brandKitSchema = z.object({
@@ -264,9 +270,11 @@ export const brandKitSchema = z.object({
     .max(4),
 });
 
-// ---------------------------------------------------------------------------
-// Prompt
-// ---------------------------------------------------------------------------
+/*
+  ---------------------------------------------------------------------------
+  Prompt
+  ---------------------------------------------------------------------------
+*/
 
 function describeRankedColor({ color, count, variableName }: BrandSignals["rankedColors"][number]): string {
   const declaration = variableName === null ? "" : `, declared as "${variableName}"`;
@@ -321,9 +329,11 @@ function buildPrompt({
   ].join("\n");
 }
 
-// ---------------------------------------------------------------------------
-// Pipeline
-// ---------------------------------------------------------------------------
+/*
+  ---------------------------------------------------------------------------
+  Pipeline
+  ---------------------------------------------------------------------------
+*/
 
 const FRIENDLY_GENERATION_FAILURE =
   "We read the site but couldn't put a brand kit together from it. Please try again, or try a different page.";
@@ -333,7 +343,9 @@ function findFontStack(label: string): string {
   return option?.value ?? EMAIL_SAFE_FONT_OPTIONS[0].value;
 }
 
-/** Dedupe variation ids by suffixing ("-2", "-3") — ids must be kit-unique. */
+/*
+  Dedupe variation ids by suffixing ("-2", "-3") — ids must be kit-unique.
+*/
 function dedupeVariationIds(variations: BrandKit["variations"]): BrandKit["variations"] {
   const seen = new Map<string, number>();
   return variations.map((variation) => {
@@ -343,7 +355,9 @@ function dedupeVariationIds(variations: BrandKit["variations"]): BrandKit["varia
   });
 }
 
-/** Generate a brand kit from a website URL — the whole pipeline. */
+/*
+  Generate a brand kit from a website URL — the whole pipeline.
+*/
 export async function generateBrandKit({ url }: { url: string }): Promise<BrandKitGenerationResult> {
   if (!process.env.GOOGLE_GENERATIVE_AI_API_KEY) {
     return {
@@ -353,31 +367,41 @@ export async function generateBrandKit({ url }: { url: string }): Promise<BrandK
     };
   }
 
-  // 1. Fetch (guarded, honest failures). Scheme-less input gets https://
-  //    first — the guard then judges the normalized URL.
+  /*
+    1. Fetch (guarded, honest failures). Scheme-less input gets https://
+       first — the guard then judges the normalized URL.
+  */
   const page = await fetchPage(normalizeWebsiteUrl(url));
   if (!page.isOk) {
     return { isOk: false, statusCode: 422, message: page.message };
   }
 
-  // 1b. Deterministic head-first identity: name, logo, social card. The
-  //     head metadata is authoritative — these override the model's picks.
+  /*
+    1b. Deterministic head-first identity: name, logo, social card. The
+        head metadata is authoritative — these override the model's picks.
+  */
   const identity = extractSiteIdentity({ html: page.html, baseUrl: page.finalUrl });
 
-  // 2. Deterministic signal harvest (bounded stylesheet fetches, same guard).
+  /*
+    2. Deterministic signal harvest (bounded stylesheet fetches, same guard).
+  */
   const signals = await harvestBrandSignals({
     html: page.html,
     finalUrl: page.finalUrl,
     fetchCss: (cssUrl) => fetchTextResource({ url: cssUrl }),
   });
-  // 2b. Copy signals for tone of voice (§5.4) — deterministic, no fetching.
-  //     Absent copy means an ABSENT tone field, never an invented voice.
+  /*
+    2b. Copy signals for tone of voice (§5.4) — deterministic, no fetching.
+        Absent copy means an ABSENT tone field, never an invented voice.
+  */
   const copySignals = extractCopySignals(page.html);
   const hasAnySignal =
     signals.rankedColors.length > 0 || signals.themeColor !== null || signals.fontFamilies.length > 0;
   if (!hasAnySignal) {
-    // Faithfulness: a page with no readable styling signals gets an honest
-    // "couldn't do it", not an invented palette.
+    /*
+      Faithfulness: a page with no readable styling signals gets an honest
+      "couldn't do it", not an invented palette.
+    */
     return {
       isOk: false,
       statusCode: 422,
@@ -386,7 +410,9 @@ export async function generateBrandKit({ url }: { url: string }): Promise<BrandK
     };
   }
 
-  // 3. ONE structured Gemini call — semantic assignments only.
+  /*
+    3. ONE structured Gemini call — semantic assignments only.
+  */
   const traceId = createTraceId();
   let modelOutput: z.infer<typeof brandKitModelOutputSchema>;
   try {
@@ -396,26 +422,34 @@ export async function generateBrandKit({ url }: { url: string }): Promise<BrandK
       prompt: buildPrompt({ signals, copySignals, sourceUrl: page.finalUrl }),
       abortSignal: AbortSignal.timeout(GENERATION_TIMEOUT_MS),
       telemetry: modelTelemetryFor({ operation: "brandKit.extract", traceId, isMock: false }),
-      // One retry only — the free-tier quota is small and a quota failure
-      // would otherwise be retried into the ground.
+      /*
+        One retry only — the free-tier quota is small and a quota failure
+        would otherwise be retried into the ground.
+      */
       maxRetries: 1,
       providerOptions: {
         google: {
-          // Minimal thinking: palette assignment doesn't need deliberation,
-          // and default thinking pushed flash-lite past the latency budget.
-          // (thinkingBudget: 0 is rejected by the 3.x models — use levels.)
+          /*
+            Minimal thinking: palette assignment doesn't need deliberation,
+            and default thinking pushed flash-lite past the latency budget.
+            (thinkingBudget: 0 is rejected by the 3.x models — use levels.)
+          */
           thinkingConfig: { thinkingLevel: "minimal" },
         },
       },
     });
     modelOutput = object;
   } catch {
-    // Already logged as flock.model.failed by the telemetry integration above.
+    /*
+      Already logged as flock.model.failed by the telemetry integration above.
+    */
     logRecord({ tag: "flock.brandKit.generationAbandoned", traceId });
     return { isOk: false, statusCode: 502, message: FRIENDLY_GENERATION_FAILURE };
   }
 
-  // 4. Deterministic expansion + contrast enforcement.
+  /*
+    4. Deterministic expansion + contrast enforcement.
+  */
   const fonts: BrandKitFonts = {
     heading: findFontStack(modelOutput.headingFont),
     body: findFontStack(modelOutput.bodyFont),
@@ -429,12 +463,14 @@ export async function generateBrandKit({ url }: { url: string }): Promise<BrandK
     return { isOk: false, statusCode: 502, message: FRIENDLY_GENERATION_FAILURE };
   }
 
-  // Logo: the deterministic head-first extraction wins; the model's pick is
-  // only a fallback, and even then only a verbatim harvested candidate
-  // survives (never invented). Every suggested asset URL must then PROVE it
-  // renders (2xx + image content-type, HEAD-then-GET probe) before it goes
-  // to the client — a dead og:image / logo URL becomes an absent field, never
-  // a broken tile, while the rest of the kit still ships (owner directive).
+  /*
+    Logo: the deterministic head-first extraction wins; the model's pick is
+    only a fallback, and even then only a verbatim harvested candidate
+    survives (never invented). Every suggested asset URL must then PROVE it
+    renders (2xx + image content-type, HEAD-then-GET probe) before it goes
+    to the client — a dead og:image / logo URL becomes an absent field, never
+    a broken tile, while the rest of the kit still ships (owner directive).
+  */
   const harvestedCandidateUrls = new Set(signals.logoCandidates.map((candidate) => candidate.url));
   const modelLogoUrl = harvestedCandidateUrls.has(modelOutput.logoUrl)
     ? modelOutput.logoUrl
@@ -444,24 +480,28 @@ export async function generateBrandKit({ url }: { url: string }): Promise<BrandK
     pickFirstRenderableImageUrl({ candidateUrls: [identity.socialImageUrl] }),
   ]);
 
-  // The AUTHORED palette (§3): the model names and categorizes, the harvest
-  // supplies the colors and the `--banana` provenance, and a deterministic
-  // pass fills in when the model was unhelpful. Never a color the site
-  // doesn't use — buildBrandColors drops unharvested hexes.
-  // Defensive `?? []`: the schema makes `colors` required, so the AI SDK
-  // rejects an output without it — but a stubbed/mock model tier is not the
-  // AI SDK, and a missing field must degrade to the deterministic palette
-  // rather than throw.
+  /*
+    The AUTHORED palette (§3): the model names and categorizes, the harvest
+    supplies the colors and the `--banana` provenance, and a deterministic
+    pass fills in when the model was unhelpful. Never a color the site
+    doesn't use — buildBrandColors drops unharvested hexes.
+    Defensive `?? []`: the schema makes `colors` required, so the AI SDK
+    rejects an output without it — but a stubbed/mock model tier is not the
+    AI SDK, and a missing field must degrade to the deterministic palette
+    rather than throw.
+  */
   const colors = buildBrandColors({
     modelColors: modelOutput.colors ?? [],
     rankedColors: signals.rankedColors,
     accentCandidates: signals.accentCandidates,
   });
 
-  // Tone of voice (§5): kept ONLY when the page actually carried copy. The
-  // model answers unconditionally (structured output has no clean "skip"),
-  // so the honest gate is here — same stance as failing rather than inventing
-  // a palette for an unreadable page.
+  /*
+    Tone of voice (§5): kept ONLY when the page actually carried copy. The
+    model answers unconditionally (structured output has no clean "skip"),
+    so the honest gate is here — same stance as failing rather than inventing
+    a palette for an unreadable page.
+  */
   const modelTone = modelOutput.toneOfVoice;
   const toneOfVoice: BrandToneOfVoice | undefined =
     copySignals.hasAnySignal && modelTone !== undefined
@@ -478,7 +518,9 @@ export async function generateBrandKit({ url }: { url: string }): Promise<BrandK
 
   const brandKit: BrandKit = {
     sourceUrl: page.finalUrl,
-    // Deterministically extracted company name takes precedence.
+    /*
+      Deterministically extracted company name takes precedence.
+    */
     name: identity.siteName ?? modelOutput.brandName,
     fonts,
     ...(logoUrl === null ? {} : { logoUrl }),
@@ -489,7 +531,9 @@ export async function generateBrandKit({ url }: { url: string }): Promise<BrandK
     variations: dedupeVariationIds(expandedVariations),
   };
 
-  // 5. Contract check — the exact shape the theme panel codes against.
+  /*
+    5. Contract check — the exact shape the theme panel codes against.
+  */
   const parsed = brandKitSchema.safeParse(brandKit);
   if (!parsed.success) {
     console.error("[brand-kit] final kit failed contract validation:", parsed.error);

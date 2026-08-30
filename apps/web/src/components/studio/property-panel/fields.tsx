@@ -13,18 +13,20 @@ import { ColorPickerPopover } from "./ColorPickerPopover";
 import { useEndCoalescing } from "./usePanelDispatch";
 import { useLiveDraft } from "./useLiveDraft";
 
-/**
- * Shared property-panel field controls. Every input event commits an op
- * immediately (the canvas tracks in real time); the editor store's undo-stack
- * coalescing merges rapid same-field dispatches into one undo entry per
- * gesture. Blur ends the coalescing run.
- *
- * `helpText` is the SDK schema's `.describe()` string, surfaced as a hover
- * tooltip on the field label.
- */
+/*
+  Shared property-panel field controls. Every input event commits an op
+  immediately (the canvas tracks in real time); the editor store's undo-stack
+  coalescing merges rapid same-field dispatches into one undo entry per
+  gesture. Blur ends the coalescing run.
+
+  `helpText` is the SDK schema's `.describe()` string, surfaced as a hover
+  tooltip on the field label.
+*/
 
 interface FieldShellProps {
-  /** Omit for controls that are not labelable elements (e.g. toggle groups). */
+  /*
+    Omit for controls that are not labelable elements (e.g. toggle groups).
+  */
   inputId?: string;
   label: string;
   helpText?: string;
@@ -48,14 +50,18 @@ function FieldShell({ inputId, label, helpText, children }: FieldShellProps) {
   );
 }
 
-// ---------------------------------------------------------------------------
-// Text
-// ---------------------------------------------------------------------------
+/*
+  ---------------------------------------------------------------------------
+  Text
+  ---------------------------------------------------------------------------
+*/
 
 export interface TextFieldProps {
   label: string;
   value: string | undefined;
-  /** Committed when the input is emptied. "skip" keeps the last valid value. */
+  /*
+    Committed when the input is emptied. "skip" keeps the last valid value.
+  */
   emptyBehavior?: "skip" | "clear" | "commit";
   placeholder?: string;
   helpText?: string;
@@ -102,14 +108,18 @@ export function TextField({
   );
 }
 
-// ---------------------------------------------------------------------------
-// Number
-// ---------------------------------------------------------------------------
+/*
+  ---------------------------------------------------------------------------
+  Number
+  ---------------------------------------------------------------------------
+*/
 
 export interface NumberFieldProps {
   label: string;
   value: number | undefined;
-  /** When true, an emptied input commits `undefined` (clears the override). */
+  /*
+    When true, an emptied input commits `undefined` (clears the override).
+  */
   isClearable?: boolean;
   min?: number;
   max?: number;
@@ -181,34 +191,44 @@ export function NumberField({
   );
 }
 
-// ---------------------------------------------------------------------------
-// Percent slider
-// ---------------------------------------------------------------------------
+/*
+  ---------------------------------------------------------------------------
+  Percent slider
+  ---------------------------------------------------------------------------
+*/
 
 export interface PercentSliderFieldProps {
   label: string;
-  /** Current percent, or undefined when the property is cleared (e.g. "natural"). */
+  /*
+    Current percent, or undefined when the property is cleared (e.g. "natural").
+  */
   valuePercent: number | undefined;
   min: number;
   max: number;
   step: number;
-  /** Exact-value readout beside the percent (e.g. "510px"). */
+  /*
+    Exact-value readout beside the percent (e.g. "510px").
+  */
   detailText?: string;
-  /** Readout shown when valuePercent is undefined (e.g. "natural"). */
+  /*
+    Readout shown when valuePercent is undefined (e.g. "natural").
+  */
   clearedLabel?: string;
-  /** Renders a clear affordance restoring the undefined state. */
+  /*
+    Renders a clear affordance restoring the undefined state.
+  */
   onClear?: () => void;
   helpText?: string;
   onCommit: (percent: number) => void;
 }
 
-/**
- * A percentage slider following the panel's instant-apply law: EVERY slider
- * movement commits an op immediately (`onValueChange` — the canvas tracks the
- * drag in real time, never debounced); releasing the thumb ends the store's
- * coalescing gesture (`onValueCommitted`), so one drag = one undo step. The
- * readout keeps the exact number visible next to the human-facing percent.
- */
+/*
+  A percentage slider following the panel's instant-apply law: EVERY slider
+  movement commits an op immediately (`onValueChange` — the canvas tracks the
+  drag in real time, never debounced); releasing the thumb ends the store's
+  coalescing gesture (`onValueCommitted`), so one drag = one undo step. The
+  readout keeps the exact number visible next to the human-facing percent.
+*/
 export function PercentSliderField({
   label,
   valuePercent,
@@ -264,11 +284,15 @@ export function PercentSliderField({
   );
 }
 
-// ---------------------------------------------------------------------------
-// Color
-// ---------------------------------------------------------------------------
+/*
+  ---------------------------------------------------------------------------
+  Color
+  ---------------------------------------------------------------------------
+*/
 
-/** Normalize a CSS hex color to #rrggbb for the native color input; null if not hex. */
+/*
+  Normalize a CSS hex color to #rrggbb for the native color input; null if not hex.
+*/
 function toSwatchHex(color: string): string | null {
   const match = /^#(?:[0-9a-fA-F]{3}|[0-9a-fA-F]{6})$/.exec(color.trim());
   if (match === null) {
@@ -285,9 +309,13 @@ function toSwatchHex(color: string): string | null {
 export interface ColorFieldProps {
   label: string;
   value: string | undefined;
-  /** Resolved fallback shown (and used for the swatch) when no override is set. */
+  /*
+    Resolved fallback shown (and used for the swatch) when no override is set.
+  */
   fallbackColor?: string;
-  /** When true, the override can be cleared (empty text or the clear button). */
+  /*
+    When true, the override can be cleared (empty text or the clear button).
+  */
   isClearable?: boolean;
   helpText?: string;
   onCommit: (value: string | undefined) => void;
@@ -325,9 +353,11 @@ export function ColorField({
   return (
     <FieldShell inputId={inputId} label={label} helpText={helpText}>
       <div className="flex items-center gap-1.5">
-        {/* Item 24: the swatch opens the app's color-picker popover
-            (saturation/hue, eyedropper, hex/RGB, brand palette) instead of
-            the native input. Picks live-commit through the same draft. */}
+        {/*
+          Item 24: the swatch opens the app's color-picker popover
+          (saturation/hue, eyedropper, hex/RGB, brand palette) instead of
+          the native input. Picks live-commit through the same draft.
+        */}
         <ColorPickerPopover
           color={swatchHex}
           ariaLabel={`${label} color swatch`}
@@ -360,9 +390,11 @@ export function ColorField({
   );
 }
 
-// ---------------------------------------------------------------------------
-// Alignment
-// ---------------------------------------------------------------------------
+/*
+  ---------------------------------------------------------------------------
+  Alignment
+  ---------------------------------------------------------------------------
+*/
 
 const ALIGN_OPTIONS: ReadonlyArray<{ align: TextAlign; icon: React.ReactNode }> = [
   { align: "left", icon: <AlignLeft /> },
@@ -373,7 +405,9 @@ const ALIGN_OPTIONS: ReadonlyArray<{ align: TextAlign; icon: React.ReactNode }> 
 export interface AlignFieldProps {
   label: string;
   value: TextAlign | undefined;
-  /** When true, unpressing the active option commits `undefined` (clears). */
+  /*
+    When true, unpressing the active option commits `undefined` (clears).
+  */
   isClearable?: boolean;
   helpText?: string;
   onCommit: (value: TextAlign | undefined) => void;
@@ -412,9 +446,11 @@ export function AlignField({
   );
 }
 
-// ---------------------------------------------------------------------------
-// Select (small fixed set of labelled options, rendered as a toggle group)
-// ---------------------------------------------------------------------------
+/*
+  ---------------------------------------------------------------------------
+  Select (small fixed set of labelled options, rendered as a toggle group)
+  ---------------------------------------------------------------------------
+*/
 
 export interface SelectFieldOption<T extends string> {
   value: T;
@@ -425,7 +461,9 @@ export interface SelectFieldProps<T extends string> {
   label: string;
   value: T | undefined;
   options: ReadonlyArray<SelectFieldOption<T>>;
-  /** When true, unpressing the active option commits `undefined` (clears). */
+  /*
+    When true, unpressing the active option commits `undefined` (clears).
+  */
   isClearable?: boolean;
   helpText?: string;
   onCommit: (value: T | undefined) => void;
@@ -444,12 +482,12 @@ export interface DropdownFieldProps {
   onCommit: (value: string) => void;
 }
 
-/**
- * A native single-select dropdown styled like the Input control — for option
- * sets too large for SelectField's segmented toggle (e.g. email-safe font
- * stacks). A current value that matches no option renders as a disabled
- * "Custom" entry so the control always reflects the underlying doc.
- */
+/*
+  A native single-select dropdown styled like the Input control — for option
+  sets too large for SelectField's segmented toggle (e.g. email-safe font
+  stacks). A current value that matches no option renders as a disabled
+  "Custom" entry so the control always reflects the underlying doc.
+*/
 export function DropdownField({ label, value, options, helpText, onCommit }: DropdownFieldProps) {
   const inputId = useId();
   const isKnownValue = value === undefined || options.some((option) => option.value === value);

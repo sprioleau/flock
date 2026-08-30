@@ -11,36 +11,36 @@ import {
 } from "../schema/ids";
 import { textDocSchema } from "../schema/text";
 
-/**
- * Operations — the only way an email document changes.
- *
- * Each operation is a pure, replayable data transform: `applyOperation(doc,
- * op)` returns a NEW document plus the operation's inverse, never mutating the
- * input (docs/email-editor-phased-plan.md §9.2). The inverses power the
- * SDK-owned undo/redo stack in Phase 4.3 (`undo`/`redo`/`advanceTo`/
- * `rollbackTo` over the operation log) — which is why every op here must be
- * deterministic and invertible.
- *
- * The envelope is a Zod discriminated union on `name`. Every field carries a
- * `.describe()` — these descriptions are the LLM's documentation when ops are
- * exposed as agent tools (Phase 1.5 `defineEmailAction`).
- *
- * Two operations exist primarily as GENERATED INVERSES, though both are
- * ordinary members of the union and may be issued directly:
- * - `replaceBlockProperties` — wholesale replace of one block's properties.
- *   Inverse of the merging ops (`updateBlockProperties`,
- *   `updateDocumentSettings`, and `applyTheme` when no section override was
- *   touched), because a merge cannot be undone by another merge when it
- *   introduced new keys (and JSON transport cannot express "delete this key").
- * - `restoreBlocks` — re-insert a previously removed subtree. Inverse of
- *   `removeBlock`, whose cascade may span many blocks.
- *
- * One op additionally carries an inverse-support payload: `applyTheme` strips
- * every section's theme-scoped background overrides, so its inverse is another
- * `applyTheme` whose optional `sectionOverrides` restores them together with
- * the previous globals in ONE op (the same pattern as removeBlock's inverse
- * carrying a whole subtree).
- */
+/*
+  Operations — the only way an email document changes.
+
+  Each operation is a pure, replayable data transform: `applyOperation(doc,
+  op)` returns a NEW document plus the operation's inverse, never mutating the
+  input (docs/email-editor-phased-plan.md §9.2). The inverses power the
+  SDK-owned undo/redo stack in Phase 4.3 (`undo`/`redo`/`advanceTo`/
+  `rollbackTo` over the operation log) — which is why every op here must be
+  deterministic and invertible.
+
+  The envelope is a Zod discriminated union on `name`. Every field carries a
+  `.describe()` — these descriptions are the LLM's documentation when ops are
+  exposed as agent tools (Phase 1.5 `defineEmailAction`).
+
+  Two operations exist primarily as GENERATED INVERSES, though both are
+  ordinary members of the union and may be issued directly:
+  - `replaceBlockProperties` — wholesale replace of one block's properties.
+    Inverse of the merging ops (`updateBlockProperties`,
+    `updateDocumentSettings`, and `applyTheme` when no section override was
+    touched), because a merge cannot be undone by another merge when it
+    introduced new keys (and JSON transport cannot express "delete this key").
+  - `restoreBlocks` — re-insert a previously removed subtree. Inverse of
+    `removeBlock`, whose cascade may span many blocks.
+
+  One op additionally carries an inverse-support payload: `applyTheme` strips
+  every section's theme-scoped background overrides, so its inverse is another
+  `applyTheme` whose optional `sectionOverrides` restores them together with
+  the previous globals in ONE op (the same pattern as removeBlock's inverse
+  carrying a whole subtree).
+*/
 
 const insertionIndexSchema = z
   .number()
@@ -50,11 +50,15 @@ const insertionIndexSchema = z
     "Zero-based position among the parent's children at which to insert. Must be between 0 and the parent's current child count, inclusive (the count itself appends).",
   );
 
-// ---------------------------------------------------------------------------
-// Property & settings operations
-// ---------------------------------------------------------------------------
+/*
+  ---------------------------------------------------------------------------
+  Property & settings operations
+  ---------------------------------------------------------------------------
+*/
 
-/** Merge a partial set of property overrides into one block. */
+/*
+  Merge a partial set of property overrides into one block.
+*/
 export const updateBlockPropertiesOperationSchema = z
   .strictObject({
     name: z.literal("updateBlockProperties").describe("Operation discriminator."),
@@ -71,7 +75,9 @@ export const updateBlockPropertiesOperationSchema = z
 
 export type UpdateBlockPropertiesOperation = z.infer<typeof updateBlockPropertiesOperationSchema>;
 
-/** Wholesale replace of one block's properties (inverse of the merging ops). */
+/*
+  Wholesale replace of one block's properties (inverse of the merging ops).
+*/
 export const replaceBlockPropertiesOperationSchema = z
   .strictObject({
     name: z.literal("replaceBlockProperties").describe("Operation discriminator."),
@@ -88,7 +94,9 @@ export const replaceBlockPropertiesOperationSchema = z
 
 export type ReplaceBlockPropertiesOperation = z.infer<typeof replaceBlockPropertiesOperationSchema>;
 
-/** Merge partial global styles into `root.properties.globals`. */
+/*
+  Merge partial global styles into `root.properties.globals`.
+*/
 export const updateDocumentSettingsOperationSchema = z
   .strictObject({
     name: z.literal("updateDocumentSettings").describe("Operation discriminator."),
@@ -102,11 +110,11 @@ export const updateDocumentSettingsOperationSchema = z
 
 export type UpdateDocumentSettingsOperation = z.infer<typeof updateDocumentSettingsOperationSchema>;
 
-/**
- * One section's theme-scoped background overrides, re-applied AFTER the
- * theme's override strip. Carried on `applyTheme` inverses so one undo step
- * restores both the previous globals and every section's removed overrides.
- */
+/*
+  One section's theme-scoped background overrides, re-applied AFTER the
+  theme's override strip. Carried on `applyTheme` inverses so one undo step
+  restores both the previous globals and every section's removed overrides.
+*/
 export const themeSectionOverrideSchema = z
   .strictObject({
     blockId: sectionBlockIdSchema.describe("Id of the section block to set the overrides on."),
@@ -127,7 +135,9 @@ export const themeSectionOverrideSchema = z
 
 export type ThemeSectionOverride = z.infer<typeof themeSectionOverrideSchema>;
 
-/** Wholesale replace of `root.properties.globals` (a theme switch). */
+/*
+  Wholesale replace of `root.properties.globals` (a theme switch).
+*/
 export const applyThemeOperationSchema = z
   .strictObject({
     name: z.literal("applyTheme").describe("Operation discriminator."),
@@ -147,11 +157,15 @@ export const applyThemeOperationSchema = z
 
 export type ApplyThemeOperation = z.infer<typeof applyThemeOperationSchema>;
 
-// ---------------------------------------------------------------------------
-// Structural operations
-// ---------------------------------------------------------------------------
+/*
+  ---------------------------------------------------------------------------
+  Structural operations
+  ---------------------------------------------------------------------------
+*/
 
-/** Insert one fully-formed block under a parent at an index. */
+/*
+  Insert one fully-formed block under a parent at an index.
+*/
 export const addBlockOperationSchema = z
   .strictObject({
     name: z.literal("addBlock").describe("Operation discriminator."),
@@ -169,7 +183,9 @@ export const addBlockOperationSchema = z
 
 export type AddBlockOperation = z.infer<typeof addBlockOperationSchema>;
 
-/** Insert a section (optionally with a prebuilt subtree) under the root. */
+/*
+  Insert a section (optionally with a prebuilt subtree) under the root.
+*/
 export const addSectionOperationSchema = z
   .strictObject({
     name: z.literal("addSection").describe("Operation discriminator."),
@@ -190,7 +206,9 @@ export const addSectionOperationSchema = z
 
 export type AddSectionOperation = z.infer<typeof addSectionOperationSchema>;
 
-/** One column's previous explicit width, restored by unplaceBlockBeside / restoreBlocks. */
+/*
+  One column's previous explicit width, restored by unplaceBlockBeside / restoreBlocks.
+*/
 export const previousColumnWidthSchema = z
   .strictObject({
     columnId: columnBlockIdSchema.describe("Id of the column whose width to restore."),
@@ -204,7 +222,9 @@ export const previousColumnWidthSchema = z
 
 export type PreviousColumnWidth = z.infer<typeof previousColumnWidthSchema>;
 
-/** Re-insert a previously removed subtree (inverse of removeBlock). */
+/*
+  Re-insert a previously removed subtree (inverse of removeBlock).
+*/
 export const restoreBlocksOperationSchema = z
   .strictObject({
     name: z.literal("restoreBlocks").describe("Operation discriminator."),
@@ -231,7 +251,9 @@ export const restoreBlocksOperationSchema = z
 
 export type RestoreBlocksOperation = z.infer<typeof restoreBlocksOperationSchema>;
 
-/** Remove a block and, cascading, all of its descendants. */
+/*
+  Remove a block and, cascading, all of its descendants.
+*/
 export const removeBlockOperationSchema = z
   .strictObject({
     name: z.literal("removeBlock").describe("Operation discriminator."),
@@ -251,7 +273,9 @@ export const removeBlockOperationSchema = z
 
 export type RemoveBlockOperation = z.infer<typeof removeBlockOperationSchema>;
 
-/** Reparent and/or reorder one block (subtree moves with it). */
+/*
+  Reparent and/or reorder one block (subtree moves with it).
+*/
 export const moveBlockOperationSchema = z
   .strictObject({
     name: z.literal("moveBlock").describe("Operation discriminator."),
@@ -271,7 +295,9 @@ export const moveBlockOperationSchema = z
 
 export type MoveBlockOperation = z.infer<typeof moveBlockOperationSchema>;
 
-/** Reorder a parent's children — must be a permutation of the current ids. */
+/*
+  Reorder a parent's children — must be a permutation of the current ids.
+*/
 export const reorderChildrenOperationSchema = z
   .strictObject({
     name: z.literal("reorderChildren").describe("Operation discriminator."),
@@ -288,11 +314,15 @@ export const reorderChildrenOperationSchema = z
 
 export type ReorderChildrenOperation = z.infer<typeof reorderChildrenOperationSchema>;
 
-// ---------------------------------------------------------------------------
-// Column-placement operations (drag-to-create columns)
-// ---------------------------------------------------------------------------
+/*
+  ---------------------------------------------------------------------------
+  Column-placement operations (drag-to-create columns)
+  ---------------------------------------------------------------------------
+*/
 
-/** What occupies the new column a placeBlockBeside creates. */
+/*
+  What occupies the new column a placeBlockBeside creates.
+*/
 export const placeBlockBesideContentSchema = z
   .discriminatedUnion("kind", [
     z
@@ -320,14 +350,18 @@ export const placeBlockBesideContentSchema = z
 
 export type PlaceBlockBesideContent = z.infer<typeof placeBlockBesideContentSchema>;
 
-/** Which side of the target the placed block lands on. */
+/*
+  Which side of the target the placed block lands on.
+*/
 export const placeBlockBesideSideSchema = z
   .enum(["left", "right"])
   .describe('Which side of the target the placed block lands on: "left" or "right".');
 
 export type PlaceBlockBesideSide = z.infer<typeof placeBlockBesideSideSchema>;
 
-/** Place a block side-by-side with a target leaf, creating columns as needed. */
+/*
+  Place a block side-by-side with a target leaf, creating columns as needed.
+*/
 export const placeBlockBesideOperationSchema = z
   .strictObject({
     name: z.literal("placeBlockBeside").describe("Operation discriminator."),
@@ -356,7 +390,9 @@ export const placeBlockBesideOperationSchema = z
 
 export type PlaceBlockBesideOperation = z.infer<typeof placeBlockBesideOperationSchema>;
 
-/** Undo a placeBlockBeside: dissolve the created column (and row, if wrapped). */
+/*
+  Undo a placeBlockBeside: dissolve the created column (and row, if wrapped).
+*/
 export const unplaceBlockBesideOperationSchema = z
   .strictObject({
     name: z.literal("unplaceBlockBeside").describe("Operation discriminator."),
@@ -417,20 +453,22 @@ export const unplaceBlockBesideOperationSchema = z
 
 export type UnplaceBlockBesideOperation = z.infer<typeof unplaceBlockBesideOperationSchema>;
 
-// ---------------------------------------------------------------------------
-// Text operations
-// ---------------------------------------------------------------------------
+/*
+  ---------------------------------------------------------------------------
+  Text operations
+  ---------------------------------------------------------------------------
+*/
 
-/**
- * Replace a text block's rich-text doc.
- *
- * Phase 5 note: collaborative text editing adds a ProseMirror-step-based path
- * (`updateTextAndMarks`) that applies steps through prosemirror-sync's
- * server-side transform, so concurrent keystrokes rebase instead of
- * clobbering each other. This whole-doc replacement op remains the SDK-core
- * fallback — the path agents and non-collaborative callers use when no live
- * editor session owns the block.
- */
+/*
+  Replace a text block's rich-text doc.
+
+  Phase 5 note: collaborative text editing adds a ProseMirror-step-based path
+  (`updateTextAndMarks`) that applies steps through prosemirror-sync's
+  server-side transform, so concurrent keystrokes rebase instead of
+  clobbering each other. This whole-doc replacement op remains the SDK-core
+  fallback — the path agents and non-collaborative callers use when no live
+  editor session owns the block.
+*/
 export const updateTextOperationSchema = z
   .strictObject({
     name: z.literal("updateText").describe("Operation discriminator."),
@@ -445,11 +483,15 @@ export const updateTextOperationSchema = z
 
 export type UpdateTextOperation = z.infer<typeof updateTextOperationSchema>;
 
-// ---------------------------------------------------------------------------
-// Union
-// ---------------------------------------------------------------------------
+/*
+  ---------------------------------------------------------------------------
+  Union
+  ---------------------------------------------------------------------------
+*/
 
-/** Any operation — discriminated union on `name`. */
+/*
+  Any operation — discriminated union on `name`.
+*/
 export const operationSchema = z
   .discriminatedUnion("name", [
     updateBlockPropertiesOperationSchema,
@@ -470,7 +512,9 @@ export const operationSchema = z
 
 export type Operation = z.infer<typeof operationSchema>;
 
-/** The `name` values of every operation in the union. */
+/*
+  The `name` values of every operation in the union.
+*/
 export const OPERATION_NAMES = [
   "updateBlockProperties",
   "replaceBlockProperties",
@@ -489,16 +533,16 @@ export const OPERATION_NAMES = [
 
 export type OperationName = (typeof OPERATION_NAMES)[number];
 
-/**
- * Entry-point default for removeBlock's empty-container cascade: a removeBlock
- * that does not state a `shouldRemoveEmptyAncestors` choice gets `true`, so
- * every LIVE removal path (toolbar delete, agent-issued ops, raw API callers)
- * collapses emptied columns/rows. Applied where operations ENTER the system
- * (the action registry's resolveOperation and Convex applyOperations) — the
- * explicit flag is what reaches the op log, so historical operations that
- * predate the field keep replaying with their original no-cascade semantics.
- * Non-removeBlock operations pass through untouched.
- */
+/*
+  Entry-point default for removeBlock's empty-container cascade: a removeBlock
+  that does not state a `shouldRemoveEmptyAncestors` choice gets `true`, so
+  every LIVE removal path (toolbar delete, agent-issued ops, raw API callers)
+  collapses emptied columns/rows. Applied where operations ENTER the system
+  (the action registry's resolveOperation and Convex applyOperations) — the
+  explicit flag is what reaches the op log, so historical operations that
+  predate the field keep replaying with their original no-cascade semantics.
+  Non-removeBlock operations pass through untouched.
+*/
 export function withRemoveBlockCascadeDefault(operation: Operation): Operation {
   if (operation.name !== "removeBlock" || operation.shouldRemoveEmptyAncestors !== undefined) {
     return operation;

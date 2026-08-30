@@ -7,8 +7,10 @@ import {
   validatePersonaMarkdown,
 } from "./parse-persona-markdown";
 
-/** Byte-exact copies of the seeded built-ins (convex/personas.ts) — the
- * round-trip contract is anchored to these. */
+/*
+  Byte-exact copies of the seeded built-ins (convex/personas.ts) — the
+  round-trip contract is anchored to these.
+*/
 const TONE_POLICE_MARKDOWN = `---
 name: Tone Police
 color: "#e11d48"
@@ -182,7 +184,9 @@ describe("serializePersonaForm round-trips", () => {
     const markdown = `---\nname: Custom\nmystery: keep me\n---\n\nBehavior.`;
     const once = serializePersonaForm(parsePersonaMarkdownToForm(markdown));
     expect(once).toContain("mystery: keep me");
-    // Stable from the first canonical serialization onward.
+    /*
+      Stable from the first canonical serialization onward.
+    */
     expect(serializePersonaForm(parsePersonaMarkdownToForm(once))).toBe(once);
   });
 
@@ -195,7 +199,9 @@ describe("serializePersonaForm round-trips", () => {
     expect(serialized).toContain("name: Tone Cop");
     expect(serialized).toContain("cooldownSeconds: 60");
     expect(serialized).toContain("What you watch for:\n- Only shouting.");
-    // And the edit round-trips.
+    /*
+      And the edit round-trips.
+    */
     expect(serializePersonaForm(parsePersonaMarkdownToForm(serialized))).toBe(serialized);
   });
 });

@@ -56,15 +56,15 @@ export function SendTestEmailForm({ control }: { control: SendTestEmailControl }
         event.preventDefault();
         submitSend();
       }}
-      /**
-       * `noValidate` is load-bearing. The recipient fields are `type="email"`,
-       * so without it the browser silently refuses to fire submit for a
-       * malformed address and shows its own native bubble instead — our handler
-       * never runs, so the styled `role="alert"` message never appears and the
-       * field is never marked invalid. Turning the native pass off leaves
-       * exactly one validator (`validateRecipients`, the same rule the server
-       * re-runs) and one piece of copy for every bad address.
-       */
+      /*
+        `noValidate` is load-bearing. The recipient fields are `type="email"`,
+        so without it the browser silently refuses to fire submit for a
+        malformed address and shows its own native bubble instead — our handler
+        never runs, so the styled `role="alert"` message never appears and the
+        field is never marked invalid. Turning the native pass off leaves
+        exactly one validator (`validateRecipients`, the same rule the server
+        re-runs) and one piece of copy for every bad address.
+      */
       noValidate
       className="flex flex-col gap-3"
     >
@@ -108,8 +108,10 @@ export function SendTestEmailForm({ control }: { control: SendTestEmailControl }
           </span>
         </div>
         {recipients.map((recipient, index) => (
-          /* A recipient row has no stable id of its own; its position IS its
-             identity — rows are only ever appended or removed by index. */
+          /*
+            A recipient row has no stable id of its own; its position IS its
+            identity — rows are only ever appended or removed by index.
+          */
           <div key={index} className="flex items-center gap-2">
             <Input
               type="email"
@@ -197,9 +199,11 @@ export function SendTestEmailForm({ control }: { control: SendTestEmailControl }
         </p>
       ) : null}
 
-      {/* The pre-send review. It sits ABOVE the button so it is read before
-          the click rather than after it, and it gates nothing — the button
-          below never consults it. */}
+      {/*
+        The pre-send review. It sits ABOVE the button so it is read before
+        the click rather than after it, and it gates nothing — the button
+        below never consults it.
+      */}
       <PreSendReviewNotice />
 
       <div className="flex justify-end">

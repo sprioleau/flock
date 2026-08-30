@@ -42,8 +42,10 @@ describe("TextBlockView", () => {
   });
 
   it("applies a node's textAlign attr as inline text-align, over the block default", async () => {
-    // The owner scenario: one text block with a centered heading above a
-    // paragraph that keeps the block's (left) alignment.
+    /*
+      The owner scenario: one text block with a centered heading above a
+      paragraph that keeps the block's (left) alignment.
+    */
     const html = await renderDoc({
       type: "doc",
       content: [

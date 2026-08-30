@@ -14,13 +14,15 @@ import {
   type TurnPart,
 } from "./turn-activity";
 
-/**
- * The narration engine's contract. The load-bearing assertions are the ones
- * about LEAKAGE — an internal tool name reaching the screen is the one failure
- * mode here that a user would notice and that no type checks.
- */
+/*
+  The narration engine's contract. The load-bearing assertions are the ones
+  about LEAKAGE — an internal tool name reaching the screen is the one failure
+  mode here that a user would notice and that no type checks.
+*/
 
-/** Every tool name the chat contract can produce a part for. */
+/*
+  Every tool name the chat contract can produce a part for.
+*/
 const ALL_TOOL_NAMES = [
   "updateBlockProperties",
   "replaceBlockProperties",
@@ -78,9 +80,11 @@ describe("getActivityPhrase", () => {
   });
 
   it("never speaks a camelCase tool name, verbatim or de-camel-cased", () => {
-    // Scoped to the multi-word identifiers, which is where a leak is both
-    // possible and unmistakable. The two single-word names ("undo", "redo")
-    // are ordinary English the copy is entitled to use.
+    /*
+      Scoped to the multi-word identifiers, which is where a leak is both
+      possible and unmistakable. The two single-word names ("undo", "redo")
+      are ordinary English the copy is entitled to use.
+    */
     const camelCaseToolNames = ALL_TOOL_NAMES.filter((toolName) => /[A-Z]/.test(toolName));
     expect(camelCaseToolNames.length).toBeGreaterThan(20);
     for (const toolName of camelCaseToolNames) {
@@ -111,7 +115,9 @@ describe("getActivityPhrase", () => {
 });
 
 describe("getActivityPhrase — unmapped tools", () => {
-  /** The seam another agent's tool rename lands on. */
+  /*
+    The seam another agent's tool rename lands on.
+  */
   const UNMAPPED_TOOL_NAMES = ["createDraftV2", "rewriteSubjectLine", "someNewTool", ""];
 
   it("renders neutral copy, never the tool's own name", () => {
@@ -138,8 +144,10 @@ describe("getActivityPhrase — unmapped tools", () => {
   });
 
   it("contributes no target, since its arguments are unvetted", () => {
-    // A mapped tool reads these fields; an unmapped one must not, because
-    // nothing guarantees they hold something a user should read.
+    /*
+      A mapped tool reads these fields; an unmapped one must not, because
+      nothing guarantees they hold something a user should read.
+    */
     expect(getNonBlockTargetLabel({ toolName: "showPreview", input: { mode: "desktop" } })).toBe(
       "desktop",
     );
@@ -281,8 +289,10 @@ describe("describeTurnActivity", () => {
   });
 
   it("still counts as waiting while the opened message is empty", () => {
-    // The assistant message opens with an empty text part before a single
-    // token arrives — that must not read as "the agent is writing".
+    /*
+      The assistant message opens with an empty text part before a single
+      token arrives — that must not read as "the agent is writing".
+    */
     expect(describe_([{ kind: "text", hasContent: false }])?.phase).toBe("waiting");
   });
 
@@ -333,7 +343,9 @@ describe("describeTurnActivity", () => {
 });
 
 describe("toTurnParts", () => {
-  /** Hand-built parts in the wire shapes the transcript actually receives. */
+  /*
+    Hand-built parts in the wire shapes the transcript actually receives.
+  */
   const parts = [
     { type: "text", text: "" },
     { type: "text", text: "Sure — adding that now." },

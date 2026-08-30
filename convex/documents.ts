@@ -30,23 +30,27 @@ import {
   type CommitEntry,
 } from "./model/emailDocuments";
 
-/**
- * Phase 4.1 — document lifecycle, THE operation write path, and reads
- * (including the point-in-time version read that proves the history design).
- * Undo/redo/batch-revert live in convex/history.ts.
- *
- * All functions are public: the frontend store swap calls them directly, and
- * the Phase 4.2 AI route calls `applyOperations` server-side. Per the
- * no-auth demo-first decision (plan gap 4 / Phase 6.1), the document id is
- * the capability — anyone holding it may read and write; `sessionId` only
- * keys listing and future cleanup.
- */
+/*
+  Phase 4.1 — document lifecycle, THE operation write path, and reads
+  (including the point-in-time version read that proves the history design).
+  Undo/redo/batch-revert live in convex/history.ts.
 
-// ---------------------------------------------------------------------------
-// createDocument / duplicateDocument
-// ---------------------------------------------------------------------------
+  All functions are public: the frontend store swap calls them directly, and
+  the Phase 4.2 AI route calls `applyOperations` server-side. Per the
+  no-auth demo-first decision (plan gap 4 / Phase 6.1), the document id is
+  the capability — anyone holding it may read and write; `sessionId` only
+  keys listing and future cleanup.
+*/
 
-/** Next orderIndex after the last draft on a canvas (drafts per canvas stay small; collect is bounded). */
+/*
+  ---------------------------------------------------------------------------
+  createDocument / duplicateDocument
+  ---------------------------------------------------------------------------
+*/
+
+/*
+  Next orderIndex after the last draft on a canvas (drafts per canvas stay small; collect is bounded).
+*/
 async function computeAppendOrderIndex(
   ctx: MutationCtx,
   canvasId: Id<"canvases">,
@@ -61,22 +65,28 @@ async function computeAppendOrderIndex(
 export const createDocument = mutation({
   args: {
     sessionId: v.string(),
-    /** Canvas to add this draft to; omitted = create a fresh canvas for it. */
+    /*
+      Canvas to add this draft to; omitted = create a fresh canvas for it.
+    */
     canvasId: v.optional(v.id("canvases")),
-    /** Draft display name (unique per canvas by convention). */
+    /*
+      Draft display name (unique per canvas by convention).
+    */
     name: v.optional(v.string()),
-    /** Title for the canvas, used only when `canvasId` is omitted. */
+    /*
+      Title for the canvas, used only when `canvasId` is omitted.
+    */
     canvasTitle: v.optional(v.string()),
-    /**
-     * Seed the deterministic every-block-type sample document (tests/demos)
-     * instead of the default designed starter email.
-     */
+    /*
+      Seed the deterministic every-block-type sample document (tests/demos)
+      instead of the default designed starter email.
+    */
     shouldSeedSample: v.optional(v.boolean()),
-    /**
-     * Seed a childless root (no sections) instead of the starter email —
-     * the AI draft-generation flow composes the whole email from blank, so
-     * starter sections would only pollute the generated result.
-     */
+    /*
+      Seed a childless root (no sections) instead of the starter email —
+      the AI draft-generation flow composes the whole email from blank, so
+      starter sections would only pollute the generated result.
+    */
     shouldSeedEmpty: v.optional(v.boolean()),
     /*
       Provision this draft as the scratch document of a /demo run.
@@ -103,11 +113,13 @@ export const createDocument = mutation({
         createdAtMs: now,
         updatedAtMs: now,
       });
-      // Put the new canvas in the creator's dashboard. LISTING ONLY — this
-      // grants no access and gates nothing (convex/canvases.ts header); the
-      // owner key is resolved server-side, never taken from `args.sessionId`.
-      // A caller with no resolvable identity records nothing and the canvas
-      // still works fully over its link.
+      /*
+        Put the new canvas in the creator's dashboard. LISTING ONLY — this
+        grants no access and gates nothing (convex/canvases.ts header); the
+        owner key is resolved server-side, never taken from `args.sessionId`.
+        A caller with no resolvable identity records nothing and the canvas
+        still works fully over its link.
+      */
       await recordCanvasOwnerFromCaller(ctx, {
         canvasId,
         claimedSessionId: args.sessionId,
@@ -118,10 +130,12 @@ export const createDocument = mutation({
         throw new Error(`Canvas ${canvasId} does not exist.`);
       }
     }
-    // Every new document/draft opens on the designed starter email (Resend-
-    // welcome-style; see createStarterDocument) — never empty. Two exceptions:
-    // the deterministic every-block-type sample (tests/demos) and the blank
-    // seed the AI draft-generation flow composes into.
+    /*
+      Every new document/draft opens on the designed starter email (Resend-
+      welcome-style; see createStarterDocument) — never empty. Two exceptions:
+      the deterministic every-block-type sample (tests/demos) and the blank
+      seed the AI draft-generation flow composes into.
+    */
     const isDemo = args.isDemo === true;
     const doc = isDemo
       ? createDemoDocument()
@@ -136,8 +150,10 @@ export const createDocument = mutation({
       name: args.name ?? "Draft 1",
       orderIndex: await computeAppendOrderIndex(ctx, canvasId),
       headVersion: 0,
-      // Written only when true, so an ordinary draft's row is byte-identical
-      // to the rows every release before this one wrote.
+      /*
+        Written only when true, so an ordinary draft's row is byte-identical
+        to the rows every release before this one wrote.
+      */
       ...(isDemo ? { isDemo: true } : {}),
       createdAtMs: now,
       updatedAtMs: now,
@@ -152,7 +168,9 @@ export const createDocument = mutation({
         properties: block.properties as Record<string, unknown>,
       });
     }
-    // Version 0 snapshot: the anchor every point-in-time read replays from.
+    /*
+      Version 0 snapshot: the anchor every point-in-time read replays from.
+    */
     await ctx.db.insert("snapshots", {
       documentId,
       version: 0,
@@ -166,7 +184,9 @@ export const createDocument = mutation({
 export const duplicateDocument = mutation({
   args: {
     documentId: v.id("documents"),
-    /** Name for the copy; defaults to "<source name> (copy)". */
+    /*
+      Name for the copy; defaults to "<source name> (copy)".
+    */
     name: v.optional(v.string()),
   },
   returns: v.union(v.null(), v.id("documents")),
@@ -177,8 +197,10 @@ export const duplicateDocument = mutation({
     }
     const source = state.document;
     const now = Date.now();
-    // Place the copy directly after the source: midpoint to the next draft,
-    // or source + 1 when the source is last.
+    /*
+      Place the copy directly after the source: midpoint to the next draft,
+      or source + 1 when the source is last.
+    */
     const siblings = await ctx.db
       .query("documents")
       .withIndex("by_canvasId", (q) => q.eq("canvasId", source.canvasId))
@@ -190,9 +212,11 @@ export const duplicateDocument = mutation({
       nextSiblings.length > 0
         ? (source.orderIndex + nextSiblings[0]!.orderIndex) / 2
         : source.orderIndex + 1;
-    // Figma-fork semantics: the copy starts a fresh, independent version
-    // sequence (headVersion 0, its own v0 snapshot of the source's HEAD).
-    // Lineage fields record where it came from; histories never interleave.
+    /*
+      Figma-fork semantics: the copy starts a fresh, independent version
+      sequence (headVersion 0, its own v0 snapshot of the source's HEAD).
+      Lineage fields record where it came from; histories never interleave.
+    */
     const newDocumentId = await ctx.db.insert("documents", {
       canvasId: source.canvasId,
       sessionId: source.sessionId,
@@ -225,13 +249,13 @@ export const duplicateDocument = mutation({
   },
 });
 
-/**
- * Rename a draft's USER-FACING name (§10.2 dual naming: `name` is
- * human-editable and never touched by the agent; `agentName` is the agent's
- * parallel summary and is never writable from here). Blank names are
- * rejected as a no-op rather than thrown — the UI trims and guards, this is
- * just the server-side backstop.
- */
+/*
+  Rename a draft's USER-FACING name (§10.2 dual naming: `name` is
+  human-editable and never touched by the agent; `agentName` is the agent's
+  parallel summary and is never writable from here). Blank names are
+  rejected as a no-op rather than thrown — the UI trims and guards, this is
+  just the server-side backstop.
+*/
 export const renameDocument = mutation({
   args: {
     documentId: v.id("documents"),
@@ -257,26 +281,28 @@ export const renameDocument = mutation({
   },
 });
 
-// ---------------------------------------------------------------------------
-// deleteDocument / promoteDocumentToNewCanvas
-// ---------------------------------------------------------------------------
+/*
+  ---------------------------------------------------------------------------
+  deleteDocument / promoteDocumentToNewCanvas
+  ---------------------------------------------------------------------------
+*/
 
-/**
- * Delete one draft and its full constellation (blocks, operations, snapshots,
- * ProseMirror sync docs, exclusively-referenced storage files, ghost
- * sessions, persona findings) via the SAME cascade the Phase 6.1 cleanup
- * cron uses — one deletion path, no drift.
- *
- * Guard: the LAST draft on a canvas can never be deleted (the UI disables
- * the action; this is the server-side backstop). Deleting always leaves the
- * canvas with at least one draft, so the cascade's empty-canvas step never
- * fires here.
- *
- * If the cascade exhausts its row budget (a document with a very long op
- * log), the document row is still present and a targeted cleanup
- * continuation is scheduled to finish the job; the client can treat the
- * delete as done either way.
- */
+/*
+  Delete one draft and its full constellation (blocks, operations, snapshots,
+  ProseMirror sync docs, exclusively-referenced storage files, ghost
+  sessions, persona findings) via the SAME cascade the Phase 6.1 cleanup
+  cron uses — one deletion path, no drift.
+
+  Guard: the LAST draft on a canvas can never be deleted (the UI disables
+  the action; this is the server-side backstop). Deleting always leaves the
+  canvas with at least one draft, so the cascade's empty-canvas step never
+  fires here.
+
+  If the cascade exhausts its row budget (a document with a very long op
+  log), the document row is still present and a targeted cleanup
+  continuation is scheduled to finish the job; the client can treat the
+  delete as done either way.
+*/
 export const deleteDocument = mutation({
   args: { documentId: v.id("documents") },
   returns: v.union(
@@ -291,7 +317,9 @@ export const deleteDocument = mutation({
     if (document === null) {
       return { isOk: false as const, reason: "not_found" as const };
     }
-    // Drafts per canvas stay small (a handful of frames); bounded.
+    /*
+      Drafts per canvas stay small (a handful of frames); bounded.
+    */
     const siblings = await ctx.db
       .query("documents")
       .withIndex("by_canvasId", (q) => q.eq("canvasId", document.canvasId))
@@ -305,8 +333,10 @@ export const deleteDocument = mutation({
     const stats = createEmptyCleanupStats();
     const { isComplete } = await deleteDocumentCascade({ ctx, document, budget, stats });
     if (!isComplete) {
-      // Finish the cascade out-of-band: retentionDays 0 makes the cutoff
-      // "now", and onlyDocumentId narrows the run to this document.
+      /*
+        Finish the cascade out-of-band: retentionDays 0 makes the cutoff
+        "now", and onlyDocumentId narrows the run to this document.
+      */
       await ctx.scheduler.runAfter(0, internal.cleanup.cleanupStaleDocuments, {
         retentionDays: 0,
         onlyDocumentId: document._id,
@@ -317,17 +347,17 @@ export const deleteDocument = mutation({
   },
 });
 
-/**
- * §10.2 "promote a draft to its own canvas": MOVE the document to a freshly
- * created canvas titled after the draft. The document id — and with it the
- * whole history spine (operations/snapshots/blocks/sync docs/findings are
- * all keyed by documentId) — is unchanged; only `canvasId` and the canvas
- * placement move. Existing `?doc=` links keep working and now open the new
- * canvas.
- *
- * Guard: a draft that is already alone on its canvas has nothing to promote
- * (the UI disables the action; this is the backstop).
- */
+/*
+  §10.2 "promote a draft to its own canvas": MOVE the document to a freshly
+  created canvas titled after the draft. The document id — and with it the
+  whole history spine (operations/snapshots/blocks/sync docs/findings are
+  all keyed by documentId) — is unchanged; only `canvasId` and the canvas
+  placement move. Existing `?doc=` links keep working and now open the new
+  canvas.
+
+  Guard: a draft that is already alone on its canvas has nothing to promote
+  (the UI disables the action; this is the backstop).
+*/
 export const promoteDocumentToNewCanvas = mutation({
   args: { documentId: v.id("documents") },
   returns: v.union(
@@ -357,10 +387,12 @@ export const promoteDocumentToNewCanvas = mutation({
       createdAtMs: now,
       updatedAtMs: now,
     });
-    // The promoted draft leaves its old canvas, so the old canvas's owners
-    // must follow it or the draft silently drops out of their dashboard.
-    // Inheriting also means a link-holder who promotes does not quietly take
-    // the result into their own library — see canvases.inheritCanvasOwners.
+    /*
+      The promoted draft leaves its old canvas, so the old canvas's owners
+      must follow it or the draft silently drops out of their dashboard.
+      Inheriting also means a link-holder who promotes does not quietly take
+      the result into their own library — see canvases.inheritCanvasOwners.
+    */
     await inheritCanvasOwners(ctx, {
       fromCanvasId: document.canvasId,
       toCanvasId: newCanvasId,
@@ -376,20 +408,26 @@ export const promoteDocumentToNewCanvas = mutation({
   },
 });
 
-// ---------------------------------------------------------------------------
-// applyOperations — THE write path
-// ---------------------------------------------------------------------------
+/*
+  ---------------------------------------------------------------------------
+  applyOperations — THE write path
+  ---------------------------------------------------------------------------
+*/
 
 const applyOperationsResultValidator = v.union(
   v.object({
     isOk: v.literal(true),
     headVersion: v.number(),
-    /** One version per input op, in order. */
+    /*
+      One version per input op, in order.
+    */
     appliedVersions: v.array(v.number()),
   }),
   v.object({
     isOk: v.literal(false),
-    /** Index into `ops` of the operation that failed (0 for pre-apply failures). */
+    /*
+      Index into `ops` of the operation that failed (0 for pre-apply failures).
+    */
     failedOperationIndex: v.number(),
     errors: v.array(operationErrorValidator),
   }),
@@ -398,7 +436,9 @@ const applyOperationsResultValidator = v.union(
 export const applyOperations = mutation({
   args: {
     documentId: v.id("documents"),
-    /** Operation JSON payloads; each is Zod-validated by the SDK before anything is written. */
+    /*
+      Operation JSON payloads; each is Zod-validated by the SDK before anything is written.
+    */
     ops: v.array(v.any()),
     context: applyContextValidator,
   },
@@ -436,23 +476,27 @@ export const applyOperations = mutation({
       };
     }
 
-    // Live-entry normalization: a removeBlock with no explicit cascade choice
-    // collapses emptied columns/rows (withRemoveBlockCascadeDefault). Applied
-    // HERE — where new ops enter the log — and never to stored ops/inverses,
-    // so historical rows replay with their original semantics. Frontend ops
-    // arrive already normalized by the SDK action registry (identical result);
-    // this catches raw http/cli/mcp callers.
-    // (Null-safe: malformed payload elements pass through untouched so the
-    // SDK's Zod validation can reject them with a structured error.)
+    /*
+      Live-entry normalization: a removeBlock with no explicit cascade choice
+      collapses emptied columns/rows (withRemoveBlockCascadeDefault). Applied
+      HERE — where new ops enter the log — and never to stored ops/inverses,
+      so historical rows replay with their original semantics. Frontend ops
+      arrive already normalized by the SDK action registry (identical result);
+      this catches raw http/cli/mcp callers.
+      (Null-safe: malformed payload elements pass through untouched so the
+      SDK's Zod validation can reject them with a structured error.)
+    */
     const ops = (args.ops as Operation[]).map((op) =>
       op !== null && typeof op === "object" ? withRemoveBlockCascadeDefault(op) : op,
     );
 
-    // All-or-nothing SDK apply. The SDK Zod-validates each op envelope and
-    // re-validates schema + referential integrity of every intermediate doc —
-    // no additional integrity pass is needed here. On failure the head is
-    // untouched and the structured errors go back to the caller (LLM repair
-    // loop / user), NOT thrown.
+    /*
+      All-or-nothing SDK apply. The SDK Zod-validates each op envelope and
+      re-validates schema + referential integrity of every intermediate doc —
+      no additional integrity pass is needed here. On failure the head is
+      untouched and the structured errors go back to the caller (LLM repair
+      loop / user), NOT thrown.
+    */
     const result = applyOperationsToDocument(state.doc, ops);
     if (!result.isOk) {
       return {
@@ -462,7 +506,9 @@ export const applyOperations = mutation({
       };
     }
 
-    // `result.inverses` is in REVERSE order: inverses[0] undoes the LAST op.
+    /*
+      `result.inverses` is in REVERSE order: inverses[0] undoes the LAST op.
+    */
     const entries: CommitEntry[] = ops.map((op, opIndex) => ({
       op,
       inverse: result.inverses[ops.length - 1 - opIndex]!,
@@ -474,13 +520,15 @@ export const applyOperations = mutation({
       newDoc: result.doc,
       entries,
       context: args.context,
-      // Text writes whose content did not come from a block's sync doc must
-      // force the sync doc to match (Phase 5.4 gap: a stale sync doc would
-      // resurface in the editor and silently revert this write on the next
-      // session commit). Frontend USER ops are the exception — their text
-      // came FROM the sync doc. Frontend AGENT updateText never lands here
-      // (routed to agentText.applyAgentTextEdit), so forcing the remaining
-      // agent-authored cases is safe.
+      /*
+        Text writes whose content did not come from a block's sync doc must
+        force the sync doc to match (Phase 5.4 gap: a stale sync doc would
+        resurface in the editor and silently revert this write on the next
+        session commit). Frontend USER ops are the exception — their text
+        came FROM the sync doc. Frontend AGENT updateText never lands here
+        (routed to agentText.applyAgentTextEdit), so forcing the remaining
+        agent-authored cases is safe.
+      */
       shouldForceTextSyncDocs:
         args.context.caller !== "frontend" || args.context.author === "agent",
     });
@@ -488,9 +536,11 @@ export const applyOperations = mutation({
   },
 });
 
-// ---------------------------------------------------------------------------
-// Reads
-// ---------------------------------------------------------------------------
+/*
+  ---------------------------------------------------------------------------
+  Reads
+  ---------------------------------------------------------------------------
+*/
 
 const documentPayloadValidator = v.object({
   documentId: v.id("documents"),
@@ -502,13 +552,17 @@ const documentPayloadValidator = v.object({
   forkedFromDocumentId: v.optional(v.id("documents")),
   forkedFromVersion: v.optional(v.number()),
   sessionId: v.string(),
-  /* Absent on every ordinary draft — see the schema comment on `isDemo`. */
+  /*
+    Absent on every ordinary draft — see the schema comment on `isDemo`.
+  */
   isDemo: v.optional(v.boolean()),
   createdAtMs: v.number(),
   updatedAtMs: v.number(),
 });
 
-/** Shared read for getDocument / getDocumentByKey: head doc + metadata, or null. */
+/*
+  Shared read for getDocument / getDocumentByKey: head doc + metadata, or null.
+*/
 async function readDocumentPayload(ctx: QueryCtx, documentId: Id<"documents">) {
   const state = await loadDocumentState(ctx, documentId);
   if (state === null) {
@@ -529,8 +583,10 @@ async function readDocumentPayload(ctx: QueryCtx, documentId: Id<"documents">) {
       ? { forkedFromVersion: document.forkedFromVersion }
       : {}),
     sessionId: document.sessionId,
-    // /api/personas reads its forced-mock verdict off THIS field, which is why
-    // that route needs no lookup of its own: it already fetches this payload.
+    /*
+      /api/personas reads its forced-mock verdict off THIS field, which is why
+      that route needs no lookup of its own: it already fetches this payload.
+    */
     ...(document.isDemo === true ? { isDemo: true } : {}),
     createdAtMs: document.createdAtMs,
     updatedAtMs: document.updatedAtMs,
@@ -543,11 +599,11 @@ export const getDocument = query({
   handler: async (ctx, args) => readDocumentPayload(ctx, args.documentId),
 });
 
-/**
- * getDocument keyed by an UNTRUSTED string (the `?doc=` URL param). A
- * malformed or foreign id normalizes to null instead of throwing an argument
- * validation error, so the frontend can render a clean "not found" state.
- */
+/*
+  getDocument keyed by an UNTRUSTED string (the `?doc=` URL param). A
+  malformed or foreign id normalizes to null instead of throwing an argument
+  validation error, so the frontend can render a clean "not found" state.
+*/
 export const getDocumentByKey = query({
   args: { documentKey: v.string() },
   returns: v.union(v.null(), documentPayloadValidator),
@@ -591,15 +647,15 @@ export const getDocumentIsDemo = query({
   },
 });
 
-/**
- * Lean existence check for a share link: does this `?doc=<id>` name a real
- * draft? Its caller (the retired access-gate proxy) is gone; kept because the
- * answer is cheap and a share-link surface may want it again.
- * Keyed by an UNTRUSTED string — malformed/foreign ids normalize to null and
- * return false rather than throwing. Exposes nothing beyond a boolean per id,
- * and the id is only guessable if you already hold it (the id IS the
- * capability, same as the rest of the app).
- */
+/*
+  Lean existence check for a share link: does this `?doc=<id>` name a real
+  draft? Its caller (the retired access-gate proxy) is gone; kept because the
+  answer is cheap and a share-link surface may want it again.
+  Keyed by an UNTRUSTED string — malformed/foreign ids normalize to null and
+  return false rather than throwing. Exposes nothing beyond a boolean per id,
+  and the id is only guessable if you already hold it (the id IS the
+  capability, same as the rest of the app).
+*/
 export const documentExists = query({
   args: { documentKey: v.string() },
   returns: v.boolean(),
@@ -613,11 +669,11 @@ export const documentExists = query({
   },
 });
 
-/**
- * Sibling of documentExists for the `?canvas=` capability link: a lean
- * existence check keyed by an UNTRUSTED string. Same trust model — the
- * canvas id IS the capability, and nothing beyond a boolean per id leaks.
- */
+/*
+  Sibling of documentExists for the `?canvas=` capability link: a lean
+  existence check keyed by an UNTRUSTED string. Same trust model — the
+  canvas id IS the capability, and nothing beyond a boolean per id leaks.
+*/
 export const canvasExists = query({
   args: { canvasKey: v.string() },
   returns: v.boolean(),
@@ -631,13 +687,13 @@ export const canvasExists = query({
   },
 });
 
-/**
- * Resolve a `?canvas=<id>` link to the draft the studio should open: the
- * canvas's most recently updated draft ("continue where the canvas left
- * off"); the drafts bar then shows all of its siblings. Keyed by an
- * UNTRUSTED string — malformed/foreign ids, and canvases with no drafts,
- * normalize to null.
- */
+/*
+  Resolve a `?canvas=<id>` link to the draft the studio should open: the
+  canvas's most recently updated draft ("continue where the canvas left
+  off"); the drafts bar then shows all of its siblings. Keyed by an
+  UNTRUSTED string — malformed/foreign ids, and canvases with no drafts,
+  normalize to null.
+*/
 export const getCanvasEntryDocument = query({
   args: { canvasKey: v.string() },
   returns: v.union(v.null(), v.id("documents")),
@@ -646,7 +702,9 @@ export const getCanvasEntryDocument = query({
     if (canvasId === null) {
       return null;
     }
-    // Drafts per canvas stay small (a handful of frames); bounded.
+    /*
+      Drafts per canvas stay small (a handful of frames); bounded.
+    */
     const drafts = await ctx.db
       .query("documents")
       .withIndex("by_canvasId", (q) => q.eq("canvasId", canvasId))
@@ -689,15 +747,21 @@ const operationEntryValidator = v.object({
 export const getOperations = query({
   args: {
     documentId: v.id("documents"),
-    /** Return ops with version > sinceVersion (default 0 = from the beginning). */
+    /*
+      Return ops with version > sinceVersion (default 0 = from the beginning).
+    */
     sinceVersion: v.optional(v.number()),
-    /** Page size, clamped to 1..200. The version itself is the continuation cursor. */
+    /*
+      Page size, clamped to 1..200. The version itself is the continuation cursor.
+    */
     limit: v.optional(v.number()),
   },
   returns: v.object({
     operations: v.array(operationEntryValidator),
     isDone: v.boolean(),
-    /** Pass back as `sinceVersion` to fetch the next page. */
+    /*
+      Pass back as `sinceVersion` to fetch the next page.
+    */
     nextSinceVersion: v.number(),
   }),
   handler: async (ctx, args) => {
@@ -774,7 +838,9 @@ const documentListEntryValidator = v.object({
   _id: v.id("documents"),
   canvasId: v.id("canvases"),
   name: v.string(),
-  /** Agent-authored semantic summary (§10.2 dual naming) — displayed, never user-edited. */
+  /*
+    Agent-authored semantic summary (§10.2 dual naming) — displayed, never user-edited.
+  */
   agentName: v.optional(v.string()),
   orderIndex: v.number(),
   headVersion: v.number(),
@@ -831,7 +897,9 @@ export const listDocumentsByCanvas = query({
   args: { canvasId: v.id("canvases") },
   returns: v.array(documentListEntryValidator),
   handler: async (ctx, args) => {
-    // Drafts per canvas stay small (a handful of Figma-style frames); bounded.
+    /*
+      Drafts per canvas stay small (a handful of Figma-style frames); bounded.
+    */
     const rows = await ctx.db
       .query("documents")
       .withIndex("by_canvasId", (q) => q.eq("canvasId", args.canvasId))

@@ -7,7 +7,9 @@ import {
   describeCommentPlacement,
 } from "./comment-dispatch";
 
-/** Minimal thread factory — only the fields the prompt builders read. */
+/*
+  Minimal thread factory — only the fields the prompt builders read.
+*/
 function makeComment(overrides: {
   blockId?: string | null;
   blockType?: string;

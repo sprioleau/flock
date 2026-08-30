@@ -15,14 +15,16 @@ import {
 } from "lucide-react";
 import type { EditorCommandDataPart } from "@/lib/chat-contract";
 
-/**
- * A `data-editor-command` part: the typed command the server dispatched and
- * the client executed (Phase 3.4). Rendered as a subtle confirmation chip.
- */
+/*
+  A `data-editor-command` part: the typed command the server dispatched and
+  the client executed (Phase 3.4). Rendered as a subtle confirmation chip.
+*/
 
 const MAX_PROMPT_CHIP_LENGTH = 60;
 
-/** openPanel enum value → the human surface name in the confirmation chip. */
+/*
+  openPanel enum value → the human surface name in the confirmation chip.
+*/
 const PANEL_CHIP_LABELS: Readonly<Record<string, string>> = {
   theme: "theme picker",
   "brand-kit": "brand kit",

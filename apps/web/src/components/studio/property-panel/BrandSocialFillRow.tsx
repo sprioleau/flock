@@ -9,14 +9,14 @@ import type { BrandSocialLink, SocialPlatform } from "@/lib/social-links";
 import { useEditorStore } from "@/lib/editor-store";
 import { useActiveBrandKit } from "../brand-kit/useActiveBrandKit";
 
-/**
- * "Brand social links" row on the SECTION panel (item 26, part 3 — see the
- * semantics note in lib/brand-kit-social-fill.ts): shown only when this
- * section contains a social row AND the active kit carries social links.
- * Clicking rebuilds the section's social links from the kit — ordinary
- * user-authored dispatches (undoable); nothing ever syncs behind the user's
- * back, and manual editing stays untouched otherwise.
- */
+/*
+  "Brand social links" row on the SECTION panel (item 26, part 3 — see the
+  semantics note in lib/brand-kit-social-fill.ts): shown only when this
+  section contains a social row AND the active kit carries social links.
+  Clicking rebuilds the section's social links from the kit — ordinary
+  user-authored dispatches (undoable); nothing ever syncs behind the user's
+  back, and manual editing stays untouched otherwise.
+*/
 export function BrandSocialFillRow({ sectionId }: { sectionId: BlockId }) {
   const doc = useEditorStore((state) => state.doc);
   const dispatch = useEditorStore((state) => state.dispatch);

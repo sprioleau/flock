@@ -16,23 +16,23 @@ import {
 } from "@/lib/brand-kit";
 import { buildBrandColorId } from "@/lib/brand-kit-reconcile";
 
-/**
- * The kit's editable palette (brand-kit-user-control §3) — the answer to "if
- * the human disagrees with the color the agent selected, they must be able to
- * change it". Three labeled groups (primary / secondary / accent), each row a
- * swatch, a hex, a name and a remove; "Add color" per group.
- *
- * WHAT EDITING A COLOR DOES, honestly (§3.5): the palette is a curated source
- * for the color picker and for the agent — it is NOT a token layer. Blocks
- * store literal hex values, so changing a color here repaints nothing already
- * placed. The hint under the section says exactly that, because "edit the
- * brand color" otherwise sounds like it should repaint drafts and it will not.
- *
- * Interaction: local draft state gives instant feedback (dragging the color
- * well repaints the swatch immediately, never debounced), and the write
- * happens on commit — blur, Enter, select change, add, remove — as ONE
- * updateBrandColors mutation carrying the whole array.
- */
+/*
+  The kit's editable palette (brand-kit-user-control §3) — the answer to "if
+  the human disagrees with the color the agent selected, they must be able to
+  change it". Three labeled groups (primary / secondary / accent), each row a
+  swatch, a hex, a name and a remove; "Add color" per group.
+
+  WHAT EDITING A COLOR DOES, honestly (§3.5): the palette is a curated source
+  for the color picker and for the agent — it is NOT a token layer. Blocks
+  store literal hex values, so changing a color here repaints nothing already
+  placed. The hint under the section says exactly that, because "edit the
+  brand color" otherwise sounds like it should repaint drafts and it will not.
+
+  Interaction: local draft state gives instant feedback (dragging the color
+  well repaints the swatch immediately, never debounced), and the write
+  happens on commit — blur, Enter, select change, add, remove — as ONE
+  updateBrandColors mutation carrying the whole array.
+*/
 export function BrandColorsEditor({
   colors,
   isBusy,
@@ -45,16 +45,20 @@ export function BrandColorsEditor({
   const [draftColors, setDraftColors] = useState<BrandColor[]>(() =>
     sortBrandColorsForDisplay(colors),
   );
-  // Reactive resync: a save, a re-scrape, or another tab's edit re-seeds the
-  // draft. Serialized comparison keeps this from fighting local typing —
-  // `colors` is a fresh array identity on every render, so comparing the value
-  // is what makes "did it actually change?" answerable.
+  /*
+    Reactive resync: a save, a re-scrape, or another tab's edit re-seeds the
+    draft. Serialized comparison keeps this from fighting local typing —
+    `colors` is a fresh array identity on every render, so comparing the value
+    is what makes "did it actually change?" answerable.
+  */
   //
-  // Adjusted DURING RENDER rather than in an effect. React re-runs this
-  // component immediately with the new state before touching the DOM, so the
-  // user never sees the stale draft; an effect would paint the old colors
-  // first and then overwrite them, which is the cascading render the
-  // react-hooks/set-state-in-effect rule is pointing at.
+  /*
+    Adjusted DURING RENDER rather than in an effect. React re-runs this
+    component immediately with the new state before touching the DOM, so the
+    user never sees the stale draft; an effect would paint the old colors
+    first and then overwrite them, which is the cascading render the
+    react-hooks/set-state-in-effect rule is pointing at.
+  */
   const serializedColors = JSON.stringify(colors);
   const [seededFrom, setSeededFrom] = useState(serializedColors);
   if (seededFrom !== serializedColors) {
@@ -72,7 +76,9 @@ export function BrandColorsEditor({
 
   const addColor = (category: BrandColorCategory): void => {
     const hex = "#888888";
-    // Ids must stay unique even when two slots start from the same swatch.
+    /*
+      Ids must stay unique even when two slots start from the same swatch.
+    */
     const baseId = buildBrandColorId(hex);
     const takenIds = new Set(draftColors.map((color) => color.id));
     let id = baseId;
@@ -130,8 +136,10 @@ export function BrandColorsEditor({
                     className="flex items-center gap-2"
                     data-testid={`brand-kit-color-row-${color.id}`}
                   >
-                    {/* Native color well: the OS picker is the least friction
-                        possible, and it repaints the swatch as you drag. */}
+                    {/*
+                      Native color well: the OS picker is the least friction
+                      possible, and it repaints the swatch as you drag.
+                    */}
                     <input
                       type="color"
                       value={color.hex}
@@ -182,8 +190,10 @@ export function BrandColorsEditor({
                       disabled={isBusy}
                       data-testid={`brand-kit-color-hex-${color.id}`}
                     />
-                    {/* Native select: a category change is a one-tap action and
-                        deserves no popover ceremony. */}
+                    {/*
+                      Native select: a category change is a one-tap action and
+                      deserves no popover ceremony.
+                    */}
                     <select
                       value={color.category}
                       aria-label={`Category for ${color.name}`}

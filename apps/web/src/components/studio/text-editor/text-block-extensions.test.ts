@@ -2,20 +2,20 @@ import { Extension, Node } from "@tiptap/core";
 import { describe, expect, it } from "vitest";
 import { createTextBlockExtensions } from "./text-block-extensions";
 
-/**
- * Guards the per-node-alignment contract of the editor schema.
- *
- * The bug this locks down: the Resend StarterKit's heading extension ships a
- * React node view that renders `<Heading {...node.attrs}>`, and react-email's
- * Heading forwards unknown props onto the `<h1>`. Every registered node
- * attribute therefore reached the DOM as a raw attribute — including the
- * TextAlign extension's `textAlign`, which React refuses to recognize
- * ("React does not recognize the `textAlign` prop on a DOM element") and
- * emits as an invalid lowercase `textalign="center"` instead of a style.
- *
- * The fix registers the heading with its node view returning null, so Tiptap
- * falls back to `renderHTML` and each attribute renders itself properly.
- */
+/*
+  Guards the per-node-alignment contract of the editor schema.
+
+  The bug this locks down: the Resend StarterKit's heading extension ships a
+  React node view that renders `<Heading {...node.attrs}>`, and react-email's
+  Heading forwards unknown props onto the `<h1>`. Every registered node
+  attribute therefore reached the DOM as a raw attribute — including the
+  TextAlign extension's `textAlign`, which React refuses to recognize
+  ("React does not recognize the `textAlign` prop on a DOM element") and
+  emits as an invalid lowercase `textalign="center"` instead of a style.
+
+  The fix registers the heading with its node view returning null, so Tiptap
+  falls back to `renderHTML` and each attribute renders itself properly.
+*/
 describe("createTextBlockExtensions", () => {
   const extensions = createTextBlockExtensions();
 
@@ -29,10 +29,12 @@ describe("createTextBlockExtensions", () => {
 
   it("registers no node view for headings, so renderHTML owns the DOM", () => {
     const { addNodeView } = headingNodes[0]!.config;
-    // A node view IS configured (overriding the kit's) but yields null —
-    // Tiptap's ExtensionManager then registers none at all. It cannot be
-    // merely absent: getExtensionField walks up to the parent extension,
-    // which would resurrect the attribute-spreading node view.
+    /*
+      A node view IS configured (overriding the kit's) but yields null —
+      Tiptap's ExtensionManager then registers none at all. It cannot be
+      merely absent: getExtensionField walks up to the parent extension,
+      which would resurrect the attribute-spreading node view.
+    */
     expect(typeof addNodeView).toBe("function");
     expect(addNodeView?.call(undefined as never)).toBeNull();
   });

@@ -22,14 +22,14 @@ export interface CanvasNodeProps {
   globals: GlobalStyles | undefined;
 }
 
-/**
- * Recursive canvas traversal — the same SDK block views the HTML renderer
- * uses (visual parity), each wrapped in an interactive BlockShell.
- *
- * Column is the one exception: its view renders a <td>, which cannot be
- * wrapped in a div without breaking the table row, so its shell goes INSIDE
- * the cell around the column's content.
- */
+/*
+  Recursive canvas traversal — the same SDK block views the HTML renderer
+  uses (visual parity), each wrapped in an interactive BlockShell.
+
+  Column is the one exception: its view renders a <td>, which cannot be
+  wrapped in a div without breaking the table row, so its shell goes INSIDE
+  the cell around the column's content.
+*/
 export function CanvasNode({ node, globals }: CanvasNodeProps) {
   const { block } = node;
   const children = node.children.map((child) => (
@@ -40,9 +40,11 @@ export function CanvasNode({ node, globals }: CanvasNodeProps) {
     case "section":
       return (
         <BlockShell block={block}>
-          {/* Adding blocks happens through the right rail's Blocks tab
-              (drag in or click-to-add) — the old per-section ghost
-              "+ Add block" menu is gone (owner decision 2026-07-30). */}
+          {/*
+            Adding blocks happens through the right rail's Blocks tab
+            (drag in or click-to-add) — the old per-section ghost
+            "+ Add block" menu is gone (owner decision 2026-07-30).
+          */}
           <SectionBlockView block={block} resolvedStyles={resolveBlockStyles(globals, block)}>
             {children}
           </SectionBlockView>
@@ -74,16 +76,20 @@ export function CanvasNode({ node, globals }: CanvasNodeProps) {
         </BlockShell>
       );
     case "button":
-      // The canvas slot swaps in the single-line label editor while this
-      // button's inline editing session is open.
+      /*
+        The canvas slot swaps in the single-line label editor while this
+        button's inline editing session is open.
+      */
       return (
         <BlockShell block={block}>
           <ButtonBlockCanvasSlot block={block} resolvedStyles={resolveBlockStyles(globals, block)} />
         </BlockShell>
       );
     case "image":
-      // The canvas slot layers the ephemeral AI-generation preview (data-URI
-      // instant paint + status overlay) over the shared SDK view.
+      /*
+        The canvas slot layers the ephemeral AI-generation preview (data-URI
+        instant paint + status overlay) over the shared SDK view.
+      */
       return (
         <BlockShell block={block}>
           <ImageBlockCanvasSlot block={block} resolvedStyles={resolveBlockStyles(globals, block)} />
@@ -114,7 +120,9 @@ export function CanvasNode({ node, globals }: CanvasNodeProps) {
         </BlockShell>
       );
     case "root":
-      // The root is rendered by EditorCanvas itself; it never recurses here.
+      /*
+        The root is rendered by EditorCanvas itself; it never recurses here.
+      */
       return null;
   }
 }

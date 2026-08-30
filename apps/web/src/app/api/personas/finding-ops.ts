@@ -47,7 +47,9 @@ const MAX_COPY_EDIT_CHARS = 2_000;
 */
 const MAX_COPY_EDIT_LINES = 12;
 
-/** Deterministic coercion of the model's string values to property scalars. */
+/*
+  Deterministic coercion of the model's string values to property scalars.
+*/
 function coercePropertyValue(raw: string): string | number | boolean {
   if (raw === "true") {
     return true;
@@ -183,7 +185,9 @@ function composeCopyEditOp({
   return parsed.success ? parsed.data : null;
 }
 
-/** Property edits for ONE block, merged into a single validated op. */
+/*
+  Property edits for ONE block, merged into a single validated op.
+*/
 function composePropertyOps({ proposedEdits }: { proposedEdits: readonly ProposedEdit[] }):
   | Operation[]
   | null {

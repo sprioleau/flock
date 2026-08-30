@@ -3,13 +3,13 @@ import { CODE_BLOCK_LANGUAGES } from "../../schema/blocks";
 import { createSectionComposer, headingNode, paragraphNode, textDocOf } from "../build-helpers";
 import { defineSectionTemplate } from "../types";
 
-/**
- * `code-sample` — developer-audience section: a short lead-in, a
- * syntax-highlighted code block, and a standalone docs link. Reference:
- * react.email/components code-block patterns. Uses the code and link leaf
- * blocks (the snippet keeps the renderer's default dark scheme — a terminal
- * look that reads well under light and dark themes alike).
- */
+/*
+  `code-sample` — developer-audience section: a short lead-in, a
+  syntax-highlighted code block, and a standalone docs link. Reference:
+  react.email/components code-block patterns. Uses the code and link leaf
+  blocks (the snippet keeps the renderer's default dark scheme — a terminal
+  look that reads well under light and dark themes alike).
+*/
 
 const DEFAULT_CODE = `import { send } from "@flock/sdk";
 
@@ -71,7 +71,9 @@ export const codeSampleTemplate = defineSectionTemplate({
     listParams: [],
     imageCount: 0,
   },
-  /* The gallery shows the docs link; a real section only gets one that leads somewhere. */
+  /*
+    The gallery shows the docs link; a real section only gets one that leads somewhere.
+  */
   previewParams: { docsLabel: "Read the docs", docsHref: "https://example.com/docs" },
   build: ({ params, random }) => {
     const composer = createSectionComposer(random);
@@ -83,7 +85,9 @@ export const codeSampleTemplate = defineSectionTemplate({
       ]),
     });
     composer.addLeaf({ kind: "code", code: params.code, language: params.language });
-    /* A "Read the docs" link to docs that do not exist is worse than none. */
+    /*
+      A "Read the docs" link to docs that do not exist is worse than none.
+    */
     if (params.docsLabel !== undefined && params.docsHref !== undefined) {
       composer.addLeaf({ kind: "link", text: params.docsLabel, href: params.docsHref });
     }

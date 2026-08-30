@@ -8,26 +8,28 @@ import { ShortcutKbd } from "../shortcuts/ShortcutKbd";
 import { useCommentsModeStore } from "./comments-mode-store";
 import { CommentsReviewDialog } from "./CommentsReviewDialog";
 
-/**
- * The header's ONE comments control (owner decrowding request, item 31): a
- * compact split button collapsing the two former standalone buttons —
- * comment-mode toggle on the left, review-dialog trigger (with its
- * open-count badge) on the right — into a single bordered group. Both
- * functions stay one click away.
- *
- * The toggle arms/disarms the canvas capture overlay: while armed the canvas
- * cursor is a crosshair and every click drops a comment pin; Escape, the "c"
- * shortcut, or clicking the toggle again leaves the mode. The pressed state
- * is visible chrome — the mode suspends normal canvas editing, so it must
- * read at a glance.
- */
+/*
+  The header's ONE comments control (owner decrowding request, item 31): a
+  compact split button collapsing the two former standalone buttons —
+  comment-mode toggle on the left, review-dialog trigger (with its
+  open-count badge) on the right — into a single bordered group. Both
+  functions stay one click away.
+
+  The toggle arms/disarms the canvas capture overlay: while armed the canvas
+  cursor is a crosshair and every click drops a comment pin; Escape, the "c"
+  shortcut, or clicking the toggle again leaves the mode. The pressed state
+  is visible chrome — the mode suspends normal canvas editing, so it must
+  read at a glance.
+*/
 export function CommentsControl() {
   const isCommentsModeActive = useCommentsModeStore((state) => state.isCommentsModeActive);
   const setIsCommentsModeActive = useCommentsModeStore((state) => state.setIsCommentsModeActive);
 
   return (
-    // No overflow-hidden: the review segment's open-count badge overhangs
-    // the group's top-right corner (per-segment radii keep the pill shape).
+    /*
+      No overflow-hidden: the review segment's open-count badge overhangs
+      the group's top-right corner (per-segment radii keep the pill shape).
+    */
     <div className="flex shrink-0 items-center rounded-md border" data-testid="comments-control">
       <TooltipProvider>
         <Tooltip>

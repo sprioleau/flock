@@ -21,18 +21,20 @@ import {
   type DraftSectionPlan,
 } from "./compose-draft";
 
-/**
- * The create-draft composition primitive: a plan the model can actually
- * express content in, translated deterministically into a complete email.
- *
- * The bar these tests hold the primitive to is the owner's report:
- * every new draft is a whole sendable email (header + body + footer), it keeps
- * the theme already on screen, it continues the current draft's subject matter
- * instead of starting from placeholder copy, several drafts in one call really
- * differ, and none of it touches the draft the user is on.
- */
+/*
+  The create-draft composition primitive: a plan the model can actually
+  express content in, translated deterministically into a complete email.
 
-/** Deterministic id source so composed documents are byte-stable in tests. */
+  The bar these tests hold the primitive to is the owner's report:
+  every new draft is a whole sendable email (header + body + footer), it keeps
+  the theme already on screen, it continues the current draft's subject matter
+  instead of starting from placeholder copy, several drafts in one call really
+  differ, and none of it touches the draft the user is on.
+*/
+
+/*
+  Deterministic id source so composed documents are byte-stable in tests.
+*/
 function createSeededRandom(seed: number): () => number {
   let state = seed;
   return () => {
@@ -64,7 +66,9 @@ function composeOne({
   return result.doc;
 }
 
-/** One template's SAMPLE value for a named param — the copy that must never ship. */
+/*
+  One template's SAMPLE value for a named param — the copy that must never ship.
+*/
 function readSampleCopy({ templateId, param }: { templateId: string; param: string }): string {
   const template = getSectionTemplate(templateId);
   if (template === undefined) {
@@ -81,7 +85,9 @@ function readSampleCopy({ templateId, param }: { templateId: string; param: stri
   return value;
 }
 
-/** The SAMPLE entries of a template's list param, read through one field of each. */
+/*
+  The SAMPLE entries of a template's list param, read through one field of each.
+*/
 function readSampleList({
   templateId,
   param,
@@ -112,8 +118,10 @@ function readSampleList({
 }
 
 function getSectionCategories(doc: EmailDocument): (string | undefined)[] {
-  // The composed doc's sections are catalog-built; identify each by matching
-  // its rendered subtree back to nothing — instead we assert on the ops.
+  /*
+    The composed doc's sections are catalog-built; identify each by matching
+    its rendered subtree back to nothing — instead we assert on the ops.
+  */
   return doc[ROOT_BLOCK_ID]!.childrenIds.map((id) => doc[id]?.type);
 }
 
@@ -136,16 +144,18 @@ function getAllText(doc: EmailDocument): string {
     .join(" | ");
 }
 
-// ---------------------------------------------------------------------------
-// A source email built to order
-// ---------------------------------------------------------------------------
+/*
+  ---------------------------------------------------------------------------
+  A source email built to order
+  ---------------------------------------------------------------------------
+*/
 
-/**
- * Content-clue tests need a source whose sections they control. They must NOT
- * lean on `createStarterDocument()` beyond "it is a real email": the starter
- * is a designed marketing asset that gets rewritten, and pinning assertions to
- * its exact section list makes every copy edit a red test.
- */
+/*
+  Content-clue tests need a source whose sections they control. They must NOT
+  lean on `createStarterDocument()` beyond "it is a real email": the starter
+  is a designed marketing asset that gets rewritten, and pinning assertions to
+  its exact section list makes every copy edit a red test.
+*/
 type LeafSpec = { id: string; block: (parentId: string) => EmailDocument[string] };
 
 let leafCounter = 0;
@@ -213,7 +223,9 @@ function copyText({ headline, body }: { headline?: string; body?: string }): Lea
   };
 }
 
-/** One section per entry, each holding the given leaves directly. */
+/*
+  One section per entry, each holding the given leaves directly.
+*/
 function buildSourceEmail(sections: LeafSpec[][]): EmailDocument {
   const doc: EmailDocument = {};
   const sectionIds = sections.map((_, index) => `sec_s${index}`);
@@ -369,7 +381,9 @@ describe("deriveDraftContentClues", () => {
       ]),
     );
     expect(clues.imageAlt).toBe("A workbench at first light");
-    // The logo still names the brand — a logo is never the email's picture.
+    /*
+      The logo still names the brand — a logo is never the email's picture.
+    */
     expect(clues.brandName).toBe("Petal Studio");
   });
 
@@ -396,8 +410,10 @@ describe("deriveDraftContentClues", () => {
   });
 
   it("never mistakes the footer's small print for body copy", () => {
-    // header / body / footer: everything after the lead is the footer, so
-    // there is no supporting copy to carry.
+    /*
+      header / body / footer: everything after the lead is the footer, so
+      there is no supporting copy to carry.
+    */
     const clues = deriveDraftContentClues(
       buildSourceEmail([
         [logoImage("Petal Studio logo")],
@@ -426,7 +442,9 @@ describe("diversifyDraftSections", () => {
     ];
     const [first, second, third] = diversifyDraftSections([identical, identical, identical]);
     expect(first!.map((s) => s.templateId)).toEqual(["header", "hero", "footer"]);
-    // "a plain hero in one and a split hero in another" — the owner's example.
+    /*
+      "a plain hero in one and a split hero in another" — the owner's example.
+    */
     expect(second!.map((s) => s.templateId)).toEqual([
       "header-centered",
       "hero-split",
@@ -629,15 +647,19 @@ describe("buildComposedDrafts", () => {
       },
       sourceDoc: createStarterDocument(),
     });
-    // Header, body, footer — three top-level sections, never a bare hero.
+    /*
+      Header, body, footer — three top-level sections, never a bare hero.
+    */
     expect(doc[ROOT_BLOCK_ID]!.childrenIds).toHaveLength(3);
     expect(getSectionCategories(doc)).toEqual(["section", "section", "section"]);
     expect(getAllText(doc)).toContain("Just this");
   });
 
   it("carries the source draft's brand and call to action into unspecified params", () => {
-    // A source draft with its own voice, so a carried-over value can't be
-    // confused with a template default.
+    /*
+      A source draft with its own voice, so a carried-over value can't be
+      confused with a template default.
+    */
     const source = createStarterDocument();
     source.img_lg01 = {
       ...source.img_lg01!,
@@ -669,11 +691,15 @@ describe("buildComposedDrafts", () => {
       sourceDoc: source,
     });
     const text = getAllText(doc);
-    // The SOURCE draft's brand and CTA — not the templates' placeholder copy.
+    /*
+      The SOURCE draft's brand and CTA — not the templates' placeholder copy.
+    */
     expect(text).toContain("Petal Studio logo");
     expect(text).toContain("Shop the spring drop");
     expect(text).not.toContain("Flock");
-    // …and the copy the model DID specify wins over the carried-over headline.
+    /*
+      …and the copy the model DID specify wins over the carried-over headline.
+    */
     expect(text).toContain("Ready when you are");
     expect(text).not.toContain("Welcome to Flock.");
   });
@@ -702,9 +728,11 @@ describe("buildComposedDrafts", () => {
   });
 
   it("gives the SECOND body section the source's second story, not sample copy", () => {
-    // The reported failure in miniature: a section the model left unspecified
-    // silently rendered the template's own marketing defaults. Every headline
-    // below is a Zod `.default()` in the catalog templates.
+    /*
+      The reported failure in miniature: a section the model left unspecified
+      silently rendered the template's own marketing defaults. Every headline
+      below is a Zod `.default()` in the catalog templates.
+    */
     const doc = composeOne({
       command: {
         type: "createDraft",
@@ -737,7 +765,9 @@ describe("buildComposedDrafts", () => {
     expect(text).toContain("Spring is here");
     expect(text).toContain("What shipped in March");
     expect(text).toContain("Three new integrations and a faster editor.");
-    // The image says what the source pictures, not "Product preview".
+    /*
+      The image says what the source pictures, not "Product preview".
+    */
     expect(text).toContain("A workbench at first light");
     expect(text).not.toContain("Meet the new release");
     expect(text).not.toContain("Ready when you are");
@@ -806,7 +836,9 @@ describe("buildComposedDrafts", () => {
         .join(" / "),
     );
     expect(new Set(shapes).size).toBe(3);
-    // …without losing the essence: the headline survives every variant.
+    /*
+      …without losing the essence: the headline survives every variant.
+    */
     for (const draft of composed) {
       const doc = applyOperations(createEmptyDocument(), draft.ops);
       expect(doc.isOk).toBe(true);
@@ -862,7 +894,9 @@ describe("shouldCarryOverSourceCopy", () => {
   const LATER_HEADLINE = "A note the source wrote in its own words";
   const LATER_BODY = "The paragraph the source carries in its second section.";
 
-  /** A source email whose every word is a sentinel that cannot come from anywhere else. */
+  /*
+    A source email whose every word is a sentinel that cannot come from anywhere else.
+  */
   function buildSource(): EmailDocument {
     return buildSourceEmail([
       [logoImage("Northwind logo")],
@@ -935,7 +969,9 @@ describe("shouldCarryOverSourceCopy", () => {
         expect(text).not.toContain(readSampleCopy({ templateId, param }));
       }
     }
-    /* The model's own copy is untouched — the switch suppresses the backfill, not the plan. */
+    /*
+      The model's own copy is untouched — the switch suppresses the backfill, not the plan.
+    */
     expect(text).toContain(MODEL_HEADLINE);
     expect(text).toContain(MODEL_BODY);
   });
@@ -1067,7 +1103,9 @@ describe("a misplaced call option", () => {
   section whose category has nothing the available content fits is dropped.
 */
 describe("composing from a plan never renders a template's sample copy", () => {
-  /** The ingested plan, section for section, as the live pipeline produced it. */
+  /*
+    The ingested plan, section for section, as the live pipeline produced it.
+  */
   const WESBOS_HEADLINE = "About Wes Bos";
   const WESBOS_BODY =
     "Web developer, teacher and speaker from Hamilton, Ontario. Making websites for about 26 years.";
@@ -1095,7 +1133,9 @@ describe("composing from a plan never renders a template's sample copy", () => {
     ],
   };
 
-  /** The ingestion path: the content came from a page, so the source draft fills nothing. */
+  /*
+    The ingestion path: the content came from a page, so the source draft fills nothing.
+  */
   function composeWesbos(): { doc: EmailDocument; composed: ComposedDraft } {
     const [composed] = buildComposedDrafts({
       sourceDoc: createStarterDocument(),
@@ -1219,8 +1259,10 @@ describe("substitution and drop", () => {
 
   it("swaps a social footer with no social links for the plain footer, keeping the copy", () => {
     const composed = composePlan([
-      /* An empty social list is the case the plain footer exists to absorb — and
-         `socialLinks` is a param the plain footer does not take. */
+      /*
+        An empty social list is the case the plain footer exists to absorb — and
+        `socialLinks` is a param the plain footer does not take.
+      */
       { templateId: "footer-social", params: { companyName: "Wes Bos", socialLinks: [] } },
     ]);
     const result = applyOperations(createEmptyDocument(), composed.ops);
@@ -1386,7 +1428,9 @@ describe("a kept section renders no place the caller did not name", () => {
     expect(result.isOk).toBe(true);
     if (!result.isOk) throw new Error("compose failed");
     expect(JSON.stringify(result.doc)).not.toContain("123 Market Street");
-    /* The hero's dead "Get started" button is gone with it. */
+    /*
+      The hero's dead "Get started" button is gone with it.
+    */
     expect(Object.values(result.doc).some((block) => block.type === "button")).toBe(false);
 
     /*

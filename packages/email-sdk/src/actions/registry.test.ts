@@ -168,7 +168,9 @@ describe("dispatchContentAction", () => {
     expect(result.isOk).toBe(true);
     if (!result.isOk) return;
     expect((result.doc.txt_e5f6!.properties as { paddingTop?: number }).paddingTop).toBe(32);
-    // The input document is untouched.
+    /*
+      The input document is untouched.
+    */
     expect((doc.txt_e5f6!.properties as { paddingTop?: number }).paddingTop).toBe(24);
     expect(result.op).toEqual(input);
     expect(result.inverse.name).toBe("replaceBlockProperties");
@@ -211,7 +213,9 @@ describe("dispatchContentAction", () => {
     expect(result.isOk).toBe(true);
     if (!result.isOk) return;
     expect(result).not.toHaveProperty("logEntry");
-    // No entry id, no timestamp, no version — the write path owns all three.
+    /*
+      No entry id, no timestamp, no version — the write path owns all three.
+    */
     expect(Object.keys(result).sort()).toEqual(["context", "doc", "inverse", "isOk", "op"]);
   });
 
@@ -258,7 +262,7 @@ describe("dispatchContentAction", () => {
       run: applyOperation,
     });
     const divergentRegistry = createActionRegistry([divergentAction]);
-    const compactOnlyInput = { blockId: "sec_a1b2" }; // passes compact, missing `name` for full
+    const compactOnlyInput = { blockId: "sec_a1b2" }; /* passes compact, missing `name` for full */
     expect(compactSchema.safeParse(compactOnlyInput).success).toBe(true);
     const result = dispatchContentAction({
       registry: divergentRegistry,
@@ -444,13 +448,17 @@ describe("stop-vs-retry taxonomy", () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-// Analysis dispatch + the authorization gate on EVERY path
-// ---------------------------------------------------------------------------
+/*
+  ---------------------------------------------------------------------------
+  Analysis dispatch + the authorization gate on EVERY path
+  ---------------------------------------------------------------------------
+*/
 
 const countBlocksInputSchema = z.strictObject({ prefix: z.string() });
 
-/** Records whether the action body executed — the assertion that matters. */
+/*
+  Records whether the action body executed — the assertion that matters.
+*/
 interface RunSpy {
   hasRun: boolean;
 }
@@ -571,12 +579,12 @@ describe("dispatchAnalysisAction", () => {
   });
 });
 
-/**
- * The regression that would undo the whole point: a gate honoured on two of
- * three dispatch paths is not a gate, it is a coincidence. One denying action
- * per kind, dispatched through its own dispatcher, asserting the body never
- * ran and the failure is a STOP.
- */
+/*
+  The regression that would undo the whole point: a gate honoured on two of
+  three dispatch paths is not a gate, it is a coincidence. One denying action
+  per kind, dispatched through its own dispatcher, asserting the body never
+  ran and the failure is a STOP.
+*/
 describe("the authorization gate holds on every dispatch path", () => {
   it("denies a content action through dispatchContentAction", () => {
     const spy: RunSpy = { hasRun: false };

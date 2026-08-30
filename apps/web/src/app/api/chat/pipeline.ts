@@ -50,55 +50,65 @@ import { buildChatTools } from "./tools";
 
 export interface ChatPipelineInput {
   model: LanguageModel;
-  /** For the latency log line (the LanguageModel object hides its id). */
+  /*
+    For the latency log line (the LanguageModel object hides its id).
+  */
   modelId: string;
   isUsingMockModel: boolean;
   messages: FlockChatMessage[];
   doc: EmailDocument;
   selectedBlockId?: BlockId;
-  /** Chat/thread id from the client transport, used for op provenance. */
+  /*
+    Chat/thread id from the client transport, used for op provenance.
+  */
   threadId?: string;
-  /**
-   * The calling browser's anonymous session id (from the same-origin session
-   * cookie), or null when absent. The generateImage executor registers every
-   * generation under this session's asset library (Content Studio Stage S).
-   */
+  /*
+    The calling browser's anonymous session id (from the same-origin session
+    cookie), or null when absent. The generateImage executor registers every
+    generation under this session's asset library (Content Studio Stage S).
+  */
   sessionId: string | null;
-  /**
-   * Correlation id for this turn, minted by the route. Every observability
-   * record this turn produces — the main call, each repair round, each
-   * rejected tool input, the stream error — carries it, so one id pasted into
-   * Vercel Logs pulls the whole turn.
-   */
+  /*
+    Correlation id for this turn, minted by the route. Every observability
+    record this turn produces — the main call, each repair round, each
+    rejected tool input, the stream error — carries it, so one id pasted into
+    Vercel Logs pulls the whole turn.
+  */
   traceId: string;
   writer: UIMessageStreamWriter<FlockChatMessage>;
 }
 
-// ---------------------------------------------------------------------------
-// Validation gate, layer 2: one repair round-trip (Phase 3.3)
-// ---------------------------------------------------------------------------
+/*
+  ---------------------------------------------------------------------------
+  Validation gate, layer 2: one repair round-trip (Phase 3.3)
+  ---------------------------------------------------------------------------
+*/
 
 interface CreateToolCallRepairerInput {
   model: LanguageModel;
-  /** Tools WITHOUT execute() — a repair round must not re-run side effects. */
+  /*
+    Tools WITHOUT execute() — a repair round must not re-run side effects.
+  */
   schemaOnlyTools: ToolSet;
   staticInstructions: string;
   onRepairAttempt: () => void;
-  /** Turn context, so every repair record correlates with the main call. */
+  /*
+    Turn context, so every repair record correlates with the main call.
+  */
   telemetryContext: ModelTelemetryContext;
 }
 
-/**
- * The failed call's arguments as something the repair request can PHYSICALLY
- * carry. `toolCall.input` at repair time is the provider's RAW argument text —
- * for the calls that need repairing it is often a STRING (unparsed, sometimes
- * a JSON-escaped envelope, sometimes truncated JSON). Embedding that string
- * verbatim in a replayed assistant tool-call made the Google provider encode
- * `function_call.args` as a protobuf-Struct-invalid string and the REPAIR
- * REQUEST ITSELF was rejected (AI_APICallError inside AI_ToolCallRepairError —
- * observed live, terminal). Parse to an object when possible; otherwise
- * replay `{}` and carry the raw text inside the error prose instead.
- */
+/*
+  The failed call's arguments as something the repair request can PHYSICALLY
+  carry. `toolCall.input` at repair time is the provider's RAW argument text —
+  for the calls that need repairing it is often a STRING (unparsed, sometimes
+  a JSON-escaped envelope, sometimes truncated JSON). Embedding that string
+  verbatim in a replayed assistant tool-call made the Google provider encode
+  `function_call.args` as a protobuf-Struct-invalid string and the REPAIR
+  REQUEST ITSELF was rejected (AI_APICallError inside AI_ToolCallRepairError —
+  observed live, terminal). Parse to an object when possible; otherwise
+  replay `{}` and carry the raw text inside the error prose instead.
+*/
 function toReplayableToolInput(rawInput: unknown): {
   input: Record<string, unknown>;
   unparseableRawText: string | null;
@@ -118,29 +128,31 @@ function toReplayableToolInput(rawInput: unknown): {
   return { input: {}, unparseableRawText: rawText ?? "" };
 }
 
-/** Cap on raw argument text quoted back to the model in a repair prompt. */
+/*
+  Cap on raw argument text quoted back to the model in a repair prompt.
+*/
 const MAX_QUOTED_RAW_INPUT_LENGTH = 2_000;
 
-/**
- * repairToolCall hook: when the model emits a tool call that fails inputSchema
- * validation (InvalidToolInputError → the SDK analogue of the registry's
- * retryable `op_validation_failed`), re-ask the SAME model once, feeding the
- * Zod error message back as a tool result — exactly the plan's "one repair
- * round-trip with the error message".
- *
- * Terminal-equivalent cases return null, which lets the SDK degrade the call
- * to an invalid-tool-call part: the client renders one failure chip, a
- * tool-error result goes back to the model, and THE TURN CONTINUES — one
- * unsalvageable call never fails the turn:
- * - NoSuchToolError — a hallucinated tool name; per SDK guidance we do not
- *   guess a replacement (the registry's `unknown_action` stays retryable for
- *   DISPATCH, but at parse time there is no input worth repairing).
- * - The repair budget (MAX_REPAIR_ATTEMPTS_PER_TOOL_CALL) is exhausted.
- * - The re-ask did not produce a call to the same tool.
- * - The re-ask itself failed (network, provider rejection). This hook must
- *   NEVER throw: a thrown repairer wraps into ToolCallRepairError and turns a
- *   one-call problem into a turn-level wall of JSON.
- */
+/*
+  repairToolCall hook: when the model emits a tool call that fails inputSchema
+  validation (InvalidToolInputError → the SDK analogue of the registry's
+  retryable `op_validation_failed`), re-ask the SAME model once, feeding the
+  Zod error message back as a tool result — exactly the plan's "one repair
+  round-trip with the error message".
+
+  Terminal-equivalent cases return null, which lets the SDK degrade the call
+  to an invalid-tool-call part: the client renders one failure chip, a
+  tool-error result goes back to the model, and THE TURN CONTINUES — one
+  unsalvageable call never fails the turn:
+  - NoSuchToolError — a hallucinated tool name; per SDK guidance we do not
+    guess a replacement (the registry's `unknown_action` stays retryable for
+    DISPATCH, but at parse time there is no input worth repairing).
+  - The repair budget (MAX_REPAIR_ATTEMPTS_PER_TOOL_CALL) is exhausted.
+  - The re-ask did not produce a call to the same tool.
+  - The re-ask itself failed (network, provider rejection). This hook must
+    NEVER throw: a thrown repairer wraps into ToolCallRepairError and turns a
+    one-call problem into a turn-level wall of JSON.
+*/
 export function createToolCallRepairer({
   model,
   schemaOnlyTools,
@@ -156,9 +168,11 @@ export function createToolCallRepairer({
 
   return async ({ toolCall, messages, error }) => {
     const previousAttemptCount = repairAttemptCountsByToolCallId.get(toolCall.toolCallId) ?? 0;
-    // Fires on EVERY rejected tool call, before any decision about repairing
-    // it: the issue codes/paths and the offending payload are the whole
-    // diagnostic, and they were previously logged nowhere at all.
+    /*
+      Fires on EVERY rejected tool call, before any decision about repairing
+      it: the issue codes/paths and the offending payload are the whole
+      diagnostic, and they were previously logged nowhere at all.
+    */
     logToolInputRejected({
       context: telemetryContext,
       toolName: toolCall.toolName,
@@ -187,11 +201,13 @@ export function createToolCallRepairer({
     repairAttemptCountsByToolCallId.set(toolCall.toolCallId, previousAttemptCount + 1);
     onRepairAttempt();
 
-    // Re-ask strategy (bundled AI SDK docs, tools-and-tool-calling): replay
-    // the step's messages plus the failed call and its validation error as a
-    // tool result, and take the corrected call from the response. The failed
-    // call's args are re-encoded first (toReplayableToolInput) — the raw
-    // provider text must never ride in a tool-call slot.
+    /*
+      Re-ask strategy (bundled AI SDK docs, tools-and-tool-calling): replay
+      the step's messages plus the failed call and its validation error as a
+      tool result, and take the corrected call from the response. The failed
+      call's args are re-encoded first (toReplayableToolInput) — the raw
+      provider text must never ride in a tool-call slot.
+    */
     const { input: replayableInput, unparseableRawText } = toReplayableToolInput(toolCall.input);
     const rawInputNote =
       unparseableRawText === null
@@ -253,22 +269,28 @@ export function createToolCallRepairer({
         input: JSON.stringify(repairedToolCall.input),
       };
     } catch {
-      // Never throw (see the hook contract above): a failed re-ask degrades
-      // to "unrepaired" and the SDK's invalid-call path keeps the turn alive.
+      /*
+        Never throw (see the hook contract above): a failed re-ask degrades
+        to "unrepaired" and the SDK's invalid-call path keeps the turn alive.
+      */
       //
-      // The thrown value itself is NOT re-logged here — the repair call's own
-      // telemetry integration already emitted flock.model.failed for it with a
-      // classified error code. This record adds the thing that record cannot
-      // know: which tool call was abandoned as a result.
+      /*
+        The thrown value itself is NOT re-logged here — the repair call's own
+        telemetry integration already emitted flock.model.failed for it with a
+        classified error code. This record adds the thing that record cannot
+        know: which tool call was abandoned as a result.
+      */
       logUnrepaired("repair_request_failed");
       return null;
     }
   };
 }
 
-// ---------------------------------------------------------------------------
-// Variant: single-pass (implemented)
-// ---------------------------------------------------------------------------
+/*
+  ---------------------------------------------------------------------------
+  Variant: single-pass (implemented)
+  ---------------------------------------------------------------------------
+*/
 
 async function runSinglePassPipeline(input: ChatPipelineInput): Promise<void> {
   const {
@@ -295,18 +317,24 @@ async function runSinglePassPipeline(input: ChatPipelineInput): Promise<void> {
     sessionHash: hashIdentifier(sessionId),
   };
 
-  // Sanitized FIRST and once: `resolveGenerationBrief` identifies the part it
-  // expands by identity, so it has to see the very array being converted.
+  /*
+    Sanitized FIRST and once: `resolveGenerationBrief` identifies the part it
+    expands by identity, so it has to see the very array being converted.
+  */
   const sanitizedMessages = sanitizeReplayedToolInputs(messages);
-  // Brand social links + saved sections ride the FRESH context layer only
-  // (both fail soft to null; fetched concurrently — same Convex deployment).
-  // The generation brief joins them: it is one more per-request Convex read
-  // (the SOURCE draft of an "Ideate"/"Add design variation" send), and null for
-  // every ordinary typed message.
+  /*
+    Brand social links + saved sections ride the FRESH context layer only
+    (both fail soft to null; fetched concurrently — same Convex deployment).
+    The generation brief joins them: it is one more per-request Convex read
+    (the SOURCE draft of an "Ideate"/"Add design variation" send), and null for
+    every ordinary typed message.
+  */
   //
-  // `resolveVerifiedCaller` joins the same batch rather than running before it:
-  // it is one more Convex read against the same deployment, and the tools are
-  // not built until every member of this batch has landed anyway.
+  /*
+    `resolveVerifiedCaller` joins the same batch rather than running before it:
+    it is one more Convex read against the same deployment, and the tools are
+    not built until every member of this batch has landed anyway.
+  */
   const [brandContextLine, savedSectionsContext, generationBrief, verifiedCaller] =
     await Promise.all([
       buildBrandContextBlock({ sessionId }),
@@ -356,43 +384,53 @@ async function runSinglePassPipeline(input: ChatPipelineInput): Promise<void> {
     savedSectionsContext,
   });
 
-  // Message order for Gemini implicit context caching: static system text
-  // FIRST (stable prefix), conversation next, per-request document context as
-  // the LAST user message (fresh tokens that never invalidate the prefix).
+  /*
+    Message order for Gemini implicit context caching: static system text
+    FIRST (stable prefix), conversation next, per-request document context as
+    the LAST user message (fresh tokens that never invalidate the prefix).
+  */
   //
-  // ignoreIncompleteToolCalls guards against dangling tool calls, which would
-  // otherwise throw AI_MissingToolResultsError (Spike C finding 2). The reason
-  // is NOT the one this comment used to give ("the client does not report apply
-  // results back") — it does: use-flock-chat's onToolCall applies each content
-  // op and reports the outcome with addToolOutput, which is also what closes
-  // the auto-continuation loop. What still arrives incomplete is narrower: a
-  // call the client never got to apply (a turn abandoned mid-stream) and
-  // askForClarification, which deliberately ends the turn with no result
-  // because it is waiting on the person.
+  /*
+    ignoreIncompleteToolCalls guards against dangling tool calls, which would
+    otherwise throw AI_MissingToolResultsError (Spike C finding 2). The reason
+    is NOT the one this comment used to give ("the client does not report apply
+    results back") — it does: use-flock-chat's onToolCall applies each content
+    op and reports the outcome with addToolOutput, which is also what closes
+    the auto-continuation loop. What still arrives incomplete is narrower: a
+    call the client never got to apply (a turn abandoned mid-stream) and
+    askForClarification, which deliberately ends the turn with no result
+    because it is waiting on the person.
+  */
   //
-  // sanitizeReplayedToolInputs runs FIRST because it is the only thing standing
-  // between a previously REJECTED tool call and the provider: its raw argument
-  // text rides the history as a string, and Gemini rejects the whole request
-  // (400, protobuf Struct) rather than the one call. See that module's header.
-  // The generic is passed EXPLICITLY: `messages` is declared as
-  // `Array<Omit<UI_MESSAGE, "id">>`, and inference through `Omit` cannot
-  // recover the message type, so it would fall back to the base `UIMessage` and
-  // hand `convertDataPart` a widened `data: unknown` part. Naming it keeps the
-  // hook's parameter as this app's own discriminated data-part union.
+  /*
+    sanitizeReplayedToolInputs runs FIRST because it is the only thing standing
+    between a previously REJECTED tool call and the provider: its raw argument
+    text rides the history as a string, and Gemini rejects the whole request
+    (400, protobuf Struct) rather than the one call. See that module's header.
+    The generic is passed EXPLICITLY: `messages` is declared as
+    `Array<Omit<UI_MESSAGE, "id">>`, and inference through `Omit` cannot
+    recover the message type, so it would fall back to the base `UIMessage` and
+    hand `convertDataPart` a widened `data: unknown` part. Naming it keeps the
+    hook's parameter as this app's own discriminated data-part union.
+  */
   const convertedMessages = await convertToModelMessages<FlockChatMessage>(sanitizedMessages, {
     tools,
     ignoreIncompleteToolCalls: true,
-    // The seam where a minimal human sentence and the targeted generation brief
-    // become one user turn. Every other data part keeps being dropped, exactly
-    // as it was when no hook was passed at all.
+    /*
+      The seam where a minimal human sentence and the targeted generation brief
+      become one user turn. Every other data part keeps being dropped, exactly
+      as it was when no hook was passed at all.
+    */
     convertDataPart: (part) => expandGenerationBriefPart({ part, brief: generationBrief }),
   });
 
-  // Approval collection (collectToolApprovals) only runs when the FINAL
-  // message is a tool message; appending the doc context after it would
-  // silently skip approved executions (e.g. sendTestEmail). An approval
-  // resubmission round is just completing already-approved calls, so it
-  // doesn't need fresh document context — skip the append in that case.
+  /*
+    Approval collection (collectToolApprovals) only runs when the FINAL
+    message is a tool message; appending the doc context after it would
+    silently skip approved executions (e.g. sendTestEmail). An approval
+    resubmission round is just completing already-approved calls, so it
+    doesn't need fresh document context — skip the append in that case.
+  */
   const hasTrailingToolMessage = convertedMessages.at(-1)?.role === "tool";
   const modelMessages: ModelMessage[] = hasTrailingToolMessage
     ? convertedMessages
@@ -406,9 +444,11 @@ async function runSinglePassPipeline(input: ChatPipelineInput): Promise<void> {
     toolApproval,
     maxRetries: MAX_MODEL_CALL_RETRIES,
     stopWhen: stepCountIs(MAX_STEP_COUNT),
-    // Every provider round-trip inside this streamText — including the ones
-    // the tool loop makes on later steps — emits flock.model.call /
-    // flock.model.failed through here.
+    /*
+      Every provider round-trip inside this streamText — including the ones
+      the tool loop makes on later steps — emits flock.model.call /
+      flock.model.failed through here.
+    */
     telemetry: {
       functionId: telemetryContext.operation,
       integrations: [createModelTelemetry(telemetryContext)],
@@ -423,15 +463,19 @@ async function runSinglePassPipeline(input: ChatPipelineInput): Promise<void> {
       },
     }),
     onChunk: ({ chunk }) => {
-      // "start"/"start-step" are synthetic local chunks emitted before the
-      // provider responds — skip them so ttft measures real first output.
+      /*
+        "start"/"start-step" are synthetic local chunks emitted before the
+        provider responds — skip them so ttft measures real first output.
+      */
       const isPreResponseChunk = chunk.type === "start" || chunk.type === "start-step";
       if (!isPreResponseChunk) {
         firstChunkMs ??= performance.now();
       }
     },
-    // Per-request latency/cost log line (plan §4.4 brought forward): one JSON
-    // object per request on stdout — greppable, ingestible.
+    /*
+      Per-request latency/cost log line (plan §4.4 brought forward): one JSON
+      object per request on stdout — greppable, ingestible.
+    */
     onEnd: ({ finishReason, usage, toolCalls }) => {
       logRecord({
         tag: "flock.chat.request",
@@ -443,8 +487,10 @@ async function runSinglePassPipeline(input: ChatPipelineInput): Promise<void> {
         ttftMs: firstChunkMs === undefined ? null : Math.round(firstChunkMs - requestStartMs),
         totalMs: Math.round(performance.now() - requestStartMs),
         toolCallCount: toolCalls.length,
-        // The names, not just the count — "which tool does the model get
-        // wrong most often" is unanswerable without them.
+        /*
+          The names, not just the count — "which tool does the model get
+          wrong most often" is unanswerable without them.
+        */
         toolNames: toolCalls.map((toolCall) => toolCall.toolName),
         repairAttemptCount,
         finishReason,
@@ -457,16 +503,20 @@ async function runSinglePassPipeline(input: ChatPipelineInput): Promise<void> {
     toUIMessageStream<ToolSet, FlockChatMessage>({
       stream: result.stream,
       tools,
-      // Model-stream errors funnel through here (createUIMessageStream's
-      // onError only sees pipeline/setup failures).
+      /*
+        Model-stream errors funnel through here (createUIMessageStream's
+        onError only sees pipeline/setup failures).
+      */
       onError: createChatErrorLogger({ traceId, source: "model-stream" }),
     }),
   );
 }
 
-// ---------------------------------------------------------------------------
-// Variant: triage-execute (A/B slot — NOT built)
-// ---------------------------------------------------------------------------
+/*
+  ---------------------------------------------------------------------------
+  Variant: triage-execute (A/B slot — NOT built)
+  ---------------------------------------------------------------------------
+*/
 
 /**
  * Two-step variant (plan §3.2 option a): a cheap triage call classifies the
@@ -489,7 +539,9 @@ const chatPipelinesByVariant: Record<PipelineVariant, (input: ChatPipelineInput)
     "triage-execute": runTriageExecutePipeline,
   };
 
-/** Run the flag-selected pipeline variant for one request. */
+/*
+  Run the flag-selected pipeline variant for one request.
+*/
 export async function runChatPipeline(input: ChatPipelineInput): Promise<void> {
   await chatPipelinesByVariant[PIPELINE_VARIANT](input);
 }

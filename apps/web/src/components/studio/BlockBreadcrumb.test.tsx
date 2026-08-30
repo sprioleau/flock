@@ -167,7 +167,9 @@ describe("chip colours", () => {
     const asAncestor = classNameOf(chipFor(leaf.id, section.id));
     const asSelected = classNameOf(chipFor(section.id, section.id));
     expect(asAncestor).not.toBe(asSelected);
-    /* Both are still the section's own hue — only the emphasis moves. */
+    /*
+      Both are still the section's own hue — only the emphasis moves.
+    */
     expect(asAncestor).toContain("fuchsia");
     expect(asSelected).toContain("fuchsia");
   });
@@ -207,7 +209,9 @@ describe("clicking an ancestor", () => {
     const event = { stopPropagation: vi.fn() };
     (chip.props.onClick as (event: unknown) => void)(event);
     expect(selectBlock).toHaveBeenCalledWith(section.id);
-    /* Without this the shell underneath re-selects the block being left. */
+    /*
+      Without this the shell underneath re-selects the block being left.
+    */
     expect(event.stopPropagation).toHaveBeenCalled();
   });
 

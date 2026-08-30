@@ -6,15 +6,17 @@ import {
   readMockIntentText,
 } from "./mock-model";
 
-/**
- * The mock's intent seam. It matters because the drafts-menu AI actions now
- * send a SHORT sentence and let the server assemble the brief: the mock has no
- * assembly step, so without the generation-request signal it would scaffold one
- * section where the real pipeline streams a whole email — a demo and a test
- * suite quietly exercising the wrong path.
- */
+/*
+  The mock's intent seam. It matters because the drafts-menu AI actions now
+  send a SHORT sentence and let the server assemble the brief: the mock has no
+  assembly step, so without the generation-request signal it would scaffold one
+  section where the real pipeline streams a whole email — a demo and a test
+  suite quietly exercising the wrong path.
+*/
 
-/** The mock's own compose trigger (mock-model.ts, module-private). */
+/*
+  The mock's own compose trigger (mock-model.ts, module-private).
+*/
 const COMPOSE_EMAIL_REGEX = /\b(?:full|whole|entire|complete)\s+email\b/i;
 
 function buildUserMessage(parts: unknown[]): FlockChatMessage[] {
@@ -33,12 +35,16 @@ describe("readMockIntentText", () => {
       ]),
     );
 
-    // The sentence alone would NOT match — that is the whole point.
+    /*
+      The sentence alone would NOT match — that is the whole point.
+    */
     expect('Add a design variation of "RenderATL 2026". brighter colors').not.toMatch(
       COMPOSE_EMAIL_REGEX,
     );
     expect(intentText).toMatch(COMPOSE_EMAIL_REGEX);
-    // And the script it selects is the multi-section one.
+    /*
+      And the script it selects is the multi-section one.
+    */
     expect(MOCK_COMPOSE_EMAIL_TEMPLATE_IDS.length).toBeGreaterThan(1);
   });
 

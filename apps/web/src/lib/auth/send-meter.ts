@@ -40,9 +40,13 @@ import { fetchAuthMutation } from "./auth-server";
 
 export interface TestSendReservation {
   isAllowed: boolean;
-  /** Empty when allowed; otherwise the exact words to show the person. */
+  /*
+    Empty when allowed; otherwise the exact words to show the person.
+  */
   message: string;
-  /** When the blocking allowance refills, or null when nothing blocked. */
+  /*
+    When the blocking allowance refills, or null when nothing blocked.
+  */
   retryAtMs: number | null;
 }
 
@@ -63,7 +67,9 @@ const METER_UNAVAILABLE_MESSAGE =
 const FALLBACK_SALT = "flock-send-meter";
 
 function readSalt(): string {
-  /* The auth secret: already required, already high-entropy, already server-only. */
+  /*
+    The auth secret: already required, already high-entropy, already server-only.
+  */
   const secret = process.env.BETTER_AUTH_SECRET;
   return secret !== undefined && secret.length > 0 ? secret : FALLBACK_SALT;
 }
@@ -93,7 +99,9 @@ export function deriveRecipientKey(recipient: string): string {
 
 export async function reserveTestSend(args: {
   request: Request;
-  /** The recipients exactly as the request asked for them (1–5). */
+  /*
+    The recipients exactly as the request asked for them (1–5).
+  */
   to: string[];
 }): Promise<TestSendReservation> {
   /*

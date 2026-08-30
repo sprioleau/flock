@@ -1,10 +1,10 @@
 import { cn } from "@/lib/utils"
 
-/**
- * Keycap chip for shortcut hints (the shadcn Kbd pattern). Carries
- * `data-slot="kbd"` so TooltipContent's built-in kbd styling applies when one
- * sits inside a tooltip; standalone it renders a muted keycap.
- */
+/*
+  Keycap chip for shortcut hints (the shadcn Kbd pattern). Carries
+  `data-slot="kbd"` so TooltipContent's built-in kbd styling applies when one
+  sits inside a tooltip; standalone it renders a muted keycap.
+*/
 function Kbd({ className, ...props }: React.ComponentProps<"kbd">) {
   return (
     <kbd

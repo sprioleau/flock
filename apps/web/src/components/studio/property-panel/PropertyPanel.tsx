@@ -15,11 +15,11 @@ import {
 } from "./block-panels";
 import { DocumentSettingsPanel } from "./DocumentSettingsPanel";
 
-/**
- * Schema-driven property editor body: document settings when nothing is
- * selected, otherwise the editor for the selected block's type. Keyed by
- * block id upstream so field drafts reset when the selection changes.
- */
+/*
+  Schema-driven property editor body: document settings when nothing is
+  selected, otherwise the editor for the selected block's type. Keyed by
+  block id upstream so field drafts reset when the selection changes.
+*/
 
 export function PropertyPanel({ block }: { block: Block | undefined }) {
   if (block === undefined) {

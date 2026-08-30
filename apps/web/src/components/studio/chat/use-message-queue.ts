@@ -41,17 +41,29 @@ export interface QueuedMessage {
 }
 
 export interface UseMessageQueueInput {
-  /** The connected document — every queue mutation applies to THIS doc's queue. */
+  /*
+    The connected document — every queue mutation applies to THIS doc's queue.
+  */
   documentId: string | null;
-  /** Live document-id re-check, read at dispatch time (never render-stale). */
+  /*
+    Live document-id re-check, read at dispatch time (never render-stale).
+  */
   getActiveDocumentId: () => string | null;
-  /** Reactive idle signal: status "ready" and no approval pending. */
+  /*
+    Reactive idle signal: status "ready" and no approval pending.
+  */
   isAgentIdle: boolean;
-  /** True when the last turn errored — the queue holds until the user acts. */
+  /*
+    True when the last turn errored — the queue holds until the user acts.
+  */
   isErrorPaused: boolean;
-  /** Live idle re-check, read at dispatch time (never render-stale). */
+  /*
+    Live idle re-check, read at dispatch time (never render-stale).
+  */
   getIsAgentIdle: () => boolean;
-  /** Sends one message into the thread (also records prompt history). */
+  /*
+    Sends one message into the thread (also records prompt history).
+  */
   sendUserMessage: (text: string) => void;
 }
 
@@ -61,7 +73,9 @@ export interface MessageQueue {
   updateQueuedMessage: (input: { id: string; text: string }) => void;
   removeQueuedMessage: (id: string) => void;
   clearQueue: () => void;
-  /** Manually dispatch the head — the error-pause "Send next" affordance. */
+  /*
+    Manually dispatch the head — the error-pause "Send next" affordance.
+  */
   sendNextQueuedMessage: () => void;
 }
 
@@ -74,10 +88,12 @@ export function useMessageQueue({
   sendUserMessage,
 }: UseMessageQueueInput): MessageQueue {
   const [queuedMessages, setQueuedMessagesState] = useState<QueuedMessage[]>([]);
-  // Synchronously-updated mirror of EVERY document's queue: the deferred
-  // dispatch below must see edits and deletions even when its timeout fires
-  // before React re-renders, and a draft switch must never lose the outgoing
-  // document's queued items.
+  /*
+    Synchronously-updated mirror of EVERY document's queue: the deferred
+    dispatch below must see edits and deletions even when its timeout fires
+    before React re-renders, and a draft switch must never lose the outgoing
+    document's queued items.
+  */
   const queuesByDocumentIdRef = useRef(new Map<string | null, QueuedMessage[]>());
 
   const getQueueForThisDocument = (): QueuedMessage[] =>
@@ -88,17 +104,21 @@ export function useMessageQueue({
     setQueuedMessagesState(nextQueue);
   };
 
-  // Draft switch: swap the visible queue to the incoming document's. The
-  // outgoing document's items stay in the map and resume when it reactivates.
+  /*
+    Draft switch: swap the visible queue to the incoming document's. The
+    outgoing document's items stay in the map and resume when it reactivates.
+  */
   useEffect(() => {
     setQueuedMessagesState(queuesByDocumentIdRef.current.get(documentId) ?? []);
   }, [documentId]);
 
   const dispatchHead = (): void => {
     if (getActiveDocumentId() !== documentId) {
-      // A draft switch raced this dispatch — the queue belongs to a document
-      // that is no longer connected, and sending now would apply the message
-      // to the WRONG draft (the transport reads the store at send time).
+      /*
+        A draft switch raced this dispatch — the queue belongs to a document
+        that is no longer connected, and sending now would apply the message
+        to the WRONG draft (the transport reads the store at send time).
+      */
       return;
     }
     const [head, ...rest] = getQueueForThisDocument();
@@ -119,9 +139,11 @@ export function useMessageQueue({
       }
     }, 0);
     return () => clearTimeout(timeoutId);
-    // getIsAgentIdle/dispatchHead are stable-by-construction closures over
-    // refs/the Chat instance; queuedMessages keys rescheduling after edits,
-    // documentId retargets the dispatch after a draft switch.
+    /*
+      getIsAgentIdle/dispatchHead are stable-by-construction closures over
+      refs/the Chat instance; queuedMessages keys rescheduling after edits,
+      documentId retargets the dispatch after a draft switch.
+    */
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isAgentIdle, isErrorPaused, queuedMessages, documentId]);
 

@@ -3,38 +3,42 @@
 import { useEffect, useRef, useSyncExternalStore } from "react";
 import type { UiPanel } from "@flock/email-sdk";
 
-/**
- * ui-surfaces — the named-intent seam between "something asked" and "a surface
- * answered".
- *
- * THE RULE THIS FILE EXISTS TO ENFORCE (stated in full in lib/tour/tour-intents.ts):
- * a caller NAMES AN INTENT THE APP ALREADY SUPPORTS, never a DOM interaction.
- * No `document.querySelector(...).click()` anywhere downstream of here. A
- * synthesized click needs a selector that can go stale, races the target's
- * mount, and diverges from what a real interaction does the first time either
- * end changes.
- *
- * The mechanism is a tiny module store (the panel-preferences/app-settings
- * idiom: useSyncExternalStore over module state) holding the LATEST request on
- * a channel. Each host keeps its own local state and subscribes; when a request
- * names it, it runs its own mechanism. No component refs, no prop drilling, and
- * human-owned state is untouched.
- *
- * Requests are monotonic, so the same name can be requested repeatedly and
- * still fire; and a host mounted AFTER a request was issued ignores it —
- * requests belong to the moment they were issued, matching the
- * dropped-view-command rule in use-flock-chat.
- *
- * TWO CHANNELS, DELIBERATELY SEPARATE (see the attention channel below for the
- * why): "open this surface" and "you are already looking at this surface —
- * here" are different intents with different vocabularies, and only the first
- * one is a published agent capability.
- */
+/*
+  ui-surfaces — the named-intent seam between "something asked" and "a surface
+  answered".
 
-/** One request on a channel: which host it names, and when it was issued. */
+  THE RULE THIS FILE EXISTS TO ENFORCE (stated in full in lib/tour/tour-intents.ts):
+  a caller NAMES AN INTENT THE APP ALREADY SUPPORTS, never a DOM interaction.
+  No `document.querySelector(...).click()` anywhere downstream of here. A
+  synthesized click needs a selector that can go stale, races the target's
+  mount, and diverges from what a real interaction does the first time either
+  end changes.
+
+  The mechanism is a tiny module store (the panel-preferences/app-settings
+  idiom: useSyncExternalStore over module state) holding the LATEST request on
+  a channel. Each host keeps its own local state and subscribes; when a request
+  names it, it runs its own mechanism. No component refs, no prop drilling, and
+  human-owned state is untouched.
+
+  Requests are monotonic, so the same name can be requested repeatedly and
+  still fire; and a host mounted AFTER a request was issued ignores it —
+  requests belong to the moment they were issued, matching the
+  dropped-view-command rule in use-flock-chat.
+
+  TWO CHANNELS, DELIBERATELY SEPARATE (see the attention channel below for the
+  why): "open this surface" and "you are already looking at this surface —
+  here" are different intents with different vocabularies, and only the first
+  one is a published agent capability.
+*/
+
+/*
+  One request on a channel: which host it names, and when it was issued.
+*/
 export interface UiIntentRequest<TName extends string> {
   name: TName;
-  /** Monotonic per-request id — a repeat request of the same name still fires. */
+  /*
+    Monotonic per-request id — a repeat request of the same name still fires.
+  */
   requestId: number;
 }
 
@@ -74,20 +78,22 @@ export function createUiIntentChannel<TName extends string>(): UiIntentChannel<T
     getSnapshot(): UiIntentRequest<TName> | null {
       return latestRequest;
     },
-    /* Nothing has been requested during SSR by definition, and returning the
-       live value here would be a hydration mismatch waiting to happen. */
+    /*
+      Nothing has been requested during SSR by definition, and returning the
+      live value here would be a hydration mismatch waiting to happen.
+    */
     getServerSnapshot(): UiIntentRequest<TName> | null {
       return null;
     },
   };
 }
 
-/**
- * The whole of a subscriber's decision, as a pure function: is this request
- * mine, and is it newer than the last one I ran? Both halves are load-bearing —
- * dropping the name check runs every host on every request, and dropping the id
- * check re-runs the same request on every unrelated re-render.
- */
+/*
+  The whole of a subscriber's decision, as a pure function: is this request
+  mine, and is it newer than the last one I ran? Both halves are load-bearing —
+  dropping the name check runs every host on every request, and dropping the id
+  check re-runs the same request on every unrelated re-render.
+*/
 export function getShouldHandleUiIntent<TName extends string>({
   request,
   name,
@@ -125,7 +131,9 @@ function useUiIntentRequest<TName extends string>({
     handlerRef.current = onRequested;
   });
 
-  /* Requests issued before this host mounted are stale — never replay them. */
+  /*
+    Requests issued before this host mounted are stale — never replay them.
+  */
   const lastHandledRequestIdRef = useRef(channel.getSnapshot()?.requestId ?? 0);
 
   useEffect(() => {
@@ -155,15 +163,17 @@ function useUiIntentRequest<TName extends string>({
 */
 const openChannel = createUiIntentChannel<UiPanel>();
 
-/** Ask the surface registered under `panel` to open itself. */
+/*
+  Ask the surface registered under `panel` to open itself.
+*/
 export function requestUiSurfaceOpen(panel: UiPanel): void {
   openChannel.request(panel);
 }
 
-/**
- * Subscribe one surface host to its open requests: `onOpenRequested` runs once
- * per requestUiSurfaceOpen call naming `panel` (issued after mount).
- */
+/*
+  Subscribe one surface host to its open requests: `onOpenRequested` runs once
+  per requestUiSurfaceOpen call naming `panel` (issued after mount).
+*/
 export function useUiSurfaceOpenRequest(panel: UiPanel, onOpenRequested: () => void): void {
   useUiIntentRequest({ channel: openChannel, name: panel, onRequested: onOpenRequested });
 }
@@ -195,15 +205,17 @@ export type UiAttentionRegion = "suggestions";
 
 const attentionChannel = createUiIntentChannel<UiAttentionRegion>();
 
-/** Ask the region registered under `region` to reveal and announce itself. */
+/*
+  Ask the region registered under `region` to reveal and announce itself.
+*/
 export function requestUiSurfaceAttention(region: UiAttentionRegion): void {
   attentionChannel.request(region);
 }
 
-/**
- * Subscribe one region to its attention requests: `onAttentionRequested` runs
- * once per requestUiSurfaceAttention call naming `region` (issued after mount).
- */
+/*
+  Subscribe one region to its attention requests: `onAttentionRequested` runs
+  once per requestUiSurfaceAttention call naming `region` (issued after mount).
+*/
 export function useUiSurfaceAttentionRequest(
   region: UiAttentionRegion,
   onAttentionRequested: () => void,

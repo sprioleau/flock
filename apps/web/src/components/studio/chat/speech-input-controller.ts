@@ -1,27 +1,29 @@
-/**
- * The framework-free state machine behind the composer mic buttons (voice
- * input). Wraps the browser's Web Speech API `SpeechRecognition` (Chrome
- * ships it as `webkitSpeechRecognition`) behind a small controller so the
- * React hook stays a thin adapter and THIS logic is unit-testable in the
- * node-env vitest setup with a mocked recognition object.
- *
- * Dictation model (per the MDN SpeechRecognition reference):
- * - `continuous = false` — one utterance per session; the service stops on
- *   its own after silence, which gives us "stop on silence" for free.
- * - `interimResults = true` — not-yet-final hypotheses stream into the input
- *   as the user speaks (appended after the text that was already there).
- * - Nothing auto-sends: the controller only produces TEXT via
- *   `onTranscriptChange`; the user reviews and sends.
- *
- * Transcript composition: `start(baseText)` snapshots the input's current
- * text; every recognition result re-renders `base + finals + interim` from
- * scratch (results are re-read whole each event, the robust pattern for this
- * API). When the session ends, any dangling interim text is COMMITTED —
- * words the user watched appear must never vanish because the recognizer
- * quit before finalizing them.
- */
+/*
+  The framework-free state machine behind the composer mic buttons (voice
+  input). Wraps the browser's Web Speech API `SpeechRecognition` (Chrome
+  ships it as `webkitSpeechRecognition`) behind a small controller so the
+  React hook stays a thin adapter and THIS logic is unit-testable in the
+  node-env vitest setup with a mocked recognition object.
 
-/** The subset of SpeechRecognition this controller touches (mockable). */
+  Dictation model (per the MDN SpeechRecognition reference):
+  - `continuous = false` — one utterance per session; the service stops on
+    its own after silence, which gives us "stop on silence" for free.
+  - `interimResults = true` — not-yet-final hypotheses stream into the input
+    as the user speaks (appended after the text that was already there).
+  - Nothing auto-sends: the controller only produces TEXT via
+    `onTranscriptChange`; the user reviews and sends.
+
+  Transcript composition: `start(baseText)` snapshots the input's current
+  text; every recognition result re-renders `base + finals + interim` from
+  scratch (results are re-read whole each event, the robust pattern for this
+  API). When the session ends, any dangling interim text is COMMITTED —
+  words the user watched appear must never vanish because the recognizer
+  quit before finalizing them.
+*/
+
+/*
+  The subset of SpeechRecognition this controller touches (mockable).
+*/
 export interface SpeechRecognitionLike {
   lang: string;
   continuous: boolean;
@@ -44,12 +46,12 @@ export interface SpeechRecognitionErrorEventLike {
   error: string;
 }
 
-/**
- * Resolves the browser's SpeechRecognition constructor: the standard name
- * first, then Chrome/Safari's `webkit` prefix. Null when the browser (or a
- * non-browser environment like SSR) does not support speech recognition —
- * callers hide the mic entirely in that case.
- */
+/*
+  Resolves the browser's SpeechRecognition constructor: the standard name
+  first, then Chrome/Safari's `webkit` prefix. Null when the browser (or a
+  non-browser environment like SSR) does not support speech recognition —
+  callers hide the mic entirely in that case.
+*/
 export function getSpeechRecognitionConstructor(): (new () => SpeechRecognitionLike) | null {
   if (typeof window === "undefined") {
     return null;
@@ -61,11 +63,11 @@ export function getSpeechRecognitionConstructor(): (new () => SpeechRecognitionL
   return speechWindow.SpeechRecognition ?? speechWindow.webkitSpeechRecognition ?? null;
 }
 
-/**
- * User-facing copy for SpeechRecognitionErrorEvent codes (the raw codes are
- * developer-facing strings like "not-allowed"). "aborted" maps to null — the
- * user cancelled on purpose, so there is nothing to report.
- */
+/*
+  User-facing copy for SpeechRecognitionErrorEvent codes (the raw codes are
+  developer-facing strings like "not-allowed"). "aborted" maps to null — the
+  user cancelled on purpose, so there is nothing to report.
+*/
 export function getSpeechErrorMessage(errorCode: string): string | null {
   switch (errorCode) {
     case "aborted":
@@ -84,7 +86,9 @@ export function getSpeechErrorMessage(errorCode: string): string | null {
   }
 }
 
-/** Joins dictated text onto existing input text with a single space seam. */
+/*
+  Joins dictated text onto existing input text with a single space seam.
+*/
 function appendTranscript({ baseText, transcript }: { baseText: string; transcript: string }): string {
   const trimmedTranscript = transcript.trim();
   if (trimmedTranscript.length === 0) {
@@ -98,16 +102,22 @@ function appendTranscript({ baseText, transcript }: { baseText: string; transcri
 }
 
 export interface SpeechInputController {
-  /** True when a recognition session is active (listening). */
+  /*
+    True when a recognition session is active (listening).
+  */
   getIsListening: () => boolean;
-  /**
-   * Begins a dictation session appending onto `baseText` (the input's
-   * current text). No-op while already listening or when unsupported.
-   */
+  /*
+    Begins a dictation session appending onto `baseText` (the input's
+    current text). No-op while already listening or when unsupported.
+  */
   start: (baseText: string) => void;
-  /** Ends the session, keeping everything captured so far (incl. interim). */
+  /*
+    Ends the session, keeping everything captured so far (incl. interim).
+  */
   stop: () => void;
-  /** Ends the session and discards it silently (used on unmount). */
+  /*
+    Ends the session and discards it silently (used on unmount).
+  */
   abort: () => void;
 }
 
@@ -117,12 +127,18 @@ export function createSpeechInputController({
   onListeningChange,
   onError,
 }: {
-  /** Factory for a fresh recognition object; null when unsupported. */
+  /*
+    Factory for a fresh recognition object; null when unsupported.
+  */
   createRecognition: () => SpeechRecognitionLike | null;
-  /** Receives the FULL input text (base + dictation) on every update. */
+  /*
+    Receives the FULL input text (base + dictation) on every update.
+  */
   onTranscriptChange: (text: string) => void;
   onListeningChange: (isListening: boolean) => void;
-  /** Receives user-facing copy (never raw error codes). */
+  /*
+    Receives user-facing copy (never raw error codes).
+  */
   onError: (message: string) => void;
 }): SpeechInputController {
   let activeRecognition: SpeechRecognitionLike | null = null;
@@ -153,12 +169,16 @@ export function createSpeechInputController({
       recognition.continuous = false;
       recognition.interimResults = true;
       recognition.maxAlternatives = 1;
-      // Recognize in the UI language the user is already working in.
+      /*
+        Recognize in the UI language the user is already working in.
+      */
       recognition.lang = typeof navigator === "undefined" ? "en-US" : navigator.language;
 
       recognition.onresult = (event) => {
-        // Re-read the whole result list each event: finals accumulate in
-        // order, interims are the still-changing tail.
+        /*
+          Re-read the whole result list each event: finals accumulate in
+          order, interims are the still-changing tail.
+        */
         let finalTranscript = "";
         let interimTranscript = "";
         for (let resultIndex = 0; resultIndex < event.results.length; resultIndex += 1) {
@@ -183,11 +203,15 @@ export function createSpeechInputController({
         if (message !== null) {
           onError(message);
         }
-        // onend follows onerror in the API; endSession there handles state.
+        /*
+          onend follows onerror in the API; endSession there handles state.
+        */
       };
 
       recognition.onend = () => {
-        // Commit any dangling interim text — the user watched it appear.
+        /*
+          Commit any dangling interim text — the user watched it appear.
+        */
         if (hasUncommittedInterim) {
           hasUncommittedInterim = false;
           onTranscriptChange(latestCombinedText);
@@ -201,8 +225,10 @@ export function createSpeechInputController({
     },
 
     stop: (): void => {
-      // stop() (not abort) so the service finalizes what it captured; the
-      // onend handler then commits and flips the listening state.
+      /*
+        stop() (not abort) so the service finalizes what it captured; the
+        onend handler then commits and flips the listening state.
+      */
       activeRecognition?.stop();
     },
 
@@ -211,8 +237,10 @@ export function createSpeechInputController({
         return;
       }
       const recognition = activeRecognition;
-      // Drop handlers first: an aborted session must not mutate state that
-      // belongs to a component that is unmounting.
+      /*
+        Drop handlers first: an aborted session must not mutate state that
+        belongs to a component that is unmounting.
+      */
       recognition.onresult = null;
       recognition.onerror = null;
       recognition.onend = null;

@@ -13,20 +13,20 @@ import { useCommentsModeStore } from "./comments-mode-store";
 import { CommentThreadView } from "./CommentThreadView";
 import { useCommentFixDispatch } from "./use-comment-fix-dispatch";
 
-/**
- * The comment PINS layer: every OPEN comment on this document as a pin on
- * the canvas, resolved against the LOCAL layout through the same
- * anchor-resolution as remote cursors (block-anchored pins ride their block;
- * draft-level pins hold canvas fractions). Pins whose anchor block is gone
- * simply don't resolve and stay hidden here — the thread survives in the
- * review panel with its frozen context (orphaned-but-readable).
- *
- * Shared rows: the pins feed is a reactive Convex query, so pins placed in
- * any tab/by any collaborator appear everywhere. Clicking a pin opens the
- * thread popover (respond / fix / resolve / dismiss). The layer itself is
- * pointer-events-none; only pins are interactive — and they stay clickable
- * WHILE comments mode is armed (the layer sits above the capture overlay).
- */
+/*
+  The comment PINS layer: every OPEN comment on this document as a pin on
+  the canvas, resolved against the LOCAL layout through the same
+  anchor-resolution as remote cursors (block-anchored pins ride their block;
+  draft-level pins hold canvas fractions). Pins whose anchor block is gone
+  simply don't resolve and stay hidden here — the thread survives in the
+  review panel with its frozen context (orphaned-but-readable).
+
+  Shared rows: the pins feed is a reactive Convex query, so pins placed in
+  any tab/by any collaborator appear everywhere. Clicking a pin opens the
+  thread popover (respond / fix / resolve / dismiss). The layer itself is
+  pointer-events-none; only pins are interactive — and they stay clickable
+  WHILE comments mode is armed (the layer sits above the capture overlay).
+*/
 export function CommentPinsOverlay() {
   const documentId = useEditorStore((state) => state.documentId);
   const activeDoc = useEditorStore((state) => state.doc);
@@ -44,8 +44,10 @@ export function CommentPinsOverlay() {
   const openThreadCommentId = useCommentsModeStore((state) => state.openThreadCommentId);
   const setOpenThreadCommentId = useCommentsModeStore((state) => state.setOpenThreadCommentId);
 
-  // Re-anchor pins on local layout shifts (viewport toggle, reflow) — the
-  // canvas root resizes with its content, so one ResizeObserver covers them.
+  /*
+    Re-anchor pins on local layout shifts (viewport toggle, reflow) — the
+    canvas root resizes with its content, so one ResizeObserver covers them.
+  */
   useEffect(() => {
     const canvasRoot = containerRef.current?.parentElement ?? null;
     if (canvasRoot === null) {
@@ -56,9 +58,11 @@ export function CommentPinsOverlay() {
     return () => observer.disconnect();
   }, []);
 
-  // Resolve every pin's anchor against the local layout. `activeDoc` is a
-  // dependency on purpose: block edits can move anchors without resizing the
-  // canvas root (e.g. equal-height swaps).
+  /*
+    Resolve every pin's anchor against the local layout. `activeDoc` is a
+    dependency on purpose: block edits can move anchors without resizing the
+    canvas root (e.g. equal-height swaps).
+  */
   useLayoutEffect(() => {
     const overlayElement = containerRef.current;
     if (overlayElement === null || comments === undefined) {
@@ -95,7 +99,7 @@ export function CommentPinsOverlay() {
       {comments.map((comment) => {
         const position = positionsByCommentId.get(comment.commentId);
         if (position === undefined) {
-          return null; // unresolvable anchor (block gone locally) — review panel only
+          return null; /* unresolvable anchor (block gone locally) — review panel only */
         }
         return (
           <CommentPin
@@ -113,7 +117,9 @@ export function CommentPinsOverlay() {
   );
 }
 
-/** One pin + its thread popover. */
+/*
+  One pin + its thread popover.
+*/
 function CommentPin({
   comment,
   position,
@@ -154,8 +160,10 @@ function CommentPin({
       <PopoverContent className="w-80" data-testid="comment-thread-popover">
         <CommentThreadView
           comment={comment}
-          // A rendered pin's anchor resolved against the live layout, so the
-          // block exists here by construction.
+          /*
+            A rendered pin's anchor resolved against the live layout, so the
+            block exists here by construction.
+          */
           isOrphaned={false}
           isDispatchEnabled
           onFix={() => {

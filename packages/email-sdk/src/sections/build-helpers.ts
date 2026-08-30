@@ -27,31 +27,35 @@ import type { ColumnSpec } from "./build-columns";
 import { buildColumns } from "./build-columns";
 import type { SectionBuildResult } from "./types";
 
-/**
- * Shared building blocks for the section templates: fresh-id allocation,
- * rich-text node factories, declarative leaf specs, and a small composer that
- * assembles one section subtree in `addSection` payload shape.
- *
- * Everything here is pure. Styling discipline: leaf specs expose ONLY
- * structural layout knobs (alignment, image display width) — no colors, no
- * fonts, no padding — so every emitted block inherits the document's globals
- * and stays theme-native.
- */
+/*
+  Shared building blocks for the section templates: fresh-id allocation,
+  rich-text node factories, declarative leaf specs, and a small composer that
+  assembles one section subtree in `addSection` payload shape.
 
-// ---------------------------------------------------------------------------
-// Id allocation
-// ---------------------------------------------------------------------------
+  Everything here is pure. Styling discipline: leaf specs expose ONLY
+  structural layout knobs (alignment, image display width) — no colors, no
+  fonts, no padding — so every emitted block inherits the document's globals
+  and stays theme-native.
+*/
 
-/** Allocate a fresh block id of the given (non-root) type. */
+/*
+  ---------------------------------------------------------------------------
+  Id allocation
+  ---------------------------------------------------------------------------
+*/
+
+/*
+  Allocate a fresh block id of the given (non-root) type.
+*/
 export type AllocateBlockId = (type: Exclude<BlockType, "root">) => string;
 
 const MAX_ID_ATTEMPTS = 1000;
 
-/**
- * An id allocator that guarantees uniqueness WITHIN one build (two columns of
- * the same type must never collide). Uniqueness against the target document is
- * the resolver's job (it re-builds on the rare doc collision).
- */
+/*
+  An id allocator that guarantees uniqueness WITHIN one build (two columns of
+  the same type must never collide). Uniqueness against the target document is
+  the resolver's job (it re-builds on the rare doc collision).
+*/
 export function createIdAllocator(random: RandomFn = Math.random): AllocateBlockId {
   const usedIds = new Set<string>();
   return (type) => {
@@ -68,18 +72,24 @@ export function createIdAllocator(random: RandomFn = Math.random): AllocateBlock
   };
 }
 
-// ---------------------------------------------------------------------------
-// Rich-text node factories
-// ---------------------------------------------------------------------------
+/*
+  ---------------------------------------------------------------------------
+  Rich-text node factories
+  ---------------------------------------------------------------------------
+*/
 
-/** A text run with optional marks — the atom of every text doc we emit. */
+/*
+  A text run with optional marks — the atom of every text doc we emit.
+*/
 export function textRun(text: string, marks?: TextMark[]): TextNode {
   return { type: "text", text, ...(marks !== undefined && marks.length > 0 ? { marks } : {}) };
 }
 
 export interface HeadingNodeInput {
   level: 1 | 2 | 3;
-  /** A plain string (one unmarked run) or explicit inline nodes. */
+  /*
+    A plain string (one unmarked run) or explicit inline nodes.
+  */
   content: string | InlineNode[];
 }
 
@@ -102,20 +112,22 @@ export function textDocOf(nodes: TextBlockNode[]): TextDoc {
   return { type: "doc", content: nodes };
 }
 
-// ---------------------------------------------------------------------------
-// Placeholder imagery
-// ---------------------------------------------------------------------------
+/*
+  ---------------------------------------------------------------------------
+  Placeholder imagery
+  ---------------------------------------------------------------------------
+*/
 
 export interface PlaceholderImageInput {
   width: number;
   height: number;
 }
 
-/**
- * Every catalog image is a placehold.co PNG with meaningful dimensions — a
- * stable absolute https URL (email clients cannot load relative/data URLs).
- * The meaning lives in the alt text, which always comes from params.
- */
+/*
+  Every catalog image is a placehold.co PNG with meaningful dimensions — a
+  stable absolute https URL (email clients cannot load relative/data URLs).
+  The meaning lives in the alt text, which always comes from params.
+*/
 export function placeholderImageUrl({ width, height }: PlaceholderImageInput): string {
   return `https://placehold.co/${width}x${height}.png`;
 }
@@ -140,7 +152,9 @@ export const imageSrcParamSchema = z
   );
 
 export interface ResolveImageSrcInput extends PlaceholderImageInput {
-  /** The caller-supplied source, when there is one. */
+  /*
+    The caller-supplied source, when there is one.
+  */
   src?: string;
 }
 
@@ -153,14 +167,16 @@ export function resolveImageSrc({ src, width, height }: ResolveImageSrcInput): s
   return src ?? placeholderImageUrl({ width, height });
 }
 
-// ---------------------------------------------------------------------------
-// Declarative leaf specs
-// ---------------------------------------------------------------------------
+/*
+  ---------------------------------------------------------------------------
+  Declarative leaf specs
+  ---------------------------------------------------------------------------
+*/
 
-/**
- * A leaf block, declaratively — id/parentId are the composer's business.
- * Only structural knobs are expressible; theme-owned styling is not.
- */
+/*
+  A leaf block, declaratively — id/parentId are the composer's business.
+  Only structural knobs are expressible; theme-owned styling is not.
+*/
 export type LeafSpec =
   | { kind: "text"; text: TextDoc; textAlign?: TextAlign }
   | { kind: "button"; label: string; href: string; align?: TextAlign }
@@ -178,7 +194,9 @@ export type LeafSpec =
       text: string;
       href: string;
       align?: TextAlign;
-      /** Font size in px — structural small print (12 for footer meta), like textStyle fontSize marks. */
+      /*
+        Font size in px — structural small print (12 for footer meta), like textStyle fontSize marks.
+      */
       fontSize?: number;
     }
   | { kind: "code"; code: string; language: CodeBlockLanguage }
@@ -186,12 +204,16 @@ export type LeafSpec =
 
 export interface BuildLeafBlockInput {
   spec: LeafSpec;
-  /** Id of the section or column this leaf belongs to. */
+  /*
+    Id of the section or column this leaf belongs to.
+  */
   parentId: string;
   allocateId: AllocateBlockId;
 }
 
-/** Materialize one leaf spec into a schema-shaped leaf block. */
+/*
+  Materialize one leaf spec into a schema-shaped leaf block.
+*/
 export function buildLeafBlock({ spec, parentId, allocateId }: BuildLeafBlockInput): LeafBlock {
   switch (spec.kind) {
     case "text": {
@@ -288,22 +310,32 @@ export function buildLeafBlock({ spec, parentId, allocateId }: BuildLeafBlockInp
   }
 }
 
-// ---------------------------------------------------------------------------
-// The section composer
-// ---------------------------------------------------------------------------
+/*
+  ---------------------------------------------------------------------------
+  The section composer
+  ---------------------------------------------------------------------------
+*/
 
-/**
- * Assembles one section subtree top to bottom: direct leaves and/or column
- * rows, ids and parentIds wired, in the exact `addSection` payload shape.
- */
+/*
+  Assembles one section subtree top to bottom: direct leaves and/or column
+  rows, ids and parentIds wired, in the exact `addSection` payload shape.
+*/
 export interface SectionComposer {
-  /** The new section's id (useful for cross-references while composing). */
+  /*
+    The new section's id (useful for cross-references while composing).
+  */
   sectionId: string;
-  /** Append one leaf directly under the section. */
+  /*
+    Append one leaf directly under the section.
+  */
   addLeaf(spec: LeafSpec): void;
-  /** Append one row of side-by-side columns under the section. */
+  /*
+    Append one row of side-by-side columns under the section.
+  */
   addColumns(columns: ColumnSpec[]): void;
-  /** Finish composing: the exact `{ section, children }` addSection payload. */
+  /*
+    Finish composing: the exact `{ section, children }` addSection payload.
+  */
   finish(): SectionBuildResult;
 }
 

@@ -2,30 +2,32 @@ import { api } from "@convex/_generated/api";
 import type { Doc } from "@convex/_generated/dataModel";
 import { fetchAuthQuery } from "@/lib/auth/auth-server";
 
-/**
- * Saved-sections context for the chat agent (owner V2 item 3): the user's
- * own saved sections join the model's selection space alongside the built-in
- * section catalog — "generate an email" pulls from BOTH. One compact line
- * per row: the `saved:<rowId>` templateId (scaffoldSection's saved branch),
- * the user's name for it, the LLM-authored useWhen/description when the
- * async enrichment has landed, and the usage stat.
- *
- * Caching contract (same as brand-context.ts): saved sections are user data
- * that changes between requests, so this block rides ONLY the fresh
- * per-request document-context layer — never the static prefix Gemini's
- * implicit caching keys on. The usage-stat wording makes the count a
- * TIEBREAKER only: content fit always dominates.
- *
- * Fails soft: any error (Convex down, no session, no rows) returns null and
- * the turn proceeds with the catalog only.
- */
+/*
+  Saved-sections context for the chat agent (owner V2 item 3): the user's
+  own saved sections join the model's selection space alongside the built-in
+  section catalog — "generate an email" pulls from BOTH. One compact line
+  per row: the `saved:<rowId>` templateId (scaffoldSection's saved branch),
+  the user's name for it, the LLM-authored useWhen/description when the
+  async enrichment has landed, and the usage stat.
+
+  Caching contract (same as brand-context.ts): saved sections are user data
+  that changes between requests, so this block rides ONLY the fresh
+  per-request document-context layer — never the static prefix Gemini's
+  implicit caching keys on. The usage-stat wording makes the count a
+  TIEBREAKER only: content fit always dominates.
+
+  Fails soft: any error (Convex down, no session, no rows) returns null and
+  the turn proceeds with the catalog only.
+*/
 
 type SavedSectionRow = Pick<
   Doc<"savedSections">,
   "_id" | "name" | "blockCount" | "useWhen" | "description" | "useCount"
 >;
 
-/** Format the fresh-context block, or null when the session has no rows. */
+/*
+  Format the fresh-context block, or null when the session has no rows.
+*/
 export function formatSavedSectionsContext(rows: SavedSectionRow[]): string | null {
   if (rows.length === 0) {
     return null;
@@ -44,7 +46,9 @@ export function formatSavedSectionsContext(rows: SavedSectionRow[]): string | nu
   ].join("\n");
 }
 
-/** Load the session's saved sections and build the context block (null = none). */
+/*
+  Load the session's saved sections and build the context block (null = none).
+*/
 export async function buildSavedSectionsContext({
   sessionId,
 }: {
@@ -54,7 +58,9 @@ export async function buildSavedSectionsContext({
     return null;
   }
   try {
-    // Authenticated: savedSections is keyed by resolveOwnerId. See list-assets.ts.
+    /*
+      Authenticated: savedSections is keyed by resolveOwnerId. See list-assets.ts.
+    */
     const rows = await fetchAuthQuery(api.savedSections.listForSession, { sessionId });
     return formatSavedSectionsContext(rows);
   } catch (error) {

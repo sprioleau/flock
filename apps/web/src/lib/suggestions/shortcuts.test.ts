@@ -8,11 +8,11 @@ import {
 } from "./shortcuts";
 import type { Suggestion, SuggestionRung } from "./types";
 
-/**
- * The keyboard path for the suggestion card. The load-bearing case is the
- * confirm-gated rung: ⌘↵ must never dispatch a whole-email re-theme, before
- * OR after the confirm opens.
- */
+/*
+  The keyboard path for the suggestion card. The load-bearing case is the
+  confirm-gated rung: ⌘↵ must never dispatch a whole-email re-theme, before
+  OR after the confirm opens.
+*/
 
 const sectionRung: SuggestionRung = {
   id: "section",
@@ -48,7 +48,9 @@ function makeSuggestion(rungs: SuggestionRung[]): Suggestion {
   };
 }
 
-/** A bare keystroke on the canvas: nothing typed into, nothing claimed. */
+/*
+  A bare keystroke on the canvas: nothing typed into, nothing claimed.
+*/
 function makeKeyEvent(overrides: Partial<SuggestionShortcutKeyEvent>): SuggestionShortcutKeyEvent {
   return {
     key: "a",
@@ -63,16 +65,20 @@ function makeKeyEvent(overrides: Partial<SuggestionShortcutKeyEvent>): Suggestio
   };
 }
 
-/**
- * ⌥A as a Mac actually reports it: the PHYSICAL key is "KeyA" but the
- * composed character is "å". Matching on `key` would silently never fire.
- */
+/*
+  ⌥A as a Mac actually reports it: the PHYSICAL key is "KeyA" but the
+  composed character is "å". Matching on `key` would silently never fire.
+*/
 const applyOnApple = makeKeyEvent({ key: "å", code: "KeyA", altKey: true });
-/** The same physical chord on Windows/Linux, where Alt composes nothing. */
+/*
+  The same physical chord on Windows/Linux, where Alt composes nothing.
+*/
 const applyOnWindows = makeKeyEvent({ key: "a", code: "KeyA", altKey: true });
 const escape = makeKeyEvent({ key: "Escape", code: "Escape" });
 
-/** The full ladder, as the rules registry composes it for a button recolor. */
+/*
+  The full ladder, as the rules registry composes it for a button recolor.
+*/
 const fullLadder = makeSuggestion([sectionRung, emailRung, rethemeRung]);
 
 function resolve(args: {
@@ -210,11 +216,11 @@ describe("resolveSuggestionShortcut — staying silent", () => {
 });
 
 describe("getIsSuggestionReachable", () => {
-  /**
-   * The owner's second complaint: the suggestion existed, was correct, and ⌥A
-   * did nothing because the chat panel happened to be collapsed. Reachability
-   * is about whether the user can SEE the offer anywhere, not about one panel.
-   */
+  /*
+    The owner's second complaint: the suggestion existed, was correct, and ⌥A
+    did nothing because the chat panel happened to be collapsed. Reachability
+    is about whether the user can SEE the offer anywhere, not about one panel.
+  */
   it("is reachable from the chat card while the panel is expanded", () => {
     expect(
       getIsSuggestionReachable({ isChatPanelExpanded: true, isCanvasPillVisible: false }),

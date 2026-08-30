@@ -3,40 +3,48 @@ import { generateText, type ToolSet } from "ai";
 import { createTraceId, logRecord } from "@/lib/observability/log";
 import { modelTelemetryFor } from "@/lib/observability/model-telemetry";
 
-/**
- * The Phase 7.4(b) public-web search fan-out.
- *
- * What it returns is deliberately NOT prose: a list of CLAIMS, each already
- * bound to the page it came from. The person pipeline turns those straight
- * into `facts` with `sourceUrl`s, which is what makes the "never paraphrase
- * into fabrication" rule enforceable downstream — the model is handed
- * attributed statements, not a research summary to embroider.
- *
- * Provider: Gemini with Google Search grounding. The grounding metadata gives
- * exactly the shape we want — `groundingChunks` (source URI + title) and
- * `groundingSupports` (the sentence, plus which chunks support it). We keep
- * only supported sentences; unsupported model prose is discarded on purpose.
- *
- * QUOTA DISCIPLINE (owner law): searching costs a live model call, so it is
- * OFF unless explicitly switched on with FLOCK_ENABLE_WEB_SEARCH=1 and a real
- * key is present. Otherwise this returns `unavailable`, and the person
- * pipeline composes from the profile page alone and SAYS so. It never
- * substitutes invented results — a mock that fabricated facts about a real
- * person would violate the very rule this feature exists to honor.
- */
+/*
+  The Phase 7.4(b) public-web search fan-out.
 
-/** Model used for grounded search — the cheap flash tier, its own quota bucket. */
+  What it returns is deliberately NOT prose: a list of CLAIMS, each already
+  bound to the page it came from. The person pipeline turns those straight
+  into `facts` with `sourceUrl`s, which is what makes the "never paraphrase
+  into fabrication" rule enforceable downstream — the model is handed
+  attributed statements, not a research summary to embroider.
+
+  Provider: Gemini with Google Search grounding. The grounding metadata gives
+  exactly the shape we want — `groundingChunks` (source URI + title) and
+  `groundingSupports` (the sentence, plus which chunks support it). We keep
+  only supported sentences; unsupported model prose is discarded on purpose.
+
+  QUOTA DISCIPLINE (owner law): searching costs a live model call, so it is
+  OFF unless explicitly switched on with FLOCK_ENABLE_WEB_SEARCH=1 and a real
+  key is present. Otherwise this returns `unavailable`, and the person
+  pipeline composes from the profile page alone and SAYS so. It never
+  substitutes invented results — a mock that fabricated facts about a real
+  person would violate the very rule this feature exists to honor.
+*/
+
+/*
+  Model used for grounded search — the cheap flash tier, its own quota bucket.
+*/
 export const SEARCH_GROUNDING_MODEL_ID = "gemini-3.5-flash-lite";
 
-/** Hard cap on claims returned, so one search can't flood the model loop. */
+/*
+  Hard cap on claims returned, so one search can't flood the model loop.
+*/
 const MAX_CLAIMS = 8;
 
-/** Hard cap on distinct sources returned. */
+/*
+  Hard cap on distinct sources returned.
+*/
 const MAX_SOURCES = 6;
 
 const SEARCH_TIMEOUT_MS = 20_000;
 
-/** One sentence from the search, with the page that supports it. */
+/*
+  One sentence from the search, with the page that supports it.
+*/
 export interface SearchClaim {
   text: string;
   sourceUrl: string;
@@ -54,16 +62,20 @@ export type WebSearchOutcome =
   | { status: "unavailable" };
 
 export interface SearchPublicWebInput {
-  /** What to search for, in plain language. */
+  /*
+    What to search for, in plain language.
+  */
   query: string;
-  /**
-   * True when the caller is running against the deterministic mock tier. Mock
-   * runs NEVER search: no live call, and no invented results either.
-   */
+  /*
+    True when the caller is running against the deterministic mock tier. Mock
+    runs NEVER search: no live call, and no invented results either.
+  */
   isMockRun?: boolean;
 }
 
-/** True when a live, grounded search is both possible and permitted. */
+/*
+  True when a live, grounded search is both possible and permitted.
+*/
 export function isWebSearchEnabled(): boolean {
   return (
     process.env.FLOCK_ENABLE_WEB_SEARCH === "1" &&
@@ -86,7 +98,9 @@ interface GroundingMetadata {
   groundingSupports?: GroundingSupport[] | null;
 }
 
-/** Pull the grounding metadata off a generateText result, or null. */
+/*
+  Pull the grounding metadata off a generateText result, or null.
+*/
 function readGroundingMetadata(providerMetadata: unknown): GroundingMetadata | null {
   if (typeof providerMetadata !== "object" || providerMetadata === null) {
     return null;
@@ -101,7 +115,9 @@ function readGroundingMetadata(providerMetadata: unknown): GroundingMetadata | n
     : null;
 }
 
-/** Turn grounding metadata into attributed claims + the sources behind them. */
+/*
+  Turn grounding metadata into attributed claims + the sources behind them.
+*/
 export function toAttributedClaims(metadata: GroundingMetadata): {
   claims: SearchClaim[];
   sources: SearchSource[];
@@ -115,7 +131,7 @@ export function toAttributedClaims(metadata: GroundingMetadata): {
     const text = (support.segment?.text ?? support.segment_text ?? "").trim();
     const chunkIndices = support.groundingChunkIndices ?? [];
     if (text.length < 20 || chunkIndices.length === 0) {
-      continue; // unsupported or too short to be a usable claim
+      continue; /* unsupported or too short to be a usable claim */
     }
     const firstChunk = chunks[chunkIndices[0]];
     const uri = firstChunk?.web?.uri;
@@ -137,11 +153,11 @@ export function toAttributedClaims(metadata: GroundingMetadata): {
   return { claims, sources: [...sourceByUrl.values()].slice(0, MAX_SOURCES) };
 }
 
-/**
- * Search the public web and return attributed claims. Returns `unavailable`
- * (never a guess) when search is switched off, when this is a mock run, or
- * when the provider call fails.
- */
+/*
+  Search the public web and return attributed claims. Returns `unavailable`
+  (never a guess) when search is switched off, when this is a mock run, or
+  when the provider call fails.
+*/
 export async function searchPublicWeb({
   query,
   isMockRun = false,
@@ -154,9 +170,11 @@ export async function searchPublicWeb({
     const result = await generateText({
       model: google(SEARCH_GROUNDING_MODEL_ID),
       telemetry: modelTelemetryFor({ operation: "ingest.webSearch", traceId, isMock: false }),
-      // The provider-executed search tool: Google runs it, we only read the
-      // grounding metadata it attaches. Widened to ToolSet because a
-      // provider-executed tool has no client-side input schema to infer.
+      /*
+        The provider-executed search tool: Google runs it, we only read the
+        grounding metadata it attaches. Widened to ToolSet because a
+        provider-executed tool has no client-side input schema to infer.
+      */
       tools: { google_search: google.tools.googleSearch({}) } as ToolSet,
       abortSignal: AbortSignal.timeout(SEARCH_TIMEOUT_MS),
       prompt: `Search the public web and state, in short separate sentences, the verifiable public facts about: ${query}. Only state what the sources say. Do not speculate, and do not include personal contact details, home addresses, or anything about their private life.`,
@@ -168,9 +186,11 @@ export async function searchPublicWeb({
     const { claims, sources } = toAttributedClaims(metadata);
     return claims.length === 0 ? { status: "no_results" } : { status: "searched", claims, sources };
   } catch {
-    // Already logged as flock.model.failed (with a classified error code) by
-    // the telemetry integration above. This line records the CONSEQUENCE: the
-    // caller gets "unavailable" and states no facts at all.
+    /*
+      Already logged as flock.model.failed (with a classified error code) by
+      the telemetry integration above. This line records the CONSEQUENCE: the
+      caller gets "unavailable" and states no facts at all.
+    */
     logRecord({ tag: "flock.ingest.webSearchUnavailable", traceId, reason: "call_failed" });
     return { status: "unavailable" };
   }

@@ -1,13 +1,13 @@
-/**
- * The scrape's authored palette (brand-kit-user-control §3): the owner's
- * `--banana` idea end to end — the harvester already captured the declaring
- * CSS custom property, and this is where it finally becomes a NAME the user
- * can see and edit.
- *
- * The two properties that matter: faithfulness (the model names colors, it
- * never introduces one) and termination (there is always a palette and every
- * entry always has a name, however unhelpful the model was).
- */
+/*
+  The scrape's authored palette (brand-kit-user-control §3): the owner's
+  `--banana` idea end to end — the harvester already captured the declaring
+  CSS custom property, and this is where it finally becomes a NAME the user
+  can see and edit.
+
+  The two properties that matter: faithfulness (the model names colors, it
+  never introduces one) and termination (there is always a palette and every
+  entry always has a name, however unhelpful the model was).
+*/
 import { describe, expect, it } from "vitest";
 import { buildBrandColors } from "./build-brand-colors";
 import type { RankedColor } from "./harvest";
@@ -46,7 +46,9 @@ describe("buildBrandColors", () => {
     expect(banana.name).toBe("Banana");
     expect(banana.category).toBe("accent");
     expect(banana.origin).toBe("agent");
-    // Provenance persists — this is the thing the pipeline used to discard.
+    /*
+      Provenance persists — this is the thing the pipeline used to discard.
+    */
     expect(banana.sourceVariableName).toBe("--banana");
     expect(banana.sourceUsageCount).toBe(41);
   });
@@ -54,7 +56,7 @@ describe("buildBrandColors", () => {
   it("DROPS a color the model invented (faithfulness, same rule as the logo)", () => {
     const colors = buildBrandColors({
       modelColors: [
-        { hex: "#ff00ff", name: "Magic", category: "accent" }, // never harvested
+        { hex: "#ff00ff", name: "Magic", category: "accent" }, /* never harvested */
         { hex: "#ffc400", name: "Banana", category: "accent" },
       ],
       rankedColors: HARVESTED,
@@ -72,7 +74,9 @@ describe("buildBrandColors", () => {
     });
     expect(colors.find((entry) => entry.hex === "#ffc400")?.name).toBe("Banana");
     expect(colors.find((entry) => entry.hex === "#0b1120")?.name).toBe("Ink");
-    // A meaningless variable name gets a description of the color instead.
+    /*
+      A meaningless variable name gets a description of the color instead.
+    */
     expect(colors.find((entry) => entry.hex === "#3730a3")?.name).toBe("Blue");
     expect(colors.every((entry) => entry.origin === "scraped")).toBe(true);
   });

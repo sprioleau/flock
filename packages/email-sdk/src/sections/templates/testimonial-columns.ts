@@ -2,11 +2,11 @@ import { z } from "zod";
 import { createSectionComposer, paragraphNode, textDocOf, textRun } from "../build-helpers";
 import { defineSectionTemplate } from "../types";
 
-/**
- * `testimonial-columns` — two or three short customer quotes side by side,
- * each with its attribution. The multi-voice sibling of `testimonial`.
- * Reference: react.email/components testimonial grid patterns.
- */
+/*
+  `testimonial-columns` — two or three short customer quotes side by side,
+  each with its attribution. The multi-voice sibling of `testimonial`.
+  Reference: react.email/components testimonial grid patterns.
+*/
 
 const testimonialItemSchema = z
   .strictObject({
@@ -47,8 +47,10 @@ export const testimonialColumnsParamsSchema = z
 
 export const testimonialColumnsTemplate = defineSectionTemplate({
   id: "testimonial-columns",
-  // Display name deliberately short (owner 2026-07-31): two-line tile labels
-  // broke the gallery grid's height alignment. The id stays testimonial-columns.
+  /*
+    Display name deliberately short (owner 2026-07-31): two-line tile labels
+    broke the gallery grid's height alignment. The id stays testimonial-columns.
+  */
   name: "Testimonials",
   category: "social-proof",
   useWhen: "Stack up social proof with two or three short customer quotes side by side.",

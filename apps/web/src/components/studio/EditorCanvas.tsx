@@ -13,18 +13,18 @@ import { CommentsModeOverlay } from "./comments/CommentsModeOverlay";
 import { PersonaCursorOverlay } from "./presence/PersonaCursorOverlay";
 import { PointerPresenceOverlay } from "./presence/PointerPresenceOverlay";
 
-/**
- * The editing canvas: the store's document inflated and rendered through the
- * SDK's block views (visual parity with the email HTML), wrapped in
- * interactive shells. Rendered in-page — the sandboxed iframe lives in the
- * HTML preview dialog. Clicking empty canvas clears the selection.
- *
- * Layout mirrors the emitted email: the email surface (emailBackgroundColor)
- * spans the full canvas width so each section's outer band renders
- * full-bleed, with only the section's inner Container centered at
- * contentWidth (SectionBlockView). The mobile toggle bounds the whole
- * surface to a 375px frame — outer bands then fill the frame.
- */
+/*
+  The editing canvas: the store's document inflated and rendered through the
+  SDK's block views (visual parity with the email HTML), wrapped in
+  interactive shells. Rendered in-page — the sandboxed iframe lives in the
+  HTML preview dialog. Clicking empty canvas clears the selection.
+
+  Layout mirrors the emitted email: the email surface (emailBackgroundColor)
+  spans the full canvas width so each section's outer band renders
+  full-bleed, with only the section's inner Container centered at
+  contentWidth (SectionBlockView). The mobile toggle bounds the whole
+  surface to a 375px frame — outer bands then fill the frame.
+*/
 export function EditorCanvas() {
   const doc = useEditorStore((state) => state.doc);
   const viewport = useEditorStore((state) => state.viewport);
@@ -49,20 +49,24 @@ export function EditorCanvas() {
     });
   };
 
-  // NOTE: the @dnd-kit context lives up in StudioShell (shared with the
-  // right rail's Blocks palette); this canvas only carries the
-  // data-dnd-canvas-root marker that gates drop resolution to the ACTIVE
-  // frame.
+  /*
+    NOTE: the @dnd-kit context lives up in StudioShell (shared with the
+    right rail's Blocks palette); this canvas only carries the
+    data-dnd-canvas-root marker that gates drop resolution to the ACTIVE
+    frame.
+  */
   return (
     <div
-      // No inner scroller (owner decision): the email content defines the
-      // frame's height, and the frames surface (DraftFramesCanvas) is the
-      // ONE scroll region. Pointer/persona cursor overlays live in content
-      // space inside, so they scroll with the email and clip at that outer
-      // scrollport instead.
-      // Matches the frames surface (DraftFramesCanvas): darker-than-panels
-      // chrome in dark mode; email pixels inside come from document inline
-      // styles and never react to the app theme.
+      /*
+        No inner scroller (owner decision): the email content defines the
+        frame's height, and the frames surface (DraftFramesCanvas) is the
+        ONE scroll region. Pointer/persona cursor overlays live in content
+        space inside, so they scroll with the email and clip at that outer
+        scrollport instead.
+        Matches the frames surface (DraftFramesCanvas): darker-than-panels
+        chrome in dark mode; email pixels inside come from document inline
+        styles and never react to the app theme.
+      */
       className="email-canvas bg-neutral-200/70 dark:bg-black/40"
       onClick={() => selectBlock(null)}
       data-testid="editor-canvas"
@@ -75,9 +79,11 @@ export function EditorCanvas() {
         style={{ backgroundColor: rootStyles.emailBackgroundColor }}
         data-viewport={viewport}
         data-dnd-canvas-root
-        // Which DOCUMENT this canvas renders (multi-frame editing): block ids
-        // repeat across forked sibling drafts, so every DOM lookup for a
-        // block element must be scoped to one document's canvas root.
+        /*
+          Which DOCUMENT this canvas renders (multi-frame editing): block ids
+          repeat across forked sibling drafts, so every DOM lookup for a
+          block element must be scoped to one document's canvas root.
+        */
         data-canvas-document-id={documentId ?? undefined}
       >
         {tree.children.map((child) => (
@@ -97,20 +103,26 @@ export function EditorCanvas() {
             Add section
           </Button>
         </div>
-        {/* Persona cursors (multi-agent v1): simulated advisory-persona
-            mice, choreographed client-side from the reactive findings query
-            + persona presence status. Before the human overlay so human
-            cursors paint on top. */}
+        {/*
+          Persona cursors (multi-agent v1): simulated advisory-persona
+          mice, choreographed client-side from the reactive findings query
+          + persona presence status. Before the human overlay so human
+          cursors paint on top.
+        */}
         <PersonaCursorOverlay />
-        {/* Pointer presence (remote cursors + local capture): inside the
-            canvas root so cursors live in content space — scrolling and
-            scrollport clipping come for free. */}
+        {/*
+          Pointer presence (remote cursors + local capture): inside the
+          canvas root so cursors live in content space — scrolling and
+          scrollport clipping come for free.
+        */}
         <PointerPresenceOverlay />
-        {/* Comments mode: the capture overlay (armed by the header toggle —
-            crosshair, click drops a pin) and the open-comment pins. Same
-            content-space overlay idiom as the cursors above; pins sit ABOVE
-            the capture layer so threads stay clickable while the mode is
-            armed. */}
+        {/*
+          Comments mode: the capture overlay (armed by the header toggle —
+          crosshair, click drops a pin) and the open-comment pins. Same
+          content-space overlay idiom as the cursors above; pins sit ABOVE
+          the capture layer so threads stay clickable while the mode is
+          armed.
+        */}
         <CommentsModeOverlay />
         <CommentPinsOverlay />
       </div>

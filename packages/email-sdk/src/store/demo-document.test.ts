@@ -37,9 +37,11 @@ describe("createDemoDocument", () => {
     expect(pushText).toContain("LAST CHANCE");
     expect(pushText).toContain("RESERVE NOW");
 
-    /* The plant only reads as a plant because the rest of the email does NOT
-       shout — the Tone Police is instructed to judge tone against the email's
-       own dominant voice and to stay quiet when the whole email is brash. */
+    /*
+      The plant only reads as a plant because the rest of the email does NOT
+      shout — the Tone Police is instructed to judge tone against the email's
+      own dominant voice and to stay quiet when the whole email is brash.
+    */
     const opener = JSON.stringify(document.txt_lead?.properties);
     expect(opener).toContain("We set one aside for you.");
     expect(opener).not.toContain("LAST CHANCE");
@@ -59,8 +61,10 @@ describe("createDemoDocument", () => {
 
   it("reads as a real send: a brand logo, an unsubscribe link and a postal address", () => {
     const document = createDemoDocument();
-    /* The brand is read off the FIRST image's alt text (the "<Brand> logo"
-       convention deriveDraftContentClues depends on). */
+    /*
+      The brand is read off the FIRST image's alt text (the "<Brand> logo"
+      convention deriveDraftContentClues depends on).
+    */
     const logo = document.img_logo;
     if (logo?.type !== "image") {
       throw new Error("the demo seed must open on the brand logo");
@@ -70,8 +74,10 @@ describe("createDemoDocument", () => {
     expect(footer).toContain("Unsubscribe");
     expect(footer).toContain("Rockport, ME");
 
-    /* "Acme" was retired repo-wide as a placeholder brand; a demo a stranger
-       is judging the product by must not reintroduce it. */
+    /*
+      "Acme" was retired repo-wide as a placeholder brand; a demo a stranger
+      is judging the product by must not reintroduce it.
+    */
     expect(JSON.stringify(document).toLowerCase()).not.toContain("acme");
   });
 

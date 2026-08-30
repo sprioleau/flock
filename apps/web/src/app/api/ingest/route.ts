@@ -4,30 +4,30 @@ import { ingestPage } from "@/lib/content-ingestion/ingest-page";
 import { getSessionIdFromCookieHeader } from "@/lib/session-cookie";
 import { ingestRequestBodySchema } from "./contract";
 
-/**
- * POST /api/ingest — read one public web page server-side and return what is
- * ACTUALLY on it.
- *
- * One mode, where there were two. The old route branched on a `kind` the
- * caller had to supply, which required the caller to know what kind of page it
- * was pointing at before anyone had fetched it.
- *
- *   { url }  → title, source name, canonical URL, the page's description, its
- *              prose in reading order, the lists it wrote, the structured data
- *              its publisher declared, and its stored lead image.
- *
- * Responses:
- *   200 { isOk: true,  page }
- *   422 { isOk: false, reason, message }   — the page could not be read
- *   400 { isOk: false, message }           — the request itself was bad
- *
- * A 422 is the faithfulness rule in HTTP form: robots.txt, a paywall, a block,
- * or a page with no readable content produces a REFUSAL with a user-facing
- * message, never invented content. Callers relay `message` and stop.
- *
- * Read-only: it never touches a document. The anonymous session cookie is used
- * only to file a rehosted image in that session's Asset Library.
- */
+/*
+  POST /api/ingest — read one public web page server-side and return what is
+  ACTUALLY on it.
+
+  One mode, where there were two. The old route branched on a `kind` the
+  caller had to supply, which required the caller to know what kind of page it
+  was pointing at before anyone had fetched it.
+
+    { url }  → title, source name, canonical URL, the page's description, its
+               prose in reading order, the lists it wrote, the structured data
+               its publisher declared, and its stored lead image.
+
+  Responses:
+    200 { isOk: true,  page }
+    422 { isOk: false, reason, message }   — the page could not be read
+    400 { isOk: false, message }           — the request itself was bad
+
+  A 422 is the faithfulness rule in HTTP form: robots.txt, a paywall, a block,
+  or a page with no readable content produces a REFUSAL with a user-facing
+  message, never invented content. Callers relay `message` and stop.
+
+  Read-only: it never touches a document. The anonymous session cookie is used
+  only to file a rehosted image in that session's Asset Library.
+*/
 
 const MAX_REQUEST_BYTES = 8 * 1024;
 

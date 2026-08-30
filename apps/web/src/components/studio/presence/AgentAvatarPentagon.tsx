@@ -1,22 +1,24 @@
-/**
- * The AGENT avatar shape (owner spec 2026-07-31): non-human collaborators —
- * advisory personas and the chat agent — render as a point-up, slightly
- * rounded PENTAGON in the presence facepile, while humans keep the circle,
- * so concurrent agent vs human collaborators are instantly distinguishable.
- *
- * Drawn as a real SVG (owner: no clip-path hacks): a back pentagon filled
- * with the page background plays the role of the circles' `ring-2
- * ring-background` separator in the overlapping stack, and the front
- * pentagon carries the member's presence color. Corners are rounded with
- * quadratic curves so the shape doesn't read spiky at facepile size (~24px).
- */
+/*
+  The AGENT avatar shape (owner spec 2026-07-31): non-human collaborators —
+  advisory personas and the chat agent — render as a point-up, slightly
+  rounded PENTAGON in the presence facepile, while humans keep the circle,
+  so concurrent agent vs human collaborators are instantly distinguishable.
+
+  Drawn as a real SVG (owner: no clip-path hacks): a back pentagon filled
+  with the page background plays the role of the circles' `ring-2
+  ring-background` separator in the overlapping stack, and the front
+  pentagon carries the member's presence color. Corners are rounded with
+  quadratic curves so the shape doesn't read spiky at facepile size (~24px).
+*/
 
 interface PolygonPoint {
   x: number;
   y: number;
 }
 
-/** `distance` along the segment from `from` toward `toward`. */
+/*
+  `distance` along the segment from `from` toward `toward`.
+*/
 function movePointToward({
   from,
   toward,
@@ -37,11 +39,11 @@ function movePointToward({
 
 const formatCoordinate = (value: number): string => value.toFixed(2);
 
-/**
- * SVG path for a point-up regular pentagon with rounded corners: each vertex
- * is trimmed by `cornerTrim` along both edges and bridged with a quadratic
- * curve through the vertex.
- */
+/*
+  SVG path for a point-up regular pentagon with rounded corners: each vertex
+  is trimmed by `cornerTrim` along both edges and bridged with a quadratic
+  curve through the vertex.
+*/
 export function buildRoundedPentagonPath({
   centerX,
   centerY,
@@ -76,13 +78,13 @@ export function buildRoundedPentagonPath({
 }
 
 /*
- * Geometry, in a 28×28 viewBox rendered at `-inset-0.5` over the 24px avatar
- * box — the extra 2px on every side is where the background-colored ring
- * pentagon lives, exactly like the circles' ring-2 overhang. The center sits
- * a hair below geometric center so the point-up shape looks optically
- * balanced, and the ring radius offsets the front pentagon's EDGES by ~2px
- * (circumradius scaled by (inradius + 2) / inradius).
- */
+  Geometry, in a 28×28 viewBox rendered at `-inset-0.5` over the 24px avatar
+  box — the extra 2px on every side is where the background-colored ring
+  pentagon lives, exactly like the circles' ring-2 overhang. The center sits
+  a hair below geometric center so the point-up shape looks optically
+  balanced, and the ring radius offsets the front pentagon's EDGES by ~2px
+  (circumradius scaled by (inradius + 2) / inradius).
+*/
 const PENTAGON_CENTER_X = 14;
 const PENTAGON_CENTER_Y = 14.6;
 const FRONT_PENTAGON_RADIUS = 12.2;
@@ -106,11 +108,11 @@ const RING_PENTAGON_PATH = buildRoundedPentagonPath({
   cornerTrim: 3.6,
 });
 
-/**
- * The pentagon badge itself — absolutely positioned to overflow its 24px
- * (`size-6`) relative parent by 2px on each side. Render it as the FIRST
- * child so the glyph/status-dot siblings paint on top.
- */
+/*
+  The pentagon badge itself — absolutely positioned to overflow its 24px
+  (`size-6`) relative parent by 2px on each side. Render it as the FIRST
+  child so the glyph/status-dot siblings paint on top.
+*/
 export function AgentAvatarPentagon({ color }: { color: string }) {
   return (
     <svg

@@ -5,22 +5,24 @@ import {
   type RenderResponseBody,
 } from "@/app/api/render/contract";
 
-/**
- * The client half of the email preview dialog, as plain functions.
- *
- * Deliberately React-free: the app's vitest environment is `node`, so keeping
- * the render request, the view definitions and "which text does Copy put on
- * the clipboard" out of the component is what makes them testable at all.
- */
+/*
+  The client half of the email preview dialog, as plain functions.
 
-// ---------------------------------------------------------------------------
-// The three views
-// ---------------------------------------------------------------------------
+  Deliberately React-free: the app's vitest environment is `node`, so keeping
+  the render request, the view definitions and "which text does Copy put on
+  the clipboard" out of the component is what makes them testable at all.
+*/
 
-/**
- * One render, three ways to look at it. Ordered as the tabs read, from the
- * most human view to the most literal one.
- */
+/*
+  ---------------------------------------------------------------------------
+  The three views
+  ---------------------------------------------------------------------------
+*/
+
+/*
+  One render, three ways to look at it. Ordered as the tabs read, from the
+  most human view to the most literal one.
+*/
 export const PREVIEW_VIEW_IDS = ["preview", "html", "text"] as const;
 
 export type PreviewViewId = (typeof PREVIEW_VIEW_IDS)[number];
@@ -29,12 +31,14 @@ export const DEFAULT_PREVIEW_VIEW_ID: PreviewViewId = "preview";
 
 export interface PreviewView {
   id: PreviewViewId;
-  /** Tab label — user-facing. */
+  /*
+    Tab label — user-facing.
+  */
   label: string;
-  /**
-   * What Copy puts on the clipboard for this view, or null when the view has
-   * nothing to copy (the rendered preview is a picture of the email, not text).
-   */
+  /*
+    What Copy puts on the clipboard for this view, or null when the view has
+    nothing to copy (the rendered preview is a picture of the email, not text).
+  */
   copyLabel: string | null;
 }
 
@@ -44,18 +48,20 @@ export const PREVIEW_VIEWS: readonly PreviewView[] = [
   { id: "text", label: "Plain text", copyLabel: "Copy text" },
 ];
 
-// ---------------------------------------------------------------------------
-// Requesting the render
-// ---------------------------------------------------------------------------
+/*
+  ---------------------------------------------------------------------------
+  Requesting the render
+  ---------------------------------------------------------------------------
+*/
 
 export type RenderRequestResult =
   | { isOk: true; render: RenderResponseBody }
   | { isOk: false; message: string };
 
-/**
- * Human copy for every way the render can fail. Raw Zod issues and integrity
- * error lists are useful in the console, not in a dialog.
- */
+/*
+  Human copy for every way the render can fail. Raw Zod issues and integrity
+  error lists are useful in the console, not in a dialog.
+*/
 function describeRenderError(body: RenderErrorResponseBody | null): string {
   switch (body?.error) {
     case "schema_validation_failed":
@@ -69,7 +75,9 @@ function describeRenderError(body: RenderErrorResponseBody | null): string {
   }
 }
 
-/** POSTs the draft and returns all three representations, or human copy. */
+/*
+  POSTs the draft and returns all three representations, or human copy.
+*/
 export async function requestEmailRender(document: EmailDocument): Promise<RenderRequestResult> {
   let response: Response;
   try {
@@ -105,15 +113,17 @@ export async function requestEmailRender(document: EmailDocument): Promise<Rende
   return { isOk: true, render: payload as RenderResponseBody };
 }
 
-// ---------------------------------------------------------------------------
-// Copying
-// ---------------------------------------------------------------------------
+/*
+  ---------------------------------------------------------------------------
+  Copying
+  ---------------------------------------------------------------------------
+*/
 
-/**
- * The text behind each view's Copy button. The HTML tab copies the SAME
- * pretty-printed source the user is reading — copying a minified blob they
- * were never shown would be a different answer to the same button.
- */
+/*
+  The text behind each view's Copy button. The HTML tab copies the SAME
+  pretty-printed source the user is reading — copying a minified blob they
+  were never shown would be a different answer to the same button.
+*/
 export function selectCopyText({
   view,
   render,
@@ -131,11 +141,11 @@ export function selectCopyText({
   }
 }
 
-/**
- * Writes to the clipboard, reporting whether it landed. Clipboard access is
- * refused outside a secure context and in some embedded browsers, so the
- * caller can say "couldn't copy" rather than falsely confirm.
- */
+/*
+  Writes to the clipboard, reporting whether it landed. Clipboard access is
+  refused outside a secure context and in some embedded browsers, so the
+  caller can say "couldn't copy" rather than falsely confirm.
+*/
 export async function copyTextToClipboard(text: string): Promise<boolean> {
   try {
     await navigator.clipboard.writeText(text);

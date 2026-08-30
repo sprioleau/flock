@@ -28,19 +28,25 @@ import type { GenerationRequestDataPart } from "@/lib/chat-contract";
 
 let pendingRequest: GenerationRequestDataPart | null = null;
 
-/** Arm the next message with `request`, replacing any unclaimed one. */
+/*
+  Arm the next message with `request`, replacing any unclaimed one.
+*/
 export function stashGenerationRequest(request: GenerationRequestDataPart): void {
   pendingRequest = request;
 }
 
-/** The armed request, cleared by the read. Null when there is none. */
+/*
+  The armed request, cleared by the read. Null when there is none.
+*/
 export function takeGenerationRequest(): GenerationRequestDataPart | null {
   const request = pendingRequest;
   pendingRequest = null;
   return request;
 }
 
-/** Disarm without sending — the handoff found no composer mounted. */
+/*
+  Disarm without sending — the handoff found no composer mounted.
+*/
 export function clearGenerationRequest(): void {
   pendingRequest = null;
 }

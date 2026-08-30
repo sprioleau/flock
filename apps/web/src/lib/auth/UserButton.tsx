@@ -20,30 +20,30 @@ import { useFlockAuth } from "./use-flock-auth";
 import { willRenderUserMenu } from "./user-menu-visibility";
 
 /*
- * The account control in the canvas header.
- *
- * It carries the claim flow, because the claim flow needed somewhere a person
- * would actually find it. "Save your work" buried in a settings panel is a
- * feature nobody uses; sitting in the chrome next to the collaborator avatars,
- * showing an unclaimed state, it is an open loop the user wants to close.
- *
- * Four jobs, in the order they matter:
- *   1. Say whether this work is anchored to anything (anonymous vs claimed).
- *   2. Offer the one action that changes that — email me a link.
- *   3. Show what is left of today's AI allowance, since that is the other
- *      number a person needs and has nowhere else to live.
- *   4. Lead back to the emails this identity owns. That link used to hang off
- *      the presence avatar next door, which is a collaborator control, not an
- *      account one — nobody looked for the way out of the studio there.
- *
- * Renders nothing when auth is disabled, so mounting it is unconditional at
- * the call site.
- *
- * Job 4 is the catch: on a deploy with auth OFF this whole control is absent,
- * which took the ONLY way out of the studio with it. `DashboardLinkFallback`
- * covers exactly those gaps and is gated on the same predicate, so the two
- * are mutually exclusive by construction — see ./user-menu-visibility.ts.
- */
+  The account control in the canvas header.
+
+  It carries the claim flow, because the claim flow needed somewhere a person
+  would actually find it. "Save your work" buried in a settings panel is a
+  feature nobody uses; sitting in the chrome next to the collaborator avatars,
+  showing an unclaimed state, it is an open loop the user wants to close.
+
+  Four jobs, in the order they matter:
+    1. Say whether this work is anchored to anything (anonymous vs claimed).
+    2. Offer the one action that changes that — email me a link.
+    3. Show what is left of today's AI allowance, since that is the other
+       number a person needs and has nowhere else to live.
+    4. Lead back to the emails this identity owns. That link used to hang off
+       the presence avatar next door, which is a collaborator control, not an
+       account one — nobody looked for the way out of the studio there.
+
+  Renders nothing when auth is disabled, so mounting it is unconditional at
+  the call site.
+
+  Job 4 is the catch: on a deploy with auth OFF this whole control is absent,
+  which took the ONLY way out of the studio with it. `DashboardLinkFallback`
+  covers exactly those gaps and is gated on the same predicate, so the two
+  are mutually exclusive by construction — see ./user-menu-visibility.ts.
+*/
 export function UserButton() {
   const auth = useFlockAuth();
   const [email, setEmail] = useState("");
@@ -77,8 +77,10 @@ export function UserButton() {
                 data-testid="user-button-trigger"
               >
                 {isUnclaimed ? <UserIcon /> : <UserRoundCheckIcon />}
-                {/* The unclaimed state gets words, the claimed state gets an
-                    icon: one is a call to action, the other is just status. */}
+                {/*
+                  The unclaimed state gets words, the claimed state gets an
+                  icon: one is a call to action, the other is just status.
+                */}
                 {isUnclaimed ? (
                   <span className="hidden max-w-32 truncate lg:inline">Save your work</span>
                 ) : null}
@@ -91,13 +93,13 @@ export function UserButton() {
 
       <DropdownMenuContent align="end" sideOffset={6} className="w-72 p-1.5">
         {isUnclaimed ? (
-          /**
-           * DropdownMenuGroup is not optional dressing: DropdownMenuLabel
-           * renders Base UI's Menu.GroupLabel, which reads its group from
-           * context and THROWS without one. Dev only warns, so a bare label
-           * ships looking fine and then takes the whole page down in
-           * production as "Base UI error #31".
-           */
+          /*
+            DropdownMenuGroup is not optional dressing: DropdownMenuLabel
+            renders Base UI's Menu.GroupLabel, which reads its group from
+            context and THROWS without one. Dev only warns, so a bare label
+            ships looking fine and then takes the whole page down in
+            production as "Base UI error #31".
+          */
           <DropdownMenuGroup className="px-2 py-1.5">
             <DropdownMenuLabel className="px-0 pt-0 pb-1 text-sm font-semibold text-foreground">
               Save your work
@@ -146,12 +148,14 @@ export function UserButton() {
           </DropdownMenuGroup>
         )}
 
-        {/* Null means the server could attribute no allowance to this caller
-            (convex/authCredits.ts). There is no honest number to print, so the
-            section AND its separator go, rather than leaving a rule above a
-            made-up number. In practice this pairs with the early return above —
-            a caller with no identity has no menu to open — so it is a
-            belt-and-braces branch, not a state a person is expected to reach. */}
+        {/*
+          Null means the server could attribute no allowance to this caller
+          (convex/authCredits.ts). There is no honest number to print, so the
+          section AND its separator go, rather than leaving a rule above a
+          made-up number. In practice this pairs with the early return above —
+          a caller with no identity has no menu to open — so it is a
+          belt-and-braces branch, not a state a person is expected to reach.
+        */}
         {credits === null ? null : (
           <>
             <DropdownMenuSeparator />
@@ -175,16 +179,18 @@ export function UserButton() {
           </>
         )}
 
-        {/* The way OUT of the studio, and the reason this menu is where it
-            belongs: the editor was a one-way door — no link back to the
-            dashboard anywhere — so work you had not bookmarked was reachable
-            only via browser back. It sits with the account, above Sign out,
-            and OUTSIDE the claimed-only branch below: an anonymous visitor has
-            drafts to get back to too.
+        {/*
+          The way OUT of the studio, and the reason this menu is where it
+          belongs: the editor was a one-way door — no link back to the
+          dashboard anywhere — so work you had not bookmarked was reachable
+          only via browser back. It sits with the account, above Sign out,
+          and OUTSIDE the claimed-only branch below: an anonymous visitor has
+          drafts to get back to too.
 
-            nativeButton={false} because the render target is an <a>: Base UI
-            throws in production when a button renders a non-button element
-            without being told. */}
+          nativeButton={false} because the render target is an <a>: Base UI
+          throws in production when a button renders a non-button element
+          without being told.
+        */}
         <DropdownMenuSeparator />
         <div className="px-2 py-1.5">
           <Button
@@ -203,9 +209,11 @@ export function UserButton() {
           <>
             <DropdownMenuSeparator />
             <div className="px-2 py-1.5">
-              {/* Offered only to claimed accounts: signing out of an anonymous
-                  identity would strand that work behind a key nothing can
-                  reach again. */}
+              {/*
+                Offered only to claimed accounts: signing out of an anonymous
+                identity would strand that work behind a key nothing can
+                reach again.
+              */}
               <Button
                 type="button"
                 variant="ghost"

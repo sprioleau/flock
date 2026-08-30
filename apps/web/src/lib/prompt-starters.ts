@@ -55,11 +55,15 @@ export type PromptStarterId =
 
 export interface PromptStarter {
   id: PromptStarterId;
-  /* The chip's visible text, and therefore its accessible name. Verb-first
-     and short enough to sit three or four across a narrow chat panel. */
+  /*
+    The chip's visible text, and therefore its accessible name. Verb-first
+    and short enough to sit three or four across a narrow chat panel.
+  */
   label: string;
-  /* What lands in the composer, verbatim. Written as the user's own sentence,
-     because that is whose message it becomes. */
+  /*
+    What lands in the composer, verbatim. Written as the user's own sentence,
+    because that is whose message it becomes.
+  */
   prompt: string;
 }
 

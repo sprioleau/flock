@@ -5,11 +5,11 @@ import { Popover as PopoverPrimitive } from "@base-ui/react/popover"
 
 import { cn } from "@/lib/utils"
 
-/**
- * Base UI popover wrapped in app chrome (same pattern as dialog.tsx):
- * semantic popover tokens, subtle ring, zoom/fade animation. Content is
- * portalled and positioned relative to the trigger.
- */
+/*
+  Base UI popover wrapped in app chrome (same pattern as dialog.tsx):
+  semantic popover tokens, subtle ring, zoom/fade animation. Content is
+  portalled and positioned relative to the trigger.
+*/
 
 function Popover({ ...props }: PopoverPrimitive.Root.Props) {
   return <PopoverPrimitive.Root data-slot="popover" {...props} />

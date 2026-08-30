@@ -1,29 +1,29 @@
-/**
- * Deterministic site-identity extraction — logo, company name, social card.
- * Pure head-first HTML parsing, NO LLM (owner decision: "the HTML <head> is
- * AUTHORITATIVE — if the author included meta tags, those are the things
- * they want to convey"). Runs on the already-fetched page; nothing here
- * fetches anything.
- *
- * Logo priority ladder (first hit wins):
- *   1. <meta property="og:logo">
- *   2. JSON-LD Organization.logo (string | ImageObject)
- *   3. <link rel*="icon"> family — SVG assets preferred, then
- *      apple-touch-icon, then other icons by declared size
- *   4. Body fallback: header/nav/menu masthead scan for a logo-looking
- *      <img> (alt/class/src/id containing "logo") or inline <svg>; a bare
- *      first masthead image/svg is the last resort. Inline SVG is
- *      serialized and returned as a data: URI so it renders in an <img>.
- *
- * Company-name ladder: og:site_name → JSON-LD Organization.name → cleaned
- * <title> ("CNN — Breaking News…" → "CNN").
- *
- * Social card: the og:image URL is captured as metadata — owner-explicit
- * scope: the logo and the social-card URL only, never content images.
- *
- * Every emitted URL passes the same SSRF syntax guard as the page fetch, so
- * a page can never plant a private-network URL on the brand-kit row.
- */
+/*
+  Deterministic site-identity extraction — logo, company name, social card.
+  Pure head-first HTML parsing, NO LLM (owner decision: "the HTML <head> is
+  AUTHORITATIVE — if the author included meta tags, those are the things
+  they want to convey"). Runs on the already-fetched page; nothing here
+  fetches anything.
+
+  Logo priority ladder (first hit wins):
+    1. <meta property="og:logo">
+    2. JSON-LD Organization.logo (string | ImageObject)
+    3. <link rel*="icon"> family — SVG assets preferred, then
+       apple-touch-icon, then other icons by declared size
+    4. Body fallback: header/nav/menu masthead scan for a logo-looking
+       <img> (alt/class/src/id containing "logo") or inline <svg>; a bare
+       first masthead image/svg is the last resort. Inline SVG is
+       serialized and returned as a data: URI so it renders in an <img>.
+
+  Company-name ladder: og:site_name → JSON-LD Organization.name → cleaned
+  <title> ("CNN — Breaking News…" → "CNN").
+
+  Social card: the og:image URL is captured as metadata — owner-explicit
+  scope: the logo and the social-card URL only, never content images.
+
+  Every emitted URL passes the same SSRF syntax guard as the page fetch, so
+  a page can never plant a private-network URL on the brand-kit row.
+*/
 
 import {
   classifySocialUrl,
@@ -41,32 +41,42 @@ import {
 import { validateUrlSyntax } from "./url-guard";
 
 export interface SiteIdentity {
-  /** Deterministically extracted company/site name, or null. */
+  /*
+    Deterministically extracted company/site name, or null.
+  */
   siteName: string | null;
-  /**
-   * The brand logo: an absolute https(s) URL, or a `data:image/svg+xml`
-   * URI when the logo was an inline <svg> in the page's masthead.
-   */
+  /*
+    The brand logo: an absolute https(s) URL, or a `data:image/svg+xml`
+    URI when the logo was an inline <svg> in the page's masthead.
+  */
   logoUrl: string | null;
-  /** og:image social-card URL — kit metadata only, never a harvested asset. */
+  /*
+    og:image social-card URL — kit metadata only, never a harvested asset.
+  */
   socialImageUrl: string | null;
-  /**
-   * The brand's social profile links (item 26), at most one per platform.
-   * Ladder: JSON-LD Organization `sameAs` (canonical) → footer/nav anchor
-   * scan for known social domains → `twitter:site`/`twitter:creator` handles
-   * synthesized into x.com URLs. Share/intent URLs are never profiles.
-   */
+  /*
+    The brand's social profile links (item 26), at most one per platform.
+    Ladder: JSON-LD Organization `sameAs` (canonical) → footer/nav anchor
+    scan for known social domains → `twitter:site`/`twitter:creator` handles
+    synthesized into x.com URLs. Share/intent URLs are never profiles.
+  */
   socialLinks: BrandSocialLink[];
 }
 
-/** Inline SVGs beyond this many characters are decoration, not a logo. */
+/*
+  Inline SVGs beyond this many characters are decoration, not a logo.
+*/
 const MAX_INLINE_SVG_CHARS = 20_000;
-/** Bound each masthead region so regex scans stay cheap on huge pages. */
+/*
+  Bound each masthead region so regex scans stay cheap on huge pages.
+*/
 const MAX_MASTHEAD_REGION_CHARS = 60_000;
 const MAX_JSON_LD_BLOCKS = 8;
 const MAX_TITLE_SEGMENT_CHARS = 60;
 
-/** Resolve + SSRF-syntax-check a raw URL; null when unusable or blocked. */
+/*
+  Resolve + SSRF-syntax-check a raw URL; null when unusable or blocked.
+*/
 function resolveGuardedUrl({ raw, baseUrl }: { raw: string | null; baseUrl: string }): string | null {
   if (raw === null || raw.length === 0) {
     return null;
@@ -78,14 +88,18 @@ function resolveGuardedUrl({ raw, baseUrl }: { raw: string | null; baseUrl: stri
   return validateUrlSyntax(resolved).isAllowed ? resolved : null;
 }
 
-// ---------------------------------------------------------------------------
-// JSON-LD (schema.org Organization)
-// ---------------------------------------------------------------------------
+/*
+  ---------------------------------------------------------------------------
+  JSON-LD (schema.org Organization)
+  ---------------------------------------------------------------------------
+*/
 
 interface JsonLdOrganization {
   name: string | null;
   logo: string | null;
-  /** Raw `sameAs` URLs (profile links on other sites) — classified later. */
+  /*
+    Raw `sameAs` URLs (profile links on other sites) — classified later.
+  */
   sameAsUrls: string[];
 }
 
@@ -96,7 +110,9 @@ function isOrganizationType(typeValue: unknown): boolean {
   );
 }
 
-/** Pull a logo URL out of Organization.logo (string or ImageObject). */
+/*
+  Pull a logo URL out of Organization.logo (string or ImageObject).
+*/
 function readJsonLdLogo(logoValue: unknown): string | null {
   if (typeof logoValue === "string" && logoValue.length > 0) {
     return logoValue;
@@ -110,15 +126,17 @@ function readJsonLdLogo(logoValue: unknown): string | null {
   return null;
 }
 
-/** Recursion guard for nested JSON-LD (typed nodes nest freely in practice). */
+/*
+  Recursion guard for nested JSON-LD (typed nodes nest freely in practice).
+*/
 const MAX_JSON_LD_DEPTH = 5;
 
-/**
- * Flatten a parsed JSON-LD document into candidate typed nodes: arrays,
- * @graph, AND nested node values — real-world markup embeds the Organization
- * inside e.g. a WebPage's `publisher` (CNN does exactly this), so a
- * top-level-only walk misses the canonical `sameAs`/logo/name.
- */
+/*
+  Flatten a parsed JSON-LD document into candidate typed nodes: arrays,
+  @graph, AND nested node values — real-world markup embeds the Organization
+  inside e.g. a WebPage's `publisher` (CNN does exactly this), so a
+  top-level-only walk misses the canonical `sameAs`/logo/name.
+*/
 function flattenJsonLdNodes(parsed: unknown, depth = 0): Record<string, unknown>[] {
   if (depth > MAX_JSON_LD_DEPTH) {
     return [];
@@ -136,7 +154,9 @@ function flattenJsonLdNodes(parsed: unknown, depth = 0): Record<string, unknown>
   return node["@type"] === undefined ? nestedNodes : [node, ...nestedNodes];
 }
 
-/** First schema.org Organization's name + logo across the page's JSON-LD. */
+/*
+  First schema.org Organization's name + logo across the page's JSON-LD.
+*/
 function extractJsonLdOrganization(html: string): JsonLdOrganization {
   const blocks =
     html.match(
@@ -149,7 +169,7 @@ function extractJsonLdOrganization(html: string): JsonLdOrganization {
     try {
       parsed = JSON.parse(jsonText);
     } catch {
-      continue; // malformed JSON-LD — skip the block
+      continue; /* malformed JSON-LD — skip the block */
     }
     for (const node of flattenJsonLdNodes(parsed)) {
       if (!isOrganizationType(node["@type"])) {
@@ -172,9 +192,11 @@ function extractJsonLdOrganization(html: string): JsonLdOrganization {
   return result;
 }
 
-// ---------------------------------------------------------------------------
-// <link rel*="icon"> ladder — SVG first, then apple-touch-icon, then size
-// ---------------------------------------------------------------------------
+/*
+  ---------------------------------------------------------------------------
+  <link rel*="icon"> ladder — SVG first, then apple-touch-icon, then size
+  ---------------------------------------------------------------------------
+*/
 
 interface IconCandidate {
   href: string;
@@ -208,8 +230,10 @@ function extractIconLogo({ html, baseUrl }: { html: string; baseUrl: string }): 
       declaredSize: parseDeclaredSize(getAttribute({ tag, name: "sizes" })),
     });
   }
-  // SVG beats everything (scales cleanly); apple-touch-icon beats raster
-  // favicons (it's the largest raster the site ships); then declared size.
+  /*
+    SVG beats everything (scales cleanly); apple-touch-icon beats raster
+    favicons (it's the largest raster the site ships); then declared size.
+  */
   candidates.sort((a, b) => {
     if (a.isSvg !== b.isSvg) {
       return a.isSvg ? -1 : 1;
@@ -228,11 +252,15 @@ function extractIconLogo({ html, baseUrl }: { html: string; baseUrl: string }): 
   return null;
 }
 
-// ---------------------------------------------------------------------------
-// Body fallback: masthead (header/nav/menu) scan
-// ---------------------------------------------------------------------------
+/*
+  ---------------------------------------------------------------------------
+  Body fallback: masthead (header/nav/menu) scan
+  ---------------------------------------------------------------------------
+*/
 
-/** The page's masthead-ish regions: <header>, <nav>, and *menu* containers. */
+/*
+  The page's masthead-ish regions: <header>, <nav>, and *menu* containers.
+*/
 function findMastheadRegions(html: string): string[] {
   const regions: string[] = [];
   for (const pattern of [
@@ -253,11 +281,15 @@ function isLogoLookingImgTag(tag: string): boolean {
   const className = getAttribute({ tag, name: "class" }) ?? "";
   const id = getAttribute({ tag, name: "id" }) ?? "";
   const attributeHaystack = `${src} ${className} ${id}`.toLowerCase();
-  // Long alt sentences that merely mention "logo" are photos, not logos.
+  /*
+    Long alt sentences that merely mention "logo" are photos, not logos.
+  */
   return attributeHaystack.includes("logo") || (alt.toLowerCase().includes("logo") && alt.length <= 50);
 }
 
-/** The opening tag + full markup of each inline <svg> in a region. */
+/*
+  The opening tag + full markup of each inline <svg> in a region.
+*/
 function findInlineSvgs(region: string): string[] {
   return region.match(/<svg\b[\s\S]*?<\/svg>/gi) ?? [];
 }
@@ -273,10 +305,12 @@ function isLogoLookingSvg(svgMarkup: string): boolean {
   return labels.some((label) => label !== null && label !== undefined && label.toLowerCase().includes("logo"));
 }
 
-/** Serialize an inline SVG to a renderable data: URI (xmlns injected if missing). */
+/*
+  Serialize an inline SVG to a renderable data: URI (xmlns injected if missing).
+*/
 function serializeInlineSvg(svgMarkup: string): string | null {
   if (svgMarkup.length > MAX_INLINE_SVG_CHARS) {
-    return null; // giant SVGs are illustrations, not logos
+    return null; /* giant SVGs are illustrations, not logos */
   }
   const hasXmlns = /<svg\b[^>]*\bxmlns\s*=/i.test(svgMarkup);
   const standalone = hasXmlns
@@ -285,14 +319,16 @@ function serializeInlineSvg(svgMarkup: string): string | null {
   return `data:image/svg+xml;base64,${Buffer.from(standalone, "utf-8").toString("base64")}`;
 }
 
-/**
- * Scan the masthead for the brand logo: logo-hinted <img>/<svg> first, then
- * the region's first image/svg (the masthead's leading image is almost
- * always the logo).
- */
+/*
+  Scan the masthead for the brand logo: logo-hinted <img>/<svg> first, then
+  the region's first image/svg (the masthead's leading image is almost
+  always the logo).
+*/
 function extractMastheadLogo({ html, baseUrl }: { html: string; baseUrl: string }): string | null {
   const regions = findMastheadRegions(html);
-  // Pass 1 — explicit "logo" hints, across all regions before any bare fallback.
+  /*
+    Pass 1 — explicit "logo" hints, across all regions before any bare fallback.
+  */
   for (const region of regions) {
     for (const tag of findTags({ html: region, tagName: "img" })) {
       if (isLogoLookingImgTag(tag)) {
@@ -311,7 +347,9 @@ function extractMastheadLogo({ html, baseUrl }: { html: string; baseUrl: string 
       }
     }
   }
-  // Pass 2 — the masthead's first image, else its first inline SVG.
+  /*
+    Pass 2 — the masthead's first image, else its first inline SVG.
+  */
   for (const region of regions) {
     const firstImg = findTags({ html: region, tagName: "img" })[0];
     if (firstImg !== undefined) {
@@ -331,30 +369,34 @@ function extractMastheadLogo({ html, baseUrl }: { html: string; baseUrl: string 
   return null;
 }
 
-// ---------------------------------------------------------------------------
-// Social profile links (item 26)
-// ---------------------------------------------------------------------------
+/*
+  ---------------------------------------------------------------------------
+  Social profile links (item 26)
+  ---------------------------------------------------------------------------
+*/
 
-/** Footer regions complement the masthead for the anchor fallback scan. */
+/*
+  Footer regions complement the masthead for the anchor fallback scan.
+*/
 function findFooterRegions(html: string): string[] {
   return (html.match(/<footer\b[\s\S]*?<\/footer>/gi) ?? [])
     .slice(0, 2)
     .map((region) => region.slice(0, MAX_MASTHEAD_REGION_CHARS));
 }
 
-/**
- * A Twitter/X handle as its profile URL, or null.
- *
- * `twitter:site` / `twitter:creator` are the ONE Open-Graph-family signal that
- * actually encodes a social identity (OG itself has no property for profile
- * links — see brand-kit-user-control §7.1). They carry a handle, not a URL, so
- * this SYNTHESIZES `https://x.com/acme` — a mild departure from the module's
- * "never invent a URL the brand didn't publish" stance, which is exactly why
- * it sits LAST in the ladder: any published sameAs or footer anchor for X wins
- * over a handle we turned into a link.
- *
- * Handle rules are Twitter's own: 1–15 characters, letters/digits/underscore.
- */
+/*
+  A Twitter/X handle as its profile URL, or null.
+
+  `twitter:site` / `twitter:creator` are the ONE Open-Graph-family signal that
+  actually encodes a social identity (OG itself has no property for profile
+  links — see brand-kit-user-control §7.1). They carry a handle, not a URL, so
+  this SYNTHESIZES `https://x.com/acme` — a mild departure from the module's
+  "never invent a URL the brand didn't publish" stance, which is exactly why
+  it sits LAST in the ladder: any published sameAs or footer anchor for X wins
+  over a handle we turned into a link.
+
+  Handle rules are Twitter's own: 1–15 characters, letters/digits/underscore.
+*/
 export function buildXProfileUrlFromHandle(rawHandle: string): string | null {
   const handle = rawHandle.trim().replace(/^@/, "");
   if (!/^[A-Za-z0-9_]{1,15}$/.test(handle)) {
@@ -363,7 +405,9 @@ export function buildXProfileUrlFromHandle(rawHandle: string): string | null {
   return `https://x.com/${handle}`;
 }
 
-/** Profile URLs synthesized from the page's twitter card handles (lowest rung). */
+/*
+  Profile URLs synthesized from the page's twitter card handles (lowest rung).
+*/
 function extractTwitterHandleUrls(html: string): string[] {
   const handles = [
     findMetaContent({ html, key: "twitter:site" }),
@@ -378,16 +422,16 @@ function extractTwitterHandleUrls(html: string): string[] {
   });
 }
 
-/**
- * The brand's social profile links. Ladder (first source per platform wins):
- * 1. JSON-LD Organization `sameAs` — the canonical, author-declared list.
- * 2. Anchors in footer/nav/header regions pointing at known social domains
- *    (share/intent chrome filtered by the classifier).
- * 3. `twitter:site` / `twitter:creator` handles, synthesized into x.com
- *    profile URLs — last, because it is the only rung that builds a URL the
- *    page never printed.
- * Every kept URL passes the SSRF syntax guard; one link per platform.
- */
+/*
+  The brand's social profile links. Ladder (first source per platform wins):
+  1. JSON-LD Organization `sameAs` — the canonical, author-declared list.
+  2. Anchors in footer/nav/header regions pointing at known social domains
+     (share/intent chrome filtered by the classifier).
+  3. `twitter:site` / `twitter:creator` handles, synthesized into x.com
+     profile URLs — last, because it is the only rung that builds a URL the
+     page never printed.
+  Every kept URL passes the SSRF syntax guard; one link per platform.
+*/
 function extractSocialLinks({
   html,
   baseUrl,
@@ -408,11 +452,15 @@ function extractSocialLinks({
       candidates.push(classified);
     }
   };
-  // Rung 1 — author-declared profiles.
+  /*
+    Rung 1 — author-declared profiles.
+  */
   for (const url of sameAsUrls) {
     pushCandidate(url);
   }
-  // Rung 2 — footer first (social rows live there), then masthead/nav.
+  /*
+    Rung 2 — footer first (social rows live there), then masthead/nav.
+  */
   for (const region of [...findFooterRegions(html), ...findMastheadRegions(html)]) {
     for (const anchorTag of findTags({ html: region, tagName: "a" })) {
       const href = getAttribute({ tag: anchorTag, name: "href" });
@@ -421,23 +469,27 @@ function extractSocialLinks({
       }
     }
   }
-  // Rung 3 — twitter card handles, synthesized. dedupeSocialLinks keeps the
-  // FIRST candidate per platform, so this only ever fills a gap.
+  /*
+    Rung 3 — twitter card handles, synthesized. dedupeSocialLinks keeps the
+    FIRST candidate per platform, so this only ever fills a gap.
+  */
   for (const url of extractTwitterHandleUrls(html)) {
     pushCandidate(url);
   }
   return dedupeSocialLinks(candidates);
 }
 
-// ---------------------------------------------------------------------------
-// Company name
-// ---------------------------------------------------------------------------
+/*
+  ---------------------------------------------------------------------------
+  Company name
+  ---------------------------------------------------------------------------
+*/
 
-/**
- * Clean a <title> down to the brand segment: split on the first separator
- * (em/en dash, pipe, bullet, colon-pair, or spaced hyphen) and keep the
- * leading segment — "CNN — Breaking News, Latest News and Videos" → "CNN".
- */
+/*
+  Clean a <title> down to the brand segment: split on the first separator
+  (em/en dash, pipe, bullet, colon-pair, or spaced hyphen) and keep the
+  leading segment — "CNN — Breaking News, Latest News and Videos" → "CNN".
+*/
 export function cleanTitleToBrandName(title: string): string | null {
   const [firstSegment] = title.split(/\s*(?:—|–|\||·|•|::)\s*|\s+-\s+/);
   const cleaned = firstSegment.trim();
@@ -447,11 +499,15 @@ export function cleanTitleToBrandName(title: string): string | null {
   return cleaned;
 }
 
-// ---------------------------------------------------------------------------
-// Entry point
-// ---------------------------------------------------------------------------
+/*
+  ---------------------------------------------------------------------------
+  Entry point
+  ---------------------------------------------------------------------------
+*/
 
-/** Extract the site's identity (name, logo, social card) — deterministic. */
+/*
+  Extract the site's identity (name, logo, social card) — deterministic.
+*/
 export function extractSiteIdentity({
   html,
   baseUrl,

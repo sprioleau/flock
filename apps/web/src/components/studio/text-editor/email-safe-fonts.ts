@@ -1,13 +1,13 @@
-/**
- * Email-safe font stacks — fonts reliably installed across mail clients, each
- * with fallbacks.
- *
- * THE list: the bubble menu's span font picker, the block property panels'
- * per-block font overrides, and the document settings' theme fonts all read
- * it, so a font chosen on any surface resolves to the same stack. The
- * Helvetica entry matches the SDK's DEFAULT_FONT_STACK byte-for-byte, so an
- * untouched document/block shows "Helvetica" instead of "Custom".
- */
+/*
+  Email-safe font stacks — fonts reliably installed across mail clients, each
+  with fallbacks.
+
+  THE list: the bubble menu's span font picker, the block property panels'
+  per-block font overrides, and the document settings' theme fonts all read
+  it, so a font chosen on any surface resolves to the same stack. The
+  Helvetica entry matches the SDK's DEFAULT_FONT_STACK byte-for-byte, so an
+  untouched document/block shows "Helvetica" instead of "Custom".
+*/
 export const EMAIL_SAFE_FONT_OPTIONS = [
   { value: "Helvetica, Arial, sans-serif", label: "Helvetica" },
   { value: "Arial, Helvetica, sans-serif", label: "Arial" },

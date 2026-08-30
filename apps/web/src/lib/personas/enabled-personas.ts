@@ -2,22 +2,26 @@
 
 import { useSyncExternalStore } from "react";
 
-/**
- * Multi-agent canvas v0 — persona enablement, the proposal's low-friction
- * mapping (§3.7): a localStorage list of enabled persona slugs for THIS
- * browser session. No Convex row — when Convex Auth's anonymous→claimed
- * upgrade lands (v2), this map moves to a `userAgentPreferences` table and
- * localStorage stays the anonymous fallback. Exposed via
- * `useSyncExternalStore` (the app-settings.ts pattern) so SSR/hydration see
- * the empty default and the stored value applies right after mount; a
- * "storage" listener keeps multiple tabs in sync.
- */
+/*
+  Multi-agent canvas v0 — persona enablement, the proposal's low-friction
+  mapping (§3.7): a localStorage list of enabled persona slugs for THIS
+  browser session. No Convex row — when Convex Auth's anonymous→claimed
+  upgrade lands (v2), this map moves to a `userAgentPreferences` table and
+  localStorage stays the anonymous fallback. Exposed via
+  `useSyncExternalStore` (the app-settings.ts pattern) so SSR/hydration see
+  the empty default and the stored value applies right after mount; a
+  "storage" listener keeps multiple tabs in sync.
+*/
 
 const ENABLED_PERSONAS_STORAGE_KEY = "flock_enabled_agents";
-/** Pause flag ("1" = paused) — persisted beside the enablement list. */
+/*
+  Pause flag ("1" = paused) — persisted beside the enablement list.
+*/
 const PERSONAS_PAUSED_STORAGE_KEY = "flock_agents_paused";
 
-/** Stable snapshot (useSyncExternalStore requires reference equality). */
+/*
+  Stable snapshot (useSyncExternalStore requires reference equality).
+*/
 let cachedSlugs: readonly string[] = [];
 let hasReadStorage = false;
 
@@ -35,7 +39,9 @@ function readSlugsFromStorage(): readonly string[] {
     }
     return parsed.filter((slug): slug is string => typeof slug === "string");
   } catch {
-    // localStorage unavailable (SSR, privacy mode) or corrupt — none enabled.
+    /*
+      localStorage unavailable (SSR, privacy mode) or corrupt — none enabled.
+    */
     return [];
   }
 }
@@ -75,18 +81,20 @@ function subscribe(listener: () => void): () => void {
   };
 }
 
-/** The enabled persona slugs for this browser session (reactive). */
+/*
+  The enabled persona slugs for this browser session (reactive).
+*/
 export function useEnabledPersonaSlugs(): readonly string[] {
   return useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot);
 }
 
-/**
- * Swap one enabled slug for another, preserving enablement (copy-on-edit
- * plumbing): when saving a built-in's edit forks a session copy — or a reset
- * deletes one — the ENABLED slug must follow the row that now defines the
- * persona, so the advisors hook/runner reads the right markdown on its next
- * turn. No-op when `fromSlug` isn't enabled or the slugs match.
- */
+/*
+  Swap one enabled slug for another, preserving enablement (copy-on-edit
+  plumbing): when saving a built-in's edit forks a session copy — or a reset
+  deletes one — the ENABLED slug must follow the row that now defines the
+  persona, so the advisors hook/runner reads the right markdown on its next
+  turn. No-op when `fromSlug` isn't enabled or the slugs match.
+*/
 export function replaceEnabledPersonaSlug({
   fromSlug,
   toSlug,
@@ -106,23 +114,27 @@ export function replaceEnabledPersonaSlug({
   try {
     window.localStorage.setItem(ENABLED_PERSONAS_STORAGE_KEY, JSON.stringify(next));
   } catch {
-    // In-memory enablement still applies for this tab.
+    /*
+      In-memory enablement still applies for this tab.
+    */
   }
   notifyListeners();
 }
 
-// ---------------------------------------------------------------------------
-// Pause flag (credit conservation)
-// ---------------------------------------------------------------------------
+/*
+  ---------------------------------------------------------------------------
+  Pause flag (credit conservation)
+  ---------------------------------------------------------------------------
+*/
 
-/**
- * "Recommendations paused" — a browser-session flag that stops the persona
- * watcher from calling /api/personas AT ALL (zero Gemini spend; the gate
- * lives at the trigger in use-persona-advisors.ts) WITHOUT touching which
- * personas are enabled. Open findings stay visible and actionable while
- * paused; unpausing resumes normal triggering. Persisted beside the
- * enablement list so it survives reload.
- */
+/*
+  "Recommendations paused" — a browser-session flag that stops the persona
+  watcher from calling /api/personas AT ALL (zero Gemini spend; the gate
+  lives at the trigger in use-persona-advisors.ts) WITHOUT touching which
+  personas are enabled. Open findings stay visible and actionable while
+  paused; unpausing resumes normal triggering. Persisted beside the
+  enablement list so it survives reload.
+*/
 
 let cachedIsPaused = false;
 let hasReadPausedStorage = false;
@@ -166,17 +178,23 @@ function subscribePaused(listener: () => void): () => void {
   };
 }
 
-/** Reactive: are persona recommendations paused for this browser session? */
+/*
+  Reactive: are persona recommendations paused for this browser session?
+*/
 export function useArePersonasPaused(): boolean {
   return useSyncExternalStore(subscribePaused, getPausedSnapshot, getPausedServerSnapshot);
 }
 
-/** Non-reactive read for dispatch-time gates (never render-stale). */
+/*
+  Non-reactive read for dispatch-time gates (never render-stale).
+*/
 export function getArePersonasPaused(): boolean {
   return getPausedSnapshot();
 }
 
-/** Pause or resume persona recommendations (best-effort persistence). */
+/*
+  Pause or resume persona recommendations (best-effort persistence).
+*/
 export function setPersonasPaused(isPaused: boolean): void {
   cachedIsPaused = isPaused;
   hasReadPausedStorage = true;
@@ -187,14 +205,18 @@ export function setPersonasPaused(isPaused: boolean): void {
       window.localStorage.removeItem(PERSONAS_PAUSED_STORAGE_KEY);
     }
   } catch {
-    // In-memory pause still applies for this tab's lifetime.
+    /*
+      In-memory pause still applies for this tab's lifetime.
+    */
   }
   for (const pausedListener of pausedListeners) {
     pausedListener();
   }
 }
 
-/** Enable or disable one persona for this browser session (best-effort persistence). */
+/*
+  Enable or disable one persona for this browser session (best-effort persistence).
+*/
 export function setPersonaEnabled({
   slug,
   isEnabled,
@@ -215,7 +237,9 @@ export function setPersonaEnabled({
   try {
     window.localStorage.setItem(ENABLED_PERSONAS_STORAGE_KEY, JSON.stringify(next));
   } catch {
-    // In-memory enablement still applies for this tab.
+    /*
+      In-memory enablement still applies for this tab.
+    */
   }
   notifyListeners();
 }

@@ -1,12 +1,12 @@
 import { describe, expect, it } from "vitest";
 import { coarsenAddress, deriveOriginKey } from "./origin-key";
 
-/**
- * The origin key is the anonymous allowance's anti-rotation scope, so the
- * properties that matter are: it must not vary within one subscriber's address
- * range (or the bucket is as rotatable as localStorage), and it must never
- * carry the address itself into the database.
- */
+/*
+  The origin key is the anonymous allowance's anti-rotation scope, so the
+  properties that matter are: it must not vary within one subscriber's address
+  range (or the bucket is as rotatable as localStorage), and it must never
+  carry the address itself into the database.
+*/
 
 describe("coarsenAddress", () => {
   it("keeps an IPv4 address whole", () => {

@@ -35,9 +35,11 @@ describe("describeBlock", () => {
     expect(describeBlock(DOC.txt_wc01)).toBe('the text starting “Welcome to Flock.”');
   });
 
-  /* `img_hr01`'s alt text is 36 characters, past the 32-character quote
-     budget, so it must come back trimmed with an ellipsis rather than pasting
-     a sentence into a dialog line. */
+  /*
+    `img_hr01`'s alt text is 36 characters, past the 32-character quote
+    budget, so it must come back trimmed with an ellipsis rather than pasting
+    a sentence into a dialog line.
+  */
   it("truncates a long quotation rather than pasting a whole sentence into a dialog", () => {
     expect(describeBlock(DOC.img_hr01)).toBe("the image “Placeholder image — swap in you…”");
   });
@@ -75,7 +77,9 @@ describe("joinClientLabels", () => {
     );
   });
 
-  /* Past three, the count carries the weight and the list stops being read. */
+  /*
+    Past three, the count carries the weight and the list stops being read.
+  */
   it("summarises the tail instead of listing every client", () => {
     expect(
       joinClientLabels(["Gmail (web)", "Outlook (Windows)", "Yahoo Mail (web)", "Outlook.com"]),

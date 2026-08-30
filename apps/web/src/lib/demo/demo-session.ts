@@ -111,8 +111,10 @@ function writeRaw({ key, value }: { key: string; value: string | null }): void {
     }
     window.localStorage.setItem(key, value);
   } catch {
-    /* Private mode / quota. The demo still runs for this tab's lifetime off
-       the in-memory snapshot; only persistence across a reload is lost. */
+    /*
+      Private mode / quota. The demo still runs for this tab's lifetime off
+      the in-memory snapshot; only persistence across a reload is lost.
+    */
   }
 }
 
@@ -126,18 +128,20 @@ function broadcastStorageRefresh(): void {
   try {
     window.dispatchEvent(new StorageEvent("storage"));
   } catch {
-    /* Older engines without a constructible StorageEvent: the values are on
-       disk and correct, they just apply on the next full page load. */
+    /*
+      Older engines without a constructible StorageEvent: the values are on
+      disk and correct, they just apply on the next full page load.
+    */
   }
 }
 
-/**
- * Enter the demo: snapshot what the visitor had, write the preset, and record
- * which document this run belongs to.
- *
- * Called AFTER the scratch document exists, so the session record is never
- * written pointing at a document that failed to provision.
- */
+/*
+  Enter the demo: snapshot what the visitor had, write the preset, and record
+  which document this run belongs to.
+
+  Called AFTER the scratch document exists, so the session record is never
+  written pointing at a document that failed to provision.
+*/
 export function beginDemoSession({ documentId }: { documentId: string }): void {
   const restore = buildDemoRestoreSnapshot({
     current: {
@@ -145,8 +149,10 @@ export function beginDemoSession({ documentId }: { documentId: string }): void {
       enabledPersonasRaw: readRaw(ENABLED_PERSONAS_STORAGE_KEY),
       tourProgressRaw: readRaw(TOUR_PROGRESS_STORAGE_KEY),
     },
-    /* Re-entering /demo ("Start over") must not snapshot the demo's own
-       settings as the visitor's prior ones — see buildDemoRestoreSnapshot. */
+    /*
+      Re-entering /demo ("Start over") must not snapshot the demo's own
+      settings as the visitor's prior ones — see buildDemoRestoreSnapshot.
+    */
     activeSession: getSnapshot(),
   });
   const session: DemoSession = { documentId, startedAtMs: Date.now(), restore };
@@ -163,23 +169,25 @@ export function beginDemoSession({ documentId }: { documentId: string }): void {
   broadcastStorageRefresh();
 }
 
-/**
- * Leave the demo: put back exactly the three raw values the visitor had, and
- * forget the session. The demo's scratch document is deliberately NOT deleted
- * — it is an ordinary session document that the existing 30-day cleanup sweep
- * already collects, and nothing about this route should teach that cron a new
- * trick (convex/model/cleanup.ts has a documented data-loss history).
- */
+/*
+  Leave the demo: put back exactly the three raw values the visitor had, and
+  forget the session. The demo's scratch document is deliberately NOT deleted
+  — it is an ordinary session document that the existing 30-day cleanup sweep
+  already collects, and nothing about this route should teach that cron a new
+  trick (convex/model/cleanup.ts has a documented data-loss history).
+*/
 export function endDemoSession(): void {
   const session = getSnapshot();
   if (session !== null) {
     writeRaw({ key: APP_SETTINGS_STORAGE_KEY, value: session.restore.appSettingsRaw });
     writeRaw({ key: ENABLED_PERSONAS_STORAGE_KEY, value: session.restore.enabledPersonasRaw });
-    /* App settings and persona enablement go back verbatim; tour progress is
-       the one value that does not, because a first-time visitor's stashed
-       "never seen" would auto-start the walkthrough on top of the studio they
-       just landed back on. See buildRestoredTourProgressRaw — a real tour
-       state is still restored byte for byte. */
+    /*
+      App settings and persona enablement go back verbatim; tour progress is
+      the one value that does not, because a first-time visitor's stashed
+      "never seen" would auto-start the walkthrough on top of the studio they
+      just landed back on. See buildRestoredTourProgressRaw — a real tour
+      state is still restored byte for byte.
+    */
     writeRaw({
       key: TOUR_PROGRESS_STORAGE_KEY,
       value: buildRestoredTourProgressRaw(session.restore.tourProgressRaw),
@@ -192,16 +200,18 @@ export function endDemoSession(): void {
   broadcastStorageRefresh();
 }
 
-/** The active demo session, reactive (null during SSR and first paint). */
+/*
+  The active demo session, reactive (null during SSR and first paint).
+*/
 export function useDemoSession(): DemoSession | null {
   return useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot);
 }
 
-/**
- * Is this document the scripted demo's scratch document? Read imperatively —
- * the persona advisors' run gate needs the value at the moment of a trigger,
- * never a render-stale one.
- */
+/*
+  Is this document the scripted demo's scratch document? Read imperatively —
+  the persona advisors' run gate needs the value at the moment of a trigger,
+  never a render-stale one.
+*/
 export function getIsScriptedDemoDocument(documentId: string | null): boolean {
   return selectIsDemoDocument({ session: getSnapshot(), documentId });
 }

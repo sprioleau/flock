@@ -57,9 +57,13 @@ import { useCanvasDrafts, type DraftListEntry } from "./use-canvas-drafts";
  * per block); preview frames cost one subscription + one static render.
  */
 
-/** Max simultaneous live editor frames (the active draft always holds a slot). */
+/*
+  Max simultaneous live editor frames (the active draft always holds a slot).
+*/
 const MAX_LIVE_EDITOR_FRAMES = 3;
-/** Max sibling previews mounted with live subscriptions (demo scale ≤ 8 drafts/canvas). */
+/*
+  Max sibling previews mounted with live subscriptions (demo scale ≤ 8 drafts/canvas).
+*/
 const MAX_LIVE_SIBLING_PREVIEWS = 8;
 
 export function DraftFramesCanvas({
@@ -68,21 +72,25 @@ export function DraftFramesCanvas({
   onActivateDraft: (documentId: Id<"documents">) => void;
 }) {
   const { drafts, activeDocumentId, activeIndex } = useCanvasDrafts();
-  // The document a live AI generation streams into (drafts menu flows) —
-  // only THAT frame shows the working state; clears when the turn settles.
+  /*
+    The document a live AI generation streams into (drafts menu flows) —
+    only THAT frame shows the working state; clears when the turn settles.
+  */
   const generationTargetDocumentId = useGenerationTargetDocumentId();
   const frameRefsById = useRef(new Map<string, HTMLDivElement>());
   const lastScrolledDocumentIdRef = useRef<string | null>(null);
 
-  // Clicking the frames-surface BACKGROUND (the chrome around/between the
-  // frames) deselects the current block — the right rail then flips back to
-  // the Blocks tab (PropertyPanelSlot's deselect rule), so adding blocks is
-  // one click away. Scoped to this element only (never a document-level
-  // listener): a press that starts on a frame, a panel, or a toolbar records
-  // no position, and a drag released over the background moves >4px — both
-  // stay inert, so drops and marquee-ish gestures never clear the selection.
-  // An open inline editor commits first through its normal outside-click
-  // path: the background pointerdown blurs it before this click lands.
+  /*
+    Clicking the frames-surface BACKGROUND (the chrome around/between the
+    frames) deselects the current block — the right rail then flips back to
+    the Blocks tab (PropertyPanelSlot's deselect rule), so adding blocks is
+    one click away. Scoped to this element only (never a document-level
+    listener): a press that starts on a frame, a panel, or a toolbar records
+    no position, and a drag released over the background moves >4px — both
+    stay inert, so drops and marquee-ish gestures never clear the selection.
+    An open inline editor commits first through its normal outside-click
+    path: the background pointerdown blurs it before this click lands.
+  */
   const backgroundPressPositionRef = useRef<{ x: number; y: number } | null>(null);
   const handleSurfacePointerDown = (event: ReactPointerEvent<HTMLDivElement>) => {
     backgroundPressPositionRef.current =
@@ -101,11 +109,13 @@ export function DraftFramesCanvas({
     getActiveEditorStore().getState().selectBlock(null);
   };
 
-  // Bring the newly activated frame into view. Depends on `drafts` too: on a
-  // deep link the store connects BEFORE the draft-list subscription resolves,
-  // so the frame element doesn't exist on the first run — the retry when the
-  // list arrives positions it. The ref guards against re-scrolling (yanking a
-  // manually scrolled view) on unrelated list updates like renames.
+  /*
+    Bring the newly activated frame into view. Depends on `drafts` too: on a
+    deep link the store connects BEFORE the draft-list subscription resolves,
+    so the frame element doesn't exist on the first run — the retry when the
+    list arrives positions it. The ref guards against re-scrolling (yanking a
+    manually scrolled view) on unrelated list updates like renames.
+  */
   useEffect(() => {
     if (activeDocumentId === null || activeDocumentId === lastScrolledDocumentIdRef.current) {
       return;
@@ -124,10 +134,12 @@ export function DraftFramesCanvas({
       ? drafts[activeIndex + 1]!
       : null;
 
-  // Frame tiers, precomputed in canvas order so membership stays stable as
-  // you walk the row: the first MAX_LIVE_EDITOR_FRAMES drafts are live
-  // editors (the active draft ALWAYS holds a slot, wherever it sits), then
-  // live previews up to their cap, then placeholders.
+  /*
+    Frame tiers, precomputed in canvas order so membership stays stable as
+    you walk the row: the first MAX_LIVE_EDITOR_FRAMES drafts are live
+    editors (the active draft ALWAYS holds a slot, wherever it sits), then
+    live previews up to their cap, then placeholders.
+  */
   const liveEditorIds = new Set<string>();
   const liveSiblingPreviewIds = new Set<string>();
   if (activeDocumentId !== null) {
@@ -146,15 +158,19 @@ export function DraftFramesCanvas({
 
   return (
     <div className="relative flex min-h-0 flex-1 flex-col" data-testid="draft-frames-canvas">
-      {/* THE one scroll region (owner decision): frames grow with their
-          content — no frame has an inner scroller — so this surface scrolls
-          both axes: horizontally across frames, vertically through the
-          tallest one. Frames stay top-aligned (items-start). */}
-      {/* Chrome surface: darker-than-panels in dark mode (Figma-style canvas);
-          the light value is unchanged. Email pixels inside frames come from
-          document inline styles and never react to the app theme.
-          data-frames-scroller: the dnd layer edge-scrolls this surface
-          during palette drags (see CanvasDndContext). */}
+      {/*
+        THE one scroll region (owner decision): frames grow with their
+        content — no frame has an inner scroller — so this surface scrolls
+        both axes: horizontally across frames, vertically through the
+        tallest one. Frames stay top-aligned (items-start).
+      */}
+      {/*
+        Chrome surface: darker-than-panels in dark mode (Figma-style canvas);
+        the light value is unchanged. Email pixels inside frames come from
+        document inline styles and never react to the app theme.
+        data-frames-scroller: the dnd layer edge-scrolls this surface
+        during palette drags (see CanvasDndContext).
+      */}
       <div
         className="flex min-h-0 flex-1 items-start gap-20 overflow-auto bg-neutral-200/70 px-16 py-4 dark:bg-black/40"
         data-frames-scroller
@@ -196,8 +212,10 @@ export function DraftFramesCanvas({
         })}
       </div>
 
-      {/* Light prev/next affordances at the canvas edges (item 2 of the
-          frames spec) — activate + scroll the neighbor into view. */}
+      {/*
+        Light prev/next affordances at the canvas edges (item 2 of the
+        frames spec) — activate + scroll the neighbor into view.
+      */}
       {previousDraft !== null && (
         <FrameEdgeArrow side="left" onClick={() => onActivateDraft(previousDraft._id)} />
       )}
@@ -208,7 +226,9 @@ export function DraftFramesCanvas({
   );
 }
 
-/** A sibling frame past the editor cap: label + live read-only preview (or a placeholder). */
+/*
+  A sibling frame past the editor cap: label + live read-only preview (or a placeholder).
+*/
 function SiblingDraftFrame({
   draft,
   shouldMountLivePreview,
@@ -222,11 +242,13 @@ function SiblingDraftFrame({
   onActivate: () => void;
   registerFrameRef: (element: HTMLDivElement | null) => void;
 }) {
-  // Reject-with-affordance (owner decision §8.3 — never activate-on-hover):
-  // while a drag is live, preview frames dim/desaturate and show a static
-  // hint badge (previews are never a drop target for ANY drag source).
-  // Static, not hover-driven: pointer capture during a dnd gesture means
-  // :hover never updates on other elements.
+  /*
+    Reject-with-affordance (owner decision §8.3 — never activate-on-hover):
+    while a drag is live, preview frames dim/desaturate and show a static
+    hint badge (previews are never a drop target for ANY drag source).
+    Static, not hover-driven: pointer capture during a dnd gesture means
+    :hover never updates on other elements.
+  */
   const isDragActive = useCanvasDragStore((state) => state.dragSource !== null);
   return (
     <div
@@ -239,15 +261,19 @@ function SiblingDraftFrame({
       data-generation-target={isGenerationTarget || undefined}
     >
       <DraftFrameLabel draft={draft} isActive={false} onActivate={onActivate} />
-      {/* Positioning wrapper for the generation glow (switch-away-mid-
-          generation: ops keep landing in the target draft even as a sibling,
-          so the glow follows the frame; activation stays enabled — the frame
-          is read-only here anyway). */}
+      {/*
+        Positioning wrapper for the generation glow (switch-away-mid-
+        generation: ops keep landing in the target draft even as a sibling,
+        so the glow follows the frame; activation stays enabled — the frame
+        is read-only here anyway).
+      */}
       <div className="relative flex min-h-0 flex-1 flex-col">
       {isGenerationTarget && <GenerationGlowBorder />}
-      {/* div-with-button-semantics: the preview markup contains links/buttons
-          (inert via pointer-events-none), which must not nest inside a real
-          <button> (invalid interactive-content nesting → React dev warning). */}
+      {/*
+        div-with-button-semantics: the preview markup contains links/buttons
+        (inert via pointer-events-none), which must not nest inside a real
+        <button> (invalid interactive-content nesting → React dev warning).
+      */}
       <div
         role="button"
         tabIndex={0}
@@ -260,8 +286,10 @@ function SiblingDraftFrame({
         }}
         aria-label={`Activate draft ${draft.name}`}
         className={cn(
-          // Full scaled content, no inner scroller — consistent with the
-          // editor frames' height-follows-content behavior.
+          /*
+            Full scaled content, no inner scroller — consistent with the
+            editor frames' height-follows-content behavior.
+          */
           "relative overflow-hidden rounded-lg text-left",
           "ring-1 ring-black/5 transition-[box-shadow,opacity,filter] dark:ring-white/10",
           "focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none",
@@ -293,7 +321,9 @@ function SiblingDraftFrame({
   );
 }
 
-/** Reactive read-only preview: collaborators' edits to the sibling appear live. */
+/*
+  Reactive read-only preview: collaborators' edits to the sibling appear live.
+*/
 function LiveSiblingPreview({
   documentId,
   isGenerationTarget,
@@ -318,7 +348,9 @@ function LiveSiblingPreview({
   );
 }
 
-/** Subtle floating prev/next chevron at a canvas edge. */
+/*
+  Subtle floating prev/next chevron at a canvas edge.
+*/
 function FrameEdgeArrow({ side, onClick }: { side: "left" | "right"; onClick: () => void }) {
   return (
     <Button

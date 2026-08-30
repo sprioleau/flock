@@ -3,17 +3,17 @@
 import type { BlockId } from "@flock/email-sdk";
 import { getActiveEditorStore } from "@/lib/editor-store";
 
-/**
- * Reveal a just-inserted block: wait one frame so the dispatch's local apply
- * has rendered the block's element, then scroll the frames surface to it.
- * Shared by the palette's click-to-add and drop paths.
- *
- * Frame scoping (multi-frame editing): forked sibling drafts share block ids
- * and several frames render live canvases, so a bare `data-block-id` query
- * could land on another frame's copy. The lookup is scoped to one document's
- * canvas root — the ACTIVE document for the bare-id form (every legacy caller
- * targets the active frame), or an explicit `documentId` via the object form.
- */
+/*
+  Reveal a just-inserted block: wait one frame so the dispatch's local apply
+  has rendered the block's element, then scroll the frames surface to it.
+  Shared by the palette's click-to-add and drop paths.
+
+  Frame scoping (multi-frame editing): forked sibling drafts share block ids
+  and several frames render live canvases, so a bare `data-block-id` query
+  could land on another frame's copy. The lookup is scoped to one document's
+  canvas root — the ACTIVE document for the bare-id form (every legacy caller
+  targets the active frame), or an explicit `documentId` via the object form.
+*/
 export function scrollBlockIntoView(
   input: BlockId | { blockId: BlockId; documentId: string | null },
 ): void {

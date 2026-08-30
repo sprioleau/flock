@@ -27,7 +27,9 @@ import { z } from "zod";
   the same shape as every other way a proposed edit can fail to compose.
 */
 
-/** Generous per-field caps applied by truncation (never by hard validation). */
+/*
+  Generous per-field caps applied by truncation (never by hard validation).
+*/
 export const FINDING_TEXT_CAPS = {
   title: 160,
   description: 480,
@@ -35,7 +37,9 @@ export const FINDING_TEXT_CAPS = {
   suggestedPrompt: 480,
 } as const;
 
-/** Truncate one prose field to `cap`, marking the cut with an ellipsis. */
+/*
+  Truncate one prose field to `cap`, marking the cut with an ellipsis.
+*/
 export function truncateFindingText({ text, cap }: { text: string; cap: number }): string {
   if (text.length <= cap) {
     return text;
@@ -108,8 +112,10 @@ export const proposedCopyEditSchema = z.object({
 
 export const findingSchema = z.object({
   personaSlug: z.string().describe("The slug of the persona this finding belongs to."),
-  // Prose fields are deliberately un-capped in the schema (layer 2 above):
-  // length guidance lives in the prompt, and the route truncates on receipt.
+  /*
+    Prose fields are deliberately un-capped in the schema (layer 2 above):
+    length guidance lives in the prompt, and the route truncates on receipt.
+  */
   title: z.string().describe("Short card headline (a dozen words at most). Never mention block ids."),
   description: z
     .string()

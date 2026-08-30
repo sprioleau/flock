@@ -7,31 +7,39 @@ import { useAppSettings } from "./app-settings";
 import { composeDemoPrompts } from "./demo-prompts";
 
 export interface DemoQueueButtonProps {
-  /** True while a turn is running or an approval is pending (mirrors the composer's gate). */
+  /*
+    True while a turn is running or an approval is pending (mirrors the composer's gate).
+  */
   isAgentBusy: boolean;
   hasQueuedMessages: boolean;
-  /** Sends one message into the thread now (the panel's history-recording send). */
+  /*
+    Sends one message into the thread now (the panel's history-recording send).
+  */
   sendUserMessage: (text: string) => void;
-  /** Appends one message to the FIFO queue. */
+  /*
+    Appends one message to the FIFO queue.
+  */
   enqueueMessage: (text: string) => void;
-  /** Keeps the control out of the tab order while the panel is collapsed. */
+  /*
+    Keeps the control out of the tab order while the panel is collapsed.
+  */
   isPanelExpanded: boolean;
 }
 
-/**
- * Demo mode's one chat-side control: composes DEMO_PROMPT_COUNT natural-language prompts
- * from the CURRENT document (composeDemoPrompts) and runs them as REAL chat
- * turns — the first sends immediately, the rest join the message queue,
- * whose auto-drain already enforces the demo's pacing: each agent turn fully
- * completes before the next prompt sends, leaving room to edit blocks while
- * turns land. Every turn gets its own batchId, so the existing per-turn
- * revert chips cover the cleanup story.
- *
- * Mirrors the composer's own busy gate: when the agent is mid-turn (or
- * messages are already queued) ALL of them queue FIFO-fairly instead.
- *
- * Renders nothing unless the settings FAB's "Demo mode" toggle is on.
- */
+/*
+  Demo mode's one chat-side control: composes DEMO_PROMPT_COUNT natural-language prompts
+  from the CURRENT document (composeDemoPrompts) and runs them as REAL chat
+  turns — the first sends immediately, the rest join the message queue,
+  whose auto-drain already enforces the demo's pacing: each agent turn fully
+  completes before the next prompt sends, leaving room to edit blocks while
+  turns land. Every turn gets its own batchId, so the existing per-turn
+  revert chips cover the cleanup story.
+
+  Mirrors the composer's own busy gate: when the agent is mid-turn (or
+  messages are already queued) ALL of them queue FIFO-fairly instead.
+
+  Renders nothing unless the settings FAB's "Demo mode" toggle is on.
+*/
 export function DemoQueueButton({
   isAgentBusy,
   hasQueuedMessages,

@@ -22,36 +22,44 @@ import type { FlockChatMessage } from "@/lib/chat-contract";
  * TurnActivityIndicator (the gaps BETWEEN steps, where nothing else narrates).
  */
 
-// ---------------------------------------------------------------------------
-// Per-step phrasing
-// ---------------------------------------------------------------------------
+/*
+  ---------------------------------------------------------------------------
+  Per-step phrasing
+  ---------------------------------------------------------------------------
+*/
 
 export interface ActivityPhrase {
-  /** Shown while the step is running: "Adding a section". */
+  /*
+    Shown while the step is running: "Adding a section".
+  */
   present: string;
-  /** Shown once the step landed: "Added a section". */
+  /*
+    Shown once the step landed: "Added a section".
+  */
   past: string;
 }
 
-/** Tools that only LOOK at things — the chip renders them quieter. */
+/*
+  Tools that only LOOK at things — the chip renders them quieter.
+*/
 export const READ_ONLY_TOOL_NAMES: ReadonlySet<string> = new Set([
   "getBlockDetails",
   "readWebPage",
   "listAssets",
 ]);
 
-/**
- * A tool whose phrasing depends on its arguments (plurals, mostly). Returning
- * a phrase from the input keeps the common case declarative.
- */
+/*
+  A tool whose phrasing depends on its arguments (plurals, mostly). Returning
+  a phrase from the input keeps the common case declarative.
+*/
 type ActivityPhraseResolver = (input: Readonly<Record<string, unknown>>) => ActivityPhrase;
 
 type ActivityEntry = ActivityPhrase | ActivityPhraseResolver;
 
-/**
- * Internal tool name → what the user is told. Deliberately verb-first and
- * short: the chip is ~300px wide and these read as a running commentary.
- */
+/*
+  Internal tool name → what the user is told. Deliberately verb-first and
+  short: the chip is ~300px wide and these read as a running commentary.
+*/
 const ACTIVITY_PHRASES: Readonly<Record<string, ActivityEntry>> = {
   updateBlockProperties: { present: "Restyling", past: "Restyled" },
   replaceBlockProperties: { present: "Restyling", past: "Restyled" },
@@ -93,8 +101,10 @@ const ACTIVITY_PHRASES: Readonly<Record<string, ActivityEntry>> = {
     typeof input.draft === "string" && input.draft.length > 0
       ? { present: `Theming “${input.draft}”`, past: `Themed “${input.draft}”` }
       : { present: "Applying the theme", past: "Applied the theme" },
-  // Widget tools: the chip shows only while the call streams in / when no
-  // widget part was written — the widget itself supersedes it otherwise.
+  /*
+    Widget tools: the chip shows only while the call streams in / when no
+    widget part was written — the widget itself supersedes it otherwise.
+  */
   askForClarification: { present: "Thinking of a question", past: "Asked a question" },
   proposeSectionVariations: { present: "Putting options together", past: "Put options together" },
   proposeEdits: { present: "Looking for improvements", past: "Found some improvements" },
@@ -108,25 +118,29 @@ const ACTIVITY_PHRASES: Readonly<Record<string, ActivityEntry>> = {
   readWebPage: { present: "Reading the page you linked", past: "Read the page you linked" },
 };
 
-/**
- * What an UNMAPPED tool says. Neutral on purpose: it must be true of any
- * plausible new tool and must never hint at an internal name. This is the
- * safety net for the toolset changing underneath the UI — a tool being renamed
- * or added downgrades the copy's specificity, never its safety.
- */
+/*
+  What an UNMAPPED tool says. Neutral on purpose: it must be true of any
+  plausible new tool and must never hint at an internal name. This is the
+  safety net for the toolset changing underneath the UI — a tool being renamed
+  or added downgrades the copy's specificity, never its safety.
+*/
 export const FALLBACK_ACTIVITY_PHRASE: ActivityPhrase = {
   present: "Working on your email",
   past: "Updated your email",
 };
 
-/** True when this module has curated copy for the tool. */
+/*
+  True when this module has curated copy for the tool.
+*/
 export function getIsKnownTool(toolName: string): boolean {
   return Object.hasOwn(ACTIVITY_PHRASES, toolName);
 }
 
 export interface GetActivityPhraseInput {
   toolName: string;
-  /** The tool call's arguments, if any have streamed in yet. */
+  /*
+    The tool call's arguments, if any have streamed in yet.
+  */
   input?: unknown;
   /**
    * The tool's RESULT, once it has one. Only consulted for steps that can
@@ -170,7 +184,9 @@ function getUnsteppedHistoryPhrase({
   return phrase;
 }
 
-/** The phrase pair for one tool call — never the tool's own name. */
+/*
+  The phrase pair for one tool call — never the tool's own name.
+*/
 export function getActivityPhrase({
   toolName,
   input,
@@ -192,7 +208,9 @@ export function getActivityPhrase({
   return entry(argumentObject);
 }
 
-/** The single line a chip shows, tensed by whether the step has landed. */
+/*
+  The single line a chip shows, tensed by whether the step has landed.
+*/
 export function getActivityLabel(
   input: GetActivityPhraseInput & { isComplete: boolean },
 ): string {
@@ -200,22 +218,26 @@ export function getActivityLabel(
   return input.isComplete ? phrase.past : phrase.present;
 }
 
-// ---------------------------------------------------------------------------
-// Target labels ("… · button")
-// ---------------------------------------------------------------------------
+/*
+  ---------------------------------------------------------------------------
+  Target labels ("… · button")
+  ---------------------------------------------------------------------------
+*/
 
-/**
- * Block type → what the user calls it. Only the types whose internal name is
- * not already plain English need an entry; everything else ("button", "image",
- * "text"…) is its own best label.
- */
+/*
+  Block type → what the user calls it. Only the types whose internal name is
+  not already plain English need an entry; everything else ("button", "image",
+  "text"…) is its own best label.
+*/
 const BLOCK_TYPE_LABELS: Readonly<Record<string, string>> = {
   root: "whole email",
   row: "layout row",
   code: "custom code",
 };
 
-/** The user-facing name of the block a step targets. */
+/*
+  The user-facing name of the block a step targets.
+*/
 export function getBlockTypeLabel(blockType: string | undefined): string | undefined {
   if (blockType === undefined) {
     return undefined;
@@ -223,7 +245,9 @@ export function getBlockTypeLabel(blockType: string | undefined): string | undef
   return BLOCK_TYPE_LABELS[blockType] ?? blockType;
 }
 
-/** openPanel enum value → the human surface name shown after "Opening ·". */
+/*
+  openPanel enum value → the human surface name shown after "Opening ·".
+*/
 const PANEL_TARGET_LABELS: Readonly<Record<string, string>> = {
   theme: "theme",
   "brand-kit": "brand kit",
@@ -236,7 +260,9 @@ const PANEL_TARGET_LABELS: Readonly<Record<string, string>> = {
   "send-test": "send test",
 };
 
-/** The step's target blockId, if its input carries one (never user-facing). */
+/*
+  The step's target blockId, if its input carries one (never user-facing).
+*/
 export function getTargetBlockId(input: unknown): BlockId | undefined {
   const argumentObject = input as Record<string, unknown> | undefined;
   return typeof argumentObject?.blockId === "string"
@@ -244,16 +270,16 @@ export function getTargetBlockId(input: unknown): BlockId | undefined {
     : undefined;
 }
 
-/**
- * Human-readable non-block target: a recipient, a viewport mode, a panel…
- *
- * Gated on the tool being KNOWN. These fields are read positionally out of
- * model-supplied arguments, so for a tool this module has never seen there is
- * no guarantee that `mode`/`panel`/`name` hold anything a user should read —
- * an unmapped tool therefore contributes no target at all. The block-type
- * target is exempt from that rule elsewhere: it is looked up in the document,
- * not taken from the model.
- */
+/*
+  Human-readable non-block target: a recipient, a viewport mode, a panel…
+
+  Gated on the tool being KNOWN. These fields are read positionally out of
+  model-supplied arguments, so for a tool this module has never seen there is
+  no guarantee that `mode`/`panel`/`name` hold anything a user should read —
+  an unmapped tool therefore contributes no target at all. The block-type
+  target is exempt from that rule elsewhere: it is looked up in the document,
+  not taken from the model.
+*/
 export function getNonBlockTargetLabel({ toolName, input }: GetActivityPhraseInput): string | undefined {
   if (!getIsKnownTool(toolName)) {
     return undefined;
@@ -277,42 +303,46 @@ export function getNonBlockTargetLabel({ toolName, input }: GetActivityPhraseInp
   if (typeof argumentObject.count === "number" && argumentObject.count > 1) {
     return `${argumentObject.count} drafts`;
   }
-  // createPersona: the persona's display name is the target.
+  /*
+    createPersona: the persona's display name is the target.
+  */
   if (typeof argumentObject.name === "string" && toolName === "createPersona") {
     return argumentObject.name;
   }
   return undefined;
 }
 
-// ---------------------------------------------------------------------------
-// Between-step narration (the TurnActivityIndicator)
-// ---------------------------------------------------------------------------
+/*
+  ---------------------------------------------------------------------------
+  Between-step narration (the TurnActivityIndicator)
+  ---------------------------------------------------------------------------
+*/
 
-/**
- * The shape the indicator needs out of the live turn's parts. Deliberately
- * narrow so the phase logic is testable without constructing AI SDK messages.
- */
+/*
+  The shape the indicator needs out of the live turn's parts. Deliberately
+  narrow so the phase logic is testable without constructing AI SDK messages.
+*/
 export type TurnPart =
   | { kind: "text"; hasContent: boolean }
   | { kind: "step"; isSettled: boolean }
   | { kind: "other" };
 
-/**
- * Tool-part states that mean "this step is over, one way or another" — the
- * agent is no longer executing it, so the turn's next silence belongs to the
- * model deciding what to do next, not to this step.
- */
+/*
+  Tool-part states that mean "this step is over, one way or another" — the
+  agent is no longer executing it, so the turn's next silence belongs to the
+  model deciding what to do next, not to this step.
+*/
 const SETTLED_TOOL_PART_STATES: ReadonlySet<string> = new Set([
   "output-available",
   "output-error",
   "output-denied",
 ]);
 
-/**
- * Project a live assistant message's parts down to what the indicator needs.
- * Anything that is not prose or a step (widget data parts, sources, files)
- * counts as settled content: it was written, so the agent has moved on.
- */
+/*
+  Project a live assistant message's parts down to what the indicator needs.
+  Anything that is not prose or a step (widget data parts, sources, files)
+  counts as settled content: it was written, so the agent has moved on.
+*/
 export function toTurnParts(parts: readonly FlockChatMessage["parts"][number][]): TurnPart[] {
   return parts.map((part): TurnPart => {
     if (part.type === "text") {
@@ -329,35 +359,41 @@ export function toTurnParts(parts: readonly FlockChatMessage["parts"][number][])
   });
 }
 
-/**
- * What the indicator says right now, or null when another surface is already
- * narrating (a spinning step chip, or prose streaming in) and a second live
- * status line would just be noise.
- */
+/*
+  What the indicator says right now, or null when another surface is already
+  narrating (a spinning step chip, or prose streaming in) and a second live
+  status line would just be noise.
+*/
 export interface TurnActivity {
-  /**
-   * "waiting" — the request is out and nothing has come back yet.
-   * "next-step" — a step landed and the agent is deciding what to do next.
-   * Distinguished so the indicator can key its animation and tests can assert
-   * the phase without matching on copy.
-   */
+  /*
+    "waiting" — the request is out and nothing has come back yet.
+    "next-step" — a step landed and the agent is deciding what to do next.
+    Distinguished so the indicator can key its animation and tests can assert
+    the phase without matching on copy.
+  */
   phase: "waiting" | "next-step";
   message: string;
 }
 
-/**
- * How long a silent wait runs before the copy acknowledges it. A first model
- * response usually lands well inside this; past it, silence starts to read as
- * a hang, so the indicator says so rather than repeating itself.
- */
+/*
+  How long a silent wait runs before the copy acknowledges it. A first model
+  response usually lands well inside this; past it, silence starts to read as
+  a hang, so the indicator says so rather than repeating itself.
+*/
 export const SLOW_TURN_THRESHOLD_MS = 9_000;
 
 export interface DescribeTurnActivityInput {
-  /** True while the turn is in flight (submitted or streaming). */
+  /*
+    True while the turn is in flight (submitted or streaming).
+  */
   isTurnInProgress: boolean;
-  /** The live turn's parts, oldest first. Empty before anything streams back. */
+  /*
+    The live turn's parts, oldest first. Empty before anything streams back.
+  */
   parts: readonly TurnPart[];
-  /** Milliseconds since this turn was submitted. */
+  /*
+    Milliseconds since this turn was submitted.
+  */
   elapsedMs: number;
 }
 
@@ -369,8 +405,10 @@ export function describeTurnActivity({
   if (!isTurnInProgress) {
     return null;
   }
-  // Ignore parts that say nothing (an empty text part is written the moment
-  // the assistant message opens, before a single token arrives).
+  /*
+    Ignore parts that say nothing (an empty text part is written the moment
+    the assistant message opens, before a single token arrives).
+  */
   const narratableParts = parts.filter(
     (part) => !(part.kind === "text" && !part.hasContent),
   );
@@ -385,8 +423,10 @@ export function describeTurnActivity({
           : "Thinking it through…",
     };
   }
-  // Prose streaming in is its own narration; so is a step chip that is still
-  // spinning with its own label. Neither needs a second line saying so.
+  /*
+    Prose streaming in is its own narration; so is a step chip that is still
+    spinning with its own label. Neither needs a second line saying so.
+  */
   if (lastPart.kind === "text") {
     return null;
   }

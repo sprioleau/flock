@@ -43,17 +43,17 @@ const modules = import.meta.glob([
   "!**/*.test.ts",
 ]);
 
-/**
- * The prosemirror-sync component has to be registered or every headless text
- * write dies with "Component prosemirrorSync is not registered".
- *
- * That is not harness noise — it is the routing decision showing up in the
- * test. `documents.applyOperations` sets `shouldForceTextSyncDocs` for any
- * non-frontend caller, so a `caller: "cli"` updateText reaches into the
- * component to force the block's live ProseMirror doc to match what was just
- * committed. A headless text write is therefore never purely a row write, and
- * anything that hosts this path needs the component wired up.
- */
+/*
+  The prosemirror-sync component has to be registered or every headless text
+  write dies with "Component prosemirrorSync is not registered".
+
+  That is not harness noise — it is the routing decision showing up in the
+  test. `documents.applyOperations` sets `shouldForceTextSyncDocs` for any
+  non-frontend caller, so a `caller: "cli"` updateText reaches into the
+  component to force the block's live ProseMirror doc to match what was just
+  committed. A headless text write is therefore never purely a row write, and
+  anything that hosts this path needs the component wired up.
+*/
 function createBackend() {
   const backend = convexTest(schema, modules);
   registerProsemirrorSync(backend);
@@ -67,20 +67,22 @@ function createBackend() {
 */
 type Backend = ReturnType<typeof createBackend>;
 
-/** A pre-auth browser's localStorage UUID — what `documents.sessionId` holds. */
+/*
+  A pre-auth browser's localStorage UUID — what `documents.sessionId` holds.
+*/
 const BROWSER_SESSION_ID = "9a41b7d0-6c22-4f18-b3e5-1d8a7c04e2b6";
 
-/**
- * The provenance a headless caller asserts. `caller: "cli"` because that is
- * what this module is: server-side code with no request and no editor, which
- * is also the case `commitVersions` names when it decides to force the
- * committed text back into the block's sync doc.
- *
- * `authorId` is self-asserted here exactly as it is in production — the
- * module's doc comment says so, and this test does not pretend otherwise. It
- * is asserted below only to prove the value the caller supplied is the value
- * the op row carries.
- */
+/*
+  The provenance a headless caller asserts. `caller: "cli"` because that is
+  what this module is: server-side code with no request and no editor, which
+  is also the case `commitVersions` names when it decides to force the
+  committed text back into the block's sync doc.
+
+  `authorId` is self-asserted here exactly as it is in production — the
+  module's doc comment says so, and this test does not pretend otherwise. It
+  is asserted below only to prove the value the caller supplied is the value
+  the op row carries.
+*/
 const CLI_CONTEXT: ActionContext = {
   caller: "cli",
   author: "user",
@@ -94,7 +96,9 @@ function createStoredDocumentBackend(t: Backend): StoredDocumentBackend {
   };
 }
 
-/** The stored text of one block, read back through the real query. */
+/*
+  The stored text of one block, read back through the real query.
+*/
 async function readStoredText({
   t,
   documentId,
@@ -114,11 +118,11 @@ async function readStoredText({
   return { text: block.properties.text, headVersion: payload!.headVersion };
 }
 
-/**
- * A seeded draft plus the first text block in it. The sample document is the
- * deterministic every-block-type fixture, so "the first text block" is a
- * stable target without hard-coding an id the fixture is free to change.
- */
+/*
+  A seeded draft plus the first text block in it. The sample document is the
+  deterministic every-block-type fixture, so "the first text block" is a
+  stable target without hard-coding an id the fixture is free to change.
+*/
 async function seedDocumentWithTextBlock(t: Backend) {
   const { documentId } = await t.mutation(api.documents.createDocument, {
     sessionId: BROWSER_SESSION_ID,
@@ -137,7 +141,9 @@ async function seedDocumentWithTextBlock(t: Backend) {
   return { documentId, blockId, originalText: block.properties.text };
 }
 
-/** The updateText payload a headless caller sends: whole-doc replacement. */
+/*
+  The updateText payload a headless caller sends: whole-doc replacement.
+*/
 function buildUpdateTextInput(blockId: string, text: TextDoc) {
   return { name: "updateText", blockId, text };
 }
@@ -393,7 +399,9 @@ describe("a SECOND headless caller needs no knowledge runStoredContentAction has
     const payload = await t.query(api.documents.getDocument, { documentId });
     const beforeVersion = payload!.headVersion;
 
-    /* --- the whole of what a second headless surface writes --- */
+    /*
+      --- the whole of what a second headless surface writes ---
+    */
     const dispatched = dispatchContentAction({
       registry: emailActionRegistry,
       doc: emailDocumentSchema.parse(payload!.doc),
@@ -410,7 +418,9 @@ describe("a SECOND headless caller needs no knowledge runStoredContentAction has
       ops: [dispatched.op],
       context: dispatched.context,
     });
-    /* --- end --- */
+    /*
+      --- end ---
+    */
 
     expect(persisted.isOk).toBe(true);
     /*

@@ -77,9 +77,15 @@ export const DEFAULT_TOUR_PROGRESS: TourProgress = {
   resumeStopId: null,
 };
 
-/* ------------------------------------------------------------------------ */
-/* Pure state — every decision the tour makes, testable without a DOM.        */
-/* ------------------------------------------------------------------------ */
+/*
+  ------------------------------------------------------------------------
+*/
+/*
+  Pure state — every decision the tour makes, testable without a DOM.
+*/
+/*
+  ------------------------------------------------------------------------
+*/
 
 function isTourStatus(value: unknown): value is TourStatus {
   return (
@@ -136,7 +142,9 @@ export function selectActiveTourStopId(progress: TourProgress): TourStopId | nul
   return progress.resumeStopId ?? FIRST_TOUR_STOP_ID;
 }
 
-/** Next stop, or completion at the last one. Advancing a finished tour is a no-op. */
+/*
+  Next stop, or completion at the last one. Advancing a finished tour is a no-op.
+*/
 export function advanceTourProgress(progress: TourProgress): TourProgress {
   const activeStopId = selectActiveTourStopId(progress);
   if (activeStopId === null) {
@@ -149,7 +157,9 @@ export function advanceTourProgress(progress: TourProgress): TourProgress {
   return { status: "in-progress", resumeStopId: nextStopId };
 }
 
-/** Previous stop. At the first stop there is nowhere to go, so nothing moves. */
+/*
+  Previous stop. At the first stop there is nowhere to go, so nothing moves.
+*/
 export function rewindTourProgress(progress: TourProgress): TourProgress {
   const activeStopId = selectActiveTourStopId(progress);
   if (activeStopId === null) {
@@ -162,12 +172,16 @@ export function rewindTourProgress(progress: TourProgress): TourProgress {
   return { status: "in-progress", resumeStopId: previousStopId };
 }
 
-/* Skip. The resume point goes with it — a restart begins at the beginning. */
+/*
+  Skip. The resume point goes with it — a restart begins at the beginning.
+*/
 export function dismissTourProgress(): TourProgress {
   return { status: "dismissed", resumeStopId: null };
 }
 
-/* Reached the end, or took an "Open it" exit — both are a finished tour. */
+/*
+  Reached the end, or took an "Open it" exit — both are a finished tour.
+*/
 export function completeTourProgress(): TourProgress {
   return { status: "completed", resumeStopId: null };
 }
@@ -184,11 +198,19 @@ export function restartTourProgress(): TourProgress {
   return { status: "in-progress", resumeStopId: FIRST_TOUR_STOP_ID };
 }
 
-/* ------------------------------------------------------------------------ */
-/* The store — the localStorage shell over the pure state above.              */
-/* ------------------------------------------------------------------------ */
+/*
+  ------------------------------------------------------------------------
+*/
+/*
+  The store — the localStorage shell over the pure state above.
+*/
+/*
+  ------------------------------------------------------------------------
+*/
 
-/** Stable snapshot object (useSyncExternalStore requires reference equality). */
+/*
+  Stable snapshot object (useSyncExternalStore requires reference equality).
+*/
 let cachedProgress: TourProgress = DEFAULT_TOUR_PROGRESS;
 let hasReadStorage = false;
 
@@ -198,7 +220,9 @@ function readProgressFromStorage(): TourProgress {
   try {
     return parseTourProgress(window.localStorage.getItem(TOUR_PROGRESS_STORAGE_KEY));
   } catch {
-    /* No storage at all (SSR, privacy mode) — a first run every time is fine. */
+    /*
+      No storage at all (SSR, privacy mode) — a first run every time is fine.
+    */
     return DEFAULT_TOUR_PROGRESS;
   }
 }
@@ -255,32 +279,44 @@ function writeProgress(reduce: (current: TourProgress) => TourProgress): void {
   try {
     window.localStorage.setItem(TOUR_PROGRESS_STORAGE_KEY, JSON.stringify(cachedProgress));
   } catch {
-    /* Storage unavailable — the in-memory value still holds for this tab. */
+    /*
+      Storage unavailable — the in-memory value still holds for this tab.
+    */
   }
   notifyListeners();
 }
 
-/** Move to the next stop, completing the tour at the last one. */
+/*
+  Move to the next stop, completing the tour at the last one.
+*/
 export function advanceTour(): void {
   writeProgress(advanceTourProgress);
 }
 
-/** Step back one stop. A no-op on the first. */
+/*
+  Step back one stop. A no-op on the first.
+*/
 export function rewindTour(): void {
   writeProgress(rewindTourProgress);
 }
 
-/** Skip. Nothing shows again in this browser until the settings entry resets it. */
+/*
+  Skip. Nothing shows again in this browser until the settings entry resets it.
+*/
 export function dismissTour(): void {
   writeProgress(dismissTourProgress);
 }
 
-/** Finish — the last stop's Done, and the "Open it" exit. */
+/*
+  Finish — the last stop's Done, and the "Open it" exit.
+*/
 export function completeTour(): void {
   writeProgress(completeTourProgress);
 }
 
-/** The settings entry: wipe progress and start over from the first stop. */
+/*
+  The settings entry: wipe progress and start over from the first stop.
+*/
 export function restartTour(): void {
   writeProgress(restartTourProgress);
 }
@@ -295,7 +331,9 @@ export function getTourProgress(): TourProgress {
   return getSnapshot();
 }
 
-/** Reactive progress (defaults during SSR/first paint, stored value after mount). */
+/*
+  Reactive progress (defaults during SSR/first paint, stored value after mount).
+*/
 export function useTourProgress(): TourProgress {
   return useSyncExternalStore(subscribe, getSnapshot, getServerSnapshot);
 }

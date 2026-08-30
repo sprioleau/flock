@@ -29,7 +29,9 @@ import {
   type SocialPlatform,
 } from "./social-links";
 
-/* One row of the editor: the platform the user chose and what they typed. */
+/*
+  One row of the editor: the platform the user chose and what they typed.
+*/
 export interface SocialLinkDraft {
   platform: SocialPlatform;
   url: string;
@@ -39,7 +41,9 @@ export type SocialLinksPlan =
   | { isValid: true; links: BrandSocialLink[] }
   | { isValid: false; message: string };
 
-/* True when a stored platform key is one this build knows how to render. */
+/*
+  True when a stored platform key is one this build knows how to render.
+*/
 export function isKnownSocialPlatform(platform: string): platform is SocialPlatform {
   return (SOCIAL_PLATFORM_ORDER as readonly string[]).includes(platform);
 }

@@ -41,22 +41,28 @@ import {
 } from "@flock/email-sdk";
 import type { LeafBlockVariant } from "../block-defaults";
 
-/**
- * The Blocks-tab palette catalog: every block a user can add by hand, grouped
- * the way the pane renders them (Content / Layout, then the categorized
- * Sections gallery). Items are pure descriptors — insertion goes through the
- * shared block-defaults factories (drop path: dnd/drop-target
- * buildPaletteDropInsertion; click path: click-to-add-placement), so palette
- * adds can never drift from what the agent-facing tools and the rest of the
- * studio produce.
- */
+/*
+  The Blocks-tab palette catalog: every block a user can add by hand, grouped
+  the way the pane renders them (Content / Layout, then the categorized
+  Sections gallery). Items are pure descriptors — insertion goes through the
+  shared block-defaults factories (drop path: dnd/drop-target
+  buildPaletteDropInsertion; click path: click-to-add-placement), so palette
+  adds can never drift from what the agent-facing tools and the rest of the
+  studio produce.
+*/
 
 interface PaletteItemBase {
-  /** Stable palette id — also the useDraggable id suffix and test hook. */
+  /*
+    Stable palette id — also the useDraggable id suffix and test hook.
+  */
   id: string;
-  /** User-facing tile label. */
+  /*
+    User-facing tile label.
+  */
   label: string;
-  /** One-line user-facing description (tile tooltip). */
+  /*
+    One-line user-facing description (tile tooltip).
+  */
   description: string;
   Icon: LucideIcon;
 }
@@ -65,22 +71,24 @@ export type PaletteItem =
   | (PaletteItemBase & {
       kind: "leaf";
       blockType: LeafBlockType;
-      /** Optional content preset the block-defaults factory applies (e.g. the
-       * Heading tile: a text block whose doc is a single heading node). */
+      /*
+        Optional content preset the block-defaults factory applies (e.g. the
+        Heading tile: a text block whose doc is a single heading node).
+      */
       variant?: LeafBlockVariant;
     })
   | (PaletteItemBase & { kind: "columns"; columnCount: 2 | 3 | 4 })
   | (PaletteItemBase & { kind: "empty-section" })
   | (PaletteItemBase & { kind: "section-template"; templateId: string });
 
-/**
- * The block type a palette item stands in for during ALLOWED_CHILD_TYPES
- * legality checks. EVERY palette item is draggable (owner decision 2026-07-31,
- * reversing the v1 click-only rule for section templates): template tiles
- * stand in for a section, so they resolve to root-level gaps exactly like the
- * Empty Section tile. Null remains the "cannot drag" contract for any future
- * click-only item.
- */
+/*
+  The block type a palette item stands in for during ALLOWED_CHILD_TYPES
+  legality checks. EVERY palette item is draggable (owner decision 2026-07-31,
+  reversing the v1 click-only rule for section templates): template tiles
+  stand in for a section, so they resolve to root-level gaps exactly like the
+  Empty Section tile. Null remains the "cannot drag" contract for any future
+  click-only item.
+*/
 export function getPaletteDragBlockType(item: PaletteItem): BlockType | null {
   switch (item.kind) {
     case "leaf":
@@ -157,10 +165,12 @@ export const PALETTE_GROUPS: readonly PaletteGroup[] = [
         Icon: ImageIcon,
       },
       {
-        // Stage M (brand-kit §7.2): feels like a block type, is a PRESET —
-        // an image block with role:"logo", sourced from the canvas brand's
-        // CONFIRMED logo (placeholder + Brand kit hint when none). Brand
-        // propagation re-sources role-marked images on update.
+        /*
+          Stage M (brand-kit §7.2): feels like a block type, is a PRESET —
+          an image block with role:"logo", sourced from the canvas brand's
+          CONFIRMED logo (placeholder + Brand kit hint when none). Brand
+          propagation re-sources role-marked images on update.
+        */
         kind: "leaf",
         id: "logo",
         blockType: "image",
@@ -234,11 +244,15 @@ export const PALETTE_GROUPS: readonly PaletteGroup[] = [
   },
 ];
 
-// ---------------------------------------------------------------------------
-// The Sections gallery — the palette's third area, categorized (§10)
-// ---------------------------------------------------------------------------
+/*
+  ---------------------------------------------------------------------------
+  The Sections gallery — the palette's third area, categorized (§10)
+  ---------------------------------------------------------------------------
+*/
 
-/** The blank starting point, shown beside the Section gallery entry tile. */
+/*
+  The blank starting point, shown beside the Section gallery entry tile.
+*/
 export const EMPTY_SECTION_ITEM: PaletteItem = {
   kind: "empty-section",
   id: "empty-section",
@@ -247,7 +261,9 @@ export const EMPTY_SECTION_ITEM: PaletteItem = {
   Icon: SquareDashedIcon,
 };
 
-/** User-facing labels for the SDK's section-category axis. */
+/*
+  User-facing labels for the SDK's section-category axis.
+*/
 const SECTION_CATEGORY_LABELS: Record<SectionCategory, string> = {
   header: "Headers",
   hero: "Heroes",
@@ -258,17 +274,19 @@ const SECTION_CATEGORY_LABELS: Record<SectionCategory, string> = {
 
 export interface SectionGalleryCategory {
   id: SectionCategory;
-  /** User-facing category sub-heading ("Headers", "Footers", …). */
+  /*
+    User-facing category sub-heading ("Headers", "Footers", …).
+  */
   label: string;
   items: readonly PaletteItem[];
 }
 
-/**
- * The section-template gallery, grouped by the SDK catalog's category axis in
- * catalog (composition) order. Tile labels and tooltips are single-sourced
- * from each template's name and useWhen sentence, so the gallery can never
- * drift from what scaffoldSection actually builds.
- */
+/*
+  The section-template gallery, grouped by the SDK catalog's category axis in
+  catalog (composition) order. Tile labels and tooltips are single-sourced
+  from each template's name and useWhen sentence, so the gallery can never
+  drift from what scaffoldSection actually builds.
+*/
 export const SECTION_GALLERY: readonly SectionGalleryCategory[] = SECTION_CATEGORIES.map(
   (category) => ({
     id: category,

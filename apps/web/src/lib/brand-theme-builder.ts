@@ -72,17 +72,25 @@ import {
   button defaults — broken in exactly the place a reader clicks.
 */
 export interface ThemeColorRoles {
-  /* The content surface — the color everything else is judged against. */
+  /*
+    The content surface — the color everything else is judged against.
+  */
   contentBackground: string;
   headingText: string;
   paragraphText: string;
-  /* Buttons and links. */
+  /*
+    Buttons and links.
+  */
   accent: string;
 }
 
-/* One offered theme: the picked roles plus a stable key for list rendering. */
+/*
+  One offered theme: the picked roles plus a stable key for list rendering.
+*/
 export interface ThemeCandidate {
-  /* Stable within one candidate set — the shuffle's cursor. */
+  /*
+    Stable within one candidate set — the shuffle's cursor.
+  */
   key: string;
   roles: ThemeColorRoles;
 }
@@ -144,7 +152,9 @@ export function getThemeEditPaletteHexes({
   return merged;
 }
 
-/** True when two role sets name the same color for every role. */
+/*
+  True when two role sets name the same color for every role.
+*/
 export function areThemeColorRolesEqual({
   a,
   b,
@@ -160,7 +170,9 @@ export function areThemeColorRolesEqual({
   );
 }
 
-/* Every distinct, readable hex in the kit's authored palette, in panel order. */
+/*
+  Every distinct, readable hex in the kit's authored palette, in panel order.
+*/
 export function getPaletteHexes(colors: BrandColor[] | undefined): string[] {
   const seen = new Set<string>();
   const hexes: string[] = [];
@@ -175,7 +187,9 @@ export function getPaletteHexes(colors: BrandColor[] | undefined): string[] {
   return hexes;
 }
 
-/* Lowercased #rrggbb, or null when the value is not hex we can read. */
+/*
+  Lowercased #rrggbb, or null when the value is not hex we can read.
+*/
 function normalizeHex(hex: string): string | null {
   const raw = hex.trim().replace(/^#/, "");
   const isShort = /^[0-9a-f]{3}$/i.test(raw);
@@ -289,7 +303,7 @@ export function buildThemeCandidates(paletteHexes: string[]): ThemeCandidate[] {
     const paragraphText = eligibleText[1] ?? headingText;
     for (const accent of paletteHexes) {
       if (accent === contentBackground) {
-        continue; // An invisible button is not a theme.
+        continue; /* An invisible button is not a theme. */
       }
       if (candidates.length >= MAX_THEME_CANDIDATES) {
         return candidates;
@@ -323,8 +337,12 @@ export function pickNextThemeCandidate({
 }): ThemeCandidate | null {
   const choices = candidates.filter((candidate) => candidate.key !== currentKey);
   if (choices.length === 0) {
-    /* Nothing else to move to: keep showing the current one rather than */
-    /* clearing the preview (one-candidate palettes are real). */
+    /*
+      Nothing else to move to: keep showing the current one rather than
+    */
+    /*
+      clearing the preview (one-candidate palettes are real).
+    */
     return candidates.find((candidate) => candidate.key === currentKey) ?? null;
   }
   const index = Math.min(choices.length - 1, Math.max(0, Math.floor(randomValue * choices.length)));
@@ -353,7 +371,9 @@ export function buildCustomThemeName({
   return parts.join(" & ");
 }
 
-/* The palette name for a hex, when the kit has one — otherwise undefined. */
+/*
+  The palette name for a hex, when the kit has one — otherwise undefined.
+*/
 export function findPaletteColorName({
   hex,
   colors,
@@ -522,7 +542,9 @@ export function buildEditedThemeVariation({
   });
 }
 
-/* Renderer-default globals — the shape a preview falls back to before a pick. */
+/*
+  Renderer-default globals — the shape a preview falls back to before a pick.
+*/
 export function getFallbackPreviewGlobals(): Required<GlobalStyles> {
   return { ...DEFAULT_GLOBAL_STYLES };
 }

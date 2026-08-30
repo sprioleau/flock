@@ -10,21 +10,25 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
-/**
- * App-wide toast system: an imperative `toast.success("…")` API callable from
- * anywhere (no hook or context needed — a module-level store bridges into
- * React via useSyncExternalStore), rendered by the single `<Toaster />`
- * mounted in the root layout. Toasts slide up from the very bottom of the
- * viewport, auto-dismiss, and come in success / error / warning / info
- * variants with a semantic icon + color (tokens only, so dark mode is free).
- */
+/*
+  App-wide toast system: an imperative `toast.success("…")` API callable from
+  anywhere (no hook or context needed — a module-level store bridges into
+  React via useSyncExternalStore), rendered by the single `<Toaster />`
+  mounted in the root layout. Toasts slide up from the very bottom of the
+  viewport, auto-dismiss, and come in success / error / warning / info
+  variants with a semantic icon + color (tokens only, so dark mode is free).
+*/
 
 export type ToastVariant = "success" | "error" | "warning" | "info";
 
 export interface ToastOptions {
-  /** Optional smaller second line under the message. */
+  /*
+    Optional smaller second line under the message.
+  */
   description?: string;
-  /** Auto-dismiss delay. Defaults to 4 seconds. */
+  /*
+    Auto-dismiss delay. Defaults to 4 seconds.
+  */
   durationMs?: number;
 }
 
@@ -39,9 +43,11 @@ interface ToastRecord {
 const DEFAULT_TOAST_DURATION_MS = 4000;
 const TOAST_EXIT_ANIMATION_MS = 200;
 
-// ---------------------------------------------------------------------------
-// Module-level store (imperative API → React via useSyncExternalStore).
-// ---------------------------------------------------------------------------
+/*
+  ---------------------------------------------------------------------------
+  Module-level store (imperative API → React via useSyncExternalStore).
+  ---------------------------------------------------------------------------
+*/
 
 let toastRecords: readonly ToastRecord[] = [];
 let nextToastId = 1;
@@ -96,12 +102,12 @@ function removeToast(toastId: number): void {
   emitToastsChanged();
 }
 
-/**
- * Show a toast. Returns the toast id (rarely needed — toasts auto-dismiss).
- *
- *   toast.success("Section saved");
- *   toast.error("Couldn't send the test email", { description: reason });
- */
+/*
+  Show a toast. Returns the toast id (rarely needed — toasts auto-dismiss).
+
+    toast.success("Section saved");
+    toast.error("Couldn't send the test email", { description: reason });
+*/
 export const toast = {
   success: (message: string, options?: ToastOptions): number =>
     addToast({ variant: "success", message, options }),
@@ -113,9 +119,11 @@ export const toast = {
     addToast({ variant: "info", message, options }),
 };
 
-// ---------------------------------------------------------------------------
-// Rendering.
-// ---------------------------------------------------------------------------
+/*
+  ---------------------------------------------------------------------------
+  Rendering.
+  ---------------------------------------------------------------------------
+*/
 
 const VARIANT_PRESENTATION: Record<
   ToastVariant,
@@ -127,12 +135,12 @@ const VARIANT_PRESENTATION: Record<
   info: { Icon: InfoIcon, iconClassName: "text-info" },
 };
 
-/**
- * The single toast viewport — mount ONCE in the root layout. Pinned to the
- * very bottom of the viewport, centered; stacks bottom-up when several
- * toasts are live. The region itself is click-through (pointer-events-none)
- * so it never blocks the UI underneath.
- */
+/*
+  The single toast viewport — mount ONCE in the root layout. Pinned to the
+  very bottom of the viewport, centered; stacks bottom-up when several
+  toasts are live. The region itself is click-through (pointer-events-none)
+  so it never blocks the UI underneath.
+*/
 export function Toaster() {
   const liveToasts = useSyncExternalStore(
     subscribeToToasts,
@@ -156,8 +164,10 @@ export function Toaster() {
 }
 
 function ToastItem({ record }: { record: ToastRecord }) {
-  // Two-phase dismissal: mark leaving (plays the slide-out), then remove
-  // from the store once the exit animation has run.
+  /*
+    Two-phase dismissal: mark leaving (plays the slide-out), then remove
+    from the store once the exit animation has run.
+  */
   const [isLeaving, setIsLeaving] = useState(false);
 
   useEffect(() => {

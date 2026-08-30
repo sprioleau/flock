@@ -6,23 +6,27 @@ import { MOCK_MODEL_ID } from "./constants";
 import { createMockChatModel } from "./mock-model";
 import { runChatPipeline } from "./pipeline";
 
-/**
- * Generative-UI widget tools through the REAL pipeline (streamText → widget
- * execute → `data-*` part writes), driven by the scripted mock:
- *
- * - proposeSectionVariations / proposeEdits execute server-side, write ONE
- *   widget data part (id = toolCallId), and return a compact model-facing
- *   summary — the full payload never rides the model loop.
- * - askForClarification has NO execute: the turn ends on the validated call
- *   (no output chunk, no data part) so the widget can wait for the answer.
- * - listAssets without a session resolves to an empty library: a clean tool
- *   output for the model, and no table part (nothing to draw).
- */
+/*
+  Generative-UI widget tools through the REAL pipeline (streamText → widget
+  execute → `data-*` part writes), driven by the scripted mock:
+
+  - proposeSectionVariations / proposeEdits execute server-side, write ONE
+    widget data part (id = toolCallId), and return a compact model-facing
+    summary — the full payload never rides the model loop.
+  - askForClarification has NO execute: the turn ends on the validated call
+    (no output chunk, no data part) so the widget can wait for the answer.
+  - listAssets without a session resolves to an empty library: a clean tool
+    output for the model, and no table part (nothing to draw).
+*/
 
 interface PipelineProbeResult {
-  /** Every part the pipeline wrote directly (widget data parts, errors). */
+  /*
+    Every part the pipeline wrote directly (widget data parts, errors).
+  */
   writtenParts: { type: string; id?: string; data?: unknown }[];
-  /** Every chunk on the merged UI-message stream. */
+  /*
+    Every chunk on the merged UI-message stream.
+  */
   streamedChunks: { type: string; [key: string]: unknown }[];
 }
 
@@ -91,7 +95,9 @@ describe("generative-UI widget tools through the chat pipeline", () => {
       intent?: string;
       variations: { id: string; title: string; templateId: string; blocks: Block[] }[];
     };
-    // Reconciliation contract: the data part's stream id IS the toolCallId.
+    /*
+      Reconciliation contract: the data part's stream id IS the toolCallId.
+    */
     expect(variationParts[0]!.id).toBe(data.toolCallId);
     expect(data.variations).toHaveLength(3);
     for (const variation of data.variations) {
@@ -100,7 +106,9 @@ describe("generative-UI widget tools through the chat pipeline", () => {
     }
     expect(data.variations.map((variation) => variation.id)).toEqual(["v1", "v2", "v3"]);
 
-    // Model loop stays compact: a presented summary, never the block payload.
+    /*
+      Model loop stays compact: a presented summary, never the block payload.
+    */
     expect(getToolOutputs(result)).toContainEqual(
       expect.objectContaining({ status: "presented", variationCount: 3 }),
     );

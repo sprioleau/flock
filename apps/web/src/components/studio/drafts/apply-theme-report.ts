@@ -32,18 +32,24 @@ import type { ApplyThemeReport } from "@/lib/chat-contract";
   thing worse than not theming a draft is theming the wrong one.
 */
 
-/** What the executor observed. Produced by `applyThemeToDraft`; consumed here. */
+/*
+  What the executor observed. Produced by `applyThemeToDraft`; consumed here.
+*/
 export type ApplyThemeOutcome =
   | {
       kind: "applied";
       draftName: string;
       themeName: string;
       themeSource: ResolvedThemeSource;
-      /** Present for a page theme: which page signals produced it. */
+      /*
+        Present for a page theme: which page signals produced it.
+      */
       derivedFrom?: string;
     }
   | {
-      /** The draft was already wearing exactly this theme; nothing was written. */
+      /*
+        The draft was already wearing exactly this theme; nothing was written.
+      */
       kind: "already-applied";
       draftName: string;
       themeName: string;
@@ -51,7 +57,9 @@ export type ApplyThemeOutcome =
   | {
       kind: "theme-unresolved";
       reason: "no-page-theme" | "no-current-theme" | "unknown-theme" | "ambiguous-theme";
-      /** The reference the model asked for, echoed so the reply can name it. */
+      /*
+        The reference the model asked for, echoed so the reply can name it.
+      */
       requestedTheme: string;
       availableThemeNames: string[];
     }
@@ -62,7 +70,9 @@ export type ApplyThemeOutcome =
       availableDraftNames: string[];
     }
   | {
-      /** The write was attempted and refused — a real server outcome. */
+      /*
+        The write was attempted and refused — a real server outcome.
+      */
       kind: "failed";
       draftName: string;
       themeName: string;
@@ -79,7 +89,9 @@ export type ApplyThemeOutcome =
       kind: "unreachable";
     };
 
-/** `"a", "b" and "c"` — names as a person would read them aloud. */
+/*
+  `"a", "b" and "c"` — names as a person would read them aloud.
+*/
 function toNameList(names: string[]): string {
   const quoted = names.map((name) => `"${name}"`);
   if (quoted.length === 0) {
@@ -91,7 +103,9 @@ function toNameList(names: string[]): string {
   return `${quoted.slice(0, -1).join(", ")} and ${quoted[quoted.length - 1]!}`;
 }
 
-/** How the model should describe where a resolved theme came from. */
+/*
+  How the model should describe where a resolved theme came from.
+*/
 function describeThemeSource({
   themeSource,
   themeName,
@@ -112,7 +126,9 @@ function describeThemeSource({
   return "That is the theme the user's current draft was already wearing.";
 }
 
-/** The reason a theme reference resolved to nothing, in words the model relays. */
+/*
+  The reason a theme reference resolved to nothing, in words the model relays.
+*/
 function describeThemeFailure(
   outcome: Extract<ApplyThemeOutcome, { kind: "theme-unresolved" }>,
 ): string {
@@ -132,7 +148,9 @@ function describeThemeFailure(
   return `No theme was applied: "${outcome.requestedTheme}" is not a theme that exists. ${available} Use one of those names exactly, or "page" for a page you read this turn — and NEVER pass a colour value.`;
 }
 
-/** The reason a draft target resolved to nothing, in words the model relays. */
+/*
+  The reason a draft target resolved to nothing, in words the model relays.
+*/
 function describeDraftFailure(
   outcome: Extract<ApplyThemeOutcome, { kind: "draft-unresolved" }>,
 ): string {
@@ -149,11 +167,11 @@ function describeDraftFailure(
   return `No theme was applied: there is no draft called "${outcome.requestedDraft}" on this canvas. ${available} Use one of those names exactly.`;
 }
 
-/**
- * The tool result for one applyThemeToDraft call — the model's ONLY source of
- * truth about whether a draft was re-themed and which one. Never throws, and
- * never returns a shape the caller should route through the error channel.
- */
+/*
+  The tool result for one applyThemeToDraft call — the model's ONLY source of
+  truth about whether a draft was re-themed and which one. Never throws, and
+  never returns a shape the caller should route through the error channel.
+*/
 export function toApplyThemeToolOutput(outcome: ApplyThemeOutcome): ApplyThemeReport {
   if (outcome.kind === "applied") {
     return {

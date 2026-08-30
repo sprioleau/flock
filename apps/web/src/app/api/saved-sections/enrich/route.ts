@@ -19,19 +19,19 @@ import {
   type SavedSectionEnrichment,
 } from "../enrichment";
 
-/**
- * POST /api/saved-sections/enrich — the ASYNC, fails-soft tail of a
- * saved-section save (owner V2 item 2): author `useWhen` + `description`
- * onto the row so the compose agent can pick saved sections by FIT, not by
- * the user's label. Fired fire-and-forget by the save affordance; the save
- * UX never waits on this, and every failure here degrades to "the row just
- * has no enrichment yet".
- *
- * Model: gemini-3.5-flash-lite (the personas bucket — one small one-shot
- * call over the section's compact outline). The deterministic structural
- * analyzer (enrichment.ts) serves the mock header, the no-API-key case, AND
- * any model failure — the row is still enriched, just without LLM prose.
- */
+/*
+  POST /api/saved-sections/enrich — the ASYNC, fails-soft tail of a
+  saved-section save (owner V2 item 2): author `useWhen` + `description`
+  onto the row so the compose agent can pick saved sections by FIT, not by
+  the user's label. Fired fire-and-forget by the save affordance; the save
+  UX never waits on this, and every failure here degrades to "the row just
+  has no enrichment yet".
+
+  Model: gemini-3.5-flash-lite (the personas bucket — one small one-shot
+  call over the section's compact outline). The deterministic structural
+  analyzer (enrichment.ts) serves the mock header, the no-API-key case, AND
+  any model failure — the row is still enriched, just without LLM prose.
+*/
 
 const ENRICHMENT_MODEL_ID = "gemini-3.5-flash-lite";
 const GENERATION_TIMEOUT_MS = 30_000;
@@ -65,9 +65,11 @@ async function generateEnrichment({
           schema: savedSectionEnrichmentSchema,
           prompt: buildEnrichmentPrompt({ name, outline }),
           abortSignal: AbortSignal.timeout(GENERATION_TIMEOUT_MS),
-          // Emits flock.model.call / flock.model.failed. The catch below stays
-          // because this path FAILS SOFT to the deterministic floor, which is
-          // a different fact than "the provider call failed".
+          /*
+            Emits flock.model.call / flock.model.failed. The catch below stays
+            because this path FAILS SOFT to the deterministic floor, which is
+            a different fact than "the provider call failed".
+          */
           telemetry: modelTelemetryFor({
             operation: "savedSections.enrich",
             traceId,
@@ -77,10 +79,14 @@ async function generateEnrichment({
         return { enrichment: object, source: "model" };
       }
     } catch {
-      // The thrown value is already logged as flock.model.failed by the
-      // telemetry integration above, with a classified error code.
+      /*
+        The thrown value is already logged as flock.model.failed by the
+        telemetry integration above, with a classified error code.
+      */
       logRecord({ tag: "flock.savedSections.enrichFellBack", traceId });
-      // fall through to the deterministic floor
+      /*
+        fall through to the deterministic floor
+      */
     }
   }
   return { enrichment: buildDeterministicEnrichment(blocks), source: "deterministic" };
@@ -99,8 +105,10 @@ export async function POST(request: Request): Promise<Response> {
   const savedSectionId = parsedBody.data.savedSectionId as Id<"savedSections">;
 
   try {
-    // Authenticated: savedSections is keyed by resolveOwnerId, so the
-    // ownership check below only means anything with the caller's token.
+    /*
+      Authenticated: savedSections is keyed by resolveOwnerId, so the
+      ownership check below only means anything with the caller's token.
+    */
     const row = await fetchAuthQuery(api.savedSections.getForSession, {
       sessionId,
       savedSectionId,
@@ -109,9 +117,11 @@ export async function POST(request: Request): Promise<Response> {
       return Response.json({ isEnriched: false }, { status: 404 });
     }
 
-    // Charged AFTER the ownership check (a 404 must not bill) and before the
-    // model call. Deterministic runs — forced, or no API key — reach only the
-    // deterministic floor below, spend no provider quota, and are free.
+    /*
+      Charged AFTER the ownership check (a 404 must not bill) and before the
+      model call. Deterministic runs — forced, or no API key — reach only the
+      deterministic floor below, spend no provider quota, and are free.
+    */
     const isDeterministicForced = request.headers.get(MOCK_MODEL_HEADER) !== null;
     const charge = await chargeCreditForRequest({
       request,

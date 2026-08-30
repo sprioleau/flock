@@ -10,13 +10,13 @@ import {
   selectCopyText,
 } from "./html-preview-client";
 
-/**
- * The decisions behind the email preview dialog: which views exist, what each
- * server reply means in plain English, and exactly which text each view's Copy
- * button puts on the clipboard. The component that renders these is thin by
- * design (the app's vitest environment is `node`, so there is no DOM to mount
- * into) — everything worth pinning is here.
- */
+/*
+  The decisions behind the email preview dialog: which views exist, what each
+  server reply means in plain English, and exactly which text each view's Copy
+  button puts on the clipboard. The component that renders these is thin by
+  design (the app's vitest environment is `node`, so there is no DOM to mount
+  into) — everything worth pinning is here.
+*/
 
 const DOCUMENT = createEmptyDocument();
 
@@ -37,9 +37,11 @@ afterEach(() => {
   vi.unstubAllGlobals();
 });
 
-// ---------------------------------------------------------------------------
-// The three views
-// ---------------------------------------------------------------------------
+/*
+  ---------------------------------------------------------------------------
+  The three views
+  ---------------------------------------------------------------------------
+*/
 
 describe("the preview's views", () => {
   it("offers exactly three: the rendered email, its HTML, and its plain text", () => {
@@ -56,21 +58,27 @@ describe("the preview's views", () => {
   });
 
   it("offers Copy on the two text views and not on the rendered one", () => {
-    // The rendered preview is a picture of the email, not text you can paste.
+    /*
+      The rendered preview is a picture of the email, not text you can paste.
+    */
     expect(PREVIEW_VIEWS.find((view) => view.id === "preview")?.copyLabel).toBeNull();
     expect(PREVIEW_VIEWS.find((view) => view.id === "html")?.copyLabel).toBe("Copy HTML");
     expect(PREVIEW_VIEWS.find((view) => view.id === "text")?.copyLabel).toBe("Copy text");
   });
 });
 
-// ---------------------------------------------------------------------------
-// Copying
-// ---------------------------------------------------------------------------
+/*
+  ---------------------------------------------------------------------------
+  Copying
+  ---------------------------------------------------------------------------
+*/
 
 describe("selectCopyText", () => {
   it("copies the SAME pretty HTML the source view is showing, not the minified send-HTML", () => {
-    // Copying a blob the user was never shown would be a different answer to
-    // the same button.
+    /*
+      Copying a blob the user was never shown would be a different answer to
+      the same button.
+    */
     expect(selectCopyText({ view: "html", render: RENDER })).toBe(RENDER.prettyHtml);
     expect(selectCopyText({ view: "html", render: RENDER })).not.toBe(RENDER.html);
   });
@@ -101,8 +109,10 @@ describe("copyTextToClipboard", () => {
   });
 
   it("reports failure instead of falsely confirming when the browser refuses", async () => {
-    // Clipboard access is denied outside a secure context and in some embedded
-    // browsers; a green "Copied" there would be a lie.
+    /*
+      Clipboard access is denied outside a secure context and in some embedded
+      browsers; a green "Copied" there would be a lie.
+    */
     vi.stubGlobal("navigator", {
       clipboard: { writeText: vi.fn().mockRejectedValue(new Error("denied")) },
     });
@@ -117,9 +127,11 @@ describe("copyTextToClipboard", () => {
   });
 });
 
-// ---------------------------------------------------------------------------
-// Requesting the render
-// ---------------------------------------------------------------------------
+/*
+  ---------------------------------------------------------------------------
+  Requesting the render
+  ---------------------------------------------------------------------------
+*/
 
 describe("requestEmailRender", () => {
   it("POSTs the document and returns all three views from one request", async () => {
@@ -192,7 +204,9 @@ describe("requestEmailRender", () => {
   });
 
   it("rejects a 200 that is missing a view rather than rendering an empty tab", async () => {
-    // A tab showing nothing with no explanation is worse than an error.
+    /*
+      A tab showing nothing with no explanation is worse than an error.
+    */
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue(jsonResponse(200, { html: "<p>hi</p>" })));
 
     const result = await requestEmailRender(DOCUMENT);

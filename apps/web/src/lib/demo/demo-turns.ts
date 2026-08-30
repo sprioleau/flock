@@ -35,16 +35,26 @@
   node-only vitest environment could not render anyway.
 */
 
-/** One scripted turn: one persona, run alone, narrated on its own. */
+/*
+  One scripted turn: one persona, run alone, narrated on its own.
+*/
 export interface DemoTurnScript {
-  /** Registry slug — personas are pure data, so this is the only binding. */
+  /*
+    Registry slug — personas are pure data, so this is the only binding.
+  */
   personaSlug: string;
   personaName: string;
-  /** Presence/finding color, mirrored from the registry row for the chip dot. */
+  /*
+    Presence/finding color, mirrored from the registry row for the chip dot.
+  */
   personaColor: string;
-  /** What the visitor is told while this turn is in flight. */
+  /*
+    What the visitor is told while this turn is in flight.
+  */
   runningNarration: string;
-  /** What the visitor is told once it has landed. */
+  /*
+    What the visitor is told once it has landed.
+  */
   completedNarration: string;
 }
 
@@ -75,7 +85,9 @@ export const DEMO_TURN_SCRIPT: readonly DemoTurnScript[] = [
   },
 ];
 
-/** The personas the demo enables — derived, never a second hardcoded list. */
+/*
+  The personas the demo enables — derived, never a second hardcoded list.
+*/
 export const DEMO_PERSONA_SLUGS: readonly string[] = DEMO_TURN_SCRIPT.map(
   (turn) => turn.personaSlug,
 );
@@ -105,7 +117,9 @@ export interface DemoRunState {
   turns: readonly DemoTurnState[];
 }
 
-/** A fresh, unstarted run of the script above. */
+/*
+  A fresh, unstarted run of the script above.
+*/
 export function createDemoRunState(): DemoRunState {
   return {
     status: "idle",
@@ -124,7 +138,9 @@ export function restartDemoRunState(): DemoRunState {
   return createDemoRunState();
 }
 
-/** Index of the turn currently in flight, or null when none is. */
+/*
+  Index of the turn currently in flight, or null when none is.
+*/
 export function selectRunningTurnIndex(state: DemoRunState): number | null {
   const index = state.turns.findIndex((turn) => turn.status === "running");
   return index === -1 ? null : index;
@@ -144,11 +160,11 @@ export function selectNextPendingTurnIndex(state: DemoRunState): number | null {
   return index === -1 ? null : index;
 }
 
-/**
- * Begin the next pending turn. Returns the state UNCHANGED (same reference)
- * when a turn is already running or nothing is left — so a stray call from a
- * double-click or a re-render can never double-fire an agent turn.
- */
+/*
+  Begin the next pending turn. Returns the state UNCHANGED (same reference)
+  when a turn is already running or nothing is left — so a stray call from a
+  double-click or a re-render can never double-fire an agent turn.
+*/
 export function startNextTurn(state: DemoRunState): DemoRunState {
   const nextIndex = selectNextPendingTurnIndex(state);
   if (nextIndex === null) {
@@ -162,11 +178,11 @@ export function startNextTurn(state: DemoRunState): DemoRunState {
   };
 }
 
-/**
- * Record that the running turn reported in. This is the ONLY transition that
- * frees the sequencer to move, which is what makes turn completion — rather
- * than elapsed time — the scheduler.
- */
+/*
+  Record that the running turn reported in. This is the ONLY transition that
+  frees the sequencer to move, which is what makes turn completion — rather
+  than elapsed time — the scheduler.
+*/
 export function completeRunningTurn({
   state,
   outcome,
@@ -190,25 +206,27 @@ export function completeRunningTurn({
   return { status: hasPendingTurns ? "running" : "finished", turns };
 }
 
-/** True once every turn has reported in — the panel's call-to-action state. */
+/*
+  True once every turn has reported in — the panel's call-to-action state.
+*/
 export function selectIsRunFinished(state: DemoRunState): boolean {
   return state.status === "finished";
 }
 
-/**
- * The personas that have actually posted this run, oldest first. This is what
- * the panel points the visitor at — a persona whose turn failed is not in it,
- * so the demo never sends anyone looking for a recommendation that never
- * arrived.
- */
+/*
+  The personas that have actually posted this run, oldest first. This is what
+  the panel points the visitor at — a persona whose turn failed is not in it,
+  so the demo never sends anyone looking for a recommendation that never
+  arrived.
+*/
 export function selectCompletedTurns(state: DemoRunState): readonly DemoTurnState[] {
   return state.turns.filter((turn) => turn.status === "completed");
 }
 
-/**
- * The one line of narration on screen right now: the running turn's, else the
- * last landed turn's, else null before the run starts.
- */
+/*
+  The one line of narration on screen right now: the running turn's, else the
+  last landed turn's, else null before the run starts.
+*/
 export function selectActiveNarration(state: DemoRunState): string | null {
   const runningIndex = selectRunningTurnIndex(state);
   if (runningIndex !== null) {

@@ -13,11 +13,11 @@ import type { GlobalStyles } from "../schema/globals";
 import type { TextDoc } from "../schema/text";
 import type { EmailDocument } from "../store/document";
 
-/**
- * Golden-render fixtures (Phase 1.4 plan requirement): globals-only,
- * block-overrides-only, and mixed. Each exercises every block type and every
- * mark, with deterministic ids so HTML snapshots are stable.
- */
+/*
+  Golden-render fixtures (Phase 1.4 plan requirement): globals-only,
+  block-overrides-only, and mixed. Each exercises every block type and every
+  mark, with deterministic ids so HTML snapshots are stable.
+*/
 
 const richTextDoc: TextDoc = {
   type: "doc",
@@ -85,11 +85,11 @@ const richTextDoc: TextDoc = {
   ],
 };
 
-/**
- * Shared structure: root > [sec_h1a1 (text, image, divider, link, code,
- * spacer), sec_c0l2 (row > two columns > text | button)]. Callers supply
- * globals and per-block property overrides.
- */
+/*
+  Shared structure: root > [sec_h1a1 (text, image, divider, link, code,
+  spacer), sec_c0l2 (row > two columns > text | button)]. Callers supply
+  globals and per-block property overrides.
+*/
 function buildFixture(options: {
   globals: GlobalStyles;
   sectionProperties: SectionBlock["properties"];
@@ -238,7 +238,9 @@ function buildFixture(options: {
   };
 }
 
-/** Rich globals on the root; every block relies purely on style resolution. */
+/*
+  Rich globals on the root; every block relies purely on style resolution.
+*/
 export function createGlobalsOnlyFixture(): EmailDocument {
   return buildFixture({
     globals: {
@@ -282,7 +284,9 @@ export function createGlobalsOnlyFixture(): EmailDocument {
   });
 }
 
-/** Empty globals; every style comes from block-level overrides (or renderer defaults). */
+/*
+  Empty globals; every style comes from block-level overrides (or renderer defaults).
+*/
 export function createBlockOverridesOnlyFixture(): EmailDocument {
   return buildFixture({
     globals: {},
@@ -349,7 +353,9 @@ export function createBlockOverridesOnlyFixture(): EmailDocument {
   });
 }
 
-/** Globals AND block overrides together — overrides must win where both are set. */
+/*
+  Globals AND block overrides together — overrides must win where both are set.
+*/
 export function createMixedFixture(): EmailDocument {
   return buildFixture({
     globals: {

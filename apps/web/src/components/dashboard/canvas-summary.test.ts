@@ -48,7 +48,9 @@ describe("formatRelativeTime", () => {
   it("switches to an absolute date past a week, so the reader does no arithmetic", () => {
     const formatted = formatRelativeTime({ timestampMs: NOW_MS - 30 * DAY, nowMs: NOW_MS });
     expect(formatted).not.toMatch(/ago/);
-    // Same calendar year as NOW_MS, so the year is left off.
+    /*
+      Same calendar year as NOW_MS, so the year is left off.
+    */
     expect(formatted).not.toMatch(/2026/);
   });
 

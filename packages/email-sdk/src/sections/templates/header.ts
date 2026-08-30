@@ -10,11 +10,11 @@ import {
 } from "../build-helpers";
 import { defineSectionTemplate } from "../types";
 
-/**
- * `header` — brand bar: logo placeholder left, optional nav links right.
- * Reference pattern: react.email/components "header-with-centered-menu" /
- * "header-with-social-icons" (nested rows flattened to one row).
- */
+/*
+  `header` — brand bar: logo placeholder left, optional nav links right.
+  Reference pattern: react.email/components "header-with-centered-menu" /
+  "header-with-social-icons" (nested rows flattened to one row).
+*/
 
 const navLinkSchema = z
   .strictObject({

@@ -35,24 +35,32 @@ describe("SYSTEM_STATIC (layer a — cacheable)", () => {
     expect(SYSTEM_STATIC).toContain("textStyle");
     expect(SYSTEM_STATIC).toContain("highlight");
     expect(SYSTEM_STATIC).toContain("styleTextSpan");
-    // The choice rule: styleTextSpan for styling, updateText for content changes.
+    /*
+      The choice rule: styleTextSpan for styling, updateText for content changes.
+    */
     expect(SYSTEM_STATIC).toMatch(/styleTextSpan when only the styling[\s\S]*updateText only when the words themselves change/);
-    // The outline's compact marks suffix is explained.
+    /*
+      The outline's compact marks suffix is explained.
+    */
     expect(SYSTEM_STATIC).toContain("+bold+link+color(#16a34a)");
   });
 
   it("teaches scaffoldSection and the scaffold-vs-hand-composed choice rule", () => {
     expect(SYSTEM_STATIC).toContain("scaffoldSection");
-    // The choice rule: catalog template when one fits, hand-composed otherwise,
-    // and scaffolded sections stay theme-native (no colors/fonts/padding).
+    /*
+      The choice rule: catalog template when one fits, hand-composed otherwise,
+      and scaffolded sections stay theme-native (no colors/fonts/padding).
+    */
     expect(SYSTEM_STATIC).toMatch(
       /use scaffoldSection whenever a catalog template fits[\s\S]*hand-compose addSection\/addBlock only for layouts no template covers/,
     );
     expect(SYSTEM_STATIC).toContain("never set colors, fonts, or padding on scaffolded sections");
-    // Compose-new-email flows are steered to catalog composition too: a whole
-    // email is built from catalog sections chosen by their useWhen lines —
-    // scoped to the draft on screen, so "a new draft" is not read as licence
-    // to rebuild this one.
+    /*
+      Compose-new-email flows are steered to catalog composition too: a whole
+      email is built from catalog sections chosen by their useWhen lines —
+      scoped to the draft on screen, so "a new draft" is not read as licence
+      to rebuild this one.
+    */
     expect(SYSTEM_STATIC).toMatch(
       /build a whole NEW email IN THE DRAFT THE USER IS ON[\s\S]*chosen by its useWhen line/,
     );
@@ -73,8 +81,10 @@ describe("SYSTEM_STATIC (layer a — cacheable)", () => {
 
   it("teaches that editing operations reach only the draft on the canvas", () => {
     expect(SYSTEM_STATIC).toContain("## The draft you are editing is not the only draft");
-    // The rule that prevents the reported failure: a request for a NEW draft
-    // must never be satisfied by emptying and rebuilding the current one.
+    /*
+      The rule that prevents the reported failure: a request for a NEW draft
+      must never be satisfied by emptying and rebuilding the current one.
+    */
     expect(SYSTEM_STATIC).toMatch(
       /asks for a NEW draft[\s\S]*do not empty the draft in front of them and rebuild it/,
     );
@@ -82,8 +92,10 @@ describe("SYSTEM_STATIC (layer a — cacheable)", () => {
   });
 
   it("teaches per-section streaming for multi-section composition", () => {
-    // Full-email builds must arrive as one tool call per section, top to
-    // bottom, so the canvas paints progressively (perceived-latency rule).
+    /*
+      Full-email builds must arrive as one tool call per section, top to
+      bottom, so the canvas paints progressively (perceived-latency rule).
+    */
     expect(SYSTEM_STATIC).toMatch(
       /emit ONE tool call per section, in reading order[\s\S]*never pack multiple sections into a single call/,
     );
@@ -140,9 +152,11 @@ describe("buildToolGuidance (layer b — cacheable per registry)", () => {
 
   it("summarizes capability categories when the agent-parity UI actions are registered", () => {
     expect(guidance).toContain("## What you can do (capability summary)");
-    // Every capability CATEGORY is named in plain language (the "what can you
-    // do?" answer): document edits, images, test sends, preview, UI surfaces,
-    // history, drafts, personas.
+    /*
+      Every capability CATEGORY is named in plain language (the "what can you
+      do?" answer): document edits, images, test sends, preview, UI surfaces,
+      history, drafts, personas.
+    */
     expect(guidance).toContain("generate AI images");
     expect(guidance).toContain("send a test email (with the user's approval)");
     expect(guidance).toContain("open the editor's panels");
@@ -160,14 +174,18 @@ describe("buildToolGuidance (layer b — cacheable per registry)", () => {
 
   it("routes new-draft requests to createDraft instead of rebuilding in place", () => {
     expect(guidance).toContain("## Making a new draft (createDraft)");
-    // The three things that were unexpressible before the plan existed:
-    // don't touch the current draft, compose a whole email, keep the theme.
+    /*
+      The three things that were unexpressible before the plan existed:
+      don't touch the current draft, compose a whole email, keep the theme.
+    */
     expect(guidance).toContain(
       "NEVER clear, delete, or rewrite the draft on screen to make a new idea fit",
     );
     expect(guidance).toMatch(/header, one or more body sections[\s\S]*and a footer/);
     expect(guidance).toContain("keep the theme the user already applied");
-    // Real variation for open-ended "explore ideas" asks.
+    /*
+      Real variation for open-ended "explore ideas" asks.
+    */
     expect(guidance).toMatch(
       /make them genuinely different from each other[\s\S]*a plain hero in one, a split hero in another/,
     );
@@ -207,7 +225,9 @@ describe("buildToolGuidance (layer b — cacheable per registry)", () => {
       /When this turn read something outside the email[\s\S]*write EVERY section from that source/,
     );
     expect(guidance).toContain("a field left empty is a section that disappears");
-    // The other half of the rule survives: with no outside source, gaps still carry over.
+    /*
+      The other half of the rule survives: with no outside source, gaps still carry over.
+    */
     expect(guidance).toContain("lets the current wording carry over");
   });
 
@@ -235,8 +255,10 @@ describe("buildToolGuidance (layer b — cacheable per registry)", () => {
     for (const template of SECTION_TEMPLATES) {
       expect(guidance).toContain(`- ${template.id} — ${template.useWhen}`);
     }
-    // Compact contract: exactly one line per template, nothing more. Bounded
-    // at the next heading — later sections carry bullet lists of their own.
+    /*
+      Compact contract: exactly one line per template, nothing more. Bounded
+      at the next heading — later sections carry bullet lists of their own.
+    */
     const listingStart = guidance.indexOf("## Section catalog");
     const nextHeading = guidance.indexOf("\n## ", listingStart + 1);
     const listing = guidance.slice(

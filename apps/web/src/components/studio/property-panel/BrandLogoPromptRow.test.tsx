@@ -47,7 +47,9 @@ const reactHooks = vi.hoisted(() => {
       if (cells.length <= index) {
         cells.push(initialValue);
       }
-      /* The one assertion in this file: a hook store is index-keyed by nature. */
+      /*
+        The one assertion in this file: a hook store is index-keyed by nature.
+      */
       return [
         cells[index] as T,
         (nextValue: T) => {
@@ -63,7 +65,9 @@ vi.mock("react", async () => {
   return { ...actual, useState: reactHooks.useState };
 });
 
-/* Two logo blocks, so "apply to all" has something to count. */
+/*
+  Two logo blocks, so "apply to all" has something to count.
+*/
 const editorStore = vi.hoisted(() => ({
   authorId: "session_me",
   doc: {
@@ -207,7 +211,9 @@ function press(node: ReactNode, testId: string): void {
   (element!.props.onClick as () => void)();
 }
 
-/* Let the confirm promise and its continuations run before re-rendering. */
+/*
+  Let the confirm promise and its continuations run before re-rendering.
+*/
 function flushAsync(): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, 0));
 }
@@ -236,7 +242,9 @@ describe("the unconfirmed state", () => {
   it("offers a confirm control and no way to apply the suggestion", () => {
     const tree = renderRow();
     expect(findByTestId(tree, "brand-logo-prompt-confirm-logo")).toBeDefined();
-    /* Applying an unconfirmed hotlink is the thing decision 4 forbids. */
+    /*
+      Applying an unconfirmed hotlink is the thing decision 4 forbids.
+    */
     expect(findByTestId(tree, "brand-logo-prompt-apply-one")).toBeUndefined();
     expect(findByTestId(tree, "brand-logo-prompt-apply-all")).toBeUndefined();
   });
@@ -250,10 +258,14 @@ describe("the unconfirmed state", () => {
     const image = findByTestId(renderRow(), "brand-logo-prompt-suggested-image");
     (image!.props.onError as () => void)();
     const afterFailure = renderRow();
-    /* No broken-image glyph left sitting in the panel... */
+    /*
+      No broken-image glyph left sitting in the panel...
+    */
     expect(findByTestId(afterFailure, "brand-logo-prompt-suggested-image")).toBeUndefined();
     expect(findByTestId(afterFailure, "brand-logo-prompt-preview-failed")).toBeDefined();
-    /* ...and the ask survives: a dead preview is a warning, not a dead end. */
+    /*
+      ...and the ask survives: a dead preview is a warning, not a dead end.
+    */
     expect(findByTestId(afterFailure, "brand-logo-prompt-confirm-logo")).toBeDefined();
     expect(visibleText(afterFailure)).toContain("didn't load from its original address");
   });
@@ -266,7 +278,9 @@ describe("confirming from the block panel", () => {
     expect(confirmBrandAsset).toHaveBeenCalledTimes(1);
     const [request] = confirmBrandAsset.mock.calls[0] as [Record<string, unknown>];
     expect(request).toEqual({ sessionId: "session_me", kind: "logo" });
-    /* A client-supplied URL would turn confirm into an SSRF fetch. */
+    /*
+      A client-supplied URL would turn confirm into an SSRF fetch.
+    */
     expect(Object.keys(request)).not.toContain("url");
     expect(JSON.stringify(request)).not.toContain(SUGGESTED_LOGO_URL);
   });
@@ -291,7 +305,9 @@ describe("confirming from the block panel", () => {
   it("becomes usable once the kit row reports the logo confirmed", async () => {
     press(renderRow(), "brand-logo-prompt-confirm-logo");
     await flushAsync();
-    /* What the reactive kit query delivers after the rehost: the durable URL. */
+    /*
+      What the reactive kit query delivers after the rehost: the durable URL.
+    */
     brandKit.logoUrl = DURABLE_LOGO_URL;
     brandKit.logoConfirmedAtMs = 1_700_000_000_000;
     const ready = renderRow();
@@ -319,7 +335,9 @@ describe("when confirming fails", () => {
       "That address didn't give us an image we can save.",
     );
     expect(editorStore.dispatch).not.toHaveBeenCalled();
-    /* Still a suggestion, so still no apply — a failure must not "fall open". */
+    /*
+      Still a suggestion, so still no apply — a failure must not "fall open".
+    */
     expect(findByTestId(afterFailure, "brand-logo-prompt-apply-one")).toBeUndefined();
     expect(findByTestId(afterFailure, "brand-logo-prompt-apply-all")).toBeUndefined();
   });
@@ -340,7 +358,9 @@ describe("when the canvas is showing somebody else's kit", () => {
   it("points at the brand kit instead of confirming the wrong row", () => {
     brandKit.canvasKitId = "kit_theirs";
     const tree = renderRow();
-    /* The suggestion is still worth seeing — it just cannot be confirmed here. */
+    /*
+      The suggestion is still worth seeing — it just cannot be confirmed here.
+    */
     expect(findByTestId(tree, "brand-logo-prompt-suggested-image")).toBeDefined();
     expect(findByTestId(tree, "brand-logo-prompt-confirm-logo")).toBeUndefined();
     press(tree, "brand-logo-prompt-confirm-logo-in-kit");

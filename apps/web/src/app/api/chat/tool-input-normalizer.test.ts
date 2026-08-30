@@ -10,27 +10,31 @@ import {
 import { describe, expect, it } from "vitest";
 import { normalizeToolInput } from "./tool-input-normalizer";
 
-/**
- * Regression for the live conformance miss (owner repro, production): the
- * model called addSection and sent a text block with its rich-text doc at the
- * block's TOP LEVEL, no `childrenIds`, no `properties`, and no operation
- * `name`. Zod rejected it with four mechanical issues and a repair round was
- * spent. The normalizer closes all four without asking a model again.
- */
+/*
+  Regression for the live conformance miss (owner repro, production): the
+  model called addSection and sent a text block with its rich-text doc at the
+  block's TOP LEVEL, no `childrenIds`, no `properties`, and no operation
+  `name`. Zod rejected it with four mechanical issues and a repair round was
+  spent. The normalizer closes all four without asking a model again.
+*/
 
 const TEXT_DOC = {
   type: "doc",
   content: [
     {
       type: "paragraph",
-      // A ProseMirror inline text node: `{ type: "text", text: … }`. It looks
-      // exactly like a mangled text BLOCK and must never be treated as one.
+      /*
+        A ProseMirror inline text node: `{ type: "text", text: … }`. It looks
+        exactly like a mangled text BLOCK and must never be treated as one.
+      */
       content: [{ type: "text", text: "Hello there" }],
     },
   ],
 };
 
-/** The exact production payload, minus the tool envelope. */
+/*
+  The exact production payload, minus the tool envelope.
+*/
 const FAILING_ADD_SECTION_INPUT = {
   index: 1,
   section: {
@@ -140,9 +144,11 @@ describe("normalizeToolInput — idempotency", () => {
 
 describe("normalizeToolInput — what it refuses", () => {
   it("does not overwrite a `name` that is present but wrong", () => {
-    // updateBlockProperties and replaceBlockProperties are shape-identical
-    // apart from this literal: "correcting" it would turn a merge into a
-    // wholesale replace.
+    /*
+      updateBlockProperties and replaceBlockProperties are shape-identical
+      apart from this literal: "correcting" it would turn a merge into a
+      wholesale replace.
+    */
     const input = {
       name: "replaceBlockProperties",
       blockId: "txt_h101",
@@ -188,8 +194,10 @@ describe("normalizeToolInput — what it refuses", () => {
   });
 
   it("keeps a payload it cannot save failing with exactly today's issues", () => {
-    // No `href` anywhere: a button without a destination is content the model
-    // never sent, and inventing one is not repair.
+    /*
+      No `href` anywhere: a button without a destination is content the model
+      never sent, and inventing one is not repair.
+    */
     const unsavable = {
       index: 0,
       section: {
@@ -231,7 +239,9 @@ describe("normalizeToolInput — what it refuses", () => {
         { id: "div_h101", type: "divider", parentId: "sec_h101", thicknessPx: 4 },
       ],
     };
-    // `thicknessPx` is not a divider property, so it stays put and Zod rejects it.
+    /*
+      `thicknessPx` is not a divider property, so it stays put and Zod rejects it.
+    */
     expect(normalizeToolInput(addSectionOperationSchema, strayUnknownKey)).toBe(strayUnknownKey);
   });
 });

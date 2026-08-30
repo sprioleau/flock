@@ -27,24 +27,26 @@ import type { DispatchableComment } from "./comment-dispatch";
 import { CommentThreadView } from "./CommentThreadView";
 import { useCommentFixDispatch } from "./use-comment-fix-dispatch";
 
-/**
- * The review panel (header trigger + modal): every comment thread on the
- * CANVAS — open first, newest first — with the full review workflow per
- * comment (respond / resolve / dismiss / "Fix this") and the ONE-TRIP batch
- * affordance: "Fix all open" packs every open comment on the ACTIVE draft
- * into a single numbered prompt (one model trip). Fix dispatch is scoped to
- * the active draft because chat turns edit the active document — comments on
- * sibling drafts stay readable here and say so on their disabled button.
- *
- * Both fix affordances close the modal: the turn runs VISIBLY in chat and
- * on the canvas (transparency), and the threads gain their "agent
- * responded" entry when it settles — still open, awaiting the human's
- * resolve.
- */
+/*
+  The review panel (header trigger + modal): every comment thread on the
+  CANVAS — open first, newest first — with the full review workflow per
+  comment (respond / resolve / dismiss / "Fix this") and the ONE-TRIP batch
+  affordance: "Fix all open" packs every open comment on the ACTIVE draft
+  into a single numbered prompt (one model trip). Fix dispatch is scoped to
+  the active draft because chat turns edit the active document — comments on
+  sibling drafts stay readable here and say so on their disabled button.
+
+  Both fix affordances close the modal: the turn runs VISIBLY in chat and
+  on the canvas (transparency), and the threads gain their "agent
+  responded" entry when it settles — still open, awaiting the human's
+  resolve.
+*/
 export function CommentsReviewDialog({
   triggerClassName,
 }: {
-  /** Extra classes for the trigger button (the header combo control squares it off). */
+  /*
+    Extra classes for the trigger button (the header combo control squares it off).
+  */
   triggerClassName?: string;
 }) {
   const [isOpen, setIsOpen] = useState(false);
@@ -65,7 +67,9 @@ export function CommentsReviewDialog({
 
   const openComments = (comments ?? []).filter((comment) => comment.status === "open");
 
-  /** Orphan check is only decidable against the active draft's rendered doc. */
+  /*
+    Orphan check is only decidable against the active draft's rendered doc.
+  */
   const getIsOrphanedHere = (comment: CommentThread): boolean =>
     comment.documentId === activeDocumentId && getIsCommentOrphaned({ comment, doc: activeDoc });
 
@@ -75,7 +79,7 @@ export function CommentsReviewDialog({
 
   const runFix = (dispatchables: readonly DispatchableComment[]): void => {
     if (dispatchFix(dispatchables)) {
-      setIsOpen(false); // the turn runs visibly in chat + on the canvas
+      setIsOpen(false); /* the turn runs visibly in chat + on the canvas */
     }
   };
 
@@ -84,8 +88,10 @@ export function CommentsReviewDialog({
 
   return (
     <Dialog open={isOpen} onOpenChange={setIsOpen}>
-      {/* Tooltip + dialog trigger on ONE element (base-ui render composition)
-          — the trigger is icon-only, so hover must say what it opens. */}
+      {/*
+        Tooltip + dialog trigger on ONE element (base-ui render composition)
+        — the trigger is icon-only, so hover must say what it opens.
+      */}
       <TooltipProvider>
         <Tooltip>
           <TooltipTrigger

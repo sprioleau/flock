@@ -1,27 +1,29 @@
 import type { Block } from "@flock/email-sdk";
 import { z } from "zod";
 
-/**
- * Saved-section enrichment (owner V2 item 2): after a save, an ASYNC,
- * fails-soft call authors the row's `useWhen` (the catalog templates'
- * selection guidance analogue — "footer" tells the model nothing; "use as
- * the closing footer, already carries the user's real unsubscribe and
- * social links" tells it everything) and a structural `description`.
- *
- * Two paths, one output shape:
- * - MODEL (gemini-3.5-flash-lite, the personas bucket): one small
- *   generateObject call over the section's compact outline, steered by the
- *   axes below.
- * - DETERMINISTIC (mock header, no API key, or model failure): a pure
- *   structural analysis of the subtree — unit-tested, quota-free, and the
- *   guaranteed floor: every saved row can be enriched even offline.
- *
- * Length: guidance lives in the prompt; storage truncates on receipt
- * (convex/model/savedSections.ts ENRICHMENT_TEXT_CAPS — the personas
- * finding-schema pattern).
- */
+/*
+  Saved-section enrichment (owner V2 item 2): after a save, an ASYNC,
+  fails-soft call authors the row's `useWhen` (the catalog templates'
+  selection guidance analogue — "footer" tells the model nothing; "use as
+  the closing footer, already carries the user's real unsubscribe and
+  social links" tells it everything) and a structural `description`.
 
-/** What the model must return — also the deterministic path's output shape. */
+  Two paths, one output shape:
+  - MODEL (gemini-3.5-flash-lite, the personas bucket): one small
+    generateObject call over the section's compact outline, steered by the
+    axes below.
+  - DETERMINISTIC (mock header, no API key, or model failure): a pure
+    structural analysis of the subtree — unit-tested, quota-free, and the
+    guaranteed floor: every saved row can be enriched even offline.
+
+  Length: guidance lives in the prompt; storage truncates on receipt
+  (convex/model/savedSections.ts ENRICHMENT_TEXT_CAPS — the personas
+  finding-schema pattern).
+*/
+
+/*
+  What the model must return — also the deterministic path's output shape.
+*/
 export const savedSectionEnrichmentSchema = z.object({
   useWhen: z
     .string()
@@ -37,10 +39,10 @@ export const savedSectionEnrichmentSchema = z.object({
 
 export type SavedSectionEnrichment = z.infer<typeof savedSectionEnrichmentSchema>;
 
-/**
- * The selection axes the model covers (owner list + additions 5–7): what
- * actually predicts whether a saved section fits a compose request.
- */
+/*
+  The selection axes the model covers (owner list + additions 5–7): what
+  actually predicts whether a saved section fits a compose request.
+*/
 const ENRICHMENT_AXES = `Cover whichever of these axes the section actually exhibits:
 1. Layout structure — rows/columns arrangement, media-beside-text, stacked vs grid.
 2. Content inventory — logo, nav links, headline, CTA buttons, person photo + bio, legal/unsubscribe text, social links.
@@ -50,7 +52,9 @@ const ENRICHMENT_AXES = `Cover whichever of these axes the section actually exhi
 6. Placement affinity — reads as a top/header block, a body block, or a bottom/footer block.
 7. Theme coupling — inherits the document theme vs carries its own hard-coded colors/fonts.`;
 
-/** Build the one-shot enrichment prompt over the section's compact outline. */
+/*
+  Build the one-shot enrichment prompt over the section's compact outline.
+*/
 export function buildEnrichmentPrompt({
   name,
   outline,
@@ -70,9 +74,11 @@ export function buildEnrichmentPrompt({
   ].join("\n");
 }
 
-// ---------------------------------------------------------------------------
-// Deterministic path (mock / no key / model-failure floor)
-// ---------------------------------------------------------------------------
+/*
+  ---------------------------------------------------------------------------
+  Deterministic path (mock / no key / model-failure floor)
+  ---------------------------------------------------------------------------
+*/
 
 interface SectionInventory {
   columnCountsPerRow: number[];
@@ -90,7 +96,9 @@ interface SectionInventory {
 const SOCIAL_HOST_REGEX =
   /\b(?:x\.com|twitter\.com|facebook\.com|instagram\.com|linkedin\.com|youtube\.com|tiktok\.com|threads\.net)\b/i;
 
-/** Flatten one text block's runs to a plain string (hard breaks → spaces). */
+/*
+  Flatten one text block's runs to a plain string (hard breaks → spaces).
+*/
 function flattenTextBlock(block: Extract<Block, { type: "text" }>): string {
   return block.properties.text.content
     .map((node) =>
@@ -101,7 +109,9 @@ function flattenTextBlock(block: Extract<Block, { type: "text" }>): string {
     .trim();
 }
 
-/** Pure structural read of a saved subtree (root-first flat list). */
+/*
+  Pure structural read of a saved subtree (root-first flat list).
+*/
 export function analyzeSectionSubtree(blocks: readonly Block[]): SectionInventory {
   const inventory: SectionInventory = {
     columnCountsPerRow: [],
@@ -222,11 +232,11 @@ function describeInventory(inventory: SectionInventory): string[] {
   return parts;
 }
 
-/**
- * The quota-free enrichment floor: genre is inferred from footer/header
- * signals, everything else reads straight off the inventory. Deliberately
- * conservative prose — concrete inventory, no invented purpose.
- */
+/*
+  The quota-free enrichment floor: genre is inferred from footer/header
+  signals, everything else reads straight off the inventory. Deliberately
+  conservative prose — concrete inventory, no invented purpose.
+*/
 export function buildDeterministicEnrichment(blocks: readonly Block[]): SavedSectionEnrichment {
   const inventory = analyzeSectionSubtree(blocks);
   const inventoryParts = describeInventory(inventory);

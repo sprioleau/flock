@@ -4,43 +4,45 @@ import { mutation, query, type MutationCtx, type QueryCtx } from "./_generated/s
 import { resolveOwnerId, resolveOwnerIdOrNull } from "./authIdentity";
 import { presence } from "./presence";
 
-/**
- * Multi-agent canvas v0 — the persona registry + persona presence plumbing
- * (docs/proposals/multi-agent-canvas.md §3.1/§3.2).
- *
- * Personas are ADVISORY-ONLY in v0: this module exposes no dispatch path —
- * a persona can never mutate a document. Its findings surface as
- * source:"analysis" suggestions in the client, and only a HUMAN clicking
- * Apply dispatches ops (with `persona:<slug>` provenance). The
- * `capabilityMode: v.literal("advisory")` schema field is the server-side
- * enforcement; see the schema doc comment for the v1 editing-persona seam.
- *
- * Presence identity (the ghost's proven pattern — heartbeat first, then
- * updateRoomUser, because the component drops data for users who never
- * heartbeat): each enabled persona is a roster member with userId
- * `persona:<slug>:<documentId>` and a live `status` field the runner flips
- * around its lifecycle (idle → reading → thinking → idle). When the client
- * stops heartbeating (persona disabled, tab closed) the avatar drops off the
- * facepile naturally ~2.5× the interval later — no disconnect bookkeeping.
- *
- * OWNERSHIP: a session's persona copies are keyed by `createdBySessionId` and
- * namespaced into their slug (`user/<ownerId>/<base>`). Both come from
- * resolveOwnerId (convex/authIdentity.ts), never from the raw `sessionId`
- * argument — the presence roster publishes that id to every collaborator, so
- * trusting it would let anyone in the room edit or delete your personas.
- */
+/*
+  Multi-agent canvas v0 — the persona registry + persona presence plumbing
+  (docs/proposals/multi-agent-canvas.md §3.1/§3.2).
 
-/**
- * Persona presence heartbeat interval (offline 2.5× after the last beat —
- * the @convex-dev/presence component schedules the disconnect at
- * `interval * 2.5`). Item 27 (owner: heartbeats "need to chill"): raised
- * 5s → 30s alongside the client cadence (25s beats against the 75s
- * tolerance window, safe even under background-tab timer throttling).
- * Cost: ~6× fewer idle presence mutations per enabled-persona tab.
- */
+  Personas are ADVISORY-ONLY in v0: this module exposes no dispatch path —
+  a persona can never mutate a document. Its findings surface as
+  source:"analysis" suggestions in the client, and only a HUMAN clicking
+  Apply dispatches ops (with `persona:<slug>` provenance). The
+  `capabilityMode: v.literal("advisory")` schema field is the server-side
+  enforcement; see the schema doc comment for the v1 editing-persona seam.
+
+  Presence identity (the ghost's proven pattern — heartbeat first, then
+  updateRoomUser, because the component drops data for users who never
+  heartbeat): each enabled persona is a roster member with userId
+  `persona:<slug>:<documentId>` and a live `status` field the runner flips
+  around its lifecycle (idle → reading → thinking → idle). When the client
+  stops heartbeating (persona disabled, tab closed) the avatar drops off the
+  facepile naturally ~2.5× the interval later — no disconnect bookkeeping.
+
+  OWNERSHIP: a session's persona copies are keyed by `createdBySessionId` and
+  namespaced into their slug (`user/<ownerId>/<base>`). Both come from
+  resolveOwnerId (convex/authIdentity.ts), never from the raw `sessionId`
+  argument — the presence roster publishes that id to every collaborator, so
+  trusting it would let anyone in the room edit or delete your personas.
+*/
+
+/*
+  Persona presence heartbeat interval (offline 2.5× after the last beat —
+  the @convex-dev/presence component schedules the disconnect at
+  `interval * 2.5`). Item 27 (owner: heartbeats "need to chill"): raised
+  5s → 30s alongside the client cadence (25s beats against the 75s
+  tolerance window, safe even under background-tab timer throttling).
+  Cost: ~6× fewer idle presence mutations per enabled-persona tab.
+*/
 const PERSONA_HEARTBEAT_INTERVAL_MS = 30_000;
 
-/** Sanity cap on how many personas one heartbeat call may keep alive. */
+/*
+  Sanity cap on how many personas one heartbeat call may keep alive.
+*/
 const MAX_PERSONAS_PER_HEARTBEAT = 8;
 
 export const personaStatusValidator = v.union(
@@ -59,17 +61,19 @@ export function buildPersonaPresenceUserId({
   return `persona:${slug}:${documentId}`;
 }
 
-// ---------------------------------------------------------------------------
-// Built-in personas (seeded idempotently; the markdown IS the format example)
-// ---------------------------------------------------------------------------
+/*
+  ---------------------------------------------------------------------------
+  Built-in personas (seeded idempotently; the markdown IS the format example)
+  ---------------------------------------------------------------------------
+*/
 
-/**
- * Persona markdown format: a frontmatter-ish header carrying display/config
- * metadata (kept in sync with the row's typed fields — the row is the runtime
- * source of truth; the frontmatter is the human-readable/interchange face),
- * then freeform behavior text that becomes the persona's prompt layer.
- * v1: user-editable in-app (edit built-ins as copies); v0 renders read-only.
- */
+/*
+  Persona markdown format: a frontmatter-ish header carrying display/config
+  metadata (kept in sync with the row's typed fields — the row is the runtime
+  source of truth; the frontmatter is the human-readable/interchange face),
+  then freeform behavior text that becomes the persona's prompt layer.
+  v1: user-editable in-app (edit built-ins as copies); v0 renders read-only.
+*/
 const BUILT_IN_PERSONAS: ReadonlyArray<{
   slug: string;
   name: string;
@@ -80,7 +84,9 @@ const BUILT_IN_PERSONAS: ReadonlyArray<{
   {
     slug: "builtin/tone-police",
     name: "Tone Police",
-    // Rose — distinct from the agent violet, ghost sky, and the human hue wheel.
+    /*
+      Rose — distinct from the agent violet, ghost sky, and the human hue wheel.
+    */
     color: "#e11d48",
     cooldownSeconds: 45,
     personaMarkdown: `---
@@ -125,7 +131,9 @@ How you respond:
   {
     slug: "builtin/styling-recommender",
     name: "Styling Recommender",
-    // Teal — distinct from the agent violet, ghost sky, and the human hue wheel.
+    /*
+      Teal — distinct from the agent violet, ghost sky, and the human hue wheel.
+    */
     color: "#0d9488",
     cooldownSeconds: 45,
     personaMarkdown: `---
@@ -161,9 +169,13 @@ How you respond:
   {
     slug: "builtin/qa-reviewer",
     name: "QA Reviewer",
-    // Amber — distinct from the agent violet, ghost sky, and the human hue wheel.
+    /*
+      Amber — distinct from the agent violet, ghost sky, and the human hue wheel.
+    */
     color: "#d97706",
-    // Relaxed vs the 45s built-ins: it reviews send-readiness, not keystrokes.
+    /*
+      Relaxed vs the 45s built-ins: it reviews send-readiness, not keystrokes.
+    */
     cooldownSeconds: 75,
     personaMarkdown: `---
 name: QA Reviewer
@@ -211,9 +223,13 @@ How you respond:
   {
     slug: "builtin/date-checker",
     name: "Date Checker",
-    // Lime — distinct from the agent violet, ghost sky, and the human hue wheel.
+    /*
+      Lime — distinct from the agent violet, ghost sky, and the human hue wheel.
+    */
     color: "#65a30d",
-    // Most relaxed on the roster: dates change rarely between edits.
+    /*
+      Most relaxed on the roster: dates change rarely between edits.
+    */
     cooldownSeconds: 90,
     personaMarkdown: `---
 name: Date Checker
@@ -261,15 +277,15 @@ How you respond:
   },
 ];
 
-/**
- * Idempotent seed: insert any missing built-in persona rows (matched by
- * slug), and sync already-seeded BUILT-IN rows whose fixture changed — the
- * repo fixture is the source of truth for a pristine built-in, and user
- * edits never live on these rows anyway (updatePersonaMarkdown forks a
- * session copy instead of patching a built-in). Session copies are never
- * touched. Called by the persona picker on open; safe to call any number of
- * times.
- */
+/*
+  Idempotent seed: insert any missing built-in persona rows (matched by
+  slug), and sync already-seeded BUILT-IN rows whose fixture changed — the
+  repo fixture is the source of truth for a pristine built-in, and user
+  edits never live on these rows anyway (updatePersonaMarkdown forks a
+  session copy instead of patching a built-in). Session copies are never
+  touched. Called by the persona picker on open; safe to call any number of
+  times.
+*/
 export const seedBuiltInPersonas = mutation({
   args: {},
   returns: v.null(),
@@ -309,24 +325,26 @@ export const seedBuiltInPersonas = mutation({
   },
 });
 
-// ---------------------------------------------------------------------------
-// In-app persona markdown editing (proposal §6 item 9 — copy-on-edit)
-// ---------------------------------------------------------------------------
+/*
+  ---------------------------------------------------------------------------
+  In-app persona markdown editing (proposal §6 item 9 — copy-on-edit)
+  ---------------------------------------------------------------------------
+*/
 
-/**
- * Size cap on a persona's markdown (~8 KB). Untrusted prompt text injected
- * into a privileged position (§5.8) — the cap is one of the structural
- * mitigations (alongside server-enforced capabilityMode) and keeps the
- * batched runner's persona layer bounded (§4.2).
- */
+/*
+  Size cap on a persona's markdown (~8 KB). Untrusted prompt text injected
+  into a privileged position (§5.8) — the cap is one of the structural
+  mitigations (alongside server-enforced capabilityMode) and keeps the
+  batched runner's persona layer bounded (§4.2).
+*/
 const MAX_PERSONA_MARKDOWN_LENGTH = 8192;
 
-/**
- * Server-side validation of user-submitted persona markdown. Mirrors the
- * client's parse-persona-markdown.ts checks (the client validates first for
- * a friendly inline message; this is the trust boundary). Returns an error
- * message, or null when the markdown is acceptable.
- */
+/*
+  Server-side validation of user-submitted persona markdown. Mirrors the
+  client's parse-persona-markdown.ts checks (the client validates first for
+  a friendly inline message; this is the trust boundary). Returns an error
+  message, or null when the markdown is acceptable.
+*/
 function validatePersonaMarkdown(personaMarkdown: string): string | null {
   const trimmed = personaMarkdown.trim();
   if (trimmed.length === 0) {
@@ -348,12 +366,12 @@ function validatePersonaMarkdown(personaMarkdown: string): string | null {
   return null;
 }
 
-/**
- * THE copy-slug convention (single source of truth): an owner's copy of
- * `builtin/<base>` is `user/<ownerId>/<base>`. Deterministic, namespaced
- * (§4.6 invariant 2), and slug-unique per (owner, built-in) — so editing
- * a built-in twice updates the same copy instead of forking again.
- */
+/*
+  THE copy-slug convention (single source of truth): an owner's copy of
+  `builtin/<base>` is `user/<ownerId>/<base>`. Deterministic, namespaced
+  (§4.6 invariant 2), and slug-unique per (owner, built-in) — so editing
+  a built-in twice updates the same copy instead of forking again.
+*/
 function buildOwnerCopySlug({
   ownerId,
   builtInSlug,
@@ -365,11 +383,11 @@ function buildOwnerCopySlug({
   return `user/${ownerId}/${baseName}`;
 }
 
-/**
- * The built-in slug a session copy shadows (inverse of buildOwnerCopySlug),
- * or null when the row is not a copy of a built-in. Pure namespace mechanics
- * — no behavior ever branches on a SPECIFIC slug (§4.6 invariant 1).
- */
+/*
+  The built-in slug a session copy shadows (inverse of buildOwnerCopySlug),
+  or null when the row is not a copy of a built-in. Pure namespace mechanics
+  — no behavior ever branches on a SPECIFIC slug (§4.6 invariant 1).
+*/
 function getShadowedBuiltInSlug(row: Doc<"agents">): string | null {
   if (row.isBuiltIn !== false || row.createdBySessionId === undefined) {
     return null;
@@ -381,24 +399,26 @@ function getShadowedBuiltInSlug(row: Doc<"agents">): string | null {
   return `builtin/${row.slug.slice(copyPrefix.length)}`;
 }
 
-/** Bounds on the form-editable cooldown (budget guard stays meaningful). */
+/*
+  Bounds on the form-editable cooldown (budget guard stays meaningful).
+*/
 const MIN_COOLDOWN_SECONDS = 10;
 const MAX_COOLDOWN_SECONDS = 600;
 
-/**
- * Save edited persona markdown. Built-ins are NEVER patched: saving an edit
- * to a built-in forks (or updates) the session's copy, which shadows the
- * built-in in that session's picker (listPersonas). A session may only edit
- * its own copies. Returns the slug of the row that now carries the edit —
- * the client swaps its localStorage enablement to it, so the next runner
- * turn reads the new markdown from this row.
- *
- * The row's typed fields (name/color/cooldownSeconds) stay the runtime
- * source of truth. The structured editor serializes the SAME values into the
- * frontmatter (interchange face) and passes them here as typed args, so row
- * and markdown never drift; frontmatter is still never parsed inside
- * mutations (§4.5). Omitted typed args leave the source row's values.
- */
+/*
+  Save edited persona markdown. Built-ins are NEVER patched: saving an edit
+  to a built-in forks (or updates) the session's copy, which shadows the
+  built-in in that session's picker (listPersonas). A session may only edit
+  its own copies. Returns the slug of the row that now carries the edit —
+  the client swaps its localStorage enablement to it, so the next runner
+  turn reads the new markdown from this row.
+
+  The row's typed fields (name/color/cooldownSeconds) stay the runtime
+  source of truth. The structured editor serializes the SAME values into the
+  frontmatter (interchange face) and passes them here as typed args, so row
+  and markdown never drift; frontmatter is still never parsed inside
+  mutations (§4.5). Omitted typed args leave the source row's values.
+*/
 export const updatePersonaMarkdown = mutation({
   args: {
     slug: v.string(),
@@ -434,15 +454,19 @@ export const updatePersonaMarkdown = mutation({
       throw new Error(`No persona is registered under "${args.slug}".`);
     }
     const nowMs = Date.now();
-    // NEVER spread possibly-undefined values into a patch (the serializer
-    // silently drops undefined fields — build the object conditionally).
+    /*
+      NEVER spread possibly-undefined values into a patch (the serializer
+      silently drops undefined fields — build the object conditionally).
+    */
     const typedFieldChanges = {
       ...(args.name !== undefined ? { name: args.name.trim() } : {}),
       ...(args.color !== undefined ? { color: args.color } : {}),
       ...(args.cooldownSeconds !== undefined ? { cooldownSeconds: args.cooldownSeconds } : {}),
     };
 
-    // A user copy: edit in place (owner only).
+    /*
+      A user copy: edit in place (owner only).
+    */
     if (row.isBuiltIn === false) {
       if (row.createdBySessionId !== ownerId) {
         throw new Error("This persona belongs to a different session.");
@@ -455,7 +479,9 @@ export const updatePersonaMarkdown = mutation({
       return { savedSlug: row.slug };
     }
 
-    // A built-in: fork (or update) the session's shadowing copy.
+    /*
+      A built-in: fork (or update) the session's shadowing copy.
+    */
     const copySlug = buildOwnerCopySlug({
       ownerId,
       builtInSlug: row.slug,
@@ -486,13 +512,13 @@ export const updatePersonaMarkdown = mutation({
   },
 });
 
-/**
- * Discard a session's copy, un-shadowing the pristine built-in ("reset to
- * default"). Returns the built-in's slug so the client can swap enablement
- * back. Owner-only, copies only — built-ins cannot be deleted, and a
- * created-from-scratch persona (no built-in behind it) has nothing to reset
- * TO (deletePersona is its affordance).
- */
+/*
+  Discard a session's copy, un-shadowing the pristine built-in ("reset to
+  default"). Returns the built-in's slug so the client can swap enablement
+  back. Owner-only, copies only — built-ins cannot be deleted, and a
+  created-from-scratch persona (no built-in behind it) has nothing to reset
+  TO (deletePersona is its affordance).
+*/
 export const resetPersonaToBuiltIn = mutation({
   args: { slug: v.string(), sessionId: v.string() },
   returns: v.object({ builtInSlug: v.string() }),
@@ -506,9 +532,11 @@ export const resetPersonaToBuiltIn = mutation({
       throw new Error("Only this session's customized personas can be reset.");
     }
     const builtInSlug = getShadowedBuiltInSlug(row);
-    // getShadowedBuiltInSlug is pure string mechanics — verify the shadowed
-    // built-in actually exists before deleting the only row that defines
-    // this persona (a created-from-scratch persona shadows nothing).
+    /*
+      getShadowedBuiltInSlug is pure string mechanics — verify the shadowed
+      built-in actually exists before deleting the only row that defines
+      this persona (a created-from-scratch persona shadows nothing).
+    */
     const builtInRow = builtInSlug === null ? null : await findPersonaBySlug(ctx, builtInSlug);
     if (builtInSlug === null || builtInRow === null) {
       throw new Error("This persona is not a copy of a built-in — delete it instead.");
@@ -518,29 +546,39 @@ export const resetPersonaToBuiltIn = mutation({
   },
 });
 
-// ---------------------------------------------------------------------------
-// Created-from-scratch personas (create + delete; pure registry data)
-// ---------------------------------------------------------------------------
+/*
+  ---------------------------------------------------------------------------
+  Created-from-scratch personas (create + delete; pure registry data)
+  ---------------------------------------------------------------------------
+*/
 
-/**
- * Sanity cap on how many personas one session may create. Well under the
- * MAX_LISTED_PERSONAS listing bound so a session can never push its own
- * picker past the page size.
- */
+/*
+  Sanity cap on how many personas one session may create. Well under the
+  MAX_LISTED_PERSONAS listing bound so a session can never push its own
+  picker past the page size.
+*/
 const MAX_CREATED_PERSONAS_PER_SESSION = 24;
 
-/** Longest slug base derived from a persona name (before collision suffixes). */
+/*
+  Longest slug base derived from a persona name (before collision suffixes).
+*/
 const MAX_SLUG_BASE_LENGTH = 48;
 
-/** How many collision suffixes to try before giving up (paranoia bound). */
+/*
+  How many collision suffixes to try before giving up (paranoia bound).
+*/
 const MAX_SLUG_COLLISION_ATTEMPTS = 50;
 
-/** Lowercase-hyphen slug base from a display name ("Accessibility Checker" → "accessibility-checker"). */
+/*
+  Lowercase-hyphen slug base from a display name ("Accessibility Checker" → "accessibility-checker").
+*/
 function slugifyPersonaName(name: string): string {
   const base = name
     .toLowerCase()
     .normalize("NFKD")
-    // Strip combining diacritics left behind by NFKD ("é" → "e").
+    /*
+      Strip combining diacritics left behind by NFKD ("é" → "e").
+    */
     .replace(/[\u0300-\u036f]/g, "")
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-+|-+$/g, "")
@@ -549,19 +587,21 @@ function slugifyPersonaName(name: string): string {
   return base.length > 0 ? base : "agent";
 }
 
-/**
- * First free `user/<ownerId>/<base>` slug for a created persona, suffixing
- * on collision ("…/reviewer", "…/reviewer-2", …). A base that matches a
- * built-in's base is ALSO a collision: `user/<ownerId>/<builtInBase>` is
- * the copy-slug convention (buildOwnerCopySlug), and a created persona
- * squatting on it would shadow the built-in in this owner's picker.
- */
+/*
+  First free `user/<ownerId>/<base>` slug for a created persona, suffixing
+  on collision ("…/reviewer", "…/reviewer-2", …). A base that matches a
+  built-in's base is ALSO a collision: `user/<ownerId>/<builtInBase>` is
+  the copy-slug convention (buildOwnerCopySlug), and a created persona
+  squatting on it would shadow the built-in in this owner's picker.
+*/
 async function findAvailableCreatedPersonaSlug(
   ctx: MutationCtx,
   { ownerId, name }: { ownerId: string; name: string },
 ): Promise<string> {
   const baseName = slugifyPersonaName(name);
-  // Check the fixture list, not just seeded rows — the seed may not have run.
+  /*
+    Check the fixture list, not just seeded rows — the seed may not have run.
+  */
   const builtInBaseNames = new Set(
     BUILT_IN_PERSONAS.map((builtIn) => builtIn.slug.slice(builtIn.slug.indexOf("/") + 1)),
   );
@@ -583,15 +623,15 @@ async function findAvailableCreatedPersonaSlug(
   throw new Error("Could not find an available identifier for this persona — try a different name.");
 }
 
-/**
- * Create a session-owned advisory persona from scratch. Same trust boundary
- * as updatePersonaMarkdown (markdown size/structure, name, color, cooldown
- * bounds — the structured form validates first for friendly inline messages).
- * The new row is an ordinary registry row: capabilityMode is pinned to
- * "advisory" server-side, and every downstream surface (picker, facepile,
- * batched runner, findings, watch scopes) treats it as pure data — zero
- * persona-conditional code. Returns the new slug so the client can enable it.
- */
+/*
+  Create a session-owned advisory persona from scratch. Same trust boundary
+  as updatePersonaMarkdown (markdown size/structure, name, color, cooldown
+  bounds — the structured form validates first for friendly inline messages).
+  The new row is an ordinary registry row: capabilityMode is pinned to
+  "advisory" server-side, and every downstream surface (picker, facepile,
+  batched runner, findings, watch scopes) treats it as pure data — zero
+  persona-conditional code. Returns the new slug so the client can enable it.
+*/
 export const createPersona = mutation({
   args: {
     sessionId: v.string(),
@@ -652,12 +692,12 @@ export const createPersona = mutation({
   },
 });
 
-/**
- * Delete a session-owned persona row. Owner-only; built-ins can never be
- * deleted (reset-only, via resetPersonaToBuiltIn on their copies). Findings
- * the persona already left carry denormalized identity, so they stay
- * readable; the client drops the slug from its enablement list.
- */
+/*
+  Delete a session-owned persona row. Owner-only; built-ins can never be
+  deleted (reset-only, via resetPersonaToBuiltIn on their copies). Findings
+  the persona already left carry denormalized identity, so they stay
+  readable; the client drops the slug from its enablement list.
+*/
 export const deletePersona = mutation({
   args: { slug: v.string(), sessionId: v.string() },
   returns: v.null(),
@@ -678,10 +718,12 @@ export const deletePersona = mutation({
   },
 });
 
-// `isBuiltIn` is OPTIONAL in the payload on purpose: /api/personas narrows
-// this payload with a `persona is PersonaRow` type predicate against its own
-// (narrower) row type — a required extra field would break that assignability.
-// toPersonaPayload always populates it; treat undefined as built-in.
+/*
+  `isBuiltIn` is OPTIONAL in the payload on purpose: /api/personas narrows
+  this payload with a `persona is PersonaRow` type predicate against its own
+  (narrower) row type — a required extra field would break that assignability.
+  toPersonaPayload always populates it; treat undefined as built-in.
+*/
 const personaPayloadValidator = v.object({
   slug: v.string(),
   name: v.string(),
@@ -700,13 +742,15 @@ interface PersonaPayload {
   capabilityMode: "advisory";
   personaMarkdown: string;
   cooldownSeconds: number;
-  /** Optional in the TYPE (not the data) — see the validator note above. */
+  /*
+    Optional in the TYPE (not the data) — see the validator note above.
+  */
   isBuiltIn?: boolean;
-  /**
-   * True for a session's created-from-scratch personas (deletable; no
-   * built-in behind them). Populated by listPersonas only — the picker is
-   * the one surface that offers delete vs reset; the runner doesn't care.
-   */
+  /*
+    True for a session's created-from-scratch personas (deletable; no
+    built-in behind them). Populated by listPersonas only — the picker is
+    the one surface that offers delete vs reset; the runner doesn't care.
+  */
   isUserCreated?: boolean;
 }
 
@@ -722,24 +766,28 @@ function toPersonaPayload(row: Doc<"agents">): PersonaPayload {
   };
 }
 
-/** Upper bound on picker rows (v0: four built-ins; marketplace pages later). */
+/*
+  Upper bound on picker rows (v0: four built-ins; marketplace pages later).
+*/
 const MAX_LISTED_PERSONAS = 64;
 
-/**
- * The personas the given session's picker shows: every built-in EXCEPT those
- * shadowed by one of the session's copies, plus the session's copies and
- * created-from-scratch personas. A copy sorts where its built-in would (same
- * picker position, deterministic); created personas sort after the built-ins
- * by their own slug ("user/…" > "builtin/…"). Without a sessionId (or for
- * sessions with no rows of their own) this is simply the built-ins, ordered
- * by slug.
- */
+/*
+  The personas the given session's picker shows: every built-in EXCEPT those
+  shadowed by one of the session's copies, plus the session's copies and
+  created-from-scratch personas. A copy sorts where its built-in would (same
+  picker position, deterministic); created personas sort after the built-ins
+  by their own slug ("user/…" > "builtin/…"). Without a sessionId (or for
+  sessions with no rows of their own) this is simply the built-ins, ordered
+  by slug.
+*/
 export const listPersonas = query({
   args: { sessionId: v.optional(v.string()) },
   returns: v.array(personaPayloadValidator),
   handler: async (ctx, args) => {
-    // Optional by design: a caller with neither an identity nor a claimed id
-    // (and every caller at all in strict mode) simply gets the built-ins.
+    /*
+      Optional by design: a caller with neither an identity nor a claimed id
+      (and every caller at all in strict mode) simply gets the built-ins.
+    */
     const ownerId = await resolveOwnerIdOrNull(ctx, { claimedSessionId: args.sessionId });
     const allRows = await ctx.db
       .query("agents")
@@ -767,9 +815,11 @@ export const listPersonas = query({
     ];
     return visibleRows
       .map((row) => {
-        // getShadowedBuiltInSlug is pure string mechanics; a session row is a
-        // real shadowing copy only when that built-in actually exists.
-        // Everything else the session owns is a created-from-scratch persona.
+        /*
+          getShadowedBuiltInSlug is pure string mechanics; a session row is a
+          real shadowing copy only when that built-in actually exists.
+          Everything else the session owns is a created-from-scratch persona.
+        */
         const shadowedSlug = getShadowedBuiltInSlug(row);
         const isShadowingCopy = shadowedSlug !== null && builtInSlugs.has(shadowedSlug);
         return {
@@ -783,7 +833,9 @@ export const listPersonas = query({
   },
 });
 
-/** Registry rows for the runner (unknown slugs are silently absent). */
+/*
+  Registry rows for the runner (unknown slugs are silently absent).
+*/
 export const getPersonasBySlugs = query({
   args: { slugs: v.array(v.string()) },
   returns: v.array(personaPayloadValidator),
@@ -802,9 +854,11 @@ export const getPersonasBySlugs = query({
   },
 });
 
-// ---------------------------------------------------------------------------
-// Persona presence
-// ---------------------------------------------------------------------------
+/*
+  ---------------------------------------------------------------------------
+  Persona presence
+  ---------------------------------------------------------------------------
+*/
 
 async function assertLiveDocument(
   ctx: MutationCtx | QueryCtx,
@@ -826,16 +880,16 @@ async function findPersonaBySlug(
     .unique();
 }
 
-/**
- * Keep the enabled personas alive on the roster. Called by the client on an
- * interval while personas are enabled for the open document.
- *
- * Writes IDENTITY data only for personas that have none yet (first join —
- * updateRoomUser drops writes for users who never heartbeat, hence heartbeat
- * first). For personas already on the roster this is heartbeat-only, so a
- * status the runner just wrote ("reading"/"thinking") is never clobbered
- * back to "idle" by a concurrent keep-alive tick.
- */
+/*
+  Keep the enabled personas alive on the roster. Called by the client on an
+  interval while personas are enabled for the open document.
+
+  Writes IDENTITY data only for personas that have none yet (first join —
+  updateRoomUser drops writes for users who never heartbeat, hence heartbeat
+  first). For personas already on the roster this is heartbeat-only, so a
+  status the runner just wrote ("reading"/"thinking") is never clobbered
+  back to "idle" by a concurrent keep-alive tick.
+*/
 export const heartbeatPersonas = mutation({
   args: { documentId: v.id("documents"), slugs: v.array(v.string()) },
   returns: v.null(),
@@ -857,10 +911,12 @@ export const heartbeatPersonas = mutation({
         PERSONA_HEARTBEAT_INTERVAL_MS,
       );
       const entry = roster.find((member) => member.userId === userId);
-      // listRoom's TYPED return omits `data` (the component validator only
-      // exposes userId/online/lastDisconnected) even though the row carries
-      // it at runtime — read it through a widening cast; worst case (no
-      // data surfaced) we re-write the identity, which is harmless.
+      /*
+        listRoom's TYPED return omits `data` (the component validator only
+        exposes userId/online/lastDisconnected) even though the row carries
+        it at runtime — read it through a widening cast; worst case (no
+        data surfaced) we re-write the identity, which is harmless.
+      */
       const hasIdentityData =
         entry !== undefined && (entry as { data?: unknown }).data !== undefined;
       if (!hasIdentityData) {
@@ -876,13 +932,13 @@ export const heartbeatPersonas = mutation({
   },
 });
 
-/**
- * Runner lifecycle transitions (reading → thinking → idle), written by the
- * /api/personas route around its one batched analysis call. Presence writes
- * happen on STATE TRANSITIONS only (~3 per persona per run — §3.5 fan-out
- * cost note). `selectedBlockId`, when given, points the persona's existing
- * block-presence chrome at the block its top finding targets.
- */
+/*
+  Runner lifecycle transitions (reading → thinking → idle), written by the
+  /api/personas route around its one batched analysis call. Presence writes
+  happen on STATE TRANSITIONS only (~3 per persona per run — §3.5 fan-out
+  cost note). `selectedBlockId`, when given, points the persona's existing
+  block-presence chrome at the block its top finding targets.
+*/
 export const setPersonaStatus = mutation({
   args: {
     documentId: v.id("documents"),

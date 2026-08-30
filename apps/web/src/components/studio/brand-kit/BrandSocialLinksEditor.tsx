@@ -73,8 +73,10 @@ export function BrandSocialLinksEditor({
     if (platform === undefined) {
       return;
     }
-    /* Added empty and NOT committed: an empty row is dropped by the planner,
-       so committing here would be a write that stores nothing. */
+    /*
+      Added empty and NOT committed: an empty row is dropped by the planner,
+      so committing here would be a write that stores nothing.
+    */
     setDraftRows([...draftRows, { platform, url: "" }]);
   };
 

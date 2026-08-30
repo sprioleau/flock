@@ -46,7 +46,9 @@ export type SendTestEmailState =
   | { status: "error"; message: string; isRecipientInvalid: boolean };
 
 export interface SendTestEmailControl {
-  /** One-to-five ordered rows; always at least one (possibly blank) row. */
+  /*
+    One-to-five ordered rows; always at least one (possibly blank) row.
+  */
   recipients: string[];
   updateRecipientAt: (index: number, next: string) => void;
   addRecipient: () => void;
@@ -55,17 +57,25 @@ export interface SendTestEmailControl {
   canAddRecipient: boolean;
   subject: string;
   updateSubject: (next: string) => void;
-  /** Persist the subject to the canvas. Call on blur (see below). */
+  /*
+    Persist the subject to the canvas. Call on blur (see below).
+  */
   persistSubject: () => void;
   previewText: string;
   updatePreviewText: (next: string) => void;
-  /** Persist the preview text to the canvas. Call on blur. */
+  /*
+    Persist the preview text to the canvas. Call on blur.
+  */
   persistPreviewText: () => void;
   sendState: SendTestEmailState;
   isSending: boolean;
-  /** Clear the last result and prefill the defaults. Call on open. */
+  /*
+    Clear the last result and prefill the defaults. Call on open.
+  */
   prepareToSend: () => void;
-  /** Orphan any in-flight response so it can't land after close. */
+  /*
+    Orphan any in-flight response so it can't land after close.
+  */
   discardInFlightSend: () => void;
   submitSend: () => void;
 }
@@ -75,10 +85,12 @@ export function useSendTestEmail(): SendTestEmailControl {
   const canvasId = useEditorStore((state) => state.canvasId);
   const sessionId = useEditorStore((state) => state.authorId);
 
-  // The canvas-level subject / preview for the active canvas. Subscribed here
-  // (the hook runs even while the dialog is closed), so by the time a user can
-  // open the dialog this has almost always resolved. `"skip"` while there is no
-  // canvas — the fields then fall back to the draft-derived subject.
+  /*
+    The canvas-level subject / preview for the active canvas. Subscribed here
+    (the hook runs even while the dialog is closed), so by the time a user can
+    open the dialog this has almost always resolved. `"skip"` while there is no
+    canvas — the fields then fall back to the draft-derived subject.
+  */
   const emailMeta = useQuery(
     api.canvases.getCanvasEmailMeta,
     canvasId !== null ? { canvasId } : "skip",
@@ -89,19 +101,23 @@ export function useSendTestEmail(): SendTestEmailControl {
   const [subject, setSubject] = useState("");
   const [previewText, setPreviewText] = useState("");
   const [sendState, setSendState] = useState<SendTestEmailState>({ status: "idle" });
-  // Once the user touches a field, no prefill may overwrite it again.
+  /*
+    Once the user touches a field, no prefill may overwrite it again.
+  */
   const [hasUserEditedRecipients, setHasUserEditedRecipients] = useState(false);
   const [hasUserEditedSubject, setHasUserEditedSubject] = useState(false);
   const [hasUserEditedPreviewText, setHasUserEditedPreviewText] = useState(false);
   const requestIdRef = useRef(0);
 
-  // The identity query resolves asynchronously, so a dialog opened on a cold
-  // load can be prefilled before the signed-in address is known. Seed it the
-  // moment it arrives — DURING RENDER, not in an effect: React re-runs this
-  // component with the new state before painting, so the field never flashes
-  // empty-then-filled (and react-hooks/set-state-in-effect stays satisfied).
-  // No localStorage here: this path must be safe during prerendering, and a
-  // resolved identity only ever exists in the browser.
+  /*
+    The identity query resolves asynchronously, so a dialog opened on a cold
+    load can be prefilled before the signed-in address is known. Seed it the
+    moment it arrives — DURING RENDER, not in an effect: React re-runs this
+    component with the new state before painting, so the field never flashes
+    empty-then-filled (and react-hooks/set-state-in-effect stays satisfied).
+    No localStorage here: this path must be safe during prerendering, and a
+    resolved identity only ever exists in the browser.
+  */
   const signedInRecipient = resolveDefaultRecipient({ identity, lastUsedRecipient: "" });
   const [seededFrom, setSeededFrom] = useState(signedInRecipient);
   if (seededFrom !== signedInRecipient) {
@@ -111,11 +127,13 @@ export function useSendTestEmail(): SendTestEmailControl {
     }
   }
 
-  // The canvas metadata resolves asynchronously too. Seed subject / preview the
-  // moment it lands, on the SAME during-render pattern as the recipient above,
-  // so a dialog opened before the query settled still fills from the canvas
-  // rather than being stuck on the draft-derived fallback — and never clobbers
-  // a value the user has already edited.
+  /*
+    The canvas metadata resolves asynchronously too. Seed subject / preview the
+    moment it lands, on the SAME during-render pattern as the recipient above,
+    so a dialog opened before the query settled still fills from the canvas
+    rather than being stuck on the draft-derived fallback — and never clobbers
+    a value the user has already edited.
+  */
   const [seededMeta, setSeededMeta] = useState(emailMeta);
   if (seededMeta !== emailMeta) {
     setSeededMeta(emailMeta);
@@ -130,8 +148,10 @@ export function useSendTestEmail(): SendTestEmailControl {
   }
 
   const clearStaleResult = (): void => {
-    // Instant feedback: the moment they change the send, a stale result stops
-    // applying to what's on screen.
+    /*
+      Instant feedback: the moment they change the send, a stale result stops
+      applying to what's on screen.
+    */
     if (sendState.status !== "idle") {
       setSendState({ status: "idle" });
     }
@@ -151,7 +171,9 @@ export function useSendTestEmail(): SendTestEmailControl {
   };
 
   const removeRecipientAt = (index: number): void => {
-    // Never drop the last row — the form always shows at least one field.
+    /*
+      Never drop the last row — the form always shows at least one field.
+    */
     setRecipients((current) =>
       current.length <= 1 ? current : current.filter((_, i) => i !== index),
     );
@@ -193,7 +215,9 @@ export function useSendTestEmail(): SendTestEmailControl {
       return;
     }
     void setCanvasEmailMeta({ canvasId, [field]: value, sessionId }).catch(() => {
-      // Persisting is a nicety; the value still sends. Swallow and move on.
+      /*
+        Persisting is a nicety; the value still sends. Swallow and move on.
+      */
     });
   };
 
@@ -212,8 +236,10 @@ export function useSendTestEmail(): SendTestEmailControl {
   const prepareToSend = (): void => {
     setSendState({ status: "idle" });
 
-    // Subject / preview reset to the canvas value (their persisted source of
-    // truth), falling back to the draft's first heading for the subject.
+    /*
+      Subject / preview reset to the canvas value (their persisted source of
+      truth), falling back to the draft's first heading for the subject.
+    */
     const document = useEditorStore.getState().doc;
     setSubject(emailMeta?.subject ?? deriveSubjectFromDocument(document));
     setPreviewText(emailMeta?.previewText ?? "");
@@ -223,9 +249,11 @@ export function useSendTestEmail(): SendTestEmailControl {
     if (hasUserEditedRecipients) {
       return;
     }
-    // Read here rather than at mount: this runs from an open handler, so the
-    // browser definitely exists (a client component still renders on the
-    // server, where touching localStorage would throw).
+    /*
+      Read here rather than at mount: this runs from an open handler, so the
+      browser definitely exists (a client component still renders on the
+      server, where touching localStorage would throw).
+    */
     setRecipients([
       resolveDefaultRecipient({ identity, lastUsedRecipient: readLastUsedRecipient() }),
     ]);
@@ -250,8 +278,10 @@ export function useSendTestEmail(): SendTestEmailControl {
     const isCurrent = (): boolean => requestIdRef.current === requestId;
     setSendState({ status: "sending" });
     requestTestEmailSend({
-      // The store's doc at submit time — always the ACTIVE draft, and exactly
-      // what the preview beside this form is showing.
+      /*
+        The store's doc at submit time — always the ACTIVE draft, and exactly
+        what the preview beside this form is showing.
+      */
       document: useEditorStore.getState().doc,
       to: validation.recipients,
       subject,
@@ -262,7 +292,9 @@ export function useSendTestEmail(): SendTestEmailControl {
           return;
         }
         if (result.isSent) {
-          // The first row seeds the next open; the rest are not remembered.
+          /*
+            The first row seeds the next open; the rest are not remembered.
+          */
           saveLastUsedRecipient(validation.recipients[0]!);
           setSendState({ status: "sent", recipients: result.recipients });
           return;

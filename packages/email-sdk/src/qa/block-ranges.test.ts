@@ -14,9 +14,11 @@ import { findBlockIdAt, indexBlockRanges, toIndexRange } from "./block-ranges";
   merely that some block came back.
 */
 
-/* A stamped element's extent must be the element, exactly — start tag through
-   end tag. Slicing the input with the returned range is the only assertion
-   that can tell a correct extent from a plausible one. */
+/*
+  A stamped element's extent must be the element, exactly — start tag through
+  end tag. Slicing the input with the returned range is the only assertion
+  that can tell a correct extent from a plausible one.
+*/
 function sliceOf(html: string, range: { startIndex: number; endIndex: number }): string {
   return html.slice(range.startIndex, range.endIndex);
 }
@@ -95,9 +97,11 @@ describe("findBlockIdAt", () => {
     "</div></body>";
   const ranges = indexBlockRanges(html);
 
-  /* The span belongs to txt_b and is nested inside sec_a. Naming the ancestor
-     would be defensible-looking and wrong: it is the paragraph a user would
-     edit, not the section. */
+  /*
+    The span belongs to txt_b and is nested inside sec_a. Naming the ancestor
+    would be defensible-looking and wrong: it is the paragraph a user would
+    edit, not the section.
+  */
   it("names the INNERMOST enclosing block, not an ancestor", () => {
     const spanStart = html.indexOf('<span style="color:red">');
     const spanEnd = html.indexOf("</span>") + "</span>".length;
@@ -105,9 +109,11 @@ describe("findBlockIdAt", () => {
     expect(findBlockIdAt({ ranges, startIndex: spanStart, endIndex: spanEnd })).toBe("txt_b");
   });
 
-  /* The sibling discrimination. A scanner that tracked only opening offsets,
-     or a lookup that walked backwards to the nearest stamp, returns txt_b
-     here — the previous sibling — because txt_b opens before txt_c. */
+  /*
+    The sibling discrimination. A scanner that tracked only opening offsets,
+    or a lookup that walked backwards to the nearest stamp, returns txt_b
+    here — the previous sibling — because txt_b opens before txt_c.
+  */
   it("does not attribute a span to the block that merely precedes it", () => {
     const secondStart = html.indexOf('<p data-flock-block-id="txt_c">');
     const secondEnd = html.indexOf("bye</p>") + "bye</p>".length;
@@ -134,7 +140,9 @@ describe("findBlockIdAt", () => {
 
   it("requires containment, not overlap", () => {
     const blockRange = ranges.find((candidate) => candidate.blockId === "txt_b")!;
-    /* Starts inside txt_b and ends past it — no block contains this span. */
+    /*
+      Starts inside txt_b and ends past it — no block contains this span.
+    */
     expect(
       findBlockIdAt({
         ranges,
@@ -193,8 +201,10 @@ describe("indexBlockRanges on a real annotated render", () => {
       expectedBlockIds.sort(),
     );
 
-    /* Every recovered range must be a well-formed element carrying its own
-       stamp — the cheap way to catch a scanner whose extents have drifted. */
+    /*
+      Every recovered range must be a well-formed element carrying its own
+      stamp — the cheap way to catch a scanner whose extents have drifted.
+    */
     for (const range of ranges) {
       const markup = sliceOf(html, range);
       expect(markup.startsWith("<")).toBe(true);
@@ -202,7 +212,9 @@ describe("indexBlockRanges on a real annotated render", () => {
       expect(markup).toContain(`data-flock-block-id="${range.blockId}"`);
     }
 
-    /* Nesting is real: the button's range sits strictly inside its section's. */
+    /*
+      Nesting is real: the button's range sits strictly inside its section's.
+    */
     const button = ranges.find((range) => range.blockId === "btn_ct01")!;
     const section = ranges.find((range) => range.blockId === "sec_hero")!;
     expect(section.startIndex).toBeLessThan(button.startIndex);

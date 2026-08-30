@@ -1,15 +1,15 @@
-/**
- * Live verification harness for POST /api/brand-kit/generate — exercises the
- * route through the RUNNING dev server (port 3000, which carries whatever
- * outbound TLS cert env it needs), so this checks the real pipeline end to end:
- * fetch → harvest → Gemini → repair → contract.
- *
- * Run from apps/web (uses real Gemini quota — one call per real site):
- *   ../../packages/email-sdk/node_modules/.bin/tsx src/lib/brand-kit-extraction/__tests__/live-check.ts <url> [<url> …]
- *
- * With no URLs it only runs the failure-path checks (bogus domain, private
- * address, cooldown) — no model calls.
- */
+/*
+  Live verification harness for POST /api/brand-kit/generate — exercises the
+  route through the RUNNING dev server (port 3000, which carries whatever
+  outbound TLS cert env it needs), so this checks the real pipeline end to end:
+  fetch → harvest → Gemini → repair → contract.
+
+  Run from apps/web (uses real Gemini quota — one call per real site):
+    ../../packages/email-sdk/node_modules/.bin/tsx src/lib/brand-kit-extraction/__tests__/live-check.ts <url> [<url> …]
+
+  With no URLs it only runs the failure-path checks (bogus domain, private
+  address, cooldown) — no model calls.
+*/
 
 import assert from "node:assert/strict";
 import {
@@ -30,13 +30,17 @@ async function post(url: string): Promise<{ status: number; body: { isOk: boolea
     headers: { "content-type": "application/json" },
     body: JSON.stringify({ url }),
   });
-  // Round-trip requirement: the body must be plain JSON.parse-able text.
+  /*
+    Round-trip requirement: the body must be plain JSON.parse-able text.
+  */
   const text = await response.text();
   return { status: response.status, body: JSON.parse(text) };
 }
 
 function reportKit(brandKit: BrandKit) {
-  // Contract round-trip: Zod contract + the brand-kit.ts contrast guard.
+  /*
+    Contract round-trip: Zod contract + the brand-kit.ts contrast guard.
+  */
   assert.equal(brandKitSchema.safeParse(brandKit).success, true, "kit passes brandKitSchema");
   console.log(`  name:   ${brandKit.name}`);
   console.log(`  fonts:  heading=${brandKit.fonts.heading} | body=${brandKit.fonts.body}`);
@@ -63,7 +67,9 @@ async function main() {
   console.log(`  bogus domain → ${bogus.status}: ${bogus.body.message}`);
   assert.equal(bogus.body.isOk, false);
 
-  // Immediately again — must hit the cooldown, proving rapid repeats bounce.
+  /*
+    Immediately again — must hit the cooldown, proving rapid repeats bounce.
+  */
   const rapid = await post("https://example.com");
   console.log(`  rapid repeat → ${rapid.status}: ${rapid.body.message}`);
   assert.equal(rapid.body.isOk, false);

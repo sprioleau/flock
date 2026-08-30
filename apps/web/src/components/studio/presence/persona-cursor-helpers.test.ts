@@ -174,8 +174,10 @@ describe("getPresentationPhase — the wander → dwell → select → post cont
   });
 
   it("orders the beats: the card posts only after the select beat began", () => {
-    // The cross-module invariant the flow depends on: at the card's reveal
-    // instant the cursor is already in its select pose.
+    /*
+      The cross-module invariant the flow depends on: at the card's reveal
+      instant the cursor is already in its select pose.
+    */
     expect(FINDING_CARD_REVEAL_MS).toBeGreaterThanOrEqual(FINDING_DWELL_MS);
     expect(
       getPresentationPhase({

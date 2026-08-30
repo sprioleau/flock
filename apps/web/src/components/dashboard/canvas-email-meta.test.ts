@@ -4,39 +4,43 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { api } from "@convex/_generated/api";
 import schema from "@convex/schema";
 
-/**
- * THE CANVAS-LEVEL EMAIL META TESTS for setCanvasEmailMeta / getCanvasEmailMeta
- * (convex/canvases.ts).
- *
- * Subject and preview text live on the CANVAS, shared by every draft, because
- * only one draft is ever sent. These tests pin the three properties that are
- * easy to "simplify" back into a bug:
- *
- *   1. NON-OWNER REFUSAL — the capability check. This is the load-bearing one:
- *      delete the assertCanvasOwner call in the handler and this test must go
- *      red. It is written to fail loudly, never to pass vacuously.
- *   2. PARTIAL PATCH — updating only the subject must not wipe the preview.
- *   3. EMPTY CLEARS — a blank/whitespace value removes the field to a genuine
- *      absent state, not a stored "".
- *
- * convex-test setup mirrors canvas-ownership.test.ts, including the note about
- * the array-form glob (the documented extglob matches nothing under vitest 4).
- * These tests never reach the delete cascade, so the prosemirror-sync component
- * does not need registering here.
- */
+/*
+  THE CANVAS-LEVEL EMAIL META TESTS for setCanvasEmailMeta / getCanvasEmailMeta
+  (convex/canvases.ts).
+
+  Subject and preview text live on the CANVAS, shared by every draft, because
+  only one draft is ever sent. These tests pin the three properties that are
+  easy to "simplify" back into a bug:
+
+    1. NON-OWNER REFUSAL — the capability check. This is the load-bearing one:
+       delete the assertCanvasOwner call in the handler and this test must go
+       red. It is written to fail loudly, never to pass vacuously.
+    2. PARTIAL PATCH — updating only the subject must not wipe the preview.
+    3. EMPTY CLEARS — a blank/whitespace value removes the field to a genuine
+       absent state, not a stored "".
+
+  convex-test setup mirrors canvas-ownership.test.ts, including the note about
+  the array-form glob (the documented extglob matches nothing under vitest 4).
+  These tests never reach the delete cascade, so the prosemirror-sync component
+  does not need registering here.
+*/
 const modules = import.meta.glob(["../../../../../convex/**/*.{ts,js}", "!**/*.d.ts", "!**/*.test.ts"]);
 
 const OWNER_A = "user_owner_a";
 const OWNER_B = "user_owner_b";
 const STRICT_FLAG = "FLOCK_REQUIRE_AUTH_IDENTITY";
 
-/** A pre-auth browser's localStorage UUID — the legacy fallback key. */
+/*
+  A pre-auth browser's localStorage UUID — the legacy fallback key.
+*/
 const LEGACY_SESSION_ID = "3f9a2b1c-4d5e-4f60-9a8b-7c6d5e4f3a2b";
 
 const originalStrictFlag = process.env[STRICT_FLAG];
 
 beforeEach(() => {
-  // The deployment's REAL posture: strict identity, exactly as prod runs.
+  /*
+    The deployment's REAL posture: strict identity, exactly as prod runs.
+  */
   process.env[STRICT_FLAG] = "true";
 });
 
@@ -49,13 +53,13 @@ afterEach(() => {
 });
 
 describe("setCanvasEmailMeta ownership", () => {
-  /**
-   * THE ATTACK. A stranger with a valid identity — and even the owner's
-   * published session id — must not be able to set the subject/preview on a
-   * canvas they do not own. Removing the assertCanvasOwner call makes this
-   * mutation succeed and this expectation flip from throw to resolve, which is
-   * exactly the regression the test catches.
-   */
+  /*
+    THE ATTACK. A stranger with a valid identity — and even the owner's
+    published session id — must not be able to set the subject/preview on a
+    canvas they do not own. Removing the assertCanvasOwner call makes this
+    mutation succeed and this expectation flip from throw to resolve, which is
+    exactly the regression the test catches.
+  */
   it("refuses a non-owner setting subject/preview", async () => {
     const t = convexTest(schema, modules);
     const owner = t.withIdentity({ subject: OWNER_A });
@@ -76,7 +80,9 @@ describe("setCanvasEmailMeta ownership", () => {
       }),
     ).rejects.toThrow();
 
-    // And nothing was written on the way to the refusal.
+    /*
+      And nothing was written on the way to the refusal.
+    */
     const meta = await owner.query(api.canvases.getCanvasEmailMeta, { canvasId });
     expect(meta).toEqual({});
   });
@@ -120,7 +126,9 @@ describe("setCanvasEmailMeta partial patch", () => {
       sessionId: LEGACY_SESSION_ID,
     });
 
-    // A second call that names ONLY previewText must not touch the subject.
+    /*
+      A second call that names ONLY previewText must not touch the subject.
+    */
     await owner.mutation(api.canvases.setCanvasEmailMeta, {
       canvasId,
       previewText: "Added later",
@@ -153,7 +161,9 @@ describe("setCanvasEmailMeta empty clears the field", () => {
       subject: "Temporary",
     });
 
-    // Whitespace-only trims to empty and must CLEAR, not store "".
+    /*
+      Whitespace-only trims to empty and must CLEAR, not store "".
+    */
     await owner.mutation(api.canvases.setCanvasEmailMeta, {
       canvasId,
       subject: "   ",
@@ -161,9 +171,11 @@ describe("setCanvasEmailMeta empty clears the field", () => {
     });
 
     const meta = await owner.query(api.canvases.getCanvasEmailMeta, { canvasId });
-    // Field is absent, not present-with-"". This is the patch-to-undefined
-    // finding: db.patch({ subject: undefined }) removes the optional field, so
-    // the key does not exist on the row and the object round-trips as {}.
+    /*
+      Field is absent, not present-with-"". This is the patch-to-undefined
+      finding: db.patch({ subject: undefined }) removes the optional field, so
+      the key does not exist on the row and the object round-trips as {}.
+    */
     expect(meta).toEqual({});
     expect(meta).not.toBeNull();
     expect(Object.prototype.hasOwnProperty.call(meta, "subject")).toBe(false);

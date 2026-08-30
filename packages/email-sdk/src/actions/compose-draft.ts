@@ -12,66 +12,78 @@ import { ROOT_BLOCK_ID, type RandomFn } from "../schema/ids";
 import type { GlobalStyles } from "../schema/globals";
 import type { EmailDocument } from "../store/document";
 
-/**
- * The create-draft composition primitive.
- *
- * WHY THIS EXISTS. `createDraft` used to take exactly one argument — `count` —
- * and every new draft opened on the same generic starter email. A new draft
- * was therefore the one thing the agent could create but could never fill:
- * content actions apply to the document the turn is pinned to (the drafts bar
- * never activates an agent-created draft), so "make me a draft about X" had no
- * expressible form. The model's only way to produce content about X was to
- * rewrite the draft already on screen — which is exactly the reported bug
- * (existing content wiped and rebuilt in place).
- *
- * THE PRINCIPLE (same as scaffoldSection / styleTextSpan): the model-facing
- * input stays intent-level — "a draft named this, made of these sections, with
- * this copy" — and ALL of the complexity is a deterministic translation inside
- * the SDK:
- *
- * - COMPLETENESS. Every composed draft is a real email: a header section, at
- *   least one body section, and a footer section. A plan that omits any of the
- *   three is repaired here, not rejected — an under-specified plan still
- *   produces something the user could send.
- * - THEME INHERITANCE. The new draft opens under the theme the user is already
- *   looking at (the source document's `root.properties.globals`), unless the
- *   caller explicitly opts out.
- * - CONTENT CARRY-OVER, WHEN THE SOURCE DRAFT IS THE SUBJECT. Params the model
- *   left unspecified are filled from the SOURCE draft's own content — its
- *   headline, its supporting paragraph, its call to action, its brand name —
- *   so "another version of this" continues the email the user is working on
- *   instead of starting from placeholder copy. The caller decides
- *   (`shouldCarryOverSourceCopy`); see the note on that field for the case
- *   where this default is not merely unhelpful but dishonest.
- * - REAL VARIATION. Asking for several drafts at once and describing them
- *   identically is the common model failure; identical plans are deterministically
- *   diversified (plain hero ⇄ split hero, feature columns ⇄ feature list, …) so
- *   "explore some ideas" yields structurally different emails, not N copies.
- *
- * The output is a list of plain `addSection` (+ optional `applyTheme`)
- * operations per draft — the same replayable ops any other edit produces — so
- * a composed draft has an ordinary op log, history, and undo from birth.
- */
+/*
+  The create-draft composition primitive.
 
-// ---------------------------------------------------------------------------
-// Limits
-// ---------------------------------------------------------------------------
+  WHY THIS EXISTS. `createDraft` used to take exactly one argument — `count` —
+  and every new draft opened on the same generic starter email. A new draft
+  was therefore the one thing the agent could create but could never fill:
+  content actions apply to the document the turn is pinned to (the drafts bar
+  never activates an agent-created draft), so "make me a draft about X" had no
+  expressible form. The model's only way to produce content about X was to
+  rewrite the draft already on screen — which is exactly the reported bug
+  (existing content wiped and rebuilt in place).
 
-/** Ceiling on drafts created by one createDraft call. */
+  THE PRINCIPLE (same as scaffoldSection / styleTextSpan): the model-facing
+  input stays intent-level — "a draft named this, made of these sections, with
+  this copy" — and ALL of the complexity is a deterministic translation inside
+  the SDK:
+
+  - COMPLETENESS. Every composed draft is a real email: a header section, at
+    least one body section, and a footer section. A plan that omits any of the
+    three is repaired here, not rejected — an under-specified plan still
+    produces something the user could send.
+  - THEME INHERITANCE. The new draft opens under the theme the user is already
+    looking at (the source document's `root.properties.globals`), unless the
+    caller explicitly opts out.
+  - CONTENT CARRY-OVER, WHEN THE SOURCE DRAFT IS THE SUBJECT. Params the model
+    left unspecified are filled from the SOURCE draft's own content — its
+    headline, its supporting paragraph, its call to action, its brand name —
+    so "another version of this" continues the email the user is working on
+    instead of starting from placeholder copy. The caller decides
+    (`shouldCarryOverSourceCopy`); see the note on that field for the case
+    where this default is not merely unhelpful but dishonest.
+  - REAL VARIATION. Asking for several drafts at once and describing them
+    identically is the common model failure; identical plans are deterministically
+    diversified (plain hero ⇄ split hero, feature columns ⇄ feature list, …) so
+    "explore some ideas" yields structurally different emails, not N copies.
+
+  The output is a list of plain `addSection` (+ optional `applyTheme`)
+  operations per draft — the same replayable ops any other edit produces — so
+  a composed draft has an ordinary op log, history, and undo from birth.
+*/
+
+/*
+  ---------------------------------------------------------------------------
+  Limits
+  ---------------------------------------------------------------------------
+*/
+
+/*
+  Ceiling on drafts created by one createDraft call.
+*/
 export const MAX_CREATE_DRAFT_COUNT = 5;
 
-/** Ceiling on sections in one composed draft's plan (before repair). */
+/*
+  Ceiling on sections in one composed draft's plan (before repair).
+*/
 export const MAX_DRAFT_PLAN_SECTIONS = 10;
 
-/** Longest draft name accepted from the model. */
+/*
+  Longest draft name accepted from the model.
+*/
 export const DRAFT_NAME_MAX_LENGTH = 60;
 
-/** Longest text clue carried over from the source draft into a param. */
+/*
+  Longest text clue carried over from the source draft into a param.
+*/
 const MAX_CLUE_LENGTH = 300;
 
-// ---------------------------------------------------------------------------
-// Input schema (what the model sees)
-// ---------------------------------------------------------------------------
+/*
+  ---------------------------------------------------------------------------
+  Input schema (what the model sees)
+  ---------------------------------------------------------------------------
+*/
 
 const templateIdValues = SECTION_TEMPLATES.map((template) => template.id);
 
@@ -201,9 +213,11 @@ export const createDraftInputSchema = z
 
 export type CreateDraftInput = z.infer<typeof createDraftInputSchema>;
 
-// ---------------------------------------------------------------------------
-// Command schema (what travels to the client)
-// ---------------------------------------------------------------------------
+/*
+  ---------------------------------------------------------------------------
+  Command schema (what travels to the client)
+  ---------------------------------------------------------------------------
+*/
 
 export const createDraftCommandSchema = z
   .strictObject({
@@ -234,7 +248,9 @@ export const createDraftCommandSchema = z
 
 export type CreateDraftCommand = z.infer<typeof createDraftCommandSchema>;
 
-/** Resolve the model's input into the client command (count/plan reconciled). */
+/*
+  Resolve the model's input into the client command (count/plan reconciled).
+*/
 export function resolveCreateDraftCommand(input: CreateDraftInput): CreateDraftCommand {
   const shouldInheritTheme = input.shouldInheritTheme ?? true;
   const theme = input.theme === undefined ? {} : { theme: input.theme };
@@ -250,49 +266,69 @@ export function resolveCreateDraftCommand(input: CreateDraftInput): CreateDraftC
   return { type: "createDraft", count: input.count ?? 1, shouldInheritTheme, ...theme };
 }
 
-// ---------------------------------------------------------------------------
-// Content clues: what a new draft inherits from the draft the user is on
-// ---------------------------------------------------------------------------
+/*
+  ---------------------------------------------------------------------------
+  Content clues: what a new draft inherits from the draft the user is on
+  ---------------------------------------------------------------------------
+*/
 
-/**
- * The intrinsic content of the source draft, in the vocabulary the section
- * templates speak. Every field is optional — an empty source yields no clues
- * and the templates' own defaults stand.
- */
+/*
+  The intrinsic content of the source draft, in the vocabulary the section
+  templates speak. Every field is optional — an empty source yields no clues
+  and the templates' own defaults stand.
+*/
 export interface DraftContentClues {
-  /** The sender's brand/company, from a logo's alt text or the leading heading. */
+  /*
+    The sender's brand/company, from a logo's alt text or the leading heading.
+  */
   brandName?: string;
-  /** The email's leading headline. */
+  /*
+    The email's leading headline.
+  */
   headline?: string;
-  /** The first supporting paragraph under it. */
+  /*
+    The first supporting paragraph under it.
+  */
   body?: string;
-  /** The primary call to action's label. */
+  /*
+    The primary call to action's label.
+  */
   ctaLabel?: string;
-  /** The primary call to action's destination. */
+  /*
+    The primary call to action's destination.
+  */
   ctaHref?: string;
-  /** What the first illustrative (non-logo) image shows. */
+  /*
+    What the first illustrative (non-logo) image shows.
+  */
   imageAlt?: string;
-  /**
-   * The copy of the source's LATER body sections, one entry per section in
-   * reading order, so the second and third sections of a composed draft
-   * continue the source email instead of falling back to the templates' own
-   * sample copy. Header and footer sections are excluded: their text is
-   * structural (logo alt, address, unsubscribe), not something a body section
-   * should ever repeat.
-   */
+  /*
+    The copy of the source's LATER body sections, one entry per section in
+    reading order, so the second and third sections of a composed draft
+    continue the source email instead of falling back to the templates' own
+    sample copy. Header and footer sections are excluded: their text is
+    structural (logo alt, address, unsubscribe), not something a body section
+    should ever repeat.
+  */
   supportingCopy?: SectionCopy[];
 }
 
-/** One section's own lead copy, as the templates would name it. */
+/*
+  One section's own lead copy, as the templates would name it.
+*/
 export interface SectionCopy {
   headline?: string;
   body?: string;
 }
 
-/** Ceiling on later-section copy carried over (a long newsletter stays bounded). */
+/*
+  Ceiling on later-section copy carried over (a long newsletter stays bounded).
+*/
 const MAX_SUPPORTING_SECTIONS = 4;
 
-/** Depth-first plain text of a Tiptap-style rich-text node tree. */
+/*
+  Depth-first plain text of a Tiptap-style rich-text node tree.
+*/
 function extractPlainText(node: unknown): string {
   if (typeof node !== "object" || node === null) {
     return "";
@@ -315,7 +351,9 @@ function clampClue(text: string): string | undefined {
   return trimmed.length <= MAX_CLUE_LENGTH ? trimmed : trimmed.slice(0, MAX_CLUE_LENGTH);
 }
 
-/** Blocks per top-level section, each in reading order, depth-first. */
+/*
+  Blocks per top-level section, each in reading order, depth-first.
+*/
 function walkSectionsInReadingOrder(doc: EmailDocument): EmailDocument[string][][] {
   return (doc[ROOT_BLOCK_ID]?.childrenIds ?? []).map((sectionId) => {
     const ordered: EmailDocument[string][] = [];
@@ -334,7 +372,9 @@ function walkSectionsInReadingOrder(doc: EmailDocument): EmailDocument[string][]
   });
 }
 
-/** The lead heading and lead paragraph of one section's blocks. */
+/*
+  The lead heading and lead paragraph of one section's blocks.
+*/
 function readSectionCopy(blocks: EmailDocument[string][]): SectionCopy {
   const copy: SectionCopy = {};
   for (const block of blocks) {
@@ -361,14 +401,16 @@ function readSectionCopy(blocks: EmailDocument[string][]): SectionCopy {
   return copy;
 }
 
-/**
- * Read the source draft's standing content: the words a new draft about the
- * same subject should continue from. Pure, and safe on a blank document.
- */
+/*
+  Read the source draft's standing content: the words a new draft about the
+  same subject should continue from. Pure, and safe on a blank document.
+*/
 export function deriveDraftContentClues(doc: EmailDocument): DraftContentClues {
   const clues: DraftContentClues = {};
   const sections = walkSectionsInReadingOrder(doc);
-  /** The last section the lead headline/body was taken from; -1 = none yet. */
+  /*
+    The last section the lead headline/body was taken from; -1 = none yet.
+  */
   let leadSectionIndex = -1;
   const blocksInReadingOrder = sections.flatMap((blocks, sectionIndex) =>
     blocks.map((block) => ({ block, sectionIndex })),
@@ -376,7 +418,9 @@ export function deriveDraftContentClues(doc: EmailDocument): DraftContentClues {
   for (const { block, sectionIndex } of blocksInReadingOrder) {
     const properties = block.properties as Record<string, unknown>;
     if (block.type === "image") {
-      // Header logos are conventionally alt-texted "<Brand> logo".
+      /*
+        Header logos are conventionally alt-texted "<Brand> logo".
+      */
       const alt = typeof properties.alt === "string" ? properties.alt : "";
       const isLogo = /logo/i.test(alt);
       if (isLogo && clues.brandName === undefined) {
@@ -385,8 +429,10 @@ export function deriveDraftContentClues(doc: EmailDocument): DraftContentClues {
           clues.brandName = brandName;
         }
       } else if (!isLogo && clues.imageAlt === undefined) {
-        // What the email actually pictures — better than every template's
-        // "Product preview" placeholder.
+        /*
+          What the email actually pictures — better than every template's
+          "Product preview" placeholder.
+        */
         clues.imageAlt = clampClue(alt);
       }
       continue;
@@ -423,14 +469,18 @@ export function deriveDraftContentClues(doc: EmailDocument): DraftContentClues {
       }
     }
   }
-  // A brandless document still has a subject: fall back to the headline's
-  // first few words rather than leaving every header saying "Flock".
+  /*
+    A brandless document still has a subject: fall back to the headline's
+    first few words rather than leaving every header saying "Flock".
+  */
   if (clues.brandName === undefined && clues.headline !== undefined) {
     clues.brandName = clues.headline.split(" ").slice(0, 3).join(" ");
   }
-  // Everything the source says AFTER its lead, one entry per section, so a
-  // multi-section draft has real copy for its second and third sections. The
-  // last section is the footer — structural text, never body copy.
+  /*
+    Everything the source says AFTER its lead, one entry per section, so a
+    multi-section draft has real copy for its second and third sections. The
+    last section is the footer — structural text, never body copy.
+  */
   const supportingCopy = sections
     .slice(leadSectionIndex + 1, Math.max(sections.length - 1, leadSectionIndex + 1))
     .map(readSectionCopy)
@@ -442,14 +492,20 @@ export function deriveDraftContentClues(doc: EmailDocument): DraftContentClues {
   return clues;
 }
 
-// ---------------------------------------------------------------------------
-// Structural repair: every draft is a whole email
-// ---------------------------------------------------------------------------
+/*
+  ---------------------------------------------------------------------------
+  Structural repair: every draft is a whole email
+  ---------------------------------------------------------------------------
+*/
 
-/** Body categories — the middle of an email, between header and footer. */
+/*
+  Body categories — the middle of an email, between header and footer.
+*/
 const BODY_CATEGORIES: readonly SectionCategory[] = ["hero", "content", "social-proof"];
 
-/** Fallbacks used when a plan is missing one of the three structural parts. */
+/*
+  Fallbacks used when a plan is missing one of the three structural parts.
+*/
 const DEFAULT_HEADER_TEMPLATE_ID = "header";
 const DEFAULT_BODY_TEMPLATE_ID = "hero";
 const DEFAULT_FOOTER_TEMPLATE_ID = "footer";
@@ -458,15 +514,17 @@ function getCategory(templateId: string): SectionCategory | undefined {
   return getSectionTemplate(templateId)?.category;
 }
 
-/**
- * Repair one plan into a complete email: header first, at least one body
- * section, footer last. Unknown templateIds are dropped (the schema already
- * rejects them; this is the runtime backstop for host callers).
- */
+/*
+  Repair one plan into a complete email: header first, at least one body
+  section, footer last. Unknown templateIds are dropped (the schema already
+  rejects them; this is the runtime backstop for host callers).
+*/
 export function completeDraftSections(sections: DraftSectionPlan[]): DraftSectionPlan[] {
   const known = sections.filter((section) => getCategory(section.templateId) !== undefined);
-  // A header anywhere but the front, or a footer anywhere but the back, is a
-  // planning slip — keep the first header and the last footer only.
+  /*
+    A header anywhere but the front, or a footer anywhere but the back, is a
+    planning slip — keep the first header and the last footer only.
+  */
   const firstHeaderIndex = known.findIndex(
     (section) => getCategory(section.templateId) === "header",
   );
@@ -498,15 +556,17 @@ export function completeDraftSections(sections: DraftSectionPlan[]): DraftSectio
   ];
 }
 
-// ---------------------------------------------------------------------------
-// Variation: sibling drafts must actually differ
-// ---------------------------------------------------------------------------
+/*
+  ---------------------------------------------------------------------------
+  Variation: sibling drafts must actually differ
+  ---------------------------------------------------------------------------
+*/
 
-/**
- * Structural counterparts within the catalog: same job, visibly different
- * shape. Used to pull apart sibling drafts a model described identically —
- * "a plain hero in one and a split hero in another" (owner's words).
- */
+/*
+  Structural counterparts within the catalog: same job, visibly different
+  shape. Used to pull apart sibling drafts a model described identically —
+  "a plain hero in one and a split hero in another" (owner's words).
+*/
 const TEMPLATE_COUNTERPARTS: Readonly<Record<string, string>> = {
   header: "header-centered",
   "header-centered": "header",
@@ -525,7 +585,9 @@ const TEMPLATE_COUNTERPARTS: Readonly<Record<string, string>> = {
 const toShapeKey = (sections: DraftSectionPlan[]): string =>
   sections.map((section) => section.templateId).join(">");
 
-/** Swap the listed positions to their catalog counterparts; copy is untouched. */
+/*
+  Swap the listed positions to their catalog counterparts; copy is untouched.
+*/
 function swapCounterparts({
   sections,
   shouldSwap,
@@ -542,7 +604,9 @@ function swapCounterparts({
   });
 }
 
-/** Move the body's first section to the end; header and footer stay put. */
+/*
+  Move the body's first section to the end; header and footer stay put.
+*/
 function rotateBody(sections: DraftSectionPlan[]): DraftSectionPlan[] {
   const body = sections.slice(1, -1);
   if (body.length < 2) {
@@ -551,16 +615,16 @@ function rotateBody(sections: DraftSectionPlan[]): DraftSectionPlan[] {
   return [sections[0]!, ...body.slice(1), body[0]!, sections[sections.length - 1]!];
 }
 
-/**
- * Give each draft its own shape. A draft whose section sequence repeats an
- * earlier one walks a fixed ladder of restatements — swap every section to its
- * catalog counterpart, then only the body, then only the frame, then reorder —
- * and takes the first shape nobody has used yet. So "explore a few ideas"
- * yields a plain hero in one and a split hero in another rather than N copies,
- * while the model's own copy rides along untouched.
- *
- * Deterministic: same input, same output.
- */
+/*
+  Give each draft its own shape. A draft whose section sequence repeats an
+  earlier one walks a fixed ladder of restatements — swap every section to its
+  catalog counterpart, then only the body, then only the frame, then reorder —
+  and takes the first shape nobody has used yet. So "explore a few ideas"
+  yields a plain hero in one and a split hero in another rather than N copies,
+  while the model's own copy rides along untouched.
+
+  Deterministic: same input, same output.
+*/
 export function diversifyDraftSections(plans: DraftSectionPlan[][]): DraftSectionPlan[][] {
   const seenShapes = new Set<string>();
   return plans.map((sections) => {
@@ -581,129 +645,149 @@ export function diversifyDraftSections(plans: DraftSectionPlan[][]): DraftSectio
   });
 }
 
-// ---------------------------------------------------------------------------
-// Plan → operations
-// ---------------------------------------------------------------------------
+/*
+  ---------------------------------------------------------------------------
+  Plan → operations
+  ---------------------------------------------------------------------------
+*/
 
-/**
- * WHERE ONE COMPOSED DRAFT'S WORDS CAME FROM. Every section that was actually
- * built lands in exactly one of these buckets, so the three always sum to the
- * number of sections in the draft.
- *
- * This exists because "the draft was created" and "the draft says what the
- * user asked for" are different facts, and the surface reporting the call has
- * no other way to tell them apart. A composition that is entirely
- * `templateDefaultSectionCount` produced a real, complete email made of the
- * catalog's sample marketing copy — which is a legitimate outcome for "give me
- * a starting point" and a silent failure for "build one from my website".
- */
+/*
+  WHERE ONE COMPOSED DRAFT'S WORDS CAME FROM. Every section that was actually
+  built lands in exactly one of these buckets, so the three always sum to the
+  number of sections in the draft.
+
+  This exists because "the draft was created" and "the draft says what the
+  user asked for" are different facts, and the surface reporting the call has
+  no other way to tell them apart. A composition that is entirely
+  `templateDefaultSectionCount` produced a real, complete email made of the
+  catalog's sample marketing copy — which is a legitimate outcome for "give me
+  a starting point" and a silent failure for "build one from my website".
+*/
 export interface ComposedDraftComposition {
-  /** Sections the model wrote copy for itself. */
+  /*
+    Sections the model wrote copy for itself.
+  */
   plannedSectionCount: number;
-  /** Sections whose copy was filled in from the SOURCE draft (carry-over). */
+  /*
+    Sections whose copy was filled in from the SOURCE draft (carry-over).
+  */
   carriedOverSectionCount: number;
-  /**
-   * Sections left on the section template's own sample copy.
-   *
-   * STRUCTURALLY ZERO for a composed draft since section eligibility landed:
-   * every template declares content it needs, that declaration is read against
-   * the params the CALLER supplied, and a section nothing satisfies is
-   * substituted or dropped rather than built. The field stays because it is
-   * the fact the surface reports to the model, and "zero sections are sample
-   * copy" is exactly the claim worth being able to make.
-   */
+  /*
+    Sections left on the section template's own sample copy.
+
+    STRUCTURALLY ZERO for a composed draft since section eligibility landed:
+    every template declares content it needs, that declaration is read against
+    the params the CALLER supplied, and a section nothing satisfies is
+    substituted or dropped rather than built. The field stays because it is
+    the fact the surface reports to the model, and "zero sections are sample
+    copy" is exactly the claim worth being able to make.
+  */
   templateDefaultSectionCount: number;
-  /**
-   * Sections built from a DIFFERENT template than the plan named, because the
-   * available content did not fit the planned one but did fit a sibling in the
-   * same category. The copy is the plan's; the shape is not.
-   */
+  /*
+    Sections built from a DIFFERENT template than the plan named, because the
+    available content did not fit the planned one but did fit a sibling in the
+    same category. The copy is the plan's; the shape is not.
+  */
   substitutedSectionCount: number;
-  /**
-   * Sections the plan asked for that were not built at all, because no
-   * template in their category could be filled from the available content.
-   * The model needs this: a draft it planned four sections for and got two of
-   * is not the draft it is about to describe.
-   */
+  /*
+    Sections the plan asked for that were not built at all, because no
+    template in their category could be filled from the available content.
+    The model needs this: a draft it planned four sections for and got two of
+    is not the draft it is about to describe.
+  */
   droppedSectionCount: number;
 }
 
-/** One composed draft: what to call it, the ops that build it, and its provenance. */
+/*
+  One composed draft: what to call it, the ops that build it, and its provenance.
+*/
 export interface ComposedDraft {
-  /** The model's name for this draft, when it gave one. */
+  /*
+    The model's name for this draft, when it gave one.
+  */
   name?: string;
-  /** Ops in apply order: an optional applyTheme, then one addSection per section. */
+  /*
+    Ops in apply order: an optional applyTheme, then one addSection per section.
+  */
   ops: Operation[];
   /** What this draft's copy actually came from. See {@link ComposedDraftComposition}. */
   composition: ComposedDraftComposition;
 }
 
 export interface BuildComposedDraftsInput {
-  /** The draft the user is currently on — the theme and content source. */
+  /*
+    The draft the user is currently on — the theme and content source.
+  */
   sourceDoc: EmailDocument;
-  /** The resolved client command. */
+  /*
+    The resolved client command.
+  */
   command: CreateDraftCommand;
-  /**
-   * Whether the SOURCE draft's own copy may fill params the plan left out.
-   * Defaults to true, which is right for the case the carry-over was built
-   * for: "make me another version of this", where continuing the email on
-   * screen is the whole request.
-   *
-   * PASS FALSE WHEN THE CONTENT CAME FROM SOMEWHERE ELSE. The reported defect:
-   * "create a draft based on my portfolio website" fetched the site, composed
-   * an under-filled plan, and the backfill quietly supplied the user's OTHER
-   * draft's paragraphs — producing an email that was character-identical to
-   * work they already had while the agent reported it as built from their
-   * site. That is worse than an obviously empty result, because sample copy
-   * reads as sample copy and the user's own prose reads as deliberate.
-   *
-   * The switch is a caller's, not a heuristic here, because the fact it turns
-   * on — did THIS turn ingest an external source — is not visible in a
-   * document or a command. Nothing else about composition changes: theme
-   * inheritance, structural repair and sibling diversification are unaffected,
-   * and params the plan DID specify were always honoured either way.
-   */
+  /*
+    Whether the SOURCE draft's own copy may fill params the plan left out.
+    Defaults to true, which is right for the case the carry-over was built
+    for: "make me another version of this", where continuing the email on
+    screen is the whole request.
+
+    PASS FALSE WHEN THE CONTENT CAME FROM SOMEWHERE ELSE. The reported defect:
+    "create a draft based on my portfolio website" fetched the site, composed
+    an under-filled plan, and the backfill quietly supplied the user's OTHER
+    draft's paragraphs — producing an email that was character-identical to
+    work they already had while the agent reported it as built from their
+    site. That is worse than an obviously empty result, because sample copy
+    reads as sample copy and the user's own prose reads as deliberate.
+
+    The switch is a caller's, not a heuristic here, because the fact it turns
+    on — did THIS turn ingest an external source — is not visible in a
+    document or a command. Nothing else about composition changes: theme
+    inheritance, structural repair and sibling diversification are unaffected,
+    and params the plan DID specify were always honoured either way.
+  */
   shouldCarryOverSourceCopy?: boolean;
-  /**
-   * A theme the CALLER already resolved, applied instead of the source
-   * draft's own. Absent = inherit, which stays the default everywhere.
-   *
-   * WHY THE CALLER RESOLVES IT AND NOT THIS FUNCTION. The command carries a
-   * theme REFERENCE — a name like "page" or "Midnight" — because the model
-   * must never hold a colour value (actions/theme-target.ts). Turning that
-   * name into globals means reading the page this turn ingested and the
-   * canvas's live brand kit, and neither is a document or a plan. So the app
-   * resolves, and composition receives the answer.
-   *
-   * A DRAFT IS BORN THEMED OR IT IS NOT THEMED. This is the seam the reported
-   * failure needed and did not have: a turn read wesbos.com, derived its
-   * theme correctly, and created a draft with `globals: {}` — because the
-   * only theme composition could see was the source draft's, and the source
-   * draft was on the shared defaults. There is no second chance to fix it up
-   * afterwards that is not a race with the model against a draft nobody is
-   * looking at.
-   */
+  /*
+    A theme the CALLER already resolved, applied instead of the source
+    draft's own. Absent = inherit, which stays the default everywhere.
+
+    WHY THE CALLER RESOLVES IT AND NOT THIS FUNCTION. The command carries a
+    theme REFERENCE — a name like "page" or "Midnight" — because the model
+    must never hold a colour value (actions/theme-target.ts). Turning that
+    name into globals means reading the page this turn ingested and the
+    canvas's live brand kit, and neither is a document or a plan. So the app
+    resolves, and composition receives the answer.
+
+    A DRAFT IS BORN THEMED OR IT IS NOT THEMED. This is the seam the reported
+    failure needed and did not have: a turn read wesbos.com, derived its
+    theme correctly, and created a draft with `globals: {}` — because the
+    only theme composition could see was the source draft's, and the source
+    draft was on the shared defaults. There is no second chance to fix it up
+    afterwards that is not a race with the model against a draft nobody is
+    looking at.
+  */
   themeGlobals?: GlobalStyles;
-  /** Randomness source for the new blocks' ids — injectable for tests. */
+  /*
+    Randomness source for the new blocks' ids — injectable for tests.
+  */
   random?: RandomFn;
 }
 
-/** The param names a template accepts, or null when its schema is not an object. */
+/*
+  The param names a template accepts, or null when its schema is not an object.
+*/
 function getTemplateParamKeys(templateId: string): ReadonlySet<string> | null {
   const template = getSectionTemplate(templateId);
   return template === undefined ? null : readTemplateParamKeys(template.paramsSchema);
 }
 
-/**
- * Fill the params the model left out from the source draft's own content.
- * The FIRST section that takes a headline gets the source's lead copy;
- * subsequent headline-taking sections get the source's LATER sections in
- * order (repeating one headline down the whole email would read like a
- * mistake, and leaving them empty means every one of them silently falls back
- * to the template's own sample marketing copy). Brand, CTA and image clues
- * apply wherever a template accepts them, which is how a real email repeats
- * them. Copy the model actually specified always wins.
- */
+/*
+  Fill the params the model left out from the source draft's own content.
+  The FIRST section that takes a headline gets the source's lead copy;
+  subsequent headline-taking sections get the source's LATER sections in
+  order (repeating one headline down the whole email would read like a
+  mistake, and leaving them empty means every one of them silently falls back
+  to the template's own sample marketing copy). Brand, CTA and image clues
+  apply wherever a template accepts them, which is how a real email repeats
+  them. Copy the model actually specified always wins.
+*/
 function applyContentClues({
   sections,
   clues,
@@ -711,7 +795,9 @@ function applyContentClues({
   sections: DraftSectionPlan[];
   clues: DraftContentClues;
 }): DraftSectionPlan[] {
-  /** Lead copy first, then one entry per later source section, consumed in order. */
+  /*
+    Lead copy first, then one entry per later source section, consumed in order.
+  */
   const leadFirstCopy: SectionCopy[] = [
     {
       ...(clues.headline === undefined ? {} : { headline: clues.headline }),
@@ -747,39 +833,41 @@ function applyContentClues({
   });
 }
 
-// ---------------------------------------------------------------------------
-// Eligibility: substitute what the content fits, drop what it does not
-// ---------------------------------------------------------------------------
+/*
+  ---------------------------------------------------------------------------
+  Eligibility: substitute what the content fits, drop what it does not
+  ---------------------------------------------------------------------------
+*/
 
-/**
- * What became of one planned section once its content was measured against
- * the template it named. One entry per planned section, in plan order, so a
- * caller can still line the outcomes up with the plan it sent.
- */
+/*
+  What became of one planned section once its content was measured against
+  the template it named. One entry per planned section, in plan order, so a
+  caller can still line the outcomes up with the plan it sent.
+*/
 export type SectionContentResolution =
   | { outcome: "kept"; section: DraftSectionPlan }
   | { outcome: "substituted"; section: DraftSectionPlan; plannedTemplateId: string }
   | { outcome: "dropped"; plannedTemplateId: string };
 
-/**
- * Decide, for each planned section, whether the content in hand can actually
- * build it — and if not, what to do instead.
- *
- * 1. KEEP the planned template when the params satisfy what it declares it
- *    needs and its own schema accepts them.
- * 2. SUBSTITUTE the first template in the same category that the available
- *    content does fit, handed only the params it accepts.
- * 3. DROP the section when nothing in the category is satisfiable.
- *
- * There is deliberately no fourth branch. Falling back to the template's
- * `.default()` values is what produced an invented testimonial from a page
- * that contained no quotes, and it is the one outcome this function cannot
- * reach. The defaults themselves are untouched: `parse({})` still yields a
- * complete demo section for the gallery and for `scaffoldSection`, which is
- * the invariant this path works around rather than removes.
- *
- * Pure and deterministic: substitution walks the catalog in its listed order.
- */
+/*
+  Decide, for each planned section, whether the content in hand can actually
+  build it — and if not, what to do instead.
+
+  1. KEEP the planned template when the params satisfy what it declares it
+     needs and its own schema accepts them.
+  2. SUBSTITUTE the first template in the same category that the available
+     content does fit, handed only the params it accepts.
+  3. DROP the section when nothing in the category is satisfiable.
+
+  There is deliberately no fourth branch. Falling back to the template's
+  `.default()` values is what produced an invented testimonial from a page
+  that contained no quotes, and it is the one outcome this function cannot
+  reach. The defaults themselves are untouched: `parse({})` still yields a
+  complete demo section for the gallery and for `scaffoldSection`, which is
+  the invariant this path works around rather than removes.
+
+  Pure and deterministic: substitution walks the catalog in its listed order.
+*/
 export function resolveSectionsToAvailableContent(
   sections: DraftSectionPlan[],
 ): SectionContentResolution[] {
@@ -813,14 +901,16 @@ export function resolveSectionsToAvailableContent(
   });
 }
 
-/** Rebuild attempts when generated ids collide within one draft (vanishingly rare). */
+/*
+  Rebuild attempts when generated ids collide within one draft (vanishingly rare).
+*/
 const MAX_BUILD_ATTEMPTS = 5;
 
-/**
- * Turn a resolved createDraft command into the ops that build each draft.
- * Returns an empty list for the empty-starter form (no `drafts` plan) — the
- * host then falls back to its plain new-draft path, unchanged.
- */
+/*
+  Turn a resolved createDraft command into the ops that build each draft.
+  Returns an empty list for the empty-starter form (no `drafts` plan) — the
+  host then falls back to its plain new-draft path, unchanged.
+*/
 export function buildComposedDrafts({
   sourceDoc,
   command,
@@ -864,7 +954,9 @@ export function buildComposedDrafts({
       substitutedSectionCount: 0,
       droppedSectionCount: 0,
     };
-    // Ids must be unique across the WHOLE new document, not just per section.
+    /*
+      Ids must be unique across the WHOLE new document, not just per section.
+    */
     const usedIds = new Set<string>([ROOT_BLOCK_ID]);
     /*
       One resolution per planned section, in plan order, so the model's own
@@ -948,9 +1040,13 @@ function getSectionCopySource({
   plannedParams,
   builtParams,
 }: {
-  /** The model's own params for this section, before any carry-over. */
+  /*
+    The model's own params for this section, before any carry-over.
+  */
   plannedParams: Record<string, unknown> | undefined;
-  /** The params the section was really built from, after carry-over and substitution. */
+  /*
+    The params the section was really built from, after carry-over and substitution.
+  */
   builtParams: Record<string, unknown> | undefined;
 }): keyof ComposedDraftComposition {
   const builtKeys = new Set(Object.keys(builtParams ?? {}));

@@ -35,14 +35,18 @@ export interface PromptHistoryNavigationInput {
 }
 
 export interface PromptHistory {
-  /** Record a sent prompt (consecutive duplicates collapse; capped at 50). */
+  /*
+    Record a sent prompt (consecutive duplicates collapse; capped at 50).
+  */
   recordPrompt: (text: string) => void;
-  /**
-   * Attempt one history step. Returns the text to put in the composer, or
-   * null when the keypress should fall through to normal caret movement.
-   */
+  /*
+    Attempt one history step. Returns the text to put in the composer, or
+    null when the keypress should fall through to normal caret movement.
+  */
   navigate: (input: PromptHistoryNavigationInput) => string | null;
-  /** Leave browsing mode (call after every send). */
+  /*
+    Leave browsing mode (call after every send).
+  */
   resetNavigation: () => void;
 }
 
@@ -79,7 +83,9 @@ export function usePromptHistory(): PromptHistory {
     if (direction === "older") {
       if (isBrowsingUnmodified) {
         if (browseIndex === 0) {
-          // Already at the oldest entry — swallow the key, keep the text.
+          /*
+            Already at the oldest entry — swallow the key, keep the text.
+          */
           return draftText;
         }
         browseIndexRef.current = browseIndex - 1;
@@ -95,7 +101,9 @@ export function usePromptHistory(): PromptHistory {
       return entries[entries.length - 1];
     }
 
-    // direction === "newer": only meaningful while browsing an unmodified entry.
+    /*
+      direction === "newer": only meaningful while browsing an unmodified entry.
+    */
     if (!isBrowsingUnmodified) {
       return null;
     }

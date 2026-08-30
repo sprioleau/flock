@@ -7,20 +7,20 @@ import {
   OVERRIDE_THROTTLED_FALLBACK_MESSAGE,
 } from "./override-client";
 
-/**
- * What the /override page actually puts on screen, per state.
- *
- * This repo has no DOM test environment and no testing-library (see
- * vitest.config.ts: `environment: "node"`), so the panel is split into a
- * stateful shell and a pure `OverridePanelView`, and the view is rendered to
- * static markup here. That covers the questions worth asking of this page —
- * which copy appears, whether the server's message survives untouched, whether
- * the release affordance is offered — without adding a dependency.
- *
- * NOT covered here, and left for the browser pass: that submitting the form
- * calls the handler, that focus and the disabled states feel right, and that
- * the password manager stays out of the way.
- */
+/*
+  What the /override page actually puts on screen, per state.
+
+  This repo has no DOM test environment and no testing-library (see
+  vitest.config.ts: `environment: "node"`), so the panel is split into a
+  stateful shell and a pure `OverridePanelView`, and the view is rendered to
+  static markup here. That covers the questions worth asking of this page —
+  which copy appears, whether the server's message survives untouched, whether
+  the release affordance is offered — without adding a dependency.
+
+  NOT covered here, and left for the browser pass: that submitting the form
+  calls the handler, that focus and the disabled states feel right, and that
+  the password manager stays out of the way.
+*/
 
 function renderPanel(overrides: Partial<OverridePanelViewProps> = {}): string {
   const props: OverridePanelViewProps = {
@@ -37,7 +37,9 @@ function renderPanel(overrides: Partial<OverridePanelViewProps> = {}): string {
   return renderToStaticMarkup(<OverridePanelView {...props} />);
 }
 
-/** Markup with entities decoded, so assertions can use the real characters. */
+/*
+  Markup with entities decoded, so assertions can use the real characters.
+*/
 function text(markup: string): string {
   return markup
     .replaceAll("&#x27;", "'")
@@ -62,11 +64,15 @@ describe("the /override page, locked", () => {
   it("offers a password field that no manager is invited to fill", () => {
     const markup = renderPanel();
     expect(markup).toContain('type="password"');
-    // React 19 emits the prop's camelCase spelling verbatim; HTML attribute
-    // names are case-insensitive, so the browser still reads `autocomplete`.
+    /*
+      React 19 emits the prop's camelCase spelling verbatim; HTML attribute
+      names are case-insensitive, so the browser still reads `autocomplete`.
+    */
     expect(markup.toLowerCase()).toContain('autocomplete="off"');
-    // Base UI's Input generates its own id when none is given — the explicit
-    // one is what keeps the <label for> pointing at this field.
+    /*
+      Base UI's Input generates its own id when none is given — the explicit
+      one is what keeps the <label for> pointing at this field.
+    */
     expect(markup).toContain('id="override-password"');
   });
 
@@ -86,7 +92,9 @@ describe("the /override page, locked", () => {
     );
     expect(markup).toContain("That password didn&#x27;t match.".replaceAll("&#x27;", "'"));
     expect(markup).toContain('role="alert"');
-    // The page adds nothing of its own about why it did not match.
+    /*
+      The page adds nothing of its own about why it did not match.
+    */
     expect(markup).not.toMatch(/deploy|configur|env var|not set up/i);
   });
 
@@ -113,7 +121,9 @@ describe("the /override page, locked", () => {
     );
     expect(markup).toContain("Credit limit restored.");
     expect(markup).toContain('type="password"');
-    // A confirmation is not an error.
+    /*
+      A confirmation is not an error.
+    */
     expect(markup).not.toContain('role="alert"');
   });
 
@@ -141,7 +151,9 @@ describe("the /override page, already unlocked", () => {
       "AI requests made here aren’t counted against the daily limit",
     );
     expect(markup).toContain("Give it back");
-    // Nothing to re-enter — the password field is gone entirely.
+    /*
+      Nothing to re-enter — the password field is gone entirely.
+    */
     expect(markup).not.toContain('type="password"');
   });
 
@@ -203,7 +215,9 @@ describe("the /override page, in every state", () => {
       const markup = renderToStaticMarkup(<OverridePanelView {...props} />);
       expect(markup).not.toMatch(/#[0-9a-f]{3,8}\b/i);
       expect(markup).not.toMatch(/\b(?:rgb|hsl|oklch)a?\(/i);
-      // Tailwind's palette scale (red-500, zinc-800…) is a raw colour too.
+      /*
+        Tailwind's palette scale (red-500, zinc-800…) is a raw colour too.
+      */
       expect(markup).not.toMatch(
         /\b(?:text|bg|border|ring)-(?:red|green|blue|yellow|zinc|slate|gray|neutral|stone|amber|emerald)-\d{2,3}\b/,
       );

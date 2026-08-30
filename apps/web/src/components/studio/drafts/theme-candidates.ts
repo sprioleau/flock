@@ -32,14 +32,14 @@ import type { FlockChatMessage } from "@/lib/chat-contract";
 
 type MessagePart = FlockChatMessage["parts"][number];
 
-/**
- * The page theme carried by ONE transcript part, or null when that part is not
- * a fulfilled ingestion result or the page declared nothing worth applying.
- *
- * Narrowing on the part type is what makes `output` typed here — this reads
- * the real result shape rather than casting to it, so a change to the
- * ingestion payload breaks the build instead of silently returning null.
- */
+/*
+  The page theme carried by ONE transcript part, or null when that part is not
+  a fulfilled ingestion result or the page declared nothing worth applying.
+
+  Narrowing on the part type is what makes `output` typed here — this reads
+  the real result shape rather than casting to it, so a change to the
+  ingestion payload breaks the build instead of silently returning null.
+*/
 function readPartPageTheme(part: MessagePart): PageTheme | null {
   if (part.type !== "tool-readWebPage" || part.state !== "output-available") {
     return null;
@@ -65,12 +65,12 @@ function readPartPageTheme(part: MessagePart): PageTheme | null {
   };
 }
 
-/**
- * The theme read off a page in the CURRENT turn, or null.
- *
- * The LAST one wins when a turn read several pages: the model's reference is
- * "page", and after two fetches the page it means is the one it just read.
- */
+/*
+  The theme read off a page in the CURRENT turn, or null.
+
+  The LAST one wins when a turn read several pages: the model's reference is
+  "page", and after two fetches the page it means is the one it just read.
+*/
 export function readTurnPageTheme({
   messages,
 }: {
@@ -90,12 +90,12 @@ export function readTurnPageTheme({
   return latest;
 }
 
-/**
- * The themes a reference may name on this canvas: the bound kit's LIVE
- * variations, and nothing else. Never a generated theme — a theme invented for
- * one draft belongs to no kit, matches nothing, and appends nothing, which is
- * the same argument `pickVariationTheme` makes for the drafts menu.
- */
+/*
+  The themes a reference may name on this canvas: the bound kit's LIVE
+  variations, and nothing else. Never a generated theme — a theme invented for
+  one draft belongs to no kit, matches nothing, and appends nothing, which is
+  the same argument `pickVariationTheme` makes for the drafts menu.
+*/
 export function readCanvasThemeCandidates(brandKit: BrandKit): NamedTheme[] {
   return getLiveThemeVariations(brandKit.variations).map((variation) => ({
     id: variation.id,

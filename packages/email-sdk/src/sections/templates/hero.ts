@@ -9,12 +9,12 @@ import {
 } from "../build-helpers";
 import { defineSectionTemplate } from "../types";
 
-/**
- * `hero` — one big idea above the fold: full-width image ABOVE a headline,
- * supporting line, and a single CTA button (owner decision: image-above-text,
- * no background images). Reference: react.email/components "one-product" /
- * title-cards patterns.
- */
+/*
+  `hero` — one big idea above the fold: full-width image ABOVE a headline,
+  supporting line, and a single CTA button (owner decision: image-above-text,
+  no background images). Reference: react.email/components "one-product" /
+  title-cards patterns.
+*/
 
 export const heroParamsSchema = z
   .strictObject({

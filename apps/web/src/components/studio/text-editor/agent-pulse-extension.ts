@@ -7,32 +7,34 @@ import {
   type RemoteStepRange,
 } from "./collab-sync-state";
 
-/**
- * Phase 6.2b — the agent-edit pulse (merge-notify part 2): when steps
- * authored by the AI agent land in the local synced editor, flash a brief
- * (~1s, background-only, zero layout shift) highlight over the changed
- * range so the user SEES the agent edit merge mid-typing.
- *
- * Attribution: prosemirror-collab does not surface step clientIds on the
- * transactions it builds, so the plugin records each received remote-step
- * window ({fromVersion, stepCount}, extracted in collab-sync-state.ts) as a
- * PENDING pulse, and the plugin view asks the React layer's
- * `resolveClientIds` (a one-shot `api.prosemirror.getSteps` query — the
- * server pairs every stored step with its clientId) whether the window
- * contains AI_AGENT_CLIENT_ID steps. Pending ranges are mapped through
- * every intervening transaction, so the pulse lands on the right characters
- * even if the user keeps typing during the ~1 roundtrip of attribution.
- * Nothing here touches the keystroke path: detection is a pure read on
- * already-dispatched transactions, and the query fires only when remote
- * steps arrive.
- *
- * Fallback: if the agent's ranges collapse to nothing renderable (pure
- * deletions in a shrunken doc), the whole block's inline content shimmers
- * instead (`flock-agent-pulse--block`).
- */
+/*
+  Phase 6.2b — the agent-edit pulse (merge-notify part 2): when steps
+  authored by the AI agent land in the local synced editor, flash a brief
+  (~1s, background-only, zero layout shift) highlight over the changed
+  range so the user SEES the agent edit merge mid-typing.
 
-/** Mirrors AI_AGENT_CLIENT_ID in convex/model/textBlockSync.ts (the convex
- * model file cannot be imported into the client bundle). */
+  Attribution: prosemirror-collab does not surface step clientIds on the
+  transactions it builds, so the plugin records each received remote-step
+  window ({fromVersion, stepCount}, extracted in collab-sync-state.ts) as a
+  PENDING pulse, and the plugin view asks the React layer's
+  `resolveClientIds` (a one-shot `api.prosemirror.getSteps` query — the
+  server pairs every stored step with its clientId) whether the window
+  contains AI_AGENT_CLIENT_ID steps. Pending ranges are mapped through
+  every intervening transaction, so the pulse lands on the right characters
+  even if the user keeps typing during the ~1 roundtrip of attribution.
+  Nothing here touches the keystroke path: detection is a pure read on
+  already-dispatched transactions, and the query fires only when remote
+  steps arrive.
+
+  Fallback: if the agent's ranges collapse to nothing renderable (pure
+  deletions in a shrunken doc), the whole block's inline content shimmers
+  instead (`flock-agent-pulse--block`).
+*/
+
+/*
+  Mirrors AI_AGENT_CLIENT_ID in convex/model/textBlockSync.ts (the convex
+  model file cannot be imported into the client bundle).
+*/
 const AGENT_CLIENT_ID = "flock-agent";
 
 const PULSE_DURATION_MS = 1000;
@@ -90,7 +92,9 @@ function createAgentPulsePlugin({
         let decorations = value.decorations.map(transaction.mapping, transaction.doc);
         let pending = value.pending;
 
-        // Keep not-yet-attributed ranges anchored through concurrent edits.
+        /*
+          Keep not-yet-attributed ranges anchored through concurrent edits.
+        */
         if (transaction.docChanged && pending.length > 0) {
           pending = pending.map((pulse) => ({
             ...pulse,
@@ -165,7 +169,9 @@ function createAgentPulsePlugin({
             clearTimers.add(timer);
           })
           .catch(() => {
-            // Attribution is best-effort cosmetics; never surface an error.
+            /*
+              Attribution is best-effort cosmetics; never surface an error.
+            */
             dispatchAction({ type: "drop", id: pulse.id });
           });
       };
@@ -214,7 +220,9 @@ function buildPulseDecorations({
     }
   }
   if (built.length === 0 && maxPos > 0) {
-    // Pure deletion (or fully stale ranges): block-level shimmer fallback.
+    /*
+      Pure deletion (or fully stale ranges): block-level shimmer fallback.
+    */
     built.push(
       Decoration.inline(
         0,

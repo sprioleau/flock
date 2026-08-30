@@ -29,24 +29,24 @@ import { formatRelativeTime } from "../history/history-grouping";
 import { SavedSectionPreview } from "./SavedSectionPreview";
 import { scrollBlockIntoView } from "./scroll-block-into-view";
 
-/**
- * The saved-sections MANAGER (owner V2 item 1) — the "home" for the
- * session's saved sections: themed rendered previews, checkbox multi-select
- * with one "Add to draft" confirmation, inline rename, delete, and the
- * usage stat (subtle, in the meta line).
- *
- * Bulk insert = ONE restoreBlocks op PER selected section, dispatched
- * sequentially in the ORDER THE USER CHECKED them (each op is its own undo
- * step — undo peels the stack back one section at a time, matching every
- * other editor gesture; a combined mega-op would make one bookmarking
- * gesture undo differently from three palette clicks). The first insert
- * follows the palette placement rules (after the selection's ancestor
- * section, else bottom); each subsequent one chains directly after the
- * previous, so checked order IS reading order.
- *
- * Controlled open state: entry points (the palette group's "Manage…", the
- * action row's just-saved bookmark) each own an instance.
- */
+/*
+  The saved-sections MANAGER (owner V2 item 1) — the "home" for the
+  session's saved sections: themed rendered previews, checkbox multi-select
+  with one "Add to draft" confirmation, inline rename, delete, and the
+  usage stat (subtle, in the meta line).
+
+  Bulk insert = ONE restoreBlocks op PER selected section, dispatched
+  sequentially in the ORDER THE USER CHECKED them (each op is its own undo
+  step — undo peels the stack back one section at a time, matching every
+  other editor gesture; a combined mega-op would make one bookmarking
+  gesture undo differently from three palette clicks). The first insert
+  follows the palette placement rules (after the selection's ancestor
+  section, else bottom); each subsequent one chains directly after the
+  previous, so checked order IS reading order.
+
+  Controlled open state: entry points (the palette group's "Manage…", the
+  action row's just-saved bookmark) each own an instance.
+*/
 export function SavedSectionsManagerDialog({
   isOpen,
   onOpenChange,
@@ -63,7 +63,9 @@ export function SavedSectionsManagerDialog({
   const renameSavedSection = useMutation(api.savedSections.rename);
   const recordUse = useMutation(api.savedSections.recordUse);
 
-  // Selection preserves CHECK ORDER (it becomes the insert order).
+  /*
+    Selection preserves CHECK ORDER (it becomes the insert order).
+  */
   const [selectedIds, setSelectedIds] = useState<Id<"savedSections">[]>([]);
   const [renamingId, setRenamingId] = useState<Id<"savedSections"> | null>(null);
   const [renameDraft, setRenameDraft] = useState("");
@@ -94,7 +96,9 @@ export function SavedSectionsManagerDialog({
     void removeSavedSection({ sessionId, savedSectionId: row._id });
   };
 
-  /** One op per checked section, chained in check order (see the header). */
+  /*
+    One op per checked section, chained in check order (see the header).
+  */
   const addSelectedToDraft = (): void => {
     const rows = savedSections ?? [];
     let anchorBlockId = useEditorStore.getState().selectedBlockId;
@@ -102,9 +106,9 @@ export function SavedSectionsManagerDialog({
     for (const savedSectionId of selectedIds) {
       const row = rows.find((candidate) => candidate._id === savedSectionId);
       if (row === undefined) {
-        continue; // deleted while selected
+        continue; /* deleted while selected */
       }
-      const editorState = useEditorStore.getState(); // fresh doc per insert
+      const editorState = useEditorStore.getState(); /* fresh doc per insert */
       const plan = buildInsertSavedSectionPlan({
         doc: editorState.doc,
         savedBlocks: row.blocks as Block[],
@@ -194,14 +198,14 @@ export function SavedSectionsManagerDialog({
   );
 }
 
-/**
- * One saved section as a uniform grid card: 1:1 muted preview square on top
- * (contain-fit — see SquareSavedSectionPreview), then name (+ rename pencil),
- * the usage meta line, and the clamped description. The checkbox and delete
- * button overlay the square's corners so every card body lines up; clicking
- * the square itself also toggles selection (the checkbox stays the
- * accessible control and the visible state).
- */
+/*
+  One saved section as a uniform grid card: 1:1 muted preview square on top
+  (contain-fit — see SquareSavedSectionPreview), then name (+ rename pencil),
+  the usage meta line, and the clamped description. The checkbox and delete
+  button overlay the square's corners so every card body lines up; clicking
+  the square itself also toggles selection (the checkbox stays the
+  accessible control and the visible state).
+*/
 function SavedSectionManagerCard({
   row,
   isSelected,
@@ -287,7 +291,9 @@ function SavedSectionManagerCard({
               variant="ghost"
               size="icon-sm"
               aria-label="Save name"
-              // onMouseDown so the click wins over the input's blur-commit.
+              /*
+                onMouseDown so the click wins over the input's blur-commit.
+              */
               onMouseDown={(event) => {
                 event.preventDefault();
                 onCommitRename();
@@ -321,37 +327,39 @@ function SavedSectionManagerCard({
   );
 }
 
-/**
- * Natural layout width the preview composes at inside the square (matches
- * ReadOnlyEmailPreview's PREVIEW_LAYOUT_WIDTH_PX, so its internal fit-zoom
- * resolves to exactly 1 and never scales).
- */
+/*
+  Natural layout width the preview composes at inside the square (matches
+  ReadOnlyEmailPreview's PREVIEW_LAYOUT_WIDTH_PX, so its internal fit-zoom
+  resolves to exactly 1 and never scales).
+*/
 const SQUARE_PREVIEW_NATURAL_WIDTH_PX = 640;
 
-/**
- * The card's 1:1 preview square: a muted stage with the themed section
- * miniature contain-fit inside — taller-than-wide sections touch the top
- * and bottom edges, wider-than-tall ones touch the left and right edges.
- *
- * Contain-fit is a `transform: scale()` — NOT conditional width/height
- * styling. The miniature renders at its natural 640px layout width (flex
- * centering keeps its center on the square's center), and one scale factor
- * min(square/naturalWidth, square/naturalHeight) shrinks it into view.
- * Because transforms never affect layout, the measured inputs (the square's
- * size from the grid, the content's natural offset size) are independent of
- * the applied style — no measure→style→measure feedback, no flicker. (An
- * earlier version sized the zoomed wrapper from its own rect, which raced
- * the preview's fit-zoom observer and oscillated.)
- */
+/*
+  The card's 1:1 preview square: a muted stage with the themed section
+  miniature contain-fit inside — taller-than-wide sections touch the top
+  and bottom edges, wider-than-tall ones touch the left and right edges.
+
+  Contain-fit is a `transform: scale()` — NOT conditional width/height
+  styling. The miniature renders at its natural 640px layout width (flex
+  centering keeps its center on the square's center), and one scale factor
+  min(square/naturalWidth, square/naturalHeight) shrinks it into view.
+  Because transforms never affect layout, the measured inputs (the square's
+  size from the grid, the content's natural offset size) are independent of
+  the applied style — no measure→style→measure feedback, no flicker. (An
+  earlier version sized the zoomed wrapper from its own rect, which raced
+  the preview's fit-zoom observer and oscillated.)
+*/
 function SquareSavedSectionPreview({ blocks }: { blocks: Block[] }) {
   const squareRef = useRef<HTMLDivElement | null>(null);
   const contentRef = useRef<HTMLDivElement | null>(null);
   const [squareSizePx, setSquareSizePx] = useState<number | null>(null);
   const [naturalHeightPx, setNaturalHeightPx] = useState<number | null>(null);
 
-  // useLayoutEffect: measure before paint so the first frame never flashes
-  // an unscaled 640px-wide miniature. offset sizes are layout units — the
-  // transform applied below does not change them.
+  /*
+    useLayoutEffect: measure before paint so the first frame never flashes
+    an unscaled 640px-wide miniature. offset sizes are layout units — the
+    transform applied below does not change them.
+  */
   useLayoutEffect(() => {
     const square = squareRef.current;
     const content = contentRef.current;
@@ -401,11 +409,11 @@ function SquareSavedSectionPreview({ blocks }: { blocks: Block[] }) {
   );
 }
 
-/**
- * The per-card description, clamped to two lines with a "More" affordance
- * only when the text actually overflows; "Less" folds it back. Expansion
- * grows the card (its grid row stretches) — simple and predictable.
- */
+/*
+  The per-card description, clamped to two lines with a "More" affordance
+  only when the text actually overflows; "Less" folds it back. Expansion
+  grows the card (its grid row stretches) — simple and predictable.
+*/
 function ClampedDescription({ text }: { text: string }) {
   const [isExpanded, setIsExpanded] = useState(false);
   const [isOverflowing, setIsOverflowing] = useState(false);

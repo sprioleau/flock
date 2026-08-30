@@ -23,59 +23,63 @@ import {
 } from "./rules";
 import type { RecentPropertyEdit, Suggestion, SuggestionRungId } from "./types";
 
-/**
- * The op-log watcher hook (Phase 7.3 v1) — the whole suggestion lifecycle:
- *
- * WATCH — a reactive Convex watch on `documents.getOperations` over the
- * recent tail of the op log (the same query the history panel pages). The
- * store's gesture coalescing means one log entry per SETTLED gesture, which is
- * exactly the "quiet moment" trigger. A qualifying gesture is a settled
- * `updateBlockProperties` edit; undo/redo entries, structural edits, and THIS
- * HOOK'S OWN applies (matched by batch id) never generate.
- *
- * Agent-authored edits qualify as well, but only as the ANCHOR — the pattern
- * window stays the user's own recent edits, so the style rules keep following
- * the user's habits while the critique rule is free to judge the agent's work.
- * resolveAnchorEdit below is where that split lives.
- *
- * GENERATE — run the deterministic rule registry over the recent user edits
- * against the CURRENT rendered doc, then dry-run every rung's ops with the
- * SDK's pure `applyOperations` (never surface a suggestion whose ops would
- * fail). One suggestion at a time; a newer qualifying gesture replaces it.
- *
- * INVALIDATE — snapshot every target block at generation time; any change to
- * one of them (user, agent, or another tab — the rendered doc includes the
- * instant local overlay, so invalidation is immediate, not ack-delayed)
- * hides the card without applying anything. Regeneration then happens lazily
- * on the next qualifying gesture.
- *
- * THE "Suggest related edits" SETTING (app-settings.ts) gates GENERATION AND
- * DISPLAY ONLY — never the op log. That log is the shared history spine
- * (undo/redo, the history panel, revert, replay); a suggestions preference
- * has no business switching it off, and this hook only ever READS it. So
- * turning the setting back on re-runs the rules over the operations already
- * recorded and surfaces a suggestion immediately, instead of making the user
- * perform a fresh edit to coax the feature back. Turning it off clears any
- * live card rather than stranding one the user can no longer act on.
- *
- * APPLY — dispatch the chosen rung's ops through the store's normal dispatch
- * with agent provenance: author "agent", caller "frontend", batchId
- * `suggestion:<ruleId>:<uuid>`, authorId `suggestions:<sessionId>`. The
- * distinct authorId keeps these ops out of the user's per-author Cmd+Z stack
- * (matching how chat-agent ops use the chat id); revert rides the SAME
- * `history.revertBatch` path as chat-turn revert chips. Because suggestion
- * applies happen outside any chat turn there is no assistant message to hang
- * the transcript's revert chip off — so the card itself renders the
- * "Applied — Revert" affordance, wired to the identical mutation.
- */
+/*
+  The op-log watcher hook (Phase 7.3 v1) — the whole suggestion lifecycle:
+
+  WATCH — a reactive Convex watch on `documents.getOperations` over the
+  recent tail of the op log (the same query the history panel pages). The
+  store's gesture coalescing means one log entry per SETTLED gesture, which is
+  exactly the "quiet moment" trigger. A qualifying gesture is a settled
+  `updateBlockProperties` edit; undo/redo entries, structural edits, and THIS
+  HOOK'S OWN applies (matched by batch id) never generate.
+
+  Agent-authored edits qualify as well, but only as the ANCHOR — the pattern
+  window stays the user's own recent edits, so the style rules keep following
+  the user's habits while the critique rule is free to judge the agent's work.
+  resolveAnchorEdit below is where that split lives.
+
+  GENERATE — run the deterministic rule registry over the recent user edits
+  against the CURRENT rendered doc, then dry-run every rung's ops with the
+  SDK's pure `applyOperations` (never surface a suggestion whose ops would
+  fail). One suggestion at a time; a newer qualifying gesture replaces it.
+
+  INVALIDATE — snapshot every target block at generation time; any change to
+  one of them (user, agent, or another tab — the rendered doc includes the
+  instant local overlay, so invalidation is immediate, not ack-delayed)
+  hides the card without applying anything. Regeneration then happens lazily
+  on the next qualifying gesture.
+
+  THE "Suggest related edits" SETTING (app-settings.ts) gates GENERATION AND
+  DISPLAY ONLY — never the op log. That log is the shared history spine
+  (undo/redo, the history panel, revert, replay); a suggestions preference
+  has no business switching it off, and this hook only ever READS it. So
+  turning the setting back on re-runs the rules over the operations already
+  recorded and surfaces a suggestion immediately, instead of making the user
+  perform a fresh edit to coax the feature back. Turning it off clears any
+  live card rather than stranding one the user can no longer act on.
+
+  APPLY — dispatch the chosen rung's ops through the store's normal dispatch
+  with agent provenance: author "agent", caller "frontend", batchId
+  `suggestion:<ruleId>:<uuid>`, authorId `suggestions:<sessionId>`. The
+  distinct authorId keeps these ops out of the user's per-author Cmd+Z stack
+  (matching how chat-agent ops use the chat id); revert rides the SAME
+  `history.revertBatch` path as chat-turn revert chips. Because suggestion
+  applies happen outside any chat turn there is no assistant message to hang
+  the transcript's revert chip off — so the card itself renders the
+  "Applied — Revert" affordance, wired to the identical mutation.
+*/
 
 type OperationsPage = FunctionReturnType<typeof api.documents.getOperations>;
 type OperationEntry = OperationsPage["operations"][number];
 
-/** Op-log tail to subscribe to (must comfortably cover MAX_RECENT_USER_OPS). */
+/*
+  Op-log tail to subscribe to (must comfortably cover MAX_RECENT_USER_OPS).
+*/
 const OPS_TAIL_LIMIT = 30;
 
-/** How long the "Applied — Revert" state lingers before the card clears. */
+/*
+  How long the "Applied — Revert" state lingers before the card clears.
+*/
 const APPLIED_STATE_TTL_MS = 8_000;
 
 type SuggestionPhase =
@@ -83,7 +87,9 @@ type SuggestionPhase =
   | {
       name: "visible";
       suggestion: Suggestion;
-      /** JSON of each target block at generation time (staleness baseline). */
+      /*
+        JSON of each target block at generation time (staleness baseline).
+      */
       targetSnapshots: Record<string, string | undefined>;
     }
   | {
@@ -94,13 +100,17 @@ type SuggestionPhase =
       revertErrorMessage: string | null;
     };
 
-// Staleness serialization moved to serialize-block.ts (shared with the
-// /api/personas route, which persists snapshots in personaFindings — the two
-// sides must produce byte-identical output). Re-exported for compatibility.
+/*
+  Staleness serialization moved to serialize-block.ts (shared with the
+  /api/personas route, which persists snapshots in personaFindings — the two
+  sides must produce byte-identical output). Re-exported for compatibility.
+*/
 export { serializeBlock, stableStringify } from "./serialize-block";
 
-// Dev-only trace of the watcher's evaluation steps, so in-browser verification
-// (agents, debugging) can see WHY a suggestion did or didn't surface.
+/*
+  Dev-only trace of the watcher's evaluation steps, so in-browser verification
+  (agents, debugging) can see WHY a suggestion did or didn't surface.
+*/
 declare global {
   interface Window {
     __flockSuggestionsDebug?: unknown[];
@@ -112,10 +122,14 @@ function traceEvaluation(event: Record<string, unknown>): void {
   }
 }
 
-/** Op-log batchId prefix of this hook's OWN applies (the self-trigger guard). */
+/*
+  Op-log batchId prefix of this hook's OWN applies (the self-trigger guard).
+*/
 const SUGGESTION_BATCH_ID_PREFIX = "suggestion:";
 
-/** Every suggestible property edit carried by ONE op-log entry. */
+/*
+  Every suggestible property edit carried by ONE op-log entry.
+*/
 function extractPropertyEdits({
   entry,
   doc,
@@ -129,7 +143,7 @@ function extractPropertyEdits({
   }
   const block = doc[parsed.data.blockId];
   if (block === undefined) {
-    return []; // target since deleted — not a live signal
+    return []; /* target since deleted — not a live signal */
   }
   const edits: RecentPropertyEdit[] = [];
   for (const [propertyKey, value] of Object.entries(parsed.data.properties)) {
@@ -224,7 +238,9 @@ function resolveAnchorEdit({
   return extractPropertyEdits({ entry: newest, doc })[0];
 }
 
-/** Drop rungs whose ops fail a dry-run; null unless a non-gated rung survives. */
+/*
+  Drop rungs whose ops fail a dry-run; null unless a non-gated rung survives.
+*/
 function dropInvalidRungs({
   doc,
   suggestion,
@@ -238,9 +254,13 @@ function dropInvalidRungs({
 }
 
 export interface SuggestionsController {
-  /** The one visible suggestion, or null. */
+  /*
+    The one visible suggestion, or null.
+  */
   visibleSuggestion: Suggestion | null;
-  /** The brief post-apply state (revert affordance), or null. */
+  /*
+    The brief post-apply state (revert affordance), or null.
+  */
   appliedState: { rungLabel: string; revertErrorMessage: string | null } | null;
   applyRung: (rungId: SuggestionRungId) => void;
   dismiss: () => void;
@@ -274,27 +294,35 @@ export function useSuggestions(): SuggestionsController {
   const isSuggestionsEnabled = isSuggestionsSettingEnabled && !isTourRunning;
 
   const [phase, setPhase] = useState<SuggestionPhase>({ name: "hidden" });
-  // In-memory dismissals for this session (union'd with localStorage, which
-  // is also written — so dismissal works even where persistence doesn't).
+  /*
+    In-memory dismissals for this session (union'd with localStorage, which
+    is also written — so dismissal works even where persistence doesn't).
+  */
   const sessionDismissedKeysRef = useRef<Set<string>>(new Set());
-  // Generation high-water mark, reset whenever the bound document changes.
+  /*
+    Generation high-water mark, reset whenever the bound document changes.
+  */
   const evaluationRef = useRef<{ documentId: string | null; lastEvaluatedVersion: number }>({
     documentId: null,
     lastEvaluatedVersion: 0,
   });
   const appliedClearTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Document switch: hide any carried-over card (render-time state adjustment).
+  /*
+    Document switch: hide any carried-over card (render-time state adjustment).
+  */
   const [boundDocumentId, setBoundDocumentId] = useState<Id<"documents"> | null>(documentId);
   if (boundDocumentId !== documentId) {
     setBoundDocumentId(documentId);
     setPhase({ name: "hidden" });
   }
 
-  // Setting switched OFF: clear the live card rather than strand one the user
-  // can no longer act on (same render-time adjustment as the document switch
-  // above). The switched-ON half is handled in the watch effect below, where
-  // rewinding the generation mark is legal.
+  /*
+    Setting switched OFF: clear the live card rather than strand one the user
+    can no longer act on (same render-time adjustment as the document switch
+    above). The switched-ON half is handled in the watch effect below, where
+    rewinding the generation mark is legal.
+  */
   const [wasSuggestionsEnabled, setWasSuggestionsEnabled] = useState(isSuggestionsEnabled);
   if (wasSuggestionsEnabled !== isSuggestionsEnabled) {
     setWasSuggestionsEnabled(isSuggestionsEnabled);
@@ -302,8 +330,10 @@ export function useSuggestions(): SuggestionsController {
       setPhase({ name: "hidden" });
     }
   }
-  // Mirrors the setting, but written only from the effect below — the render
-  // pass must not touch refs.
+  /*
+    Mirrors the setting, but written only from the effect below — the render
+    pass must not touch refs.
+  */
   const wasGenerationEnabledRef = useRef(isSuggestionsEnabled);
 
   const clearAppliedTimer = (): void => {
@@ -321,15 +351,19 @@ export function useSuggestions(): SuggestionsController {
   };
   useEffect(() => clearAppliedTimer, []);
 
-  // GENERATION: watch the op-log tail; evaluate once per newly settled gesture.
-  // The sinceVersion anchor tracks the server head so the window stays bounded
-  // (the watch is re-established as the head advances — cheap indexed query).
+  /*
+    GENERATION: watch the op-log tail; evaluate once per newly settled gesture.
+    The sinceVersion anchor tracks the server head so the window stays bounded
+    (the watch is re-established as the head advances — cheap indexed query).
+  */
   useEffect(() => {
     traceEvaluation({ step: "watch-effect", documentId, serverHeadVersion });
-    // Switched back ON: rewind the generation high-water mark so the op-log
-    // tail this hook has ALREADY seen is re-evaluated. That is what returns
-    // suggestions built from edits made while the setting was off, instead of
-    // making the user perform a fresh edit to coax the feature back.
+    /*
+      Switched back ON: rewind the generation high-water mark so the op-log
+      tail this hook has ALREADY seen is re-evaluated. That is what returns
+      suggestions built from edits made while the setting was off, instead of
+      making the user perform a fresh edit to coax the feature back.
+    */
     if (isSuggestionsEnabled && !wasGenerationEnabledRef.current) {
       traceEvaluation({ step: "suggestions-re-enabled" });
       evaluationRef.current.lastEvaluatedVersion = 0;
@@ -345,15 +379,17 @@ export function useSuggestions(): SuggestionsController {
 
     const evaluatePage = (page: OperationsPage): void => {
       traceEvaluation({ step: "page", isDone: page.isDone, count: page.operations.length });
-      // Visibility gate. Deliberately BEFORE the high-water mark advances, so
-      // versions that stream past while the setting is off are not marked as
-      // evaluated and stay eligible when it comes back on.
+      /*
+        Visibility gate. Deliberately BEFORE the high-water mark advances, so
+        versions that stream past while the setting is off are not marked as
+        evaluated and stay eligible when it comes back on.
+      */
       if (!isSuggestionsEnabled) {
         traceEvaluation({ step: "skip-suggestions-disabled" });
         return;
       }
       if (!page.isDone) {
-        return; // the tail outran this window; the next anchor catches up
+        return; /* the tail outran this window; the next anchor catches up */
       }
       if (evaluationRef.current.documentId !== documentId) {
         evaluationRef.current = { documentId, lastEvaluatedVersion: 0 };
@@ -370,10 +406,12 @@ export function useSuggestions(): SuggestionsController {
       }
       evaluationRef.current.lastEvaluatedVersion = newest.version;
 
-      // A settled edit is the qualifying gesture; undo/redo entries never
-      // generate. Agent-authored edits DO qualify now — the critique rule is
-      // the one thing that should judge them, and resolveAnchorEdit keeps them
-      // out of the pattern window while letting the anchor through.
+      /*
+        A settled edit is the qualifying gesture; undo/redo entries never
+        generate. Agent-authored edits DO qualify now — the critique rule is
+        the one thing that should judge them, and resolveAnchorEdit keeps them
+        out of the pattern window while letting the anchor through.
+      */
       if (newest.kind !== "edit") {
         traceEvaluation({ step: "skip-not-edit", author: newest.author, kind: newest.kind });
         return;
@@ -404,7 +442,7 @@ export function useSuggestions(): SuggestionsController {
       });
       if (suggestion === null) {
         traceEvaluation({ step: "no-rule-matched", anchorEdit });
-        return; // leave any existing (still-fresh) suggestion in place
+        return; /* leave any existing (still-fresh) suggestion in place */
       }
       const validatedSuggestion = dropInvalidRungs({ doc: currentDoc, suggestion });
       if (validatedSuggestion === null) {
@@ -437,8 +475,10 @@ export function useSuggestions(): SuggestionsController {
       }
     };
     const unsubscribe = watch.onUpdate(runFromLocalResult);
-    // A result may already be cached for these args (deferred so the initial
-    // evaluation never sets state synchronously inside the effect body).
+    /*
+      A result may already be cached for these args (deferred so the initial
+      evaluation never sets state synchronously inside the effect body).
+    */
     let isDisposed = false;
     queueMicrotask(() => {
       if (!isDisposed) {
@@ -449,13 +489,17 @@ export function useSuggestions(): SuggestionsController {
       isDisposed = true;
       unsubscribe();
     };
-    // isSuggestionsEnabled is a dependency so switching it ON re-establishes
-    // the watch and re-runs the cached page through evaluatePage — the
-    // immediate-return path described in the header.
+    /*
+      isSuggestionsEnabled is a dependency so switching it ON re-establishes
+      the watch and re-runs the cached page through evaluatePage — the
+      immediate-return path described in the header.
+    */
   }, [convexClient, documentId, serverHeadVersion, isSuggestionsEnabled]);
 
-  // STALENESS: subscribe to the rendered doc (local overlay included); the
-  // moment any target block changes or disappears, the suggestion invalidates.
+  /*
+    STALENESS: subscribe to the rendered doc (local overlay included); the
+    moment any target block changes or disappears, the suggestion invalidates.
+  */
   useEffect(() => {
     if (phase.name !== "visible") {
       return;
@@ -472,10 +516,12 @@ export function useSuggestions(): SuggestionsController {
           was: phase.targetSnapshots[staleBlockId],
           now: serializeBlock(doc[staleBlockId]),
         });
-        // Hide only THIS suggestion: a store change can both stale the old
-        // card and generate its replacement (e.g. the second recolor of the
-        // canonical demo), and this check — subscribed for the OLD phase —
-        // may run after the new suggestion was set. It must not clobber it.
+        /*
+          Hide only THIS suggestion: a store change can both stale the old
+          card and generate its replacement (e.g. the second recolor of the
+          canonical demo), and this check — subscribed for the OLD phase —
+          may run after the new suggestion was set. It must not clobber it.
+        */
         setPhase((current) =>
           current.name === "visible" && current.suggestion.id === phase.suggestion.id
             ? { name: "hidden" }
@@ -484,7 +530,9 @@ export function useSuggestions(): SuggestionsController {
       }
     };
     const unsubscribe = useEditorStore.subscribe((state) => checkStaleness(state.doc));
-    // The doc may have moved between generation and this subscription.
+    /*
+      The doc may have moved between generation and this subscription.
+    */
     let isDisposed = false;
     queueMicrotask(() => {
       if (!isDisposed) {
@@ -506,8 +554,10 @@ export function useSuggestions(): SuggestionsController {
       return;
     }
     const store = useEditorStore.getState();
-    // Belt-and-braces dry-run against the LIVE doc right before dispatch (the
-    // staleness watcher makes a failure here effectively impossible).
+    /*
+      Belt-and-braces dry-run against the LIVE doc right before dispatch (the
+      staleness watcher makes a failure here effectively impossible).
+    */
     if (!applyOperations(store.doc, rung.ops).isOk) {
       setPhase({ name: "hidden" });
       return;
@@ -522,8 +572,10 @@ export function useSuggestions(): SuggestionsController {
         batchId,
       });
       if (!result.isOk) {
-        // Unreachable after the dry-run; any partial batch remains revertable
-        // from the history panel under this batchId.
+        /*
+          Unreachable after the dry-run; any partial batch remains revertable
+          from the history panel under this batchId.
+        */
         setPhase({ name: "hidden" });
         return;
       }
@@ -573,11 +625,13 @@ export function useSuggestions(): SuggestionsController {
   };
 
   return {
-    // The `isSuggestionsEnabled` term is belt-and-braces: the render-time
-    // adjustment above already hides the card, but this guarantees no card
-    // (and so no ⌥A hint) can survive a single render with the setting off.
-    // appliedState is deliberately NOT gated — it is the revert affordance
-    // for a change the user already made, and hiding it would strand that.
+    /*
+      The `isSuggestionsEnabled` term is belt-and-braces: the render-time
+      adjustment above already hides the card, but this guarantees no card
+      (and so no ⌥A hint) can survive a single render with the setting off.
+      appliedState is deliberately NOT gated — it is the revert affordance
+      for a change the user already made, and hiding it would strand that.
+    */
     visibleSuggestion: isSuggestionsEnabled && phase.name === "visible" ? phase.suggestion : null,
     appliedState:
       phase.name === "applied"

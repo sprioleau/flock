@@ -4,25 +4,27 @@ import type { DispatchableOp } from "@/lib/editor-store";
 import { buildClickToAddPlan } from "../add-blocks/click-to-add-placement";
 import type { PaletteItem } from "../add-blocks/palette-items";
 
-/**
- * Library → draft insertion (Content Studio Stage S, proposal §7.2). Composes
- * EXISTING ops only — the studio never grows a new operation:
- *
- * - an image block is selected → ONE `updateBlockProperties { src, alt }`,
- *   exactly what both generation flows dispatch (undoable as one step);
- * - anything else (or nothing) selected → a NEW image block via the
- *   add-blocks click-to-add placement rules (after a selected leaf / into a
- *   selected container / appended to the last section / composed section on
- *   an empty document), with the asset's src+alt in place of the palette
- *   defaults — still one op, one undo.
- *
- * Alt text carries from the asset: its stored alt when present, else the
- * asset's display name (QA personas flag missing alt — never insert without).
- *
- * Pure — unit-tested directly.
- */
+/*
+  Library → draft insertion (Content Studio Stage S, proposal §7.2). Composes
+  EXISTING ops only — the studio never grows a new operation:
 
-/** What insertion needs to know about a library asset. */
+  - an image block is selected → ONE `updateBlockProperties { src, alt }`,
+    exactly what both generation flows dispatch (undoable as one step);
+  - anything else (or nothing) selected → a NEW image block via the
+    add-blocks click-to-add placement rules (after a selected leaf / into a
+    selected container / appended to the last section / composed section on
+    an empty document), with the asset's src+alt in place of the palette
+    defaults — still one op, one undo.
+
+  Alt text carries from the asset: its stored alt when present, else the
+  asset's display name (QA personas flag missing alt — never insert without).
+
+  Pure — unit-tested directly.
+*/
+
+/*
+  What insertion needs to know about a library asset.
+*/
 export interface LibraryInsertAsset {
   url: string;
   name: string;
@@ -31,13 +33,19 @@ export interface LibraryInsertAsset {
 
 export interface LibraryInsertPlan {
   op: DispatchableOp;
-  /** Which gesture this is — the panel's Insert button labels itself by it. */
+  /*
+    Which gesture this is — the panel's Insert button labels itself by it.
+  */
   mode: "replace-selected-image" | "add-image-block";
-  /** The block to select + reveal after dispatch. */
+  /*
+    The block to select + reveal after dispatch.
+  */
   targetBlockId: BlockId | null;
 }
 
-/** The palette descriptor the placement rules see for a library image. */
+/*
+  The palette descriptor the placement rules see for a library image.
+*/
 const LIBRARY_IMAGE_PALETTE_ITEM: PaletteItem = {
   kind: "leaf",
   blockType: "image",
@@ -47,7 +55,9 @@ const LIBRARY_IMAGE_PALETTE_ITEM: PaletteItem = {
   Icon: ImageIcon,
 };
 
-/** The alt text an asset carries into the draft: stored alt, else its name. */
+/*
+  The alt text an asset carries into the draft: stored alt, else its name.
+*/
 export function resolveInsertAltText(asset: LibraryInsertAsset): string {
   const trimmedAlt = asset.alt?.trim() ?? "";
   return trimmedAlt.length > 0 ? trimmedAlt : asset.name;
@@ -89,12 +99,12 @@ export function buildLibraryInsertPlan(args: {
   };
 }
 
-/**
- * Swap the placement plan's palette-default image properties (placeholder
- * src/alt) for the asset's, wherever the new leaf lives in the op: directly
- * on an `addBlock`, or inside the composed `addSection`'s children on an
- * empty document.
- */
+/*
+  Swap the placement plan's palette-default image properties (placeholder
+  src/alt) for the asset's, wherever the new leaf lives in the op: directly
+  on an `addBlock`, or inside the composed `addSection`'s children on an
+  empty document.
+*/
 function overrideNewImageProperties(args: {
   op: DispatchableOp;
   imageBlockId: BlockId;

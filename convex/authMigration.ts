@@ -2,44 +2,44 @@ import { v } from "convex/values";
 import { internalMutation, type MutationCtx } from "./_generated/server";
 import type { Doc } from "./_generated/dataModel";
 
-/**
- * Carrying a user's work across an identity change.
- *
- * Two callers, one engine:
- *
- * 1. `reKeyOwnedRows` — the `onLinkAccount` seam (convex/auth.ts). An
- *    anonymous user taps a magic link; Better Auth mints a durable user and
- *    then DELETES the anonymous row. Everything that pointed at the old id has
- *    to move first, or the promotion silently costs the user their brand kit.
- *    This is the whole reason the eval recommended the pair over the anonymous
- *    plugin alone (better-auth-evaluation.md §1.2, §4.3).
- *
- * 2. `adoptLegacySessionData` — the manual escape hatch for a browser that
- *    still owns rows under its pre-auth localStorage UUID.
- *
- *    DELIBERATELY `internalMutation`, i.e. NOT callable from the client. A
- *    public version would take the legacy session id as an argument — and that
- *    id is published to every collaborator through presence and comments
- *    (see convex/authIdentity.ts). Exposing adoption would let anyone who
- *    shared a document with you permanently capture your library into their
- *    own account: a strictly worse hole than the one this work closes. Run it
- *    from the Convex dashboard when a specific browser's data matters. The
- *    default posture is the eval's own §6.3 recommendation — let the cleanup
- *    cron eat orphaned demo data.
- *
- * SCOPE, stated honestly:
- * - Moved: canvasOwners (the dashboard key), brandKits, assets, savedSections,
- *   agents (persona copies, slug included), comments on the owner's own drafts,
- *   and — for the adoption caller ONLY — canvases and documents. See
- *   `migrateOwnedRows` for why those last two cannot fire on a link.
- * - NOT moved: `operations.authorId`. Per-user undo history resets at the
- *   link moment. Op rows are a provenance record of what actually happened;
- *   rewriting history to flatter a UX detail muddies the one history spine
- *   (eval §6.2, recommended and taken).
- * - NOT moved: comments the user wrote on documents they do not own. Reaching
- *   those needs a table scan — `comments` is indexed by canvas/document, never
- *   by author. Their attribution reverts to the derived display identity.
- */
+/*
+  Carrying a user's work across an identity change.
+
+  Two callers, one engine:
+
+  1. `reKeyOwnedRows` — the `onLinkAccount` seam (convex/auth.ts). An
+     anonymous user taps a magic link; Better Auth mints a durable user and
+     then DELETES the anonymous row. Everything that pointed at the old id has
+     to move first, or the promotion silently costs the user their brand kit.
+     This is the whole reason the eval recommended the pair over the anonymous
+     plugin alone (better-auth-evaluation.md §1.2, §4.3).
+
+  2. `adoptLegacySessionData` — the manual escape hatch for a browser that
+     still owns rows under its pre-auth localStorage UUID.
+
+     DELIBERATELY `internalMutation`, i.e. NOT callable from the client. A
+     public version would take the legacy session id as an argument — and that
+     id is published to every collaborator through presence and comments
+     (see convex/authIdentity.ts). Exposing adoption would let anyone who
+     shared a document with you permanently capture your library into their
+     own account: a strictly worse hole than the one this work closes. Run it
+     from the Convex dashboard when a specific browser's data matters. The
+     default posture is the eval's own §6.3 recommendation — let the cleanup
+     cron eat orphaned demo data.
+
+  SCOPE, stated honestly:
+  - Moved: canvasOwners (the dashboard key), brandKits, assets, savedSections,
+    agents (persona copies, slug included), comments on the owner's own drafts,
+    and — for the adoption caller ONLY — canvases and documents. See
+    `migrateOwnedRows` for why those last two cannot fire on a link.
+  - NOT moved: `operations.authorId`. Per-user undo history resets at the
+    link moment. Op rows are a provenance record of what actually happened;
+    rewriting history to flatter a UX detail muddies the one history spine
+    (eval §6.2, recommended and taken).
+  - NOT moved: comments the user wrote on documents they do not own. Reaching
+    those needs a table scan — `comments` is indexed by canvas/document, never
+    by author. Their attribution reverts to the derived display identity.
+*/
 
 /*
   Per-table ceiling for one migration pass. A link is interactive (the user is
@@ -59,10 +59,14 @@ import type { Doc } from "./_generated/dataModel";
 */
 const MAX_ROWS_PER_TABLE = 512;
 
-/** What one pass actually moved — logged, and returned for dashboard runs. */
+/*
+  What one pass actually moved — logged, and returned for dashboard runs.
+*/
 const migrationResultValidator = v.object({
   canvases: v.number(),
-  /** Dashboard ownership rows re-keyed (the count that matters on a link). */
+  /*
+    Dashboard ownership rows re-keyed (the count that matters on a link).
+  */
   canvasOwners: v.number(),
   documents: v.number(),
   brandKits: v.number(),
@@ -155,7 +159,9 @@ async function migrateOwnedRows(
   const ownership = await migrateCanvasOwnerships(ctx, args);
   result.canvasOwners = ownership.movedCount;
 
-  /* --- canvases (adoption caller only; see the note above) --------------- */
+  /*
+    --- canvases (adoption caller only; see the note above) ---------------
+  */
   const canvases = await ctx.db
     .query("canvases")
     .withIndex("by_sessionId", (q) => q.eq("sessionId", args.fromOwnerId))
@@ -178,11 +184,13 @@ async function migrateOwnedRows(
     result.documents += 1;
   }
 
-  // --- brandKits ----------------------------------------------------------
-  // One active kit per owner is the v1 invariant (schema.ts `brandKits`). If
-  // the destination already has one — a linked account that built a kit before
-  // this ran — the destination's kit WINS and the anonymous one is left behind
-  // rather than silently overwriting work the user can see.
+  /*
+    --- brandKits ----------------------------------------------------------
+    One active kit per owner is the v1 invariant (schema.ts `brandKits`). If
+    the destination already has one — a linked account that built a kit before
+    this ran — the destination's kit WINS and the anonymous one is left behind
+    rather than silently overwriting work the user can see.
+  */
   const destinationKit = await ctx.db
     .query("brandKits")
     .withIndex("by_sessionId", (q) => q.eq("sessionId", args.toOwnerId))
@@ -198,7 +206,9 @@ async function migrateOwnedRows(
     }
   }
 
-  // --- assets -------------------------------------------------------------
+  /*
+    --- assets -------------------------------------------------------------
+  */
   const assets = await ctx.db
     .query("assets")
     .withIndex("by_sessionId", (q) => q.eq("sessionId", args.fromOwnerId))
@@ -208,7 +218,9 @@ async function migrateOwnedRows(
     result.assets += 1;
   }
 
-  // --- savedSections ------------------------------------------------------
+  /*
+    --- savedSections ------------------------------------------------------
+  */
   const savedSections = await ctx.db
     .query("savedSections")
     .withIndex("by_sessionId", (q) => q.eq("sessionId", args.fromOwnerId))
@@ -218,7 +230,9 @@ async function migrateOwnedRows(
     result.savedSections += 1;
   }
 
-  // --- agents (persona copies; the owner id is baked into the slug) -------
+  /*
+    --- agents (persona copies; the owner id is baked into the slug) -------
+  */
   result.personas = await migratePersonaCopies(ctx, args);
 
   /*
@@ -318,14 +332,14 @@ async function collectOwnedDocumentIds(
   return [...documentIds];
 }
 
-/**
- * Persona copies carry the owner id in their slug (`user/<ownerId>/<base>` —
- * personas.ts `buildSessionCopySlug`), so re-keying the column without
- * rewriting the slug would leave rows the picker can no longer resolve as
- * copies. The rewrite is deterministic; a slug already taken under the
- * destination owner means that owner has their own copy of the same built-in,
- * so the anonymous one is dropped from the migration rather than colliding.
- */
+/*
+  Persona copies carry the owner id in their slug (`user/<ownerId>/<base>` —
+  personas.ts `buildSessionCopySlug`), so re-keying the column without
+  rewriting the slug would leave rows the picker can no longer resolve as
+  copies. The rewrite is deterministic; a slug already taken under the
+  destination owner means that owner has their own copy of the same built-in,
+  so the anonymous one is dropped from the migration rather than colliding.
+*/
 async function migratePersonaCopies(
   ctx: MutationCtx,
   args: { fromOwnerId: string; toOwnerId: string },
@@ -359,7 +373,9 @@ async function migratePersonaCopies(
   return migratedCount;
 }
 
-/** `user/<from>/<base>` → `user/<to>/<base>`; anything else is left alone. */
+/*
+  `user/<from>/<base>` → `user/<to>/<base>`; anything else is left alone.
+*/
 function rewriteCopySlug(args: {
   row: Doc<"agents">;
   fromOwnerId: string;
@@ -372,12 +388,12 @@ function rewriteCopySlug(args: {
   return `user/${args.toOwnerId}/${args.row.slug.slice(copyPrefix.length)}`;
 }
 
-/**
- * Re-attribute comment threads on the migrated documents: the thread creator,
- * each user entry's author, and whoever resolved it. Cheap and indexed, and it
- * keeps a review conversation attributed to the same human after they claim
- * their account (eval §6.2, recommended and taken).
- */
+/*
+  Re-attribute comment threads on the migrated documents: the thread creator,
+  each user entry's author, and whoever resolved it. Cheap and indexed, and it
+  keeps a review conversation attributed to the same human after they claim
+  their account (eval §6.2, recommended and taken).
+*/
 async function migrateCommentAuthorship(
   ctx: MutationCtx,
   args: {
@@ -420,11 +436,11 @@ async function migrateCommentAuthorship(
   return migratedCount;
 }
 
-/**
- * `onLinkAccount`: anonymous identity → durable identity. Called from
- * convex/auth.ts inside the link transaction, BEFORE Better Auth deletes the
- * anonymous user row.
- */
+/*
+  `onLinkAccount`: anonymous identity → durable identity. Called from
+  convex/auth.ts inside the link transaction, BEFORE Better Auth deletes the
+  anonymous user row.
+*/
 export const reKeyOwnedRows = internalMutation({
   args: { fromOwnerId: v.string(), toOwnerId: v.string() },
   returns: migrationResultValidator,
@@ -438,15 +454,15 @@ export const reKeyOwnedRows = internalMutation({
   },
 });
 
-/**
- * Manual, dashboard-only adoption of a pre-auth browser's data. See the file
- * header for why this is not public: `legacySessionId` is a leaked value, not
- * a secret, so nothing about the caller proves they owned that browser.
- *
- * Usage:
- *   npx convex run --component-free authMigration:adoptLegacySessionData \
- *     '{"legacySessionId":"<localStorage flock_session_id>","ownerId":"<better auth user id>"}'
- */
+/*
+  Manual, dashboard-only adoption of a pre-auth browser's data. See the file
+  header for why this is not public: `legacySessionId` is a leaked value, not
+  a secret, so nothing about the caller proves they owned that browser.
+
+  Usage:
+    npx convex run --component-free authMigration:adoptLegacySessionData \
+      '{"legacySessionId":"<localStorage flock_session_id>","ownerId":"<better auth user id>"}'
+*/
 export const adoptLegacySessionData = internalMutation({
   args: { legacySessionId: v.string(), ownerId: v.string() },
   returns: migrationResultValidator,

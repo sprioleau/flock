@@ -13,11 +13,11 @@ import {
 } from "./inspect-rendered-email";
 import { dispatchAnalysisAction, getAction } from "./registry";
 
-/**
- * The agent reading back what it built. These pin the promises the tool makes
- * to the model — the shape, the bound, and the honest failure — NOT the
- * renderers underneath, which have their own tests in ../render.
- */
+/*
+  The agent reading back what it built. These pin the promises the tool makes
+  to the model — the shape, the bound, and the honest failure — NOT the
+  renderers underneath, which have their own tests in ../render.
+*/
 
 const anyCaller: ActionContext = {
   caller: "tool",
@@ -25,13 +25,13 @@ const anyCaller: ActionContext = {
   author: "agent",
 };
 
-/**
- * An email far bigger than anything a person would send: 150 text blocks of
- * ~600 characters each, i.e. roughly 90,000 characters of copy. The point is
- * that the tool's result must not grow with it — a bound that only holds for
- * realistic documents is not a bound, and "the model built something enormous"
- * is exactly the moment it most needs to be able to look at it safely.
- */
+/*
+  An email far bigger than anything a person would send: 150 text blocks of
+  ~600 characters each, i.e. roughly 90,000 characters of copy. The point is
+  that the tool's result must not grow with it — a bound that only holds for
+  realistic documents is not a bound, and "the model built something enormous"
+  is exactly the moment it most needs to be able to look at it safely.
+*/
 function createOversizedDocument(): EmailDocument {
   const paragraph = "Every word here is filler that a real email would never contain. ".repeat(10);
   const textBlockIds: BlockId[] = [];
@@ -70,11 +70,11 @@ function createOversizedDocument(): EmailDocument {
   return doc;
 }
 
-/**
- * A document whose root promises 80 children it does not have — one integrity
- * error per dangling id, so the renderer's own error message is long enough to
- * prove the failure arm is capped too.
- */
+/*
+  A document whose root promises 80 children it does not have — one integrity
+  error per dangling id, so the renderer's own error message is long enough to
+  prove the failure arm is capped too.
+*/
 function createStructurallyBrokenDocument(): EmailDocument {
   const missingIds: BlockId[] = [];
   for (let index = 0; index < 80; index += 1) {
@@ -99,16 +99,22 @@ describe("inspectRenderedEmail", () => {
     if (!result.isRendered) {
       return;
     }
-    // The words a reader sees — including the link destination a button hides.
+    /*
+      The words a reader sees — including the link destination a button hides.
+    */
     expect(result.plainText).toContain("Ready to ride?");
     expect(result.plainText).toContain("https://example.com/start");
-    // ...and none of the markup they don't.
+    /*
+      ...and none of the markup they don't.
+    */
     expect(result.plainText).not.toContain("<td");
     expect(result.plainText).not.toContain("DOCTYPE");
     expect(result.isPlainTextTruncated).toBe(false);
     expect(result.plainTextCharacterCount).toBe(result.plainText.length);
-    // The HTML is measured, not returned: a real email is always bigger than
-    // its own words, and a normal one is nowhere near Gmail's clip threshold.
+    /*
+      The HTML is measured, not returned: a real email is always bigger than
+      its own words, and a normal one is nowhere near Gmail's clip threshold.
+    */
     expect(result.htmlByteCount).toBeGreaterThan(result.plainTextCharacterCount);
     expect(result.htmlByteCount).toBeLessThan(GMAIL_CLIPPING_BYTE_LIMIT);
     expect(result.isAtRiskOfGmailClipping).toBe(false);
@@ -123,17 +129,25 @@ describe("inspectRenderedEmail", () => {
     if (!result.isRendered) {
       return;
     }
-    // The request was clamped, not honoured — this is the invariant that keeps
-    // a self-check from costing more context than the work it is checking.
+    /*
+      The request was clamped, not honoured — this is the invariant that keeps
+      a self-check from costing more context than the work it is checking.
+    */
     expect(result.plainText.length).toBeLessThanOrEqual(RENDERED_TEXT_MAX_CHARACTERS);
     expect(result.plainText.endsWith(RENDERED_TEXT_TRUNCATION_MARKER)).toBe(true);
     expect(result.isPlainTextTruncated).toBe(true);
-    // The full length is still reported, so the model knows what it is missing.
+    /*
+      The full length is still reported, so the model knows what it is missing.
+    */
     expect(result.plainTextCharacterCount).toBeGreaterThan(RENDERED_TEXT_MAX_CHARACTERS * 4);
-    // Worst case for the whole serialized result is a constant, not a function
-    // of the document: the text cap plus a fixed handful of small numbers.
+    /*
+      Worst case for the whole serialized result is a constant, not a function
+      of the document: the text cap plus a fixed handful of small numbers.
+    */
     expect(JSON.stringify(result).length).toBeLessThan(RENDERED_TEXT_MAX_CHARACTERS + 500);
-    // An email this size really would be clipped, and the flag says so.
+    /*
+      An email this size really would be clipped, and the flag says so.
+    */
     expect(result.htmlByteCount).toBeGreaterThanOrEqual(GMAIL_CLIPPING_BYTE_LIMIT);
     expect(result.isAtRiskOfGmailClipping).toBe(true);
   });
@@ -174,7 +188,9 @@ describe("inspectRenderedEmailAction", () => {
       return;
     }
     expect(result.isApprovalRequired).toBe(false);
-    // Analysis runs may be promises; this one is (rendering is async).
+    /*
+      Analysis runs may be promises; this one is (rendering is async).
+    */
     const data = await result.data;
     expect(data).toMatchObject({ isRendered: true });
   });

@@ -16,27 +16,27 @@ import {
 import type { BrandLogoSource, LeafBlockVariant } from "../block-defaults";
 import type { PaletteItem } from "./palette-items";
 
-/**
- * Click-to-add placement (the palette's no-drag path), selection-aware and
- * pure so it is directly testable. One click = ONE op = one undo — even on
- * an empty document, where leaf/columns items compose a single `addSection`
- * op that carries the new content as its prebuilt subtree instead of
- * dispatching a section op and a block op separately.
- *
- * Placement rules (proposal §4.3):
- * 1. Selected leaf → insert AFTER it in its parent.
- * 2. Selected container → append to it (section/column; a selected row
- *    appends to its section).
- * 3. No selection → append to the LAST section (or start a section).
- * Section items anchor after the selection's ancestor section, else bottom.
- */
+/*
+  Click-to-add placement (the palette's no-drag path), selection-aware and
+  pure so it is directly testable. One click = ONE op = one undo — even on
+  an empty document, where leaf/columns items compose a single `addSection`
+  op that carries the new content as its prebuilt subtree instead of
+  dispatching a section op and a block op separately.
+
+  Placement rules (proposal §4.3):
+  1. Selected leaf → insert AFTER it in its parent.
+  2. Selected container → append to it (section/column; a selected row
+     appends to its section).
+  3. No selection → append to the LAST section (or start a section).
+  Section items anchor after the selection's ancestor section, else bottom.
+*/
 export interface ClickToAddPlan {
   op: DispatchableOp;
-  /**
-   * The inserted subtree's root, to select + reveal — or null when the id is
-   * only known after dispatch (scaffoldSection resolves server-shaped: read
-   * the resulting addSection op's section id from the dispatch result).
-   */
+  /*
+    The inserted subtree's root, to select + reveal — or null when the id is
+    only known after dispatch (scaffoldSection resolves server-shaped: read
+    the resulting addSection op's section id from the dispatch result).
+  */
   newBlockId: BlockId | null;
 }
 
@@ -44,7 +44,9 @@ function isLeafBlock(block: Block): boolean {
   return (LEAF_BLOCK_TYPES as readonly string[]).includes(block.type);
 }
 
-/** The selection's enclosing section (or itself), walking parent pointers. */
+/*
+  The selection's enclosing section (or itself), walking parent pointers.
+*/
 function findAncestorSection(doc: EmailDocument, blockId: BlockId): SectionBlock | null {
   for (let id: BlockId | null = blockId; id !== null; ) {
     const block: Block | undefined = doc[id];
@@ -59,7 +61,9 @@ function findAncestorSection(doc: EmailDocument, blockId: BlockId): SectionBlock
   return null;
 }
 
-/** The document's last top-level section, or null when it has none. */
+/*
+  The document's last top-level section, or null when it has none.
+*/
 function getLastSection(doc: EmailDocument): SectionBlock | null {
   const root = doc[ROOT_BLOCK_ID];
   if (root === undefined) {
@@ -74,7 +78,9 @@ export function buildClickToAddPlan(args: {
   doc: EmailDocument;
   item: PaletteItem;
   selectedBlockId: BlockId | null;
-  /** The confirmed brand logo for the Logo preset (null = placeholder). */
+  /*
+    The confirmed brand logo for the Logo preset (null = placeholder).
+  */
   brandLogo?: BrandLogoSource | null;
 }): ClickToAddPlan | null {
   const { doc, item, selectedBlockId, brandLogo } = args;
@@ -116,7 +122,9 @@ function planLeafAdd(args: {
   const { doc, blockType, variant, selected, brandLogo } = args;
   const target = resolveLeafTarget(doc, selected);
   if (target === null) {
-    // No sections yet: one composite addSection op carrying the new leaf.
+    /*
+      No sections yet: one composite addSection op carrying the new leaf.
+    */
     const sectionId = generateUniqueBlockId({ type: "section", doc });
     const leafId = generateUniqueBlockId({ type: blockType, doc });
     const leaf = createDefaultLeafBlock({
@@ -156,7 +164,9 @@ function planLeafAdd(args: {
   };
 }
 
-/** Where a new leaf lands per the selection rules; null = no section exists. */
+/*
+  Where a new leaf lands per the selection rules; null = no section exists.
+*/
 function resolveLeafTarget(
   doc: EmailDocument,
   selected: Block | undefined,
@@ -165,7 +175,9 @@ function resolveLeafTarget(
     if (isLeafBlock(selected) && selected.parentId !== null) {
       const parent = doc[selected.parentId];
       if (parent !== undefined) {
-        // childrenIds is a per-container-type id union — widen for indexOf.
+        /*
+          childrenIds is a per-container-type id union — widen for indexOf.
+        */
         const siblingIds = parent.childrenIds as readonly BlockId[];
         return { parentId: parent.id, index: siblingIds.indexOf(selected.id) + 1 };
       }
@@ -194,7 +206,9 @@ function planColumnsAdd(args: {
   const { doc, columnCount, selected } = args;
   const target = resolveRowTarget(doc, selected);
   if (target === null) {
-    // No sections yet: one composite addSection op carrying the row subtree.
+    /*
+      No sections yet: one composite addSection op carrying the row subtree.
+    */
     const sectionId = generateUniqueBlockId({ type: "section", doc });
     const preset = createDefaultColumnsPreset({ columnCount, sectionId, doc });
     return {
@@ -219,11 +233,11 @@ function planColumnsAdd(args: {
   };
 }
 
-/**
- * Where a new row lands: after the selection's nearest ancestor-or-self that
- * sits directly in a section (leaf or row), appended into a selected
- * section, or appended to the last section. Null = no section exists.
- */
+/*
+  Where a new row lands: after the selection's nearest ancestor-or-self that
+  sits directly in a section (leaf or row), appended into a selected
+  section, or appended to the last section. Null = no section exists.
+*/
 function resolveRowTarget(
   doc: EmailDocument,
   selected: Block | undefined,

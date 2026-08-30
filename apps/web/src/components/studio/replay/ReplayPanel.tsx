@@ -27,27 +27,29 @@ import { describeValueTransition } from "../history/value-transition";
 import { registerReplayPanelOpener } from "./replay-handoff";
 import { useReplayTimeline } from "./use-replay-timeline";
 
-/** Playback rate: versions advanced per second at 1x. */
+/*
+  Playback rate: versions advanced per second at 1x.
+*/
 const BASE_VERSIONS_PER_SECOND = 2;
 
 type PlaybackSpeed = 1 | 2;
 
-/**
- * The "Replay" toolbar button + left-side drawer: the document's history
- * played back as a movie. A scrubber (0..head) drives a reconstructed
- * read-only preview via `getDocumentAtVersion` — the SAME path the History
- * panel's VersionPreview uses — so the live canvas underneath is never
- * touched and nothing here ever mutates.
- *
- * Scrubbing is intentionally un-debounced: every pointer move sets the
- * playhead immediately and renders from a warmed cache (useReplayTimeline
- * prefetches around the playhead; small histories are fully warmed at open).
- * On a cache miss the previous frame holds — the version label still tracks
- * the thumb — and the frame swaps in when the fetch lands.
- *
- * Playback walks version-by-version to head at ~2/sec (1x) or ~4/sec (2x),
- * stalling (not skipping) on an unwarmed frame, and stops at head.
- */
+/*
+  The "Replay" toolbar button + left-side drawer: the document's history
+  played back as a movie. A scrubber (0..head) drives a reconstructed
+  read-only preview via `getDocumentAtVersion` — the SAME path the History
+  panel's VersionPreview uses — so the live canvas underneath is never
+  touched and nothing here ever mutates.
+
+  Scrubbing is intentionally un-debounced: every pointer move sets the
+  playhead immediately and renders from a warmed cache (useReplayTimeline
+  prefetches around the playhead; small histories are fully warmed at open).
+  On a cache miss the previous frame holds — the version label still tracks
+  the thumb — and the frame swaps in when the fetch lands.
+
+  Playback walks version-by-version to head at ~2/sec (1x) or ~4/sec (2x),
+  stalling (not skipping) on an unwarmed frame, and stops at head.
+*/
 export function ReplayPanel() {
   const { isTimeTravelReplayEnabled } = useAppSettings();
   const documentId = useEditorStore((state) => state.documentId);
@@ -55,7 +57,9 @@ export function ReplayPanel() {
   const serverHeadVersion = useEditorStore((state) => state.serverHeadVersion);
 
   const [isOpen, setIsOpen] = useState(false);
-  /** Scrubber upper bound, frozen when the panel opens. */
+  /*
+    Scrubber upper bound, frozen when the panel opens.
+  */
   const [headVersionAtOpen, setHeadVersionAtOpen] = useState(0);
   const [playheadVersion, setPlayheadVersion] = useState(0);
   const [isPlaying, setIsPlaying] = useState(false);
@@ -85,27 +89,35 @@ export function ReplayPanel() {
     }
   };
 
-  // The far-away-surface entry point (replay-handoff.ts): the /demo narration
-  // opens this drawer for a visitor who has no idea the toolbar icon exists.
-  // Routed through handleOpenChange, not setIsOpen, so an externally opened
-  // panel gets the same freshly-frozen head version and reset playhead a
-  // clicked one does.
+  /*
+    The far-away-surface entry point (replay-handoff.ts): the /demo narration
+    opens this drawer for a visitor who has no idea the toolbar icon exists.
+    Routed through handleOpenChange, not setIsOpen, so an externally opened
+    panel gets the same freshly-frozen head version and reset playhead a
+    clicked one does.
+  */
   const handleOpenChangeRef = useRef(handleOpenChange);
-  // Synced in an effect, never during render (the React Compiler contract).
+  /*
+    Synced in an effect, never during render (the React Compiler contract).
+  */
   useEffect(() => {
     handleOpenChangeRef.current = handleOpenChange;
   });
   useEffect(() => registerReplayPanelOpener(() => handleOpenChangeRef.current(true)), []);
 
-  // Warm the prefetch window around the playhead on every move.
+  /*
+    Warm the prefetch window around the playhead on every move.
+  */
   useEffect(() => {
     if (isOpen) {
       prefetchAround(playheadVersion);
     }
   }, [isOpen, playheadVersion, prefetchAround]);
 
-  // The playback clock: advance one version per tick, but only when the next
-  // frame is already cached — stall (and warm it) instead of skipping.
+  /*
+    The playback clock: advance one version per tick, but only when the next
+    frame is already cached — stall (and warm it) instead of skipping.
+  */
   useEffect(() => {
     if (!isOpen || !isPlaying) {
       return;
@@ -134,7 +146,9 @@ export function ReplayPanel() {
       setIsPlaying(false);
       return;
     }
-    // Play from the top when already at the end (standard media behavior).
+    /*
+      Play from the top when already at the end (standard media behavior).
+    */
     if (playheadVersion >= headVersionAtOpen) {
       setPlayheadVersion(0);
     }
@@ -146,9 +160,11 @@ export function ReplayPanel() {
     setPlayheadVersion(nextVersion);
   };
 
-  // Render the exact frame when cached; otherwise hold the previous frame
-  // (the version label still tracks the thumb) until the fetch lands.
-  // Render-time setState is the sanctioned "adjust state from props" shape.
+  /*
+    Render the exact frame when cached; otherwise hold the previous frame
+    (the version label still tracks the thumb) until the fetch lands.
+    Render-time setState is the sanctioned "adjust state from props" shape.
+  */
   const exactDoc = getDocAtVersion(playheadVersion);
   const [lastShownDoc, setLastShownDoc] = useState<typeof exactDoc>(null);
   if (exactDoc !== null && exactDoc !== lastShownDoc) {
@@ -173,24 +189,32 @@ export function ReplayPanel() {
             getEntryByVersion: (version) => operationsByVersion?.get(version),
           })
         : null;
-  // The frame's before → after glance ("what just changed"), when it has one.
+  /*
+    The frame's before → after glance ("what just changed"), when it has one.
+  */
   const captionTransition =
     playheadVersion > 0 && currentEntry !== undefined
       ? describeValueTransition({ op: currentEntry.op, inverse: currentEntry.inverse })
       : null;
 
-  // Hidden unless enabled via the settings FAB (after the hooks above, per
-  // the rules of hooks). Unmounting also closes an open panel on disable.
+  /*
+    Hidden unless enabled via the settings FAB (after the hooks above, per
+    the rules of hooks). Unmounting also closes an open panel on disable.
+  */
   if (!isTimeTravelReplayEnabled) {
     return null;
   }
 
   return (
-    // disablePointerDismissal: replaying continues while the user clicks
-    // around the live canvas (and other panels) — close is the X or Escape.
+    /*
+      disablePointerDismissal: replaying continues while the user clicks
+      around the live canvas (and other panels) — close is the X or Escape.
+    */
     <Sheet open={isOpen} onOpenChange={handleOpenChange} modal={false} disablePointerDismissal>
-      {/* Tooltip + sheet trigger on ONE element (base-ui render composition)
-          — icon-only, so hover must say what it opens. */}
+      {/*
+        Tooltip + sheet trigger on ONE element (base-ui render composition)
+        — icon-only, so hover must say what it opens.
+      */}
       <TooltipProvider>
         <Tooltip>
           <TooltipTrigger
@@ -220,8 +244,10 @@ export function ReplayPanel() {
           </SheetDescription>
         </SheetHeader>
 
-        {/* scrollbar-visible: match the History preview pane — a tall email
-            must LOOK scrollable; draws nothing when it fits. */}
+        {/*
+          scrollbar-visible: match the History preview pane — a tall email
+          must LOOK scrollable; draws nothing when it fits.
+        */}
         <div
           className="scrollbar-visible min-h-0 flex-1 overflow-y-auto p-3"
           data-testid="replay-preview"

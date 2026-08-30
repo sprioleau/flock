@@ -41,18 +41,22 @@ function createBackend() {
 
 type Backend = ReturnType<typeof createBackend>;
 
-/** The browser's localStorage UUID — `authorId` for every history call. */
+/*
+  The browser's localStorage UUID — `authorId` for every history call.
+*/
 const BROWSER_SESSION_ID = "3f6b1c94-51a7-4a2e-9c3d-8b0e2f7a4d15";
-/** The AI SDK `Chat` instance id the chat panel stamps on agent ops. */
+/*
+  The AI SDK `Chat` instance id the chat panel stamps on agent ops.
+*/
 const CHAT_ID = "chat_7c1d";
 const GREEN = "#16a34a";
 
-/**
- * Exactly the provenance `use-flock-chat.ts` hands `store.dispatch` for a
- * content tool call, run through the store's own context builder — so this
- * test breaks if the chat panel's ops ever stop being owned by the session
- * that prompted them.
- */
+/*
+  Exactly the provenance `use-flock-chat.ts` hands `store.dispatch` for a
+  content tool call, run through the store's own context builder — so this
+  test breaks if the chat panel's ops ever stop being owned by the session
+  that prompted them.
+*/
 const AGENT_TURN_CONTEXT = buildDispatchContext({
   sessionAuthorId: BROWSER_SESSION_ID,
   provenance: {
@@ -72,7 +76,9 @@ async function seedDocument(t: Backend) {
   return documentId;
 }
 
-/** `root.properties.globals.paragraphTextColor` as the backend currently stores it. */
+/*
+  `root.properties.globals.paragraphTextColor` as the backend currently stores it.
+*/
 async function readParagraphColor({
   t,
   documentId,
@@ -215,7 +221,9 @@ describe("the agent's account of an undo matches what the undo did", () => {
     await t.mutation(api.history.undo, { documentId, authorId: BROWSER_SESSION_ID });
     const colorAfterUndo = await readParagraphColor({ t, documentId });
 
-    /* Nothing left on this session's stack — the owner's live case. */
+    /*
+      Nothing left on this session's stack — the owner's live case.
+    */
     const secondUndo = await t.mutation(api.history.undo, {
       documentId,
       authorId: BROWSER_SESSION_ID,
@@ -235,7 +243,9 @@ describe("the agent's account of an undo matches what the undo did", () => {
     expect(toolOutput.isStepped).toBe(false);
     expect(toolOutput).toMatchObject({ reason: "nothing_to_undo" });
     expect(toolOutput.note).toContain("Nothing was undone");
-    /* And the document is genuinely unchanged, so the report is the truth. */
+    /*
+      And the document is genuinely unchanged, so the report is the truth.
+    */
     expect(await readParagraphColor({ t, documentId })).toBe(colorAfterUndo);
   });
 

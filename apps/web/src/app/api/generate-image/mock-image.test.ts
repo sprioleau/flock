@@ -1,7 +1,9 @@
 import { describe, expect, it } from "vitest";
 import { createMockImagePng } from "./mock-image";
 
-/** Parse width/height out of the PNG's IHDR chunk (offsets 16 and 20). */
+/*
+  Parse width/height out of the PNG's IHDR chunk (offsets 16 and 20).
+*/
 function readPngDimensions(base64: string): { width: number; height: number } {
   const bytes = Buffer.from(base64, "base64");
   return { width: bytes.readUInt32BE(16), height: bytes.readUInt32BE(20) };
@@ -13,7 +15,9 @@ describe("createMockImagePng", () => {
     expect(mimeType).toBe("image/png");
     const bytes = Buffer.from(base64, "base64");
     expect([...bytes.subarray(0, 8)]).toEqual([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]);
-    // Default aspect ratio is 4:3 at 600px wide.
+    /*
+      Default aspect ratio is 4:3 at 600px wide.
+    */
     expect(readPngDimensions(base64)).toEqual({ width: 600, height: 450 });
   });
 

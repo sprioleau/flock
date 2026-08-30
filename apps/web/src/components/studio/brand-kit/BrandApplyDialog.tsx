@@ -17,23 +17,23 @@ import {
 } from "@/components/ui/dialog";
 import { useEditorStore } from "@/lib/editor-store";
 
-/**
- * The Figma-style brand propagation prompt (brand-kit architecture §5.2):
- * shown ONLY to the actor — after they bind a kit to the canvas, after they
- * save the bound kit (revision bump), or when they click a draft's "Updated
- * brand available" pill. Collaborators never see it unprompted; they see
- * pills (§6).
- *
- * Deliberate, destructive-action framing: binding/saving alone restyled
- * nothing; THIS confirm is what emits ops — one revertable batch per draft
- * through the one history spine. PRESERVE-VARIATION semantics (owner
- * decision 2): each updated draft keeps its variation identity when the kit
- * still offers it, falling back to the kit's first theme.
- *
- * `scopedDocumentId` null = the canvas-wide prompt ("Update all" / "Only the
- * active draft" / "Not now"); set = the pill's per-draft prompt ("Update
- * this draft" / "Update all" / "Dismiss").
- */
+/*
+  The Figma-style brand propagation prompt (brand-kit architecture §5.2):
+  shown ONLY to the actor — after they bind a kit to the canvas, after they
+  save the bound kit (revision bump), or when they click a draft's "Updated
+  brand available" pill. Collaborators never see it unprompted; they see
+  pills (§6).
+
+  Deliberate, destructive-action framing: binding/saving alone restyled
+  nothing; THIS confirm is what emits ops — one revertable batch per draft
+  through the one history spine. PRESERVE-VARIATION semantics (owner
+  decision 2): each updated draft keeps its variation identity when the kit
+  still offers it, falling back to the kit's first theme.
+
+  `scopedDocumentId` null = the canvas-wide prompt ("Update all" / "Only the
+  active draft" / "Not now"); set = the pill's per-draft prompt ("Update
+  this draft" / "Update all" / "Dismiss").
+*/
 export function BrandApplyDialog({
   isOpen,
   onOpenChange,
@@ -43,7 +43,9 @@ export function BrandApplyDialog({
   isOpen: boolean;
   onOpenChange: (isOpen: boolean) => void;
   scopedDocumentId?: Id<"documents"> | null;
-  /** The pill's Dismiss: hide the pill for this kit revision on this client. */
+  /*
+    The pill's Dismiss: hide the pill for this kit revision on this client.
+  */
   onDismissScopedDraft?: () => void;
 }) {
   const canvasId = useEditorStore((state) => state.canvasId);

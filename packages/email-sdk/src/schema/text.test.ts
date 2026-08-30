@@ -43,9 +43,13 @@ describe("textDocSchema — happy paths", () => {
           attrs: { textAlign: "right" },
           content: [{ type: "text", text: "Right paragraph" }],
         },
-        // Explicit left is meaningful (overrides a centered block default).
+        /*
+          Explicit left is meaningful (overrides a centered block default).
+        */
         { type: "paragraph", attrs: { textAlign: "left" } },
-        // Missing attrs = inherit the block's alignment (the pre-attr shape).
+        /*
+          Missing attrs = inherit the block's alignment (the pre-attr shape).
+        */
         { type: "paragraph", content: [{ type: "text", text: "Inherits" }] },
       ],
     };
@@ -228,8 +232,10 @@ describe("textDocSchema — email-safety rejections", () => {
       content: [{ type: "paragraph", attrs: { textAlign: "justify" } }],
     };
     expect(textDocSchema.safeParse(justified).success).toBe(false);
-    // Tiptap's "unaligned" spelling is attr null — normalize strips it to a
-    // missing attr before validation; the schema itself never accepts null.
+    /*
+      Tiptap's "unaligned" spelling is attr null — normalize strips it to a
+      missing attr before validation; the schema itself never accepts null.
+    */
     const nullAligned = {
       type: "doc",
       content: [{ type: "paragraph", attrs: { textAlign: null } }],

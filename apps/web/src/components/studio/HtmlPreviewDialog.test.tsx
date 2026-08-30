@@ -3,20 +3,20 @@ import { describe, expect, it } from "vitest";
 import { PreviewViewPanel, type RenderState } from "./HtmlPreviewDialog";
 import { PREVIEW_VIEWS, selectCopyText } from "./html-preview-client";
 
-/**
- * Which email the preview panel actually puts on screen for each tab.
- *
- * `html-preview-client.test.ts` pins the DECISIONS — which views exist, and
- * which string each view's Copy button lifts. What it cannot see is whether
- * the panel honours them: `prettyHtml` and `plainText` arrive in one object,
- * so a transposed pair would keep every clipboard test green while the Plain
- * text tab rendered HTML. That wiring is what this file holds down.
- *
- * There is no DOM here (vitest.config.ts pins `environment: "node"`), so the
- * panel is called as a plain function over its props and the element tree it
- * returns is walked. Scroll behaviour, monospace and the tab strip's
- * appearance are CSS and belong to the browser pass.
- */
+/*
+  Which email the preview panel actually puts on screen for each tab.
+
+  `html-preview-client.test.ts` pins the DECISIONS — which views exist, and
+  which string each view's Copy button lifts. What it cannot see is whether
+  the panel honours them: `prettyHtml` and `plainText` arrive in one object,
+  so a transposed pair would keep every clipboard test green while the Plain
+  text tab rendered HTML. That wiring is what this file holds down.
+
+  There is no DOM here (vitest.config.ts pins `environment: "node"`), so the
+  panel is called as a plain function over its props and the element tree it
+  returns is walked. Scroll behaviour, monospace and the tab strip's
+  appearance are CSS and belong to the browser pass.
+*/
 
 interface ElementWithProps extends ReactElement {
   props: Record<string, unknown>;
@@ -37,9 +37,11 @@ function collectElements(node: ReactNode): ElementWithProps[] {
     const element = current as ElementWithProps;
     found.push(element);
     visit(element.props.children as ReactNode);
-    /* Base UI composes a control by taking it as a `render` PROP rather than
-       as a child, so a children-only walker would report present controls as
-       absent — see DemoRunPanel.test.tsx for the full note. */
+    /*
+      Base UI composes a control by taking it as a `render` PROP rather than
+      as a child, so a children-only walker would report present controls as
+      absent — see DemoRunPanel.test.tsx for the full note.
+    */
     visit(element.props.render as ReactNode);
   };
   visit(node);
@@ -72,8 +74,10 @@ function visibleText(node: ReactNode): string {
   return parts.join(" ");
 }
 
-/* Three deliberately distinct strings: any test that passes by reading the
-   wrong field of this object is reading text it can be caught holding. */
+/*
+  Three deliberately distinct strings: any test that passes by reading the
+  wrong field of this object is reading text it can be caught holding.
+*/
 const RENDER = {
   html: "<html><body>minified send html</body></html>",
   prettyHtml: "<html>\n  <body>pretty source</body>\n</html>",
@@ -88,8 +92,10 @@ describe("the preview panel", () => {
     const iframe = findByTestId(tree, "html-preview-iframe");
 
     expect(iframe?.props.srcDoc).toBe(RENDER.html);
-    /* An empty sandbox is the whole reason arbitrary rendered email is safe to
-       put on screen; losing it would not fail any other assertion here. */
+    /*
+      An empty sandbox is the whole reason arbitrary rendered email is safe to
+      put on screen; losing it would not fail any other assertion here.
+    */
     expect(iframe?.props.sandbox).toBe("");
   });
 
@@ -122,9 +128,11 @@ describe("the preview panel", () => {
   });
 
   it("gives Copy the text the user is looking at, for every view that offers it", () => {
-    /* The bug this guards is a transposition: Copy lifting the OTHER view's
-       string still copies something, so only comparing against what is on
-       screen catches it. */
+    /*
+      The bug this guards is a transposition: Copy lifting the OTHER view's
+      string still copies something, so only comparing against what is on
+      screen catches it.
+    */
     for (const view of PREVIEW_VIEWS) {
       const copyText = selectCopyText({ view: view.id, render: RENDER });
       if (copyText === null) {
@@ -151,8 +159,10 @@ describe("the preview panel", () => {
   });
 
   it("keeps the tab panel addressable by the tab strip that controls it", () => {
-    /* The tabs carry aria-controls="html-preview-panel"; a renamed id here
-       would break the association silently for screen readers. */
+    /*
+      The tabs carry aria-controls="html-preview-panel"; a renamed id here
+      would break the association silently for screen readers.
+    */
     const tree = PreviewViewPanel({ renderState: OK_STATE, activeViewId: "text" });
     const panel = collectElements(tree)[0];
 

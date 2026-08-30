@@ -111,7 +111,9 @@ describe("what every card says", () => {
 
   it("counts the stop out of the real total", () => {
     const progress = findByTestId(renderCard(TOUR_STOPS[1]), "studio-tour-progress");
-    /* visibleText joins each text child with a space; collapse before comparing. */
+    /*
+      visibleText joins each text child with a space; collapse before comparing.
+    */
     expect(visibleText(progress).replace(/\s+/g, " ")).toBe(`2 of ${TOUR_STOP_COUNT}`);
   });
 

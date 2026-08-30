@@ -1,9 +1,9 @@
-/**
- * What happened to a recommendation, in user language (shared by the
- * recommendations modal rows and the facepile hover card): actionable ones
- * are Pending / Applied / Dismissed; advice that carries no ops is
- * Informational (there was never anything to apply).
- */
+/*
+  What happened to a recommendation, in user language (shared by the
+  recommendations modal rows and the facepile hover card): actionable ones
+  are Pending / Applied / Dismissed; advice that carries no ops is
+  Informational (there was never anything to apply).
+*/
 export function getRecommendationOutcome({
   status,
   isActionable,

@@ -1,46 +1,58 @@
 import type { Block, ColumnBlock, RowBlock } from "../schema/blocks";
 import { buildLeafBlock, type AllocateBlockId, type LeafSpec } from "./build-helpers";
 
-/**
- * `buildColumns` — the shared row/column assembler every multi-column
- * template reuses (feature grids, image galleries, stats rows, split
- * headers). Owns the widthPercent arithmetic: explicit widths must sum to
- * 100; omitted widths get an equal split that sums to exactly 100 for 2, 3,
- * or 4 columns (33.34/33.33/33.33-style rounding).
- */
+/*
+  `buildColumns` — the shared row/column assembler every multi-column
+  template reuses (feature grids, image galleries, stats rows, split
+  headers). Owns the widthPercent arithmetic: explicit widths must sum to
+  100; omitted widths get an equal split that sums to exactly 100 for 2, 3,
+  or 4 columns (33.34/33.33/33.33-style rounding).
+*/
 
 export interface ColumnSpec {
-  /**
-   * This column's share of the row width (1–100). Give it on EVERY column of
-   * the row or on NONE: all-omitted rows get an equal split.
-   */
+  /*
+    This column's share of the row width (1–100). Give it on EVERY column of
+    the row or on NONE: all-omitted rows get an equal split.
+  */
   widthPercent?: number;
-  /** Vertical alignment relative to sibling columns (structural, theme-free). */
+  /*
+    Vertical alignment relative to sibling columns (structural, theme-free).
+  */
   verticalAlign?: "top" | "middle" | "bottom";
-  /** The column's leaf blocks, top to bottom. */
+  /*
+    The column's leaf blocks, top to bottom.
+  */
   leaves: LeafSpec[];
 }
 
 export interface BuildColumnsInput {
-  /** Id of the section the new row belongs to. */
+  /*
+    Id of the section the new row belongs to.
+  */
   sectionId: string;
-  /** The row's columns, left to right. */
+  /*
+    The row's columns, left to right.
+  */
   columns: ColumnSpec[];
   allocateId: AllocateBlockId;
 }
 
 export interface BuildColumnsResult {
-  /** The new row's id — append it to the section's childrenIds. */
+  /*
+    The new row's id — append it to the section's childrenIds.
+  */
   rowId: string;
-  /** Row, then columns, then leaves — parentIds wired, root-first order. */
+  /*
+    Row, then columns, then leaves — parentIds wired, root-first order.
+  */
   blocks: Block[];
 }
 
-/**
- * Equal-split percentages that sum to EXACTLY 100: every column gets the
- * two-decimal floor of 100/count and the first column absorbs the remainder
- * (3 → 33.34 / 33.33 / 33.33).
- */
+/*
+  Equal-split percentages that sum to EXACTLY 100: every column gets the
+  two-decimal floor of 100/count and the first column absorbs the remainder
+  (3 → 33.34 / 33.33 / 33.33).
+*/
 export function computeEqualColumnWidths(count: number): number[] {
   if (!Number.isInteger(count) || count < 1) {
     throw new Error(`computeEqualColumnWidths: invalid column count ${count} — expected a positive integer.`);
@@ -52,7 +64,9 @@ export function computeEqualColumnWidths(count: number): number[] {
 
 const WIDTH_SUM_TOLERANCE = 0.01;
 
-/** Resolve the row's per-column widths (explicit-all or equal split). */
+/*
+  Resolve the row's per-column widths (explicit-all or equal split).
+*/
 function resolveColumnWidths(columns: ColumnSpec[]): number[] {
   const explicitWidths = columns.filter((column) => column.widthPercent !== undefined);
   if (explicitWidths.length === 0) {
@@ -73,7 +87,9 @@ function resolveColumnWidths(columns: ColumnSpec[]): number[] {
   return widths;
 }
 
-/** Build one row of columns: row + column blocks + leaves, parentIds wired. */
+/*
+  Build one row of columns: row + column blocks + leaves, parentIds wired.
+*/
 export function buildColumns({ sectionId, columns, allocateId }: BuildColumnsInput): BuildColumnsResult {
   if (columns.length < 2 || columns.length > 4) {
     throw new Error(

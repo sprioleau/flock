@@ -129,9 +129,13 @@ describe("checkEmailCompatibility", () => {
       }
     }
 
-    /* Nothing in the constant is dead: each entry is genuinely emitted here. */
+    /*
+      Nothing in the constant is dead: each entry is genuinely emitted here.
+    */
     expect([...RENDERER_EMITTED_FEATURES].sort()).toEqual([...rawTitles].sort());
-    /* And suppression fully explains the floor: an unstyled email is silent. */
+    /*
+      And suppression fully explains the floor: an unstyled email is silent.
+    */
     expect(await findingsFor(doc)).toEqual([]);
   });
 
@@ -163,8 +167,10 @@ describe("checkEmailCompatibility", () => {
     expect(findings[0]?.affectedClientLabels).toEqual(["Outlook (Windows)"]);
   });
 
-  /* The wart above, pinned so it cannot change unnoticed: if the renderer is
-     fixed to omit a zero radius, this test fails and says exactly why. */
+  /*
+    The wart above, pinned so it cannot change unnoticed: if the renderer is
+    fixed to omit a zero radius, this test fails and says exactly why.
+  */
   it("still reports a button whose radius is zero, because the renderer emits the declaration anyway", async () => {
     const square = buildDocument({ btn_a: buttonBlock("btn_a", { borderRadius: 0 }) });
 
@@ -235,7 +241,9 @@ describe("checkEmailCompatibility", () => {
 
     expect(hyphens).toHaveLength(1);
     expect(hyphens[0]?.affectedClients.length).toBeGreaterThan(1);
-    /* Sorted, deduplicated real client ids — every one from the checked set. */
+    /*
+      Sorted, deduplicated real client ids — every one from the checked set.
+    */
     expect(hyphens[0]?.affectedClients).toEqual([...hyphens[0]!.affectedClients].sort());
     for (const client of hyphens[0]?.affectedClients ?? []) {
       expect(CHECKED_EMAIL_CLIENTS).toContain(client);
@@ -258,7 +266,9 @@ describe("checkEmailCompatibility", () => {
     const clientCounts = findings.map((finding) => finding.affectedClients.length);
 
     expect(clientCounts).toEqual([...clientCounts].sort((left, right) => right - left));
-    /* The single-client button finding must not be first. */
+    /*
+      The single-client button finding must not be first.
+    */
     expect(findings[0]?.affectedClients.length).toBeGreaterThan(1);
   });
 
@@ -376,8 +386,10 @@ describe("checkEmailCompatibility on the real fixtures", () => {
 
     expect(findings.length).toBeGreaterThan(0);
     for (const finding of findings) {
-      /* Undefined would be honest but is not what this document produces —
-         every problem in it comes from a block, so every finding names one. */
+      /*
+        Undefined would be honest but is not what this document produces —
+        every problem in it comes from a block, so every finding names one.
+      */
       expect(finding.blockId).toBeDefined();
       expect(Object.keys(doc)).toContain(finding.blockId);
     }

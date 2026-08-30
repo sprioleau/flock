@@ -30,9 +30,11 @@
   as decided. The last step gates nothing: it ends in an exit.
 */
 
-/* Stable ids as a union rather than `string`, so the ordering helpers, the
-   gating switch and the component's per-step rendering are all compiler-
-   checked — the same discipline tour-stops.ts uses for TourStopId. */
+/*
+  Stable ids as a union rather than `string`, so the ordering helpers, the
+  gating switch and the component's per-step rendering are all compiler-
+  checked — the same discipline tour-stops.ts uses for TourStopId.
+*/
 export type DemoStepId = "watch" | "recommendations" | "comments";
 
 /*
@@ -59,19 +61,27 @@ export type DemoCanvasRegion = "upper" | "lower";
   call to action (observed in the browser, 2026-08-18).
 */
 
-/* Where the card docks. Always on the right: the chat panel is on the LEFT of
-   the studio row and the recommendation cards land inside it, so a
-   left-docked card would sit beside (and, on a narrow window, over) the very
-   surface step 2 points at. */
+/*
+  Where the card docks. Always on the right: the chat panel is on the LEFT of
+  the studio row and the recommendation cards land inside it, so a
+  left-docked card would sit beside (and, on a narrow window, over) the very
+  surface step 2 points at.
+*/
 export type DemoCardDock = "upper-right" | "lower-right";
 
 export interface DemoStep {
   id: DemoStepId;
-  /* The card's heading — what the visitor is about to watch, in their terms. */
+  /*
+    The card's heading — what the visitor is about to watch, in their terms.
+  */
   title: string;
-  /* Two sentences at most: what is happening, and why it is worth a look. */
+  /*
+    Two sentences at most: what is happening, and why it is worth a look.
+  */
   body: string;
-  /* See DemoCanvasRegion. The dock is derived from this, never set by hand. */
+  /*
+    See DemoCanvasRegion. The dock is derived from this, never set by hand.
+  */
   subjectRegion: DemoCanvasRegion;
 }
 
@@ -90,8 +100,10 @@ export const DEMO_STEPS: readonly DemoStep[] = [
     id: "watch",
     title: "Two agents are reading your email",
     body: "They take turns instead of talking over each other. Watch each one move on the canvas, then post what it found.",
-    /* Both personas dwell on the blocks they are judging, and both of those
-       are in the lower half of the seed email. */
+    /*
+      Both personas dwell on the blocks they are judging, and both of those
+      are in the lower half of the seed email.
+    */
     subjectRegion: "lower",
   },
   {
@@ -104,65 +116,81 @@ export const DEMO_STEPS: readonly DemoStep[] = [
     id: "comments",
     title: "Now answer one back",
     body: "Pick something to say about the hero button. It becomes a real comment on the canvas, and the agent replies in the thread.",
-    /* The pin goes on the hero CTA, and its thread popover opens below it —
-       so the band to keep clear is the lower one, same as the other two. */
+    /*
+      The pin goes on the hero CTA, and its thread popover opens below it —
+      so the band to keep clear is the lower one, same as the other two.
+    */
     subjectRegion: "lower",
   },
 ];
 
 export const DEMO_STEP_COUNT = DEMO_STEPS.length;
 
-/** The step a fresh visit opens on. */
+/*
+  The step a fresh visit opens on.
+*/
 export const FIRST_DEMO_STEP_ID: DemoStepId = "watch";
 
-/**
- * The step for an id. Total rather than partial: DemoStepId is a closed union
- * over DEMO_STEPS, so a miss is impossible — and returning the first step
- * rather than `undefined` keeps every caller free of a branch that can never
- * be taken.
- */
+/*
+  The step for an id. Total rather than partial: DemoStepId is a closed union
+  over DEMO_STEPS, so a miss is impossible — and returning the first step
+  rather than `undefined` keeps every caller free of a branch that can never
+  be taken.
+*/
 export function findDemoStep(stepId: DemoStepId): DemoStep {
   return DEMO_STEPS.find((step) => step.id === stepId) ?? DEMO_STEPS[0]!;
 }
 
-/** 1-based position, for the "Step 2 of 3" counter. */
+/*
+  1-based position, for the "Step 2 of 3" counter.
+*/
 export function getDemoStepNumber(stepId: DemoStepId): number {
   return DEMO_STEPS.findIndex((step) => step.id === stepId) + 1;
 }
 
-/** The step after this one, or null when this is the last. */
+/*
+  The step after this one, or null when this is the last.
+*/
 export function getNextDemoStepId(stepId: DemoStepId): DemoStepId | null {
   return DEMO_STEPS[getDemoStepNumber(stepId)]?.id ?? null;
 }
 
-/** The step before this one, or null when this is the first. */
+/*
+  The step before this one, or null when this is the first.
+*/
 export function getPreviousDemoStepId(stepId: DemoStepId): DemoStepId | null {
   return DEMO_STEPS[getDemoStepNumber(stepId) - 2]?.id ?? null;
 }
 
-/**
- * Where the card sits while this step is on screen: the half of the canvas the
- * step is NOT talking about.
- *
- * Derived rather than declared, so a step whose subject moves cannot keep a
- * dock that now covers it — the one failure this rule exists to prevent.
- *
- * ALL THREE STEPS RESOLVE TO `upper-right` TODAY, and that is a fact about the
- * seed email rather than a sign the rule is idle: everything worth watching in
- * it — the shouted paragraph, the drifted second CTA, and the comment thread
- * hanging under the hero button's pin — is in the lower band of a first
- * screen, so there is exactly one place a card can stand without being in the
- * way. The derivation earns its keep the moment a step is added whose subject
- * is not (the brand kit, the footer, a header block), which is precisely when
- * a hand-set dock would quietly start covering it.
- */
+/*
+  Where the card sits while this step is on screen: the half of the canvas the
+  step is NOT talking about.
+
+  Derived rather than declared, so a step whose subject moves cannot keep a
+  dock that now covers it — the one failure this rule exists to prevent.
+
+  ALL THREE STEPS RESOLVE TO `upper-right` TODAY, and that is a fact about the
+  seed email rather than a sign the rule is idle: everything worth watching in
+  it — the shouted paragraph, the drifted second CTA, and the comment thread
+  hanging under the hero button's pin — is in the lower band of a first
+  screen, so there is exactly one place a card can stand without being in the
+  way. The derivation earns its keep the moment a step is added whose subject
+  is not (the brand kit, the footer, a header block), which is precisely when
+  a hand-set dock would quietly start covering it.
+*/
 export function selectDemoCardDock(step: DemoStep): DemoCardDock {
   return step.subjectRegion === "upper" ? "lower-right" : "upper-right";
 }
 
-/* ------------------------------------------------------------------ */
-/* Step 3: the comment script                                          */
-/* ------------------------------------------------------------------ */
+/*
+  ------------------------------------------------------------------
+*/
+/*
+  Step 3: the comment script
+*/
+/*
+  ------------------------------------------------------------------
+*/
 
 /*
   WHY A MULTIPLE CHOICE AT ALL (owner ask). Comments mode is a round trip —
@@ -175,24 +203,26 @@ export function selectDemoCardDock(step: DemoStep): DemoCardDock {
   pipeline — the standard the rest of /demo already holds to.
 */
 
-/**
- * The block the demo's comment is anchored to: the hero CTA of the seed email
- * (packages/email-sdk demo-document.ts).
- *
- * A BUTTON, deliberately, and this is load-bearing rather than aesthetic. A
- * comment-fix turn resolves to `updateBlockProperties` against the block the
- * canvas has SELECTED, and the edit it makes is a label — which only a button
- * has. Anchoring the demo's comment to a paragraph would dispatch a real turn
- * that proposed an invalid edit and degraded to a failure chip in front of a
- * visitor. The hero CTA is also the one button the visitor has certainly
- * already looked at, and it is in the half of the email the card does not
- * cover on this step.
- */
+/*
+  The block the demo's comment is anchored to: the hero CTA of the seed email
+  (packages/email-sdk demo-document.ts).
+
+  A BUTTON, deliberately, and this is load-bearing rather than aesthetic. A
+  comment-fix turn resolves to `updateBlockProperties` against the block the
+  canvas has SELECTED, and the edit it makes is a label — which only a button
+  has. Anchoring the demo's comment to a paragraph would dispatch a real turn
+  that proposed an invalid edit and degraded to a failure chip in front of a
+  visitor. The hero CTA is also the one button the visitor has certainly
+  already looked at, and it is in the half of the email the card does not
+  cover on this step.
+*/
 export const DEMO_COMMENT_TARGET_BLOCK_ID = "btn_prim";
 
 export interface DemoCommentChoice {
   id: string;
-  /* What the visitor presses. */
+  /*
+    What the visitor presses.
+  */
   label: string;
   /*
     What is actually written to the comments row — the reviewer's words, in
@@ -230,7 +260,9 @@ export const DEMO_COMMENT_CHOICES: readonly DemoCommentChoice[] = [
   },
 ];
 
-/** The chosen option, or undefined before one is picked. */
+/*
+  The chosen option, or undefined before one is picked.
+*/
 export function findDemoCommentChoice(choiceId: string | null): DemoCommentChoice | undefined {
   return DEMO_COMMENT_CHOICES.find((choice) => choice.id === choiceId);
 }
@@ -251,7 +283,9 @@ export function selectDemoCommentPhase({
   threadAuthorKinds,
 }: {
   chosenChoiceId: string | null;
-  /* The real thread's authors, oldest first; null while the row is loading. */
+  /*
+    The real thread's authors, oldest first; null while the row is loading.
+  */
   threadAuthorKinds: readonly ("user" | "agent")[] | null;
 }): DemoCommentPhase {
   if (chosenChoiceId === null) {
@@ -263,23 +297,35 @@ export function selectDemoCommentPhase({
   return "awaiting-agent";
 }
 
-/* ------------------------------------------------------------------ */
-/* Gating                                                              */
-/* ------------------------------------------------------------------ */
+/*
+  ------------------------------------------------------------------
+*/
+/*
+  Gating
+*/
+/*
+  ------------------------------------------------------------------
+*/
 
-/** Everything the gates read, gathered from the live surfaces by the panel. */
+/*
+  Everything the gates read, gathered from the live surfaces by the panel.
+*/
 export interface DemoStepProgress {
-  /* Both agent turns have reported in (completed OR failed — demo-turns.ts). */
+  /*
+    Both agent turns have reported in (completed OR failed — demo-turns.ts).
+  */
   isRunFinished: boolean;
-  /* Recommendations still waiting for the visitor to accept or dismiss. */
+  /*
+    Recommendations still waiting for the visitor to accept or dismiss.
+  */
   undecidedRecommendationCount: number;
   commentPhase: DemoCommentPhase;
 }
 
-/**
- * Has this step's work been done? Drives how prominent Next is — and, for
- * every step that has one, whether Next may be pressed at all.
- */
+/*
+  Has this step's work been done? Drives how prominent Next is — and, for
+  every step that has one, whether Next may be pressed at all.
+*/
 export function selectIsDemoStepComplete({
   stepId,
   progress,
@@ -303,26 +349,26 @@ export function selectIsDemoStepComplete({
   }
 }
 
-/**
- * Is the demo waiting on the VISITOR to act right now?
- *
- * Drives the canvas dim in DemoRunPanel: when this is true the card is the
- * thing to press, so the canvas behind it steps back a shade and stops
- * competing for the eye. It answers a question about ATTENTION, never about
- * permission — nothing is blocked either way (the scrim swallows no clicks).
- *
- * THIS IS NOT `!selectIsDemoStepComplete`, and the gap between the two is the
- * entire reason it exists rather than being folded into that one. Step 1 is
- * incomplete for the whole time the two agents are running — but the visitor
- * is not what it is waiting on there, the AGENTS are, and watching them move
- * across the canvas is the headline moment the demo was built to show. Dimming
- * it would hide the product at the one beat it is showing off. So step 1
- * awaits the visitor NEVER, finished or not; the other two await only while
- * their decision is genuinely still outstanding.
- *
- * No clock here either, same as everything else in this module: each answer is
- * a pure function of state that a click already changed.
- */
+/*
+  Is the demo waiting on the VISITOR to act right now?
+
+  Drives the canvas dim in DemoRunPanel: when this is true the card is the
+  thing to press, so the canvas behind it steps back a shade and stops
+  competing for the eye. It answers a question about ATTENTION, never about
+  permission — nothing is blocked either way (the scrim swallows no clicks).
+
+  THIS IS NOT `!selectIsDemoStepComplete`, and the gap between the two is the
+  entire reason it exists rather than being folded into that one. Step 1 is
+  incomplete for the whole time the two agents are running — but the visitor
+  is not what it is waiting on there, the AGENTS are, and watching them move
+  across the canvas is the headline moment the demo was built to show. Dimming
+  it would hide the product at the one beat it is showing off. So step 1
+  awaits the visitor NEVER, finished or not; the other two await only while
+  their decision is genuinely still outstanding.
+
+  No clock here either, same as everything else in this module: each answer is
+  a pure function of state that a click already changed.
+*/
 export function selectIsDemoAwaitingVisitor({
   stepId,
   progress,
@@ -358,13 +404,13 @@ export function selectIsDemoAwaitingVisitor({
   }
 }
 
-/**
- * May the visitor leave this step right now?
- *
- * False on the last step for the obvious reason (there is nowhere to go), and
- * false on an unfinished step for the one in the module header: the next step
- * would have nothing on it yet.
- */
+/*
+  May the visitor leave this step right now?
+
+  False on the last step for the obvious reason (there is nowhere to go), and
+  false on an unfinished step for the one in the module header: the next step
+  would have nothing on it yet.
+*/
 export function selectCanAdvanceDemoStep({
   stepId,
   progress,

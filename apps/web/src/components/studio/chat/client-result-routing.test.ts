@@ -25,7 +25,9 @@ const CLIENT_RESULT_ACTION_NAMES = emailActionRegistry.actions
 
 describe("client-result tool routing", () => {
   it("is derived from a registry that actually declares some", () => {
-    /* Guards the census below against passing over an empty list. */
+    /*
+      Guards the census below against passing over an empty list.
+    */
     expect(CLIENT_RESULT_ACTION_NAMES).toEqual([
       "undo",
       "redo",

@@ -26,18 +26,20 @@ import {
   type ClearContentStore,
 } from "./clear-content-client";
 
-/**
- * The clear as the editor performs it: which ops leave, under whose name, and
- * what the surface is told afterwards. The SDK's own suite owns WHAT a clear
- * does to each block type; this one owns the dispatch contract.
- */
+/*
+  The clear as the editor performs it: which ops leave, under whose name, and
+  what the surface is told afterwards. The SDK's own suite owns WHAT a clear
+  does to each block type; this one owns the dispatch contract.
+*/
 
 interface RecordedDispatch {
   operation: Operation;
   provenance: DispatchProvenance;
 }
 
-/** A store stub that applies ops for real, so the recorded doc is honest. */
+/*
+  A store stub that applies ops for real, so the recorded doc is honest.
+*/
 function createStoreStub(
   document: EmailDocument = createSampleDocument(),
   options: { failAt?: number } = {},

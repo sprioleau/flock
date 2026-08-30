@@ -16,7 +16,9 @@ import {
 } from "@/lib/brand-kit";
 import { cn } from "@/lib/utils";
 
-/** What the editor hands back — provenance is stamped server-side. */
+/*
+  What the editor hands back — provenance is stamped server-side.
+*/
 export interface BrandVoiceDraft {
   descriptors: string[];
   formality?: BrandVoiceFormality;
@@ -35,14 +37,16 @@ const FORMALITY_OPTIONS: { value: BrandVoiceFormality | ""; label: string }[] = 
 const SELECT_CLASSNAME =
   "h-8 rounded-lg border border-input bg-transparent px-2 text-sm outline-none focus-visible:border-ring";
 
-/** Longest brand name shown inside an option label before it is trimmed. */
+/*
+  Longest brand name shown inside an option label before it is trimmed.
+*/
 const MAX_NAME_IN_OPTION_LENGTH = 24;
 
-/**
- * The "talks about itself as" choice, in the brand's own words: "We" versus
- * the brand's actual name — which is the real question, and the reason the
- * old "Refers to itself as / first-person-plural" labels had to go.
- */
+/*
+  The "talks about itself as" choice, in the brand's own words: "We" versus
+  the brand's actual name — which is the real question, and the reason the
+  old "Refers to itself as / first-person-plural" labels had to go.
+*/
 function getPersonOptions(brandName: string): { value: BrandVoicePerson | ""; label: string }[] {
   const trimmedName = brandName.trim();
   const nameLabel =
@@ -58,7 +62,9 @@ function getPersonOptions(brandName: string): { value: BrandVoicePerson | ""; la
   ];
 }
 
-/** Comma-separated text ⇄ list of trimmed entries (the least-friction editor). */
+/*
+  Comma-separated text ⇄ list of trimmed entries (the least-friction editor).
+*/
 function parseList({ text, maxEntries }: { text: string; maxEntries: number }): string[] {
   return text
     .split(",")
@@ -67,33 +73,35 @@ function parseList({ text, maxEntries }: { text: string; maxEntries: number }): 
     .slice(0, maxEntries);
 }
 
-/**
- * Tone of voice (brand-kit-user-control §5, relabelled by brand-kit-v2 §4) —
- * "so the agent knows how to write". Coarse axes plus the freeform space that
- * actually carries nuance; deliberately not twelve sliders nobody fills in.
- *
- * Every label here is something a non-technical person reads, so none of them
- * is a linguistics term: "Sounds like" is a set of words to pick from (not a
- * blank box that invites a paragraph), "How formal" replaced "Register", and
- * "Talks about itself as" offers "We" or the brand's own name instead of
- * "first-person-plural".
- *
- * Everything here is optional and every field is editable whether the agent
- * proposed it or not. Clearing the whole thing (the Clear action in the panel)
- * hands the field back to the next scrape.
- *
- * The words chosen here reach the model as a DELIMITED DATA BLOCK, never as
- * instructions to it (lib/brand-voice.ts) — the copy under the field says so,
- * because "guidance the agent reads" is a reasonable thing for a user to
- * wonder about.
- */
+/*
+  Tone of voice (brand-kit-user-control §5, relabelled by brand-kit-v2 §4) —
+  "so the agent knows how to write". Coarse axes plus the freeform space that
+  actually carries nuance; deliberately not twelve sliders nobody fills in.
+
+  Every label here is something a non-technical person reads, so none of them
+  is a linguistics term: "Sounds like" is a set of words to pick from (not a
+  blank box that invites a paragraph), "How formal" replaced "Register", and
+  "Talks about itself as" offers "We" or the brand's own name instead of
+  "first-person-plural".
+
+  Everything here is optional and every field is editable whether the agent
+  proposed it or not. Clearing the whole thing (the Clear action in the panel)
+  hands the field back to the next scrape.
+
+  The words chosen here reach the model as a DELIMITED DATA BLOCK, never as
+  instructions to it (lib/brand-voice.ts) — the copy under the field says so,
+  because "guidance the agent reads" is a reasonable thing for a user to
+  wonder about.
+*/
 export function BrandVoiceEditor({
   brandName,
   toneOfVoice,
   isBusy,
   onCommit,
 }: {
-  /** The kit's name — it is one of the "talks about itself as" options. */
+  /*
+    The kit's name — it is one of the "talks about itself as" options.
+  */
   brandName: string;
   toneOfVoice: BrandToneOfVoice | undefined;
   isBusy: boolean;
@@ -109,16 +117,20 @@ export function BrandVoiceEditor({
   );
   const [person, setPerson] = useState<BrandVoicePerson | "">(() => toneOfVoice?.person ?? "");
 
-  // Reseed whenever the stored voice changes (save, re-scrape, another tab).
-  // Compared by value, not identity: `toneOfVoice` is rebuilt on every Convex
-  // update even when nothing about it differs, and reseeding on identity would
-  // wipe whatever the user is halfway through typing.
+  /*
+    Reseed whenever the stored voice changes (save, re-scrape, another tab).
+    Compared by value, not identity: `toneOfVoice` is rebuilt on every Convex
+    update even when nothing about it differs, and reseeding on identity would
+    wipe whatever the user is halfway through typing.
+  */
   //
-  // Adjusted DURING RENDER, not in an effect. React discards the in-progress
-  // render and re-runs with the new state before painting, so the fields never
-  // flash the previous kit's voice — which is exactly what an effect would do,
-  // and what react-hooks/set-state-in-effect flags. The fields above also seed
-  // themselves, so the first paint is correct without any resync at all.
+  /*
+    Adjusted DURING RENDER, not in an effect. React discards the in-progress
+    render and re-runs with the new state before painting, so the fields never
+    flash the previous kit's voice — which is exactly what an effect would do,
+    and what react-hooks/set-state-in-effect flags. The fields above also seed
+    themselves, so the first paint is correct without any resync at all.
+  */
   const serializedTone = JSON.stringify(toneOfVoice ?? null);
   const [seededFrom, setSeededFrom] = useState(serializedTone);
   if (seededFrom !== serializedTone) {
@@ -144,11 +156,13 @@ export function BrandVoiceEditor({
     };
   };
 
-  /** Toggle one word on/off and save immediately — no Save button, no debounce. */
+  /*
+    Toggle one word on/off and save immediately — no Save button, no debounce.
+  */
   const toggleDescriptor = (descriptor: string): void => {
     const nextDescriptors = toggleBrandVoiceDescriptor({ selected: descriptors, descriptor });
     if (nextDescriptors === descriptors) {
-      return; // At the cap and this word isn't selected — nothing to save.
+      return; /* At the cap and this word isn't selected — nothing to save. */
     }
     setDescriptors(nextDescriptors);
     onCommit(buildDraft({ descriptors: nextDescriptors }));

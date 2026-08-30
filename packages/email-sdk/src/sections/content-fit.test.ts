@@ -13,7 +13,9 @@ import { createSampleDocument } from "../store/document";
 import { checkDocumentIntegrity } from "../store/integrity";
 import { z } from "zod";
 
-/** Deterministic LCG so ids stay stable when a template is built here. */
+/*
+  Deterministic LCG so ids stay stable when a template is built here.
+*/
 function createSeededRandom(seed = 7): RandomFn {
   let state = seed;
   return () => {
@@ -22,12 +24,16 @@ function createSeededRandom(seed = 7): RandomFn {
   };
 }
 
-/** The param names one template's schema accepts. */
+/*
+  The param names one template's schema accepts.
+*/
 function getParamKeys(template: SectionTemplate): string[] {
   return [...(getTemplateParamKeys(template.paramsSchema) ?? [])];
 }
 
-/** A parsed params object as a plain record, without widening anything away. */
+/*
+  A parsed params object as a plain record, without widening anything away.
+*/
 function toParamRecord(value: unknown): Record<string, unknown> {
   if (typeof value !== "object" || value === null) {
     throw new Error("expected a params object");

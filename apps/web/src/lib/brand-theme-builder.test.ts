@@ -37,10 +37,14 @@ import {
 
 const FONTS = { heading: "Georgia, serif", body: "Helvetica, sans-serif" };
 
-/* Ink / white / banana / indigo: a normal brand palette with real contrast. */
+/*
+  Ink / white / banana / indigo: a normal brand palette with real contrast.
+*/
 const PALETTE = ["#0b1120", "#ffffff", "#ffc400", "#3730a3"];
 
-/* Three close mid-greys: nothing in it pairs at 4.5:1 with anything else. */
+/*
+  Three close mid-greys: nothing in it pairs at 4.5:1 with anything else.
+*/
 const MONOCHROME_PALETTE = ["#808080", "#8a8a8a", "#757575"];
 
 function paletteColor(hex: string, name: string): BrandColor {
@@ -68,8 +72,12 @@ describe("getEligibleTextColors — the filter that replaces refusal", () => {
         MIN_THEME_CONTRAST_RATIO,
       );
     }
-    /* Banana on white is ~1.6:1 — the exact combination a user would have */
-    /* picked and then been refused for. */
+    /*
+      Banana on white is ~1.6:1 — the exact combination a user would have
+    */
+    /*
+      picked and then been refused for.
+    */
     expect(eligible).not.toContain("#ffc400");
     expect(eligible).toContain("#0b1120");
   });
@@ -331,7 +339,9 @@ describe("editing an existing theme (§14.5b)", () => {
   });
 
   it("keeps THIS theme's button shape when its colors change", () => {
-    /* Warm Sand has pill buttons; a color edit must not square them off. */
+    /*
+      Warm Sand has pill buttons; a color edit must not square them off.
+    */
     const edited = buildEditedThemeVariation({
       variation: WARM_SAND,
       name: WARM_SAND.name,
@@ -367,8 +377,10 @@ describe("editing an existing theme (§14.5b)", () => {
     expect(merged).toContain(roles.headingText);
     expect(merged).toContain(roles.paragraphText);
     expect(merged).toContain(roles.accent);
-    /* And the current background survives the eligibility filter, so the form
-       opens on a real, legible, saveable combination. */
+    /*
+      And the current background survives the eligibility filter, so the form
+      opens on a real, legible, saveable combination.
+    */
     expect(getEligibleThemeBackgrounds(merged)).toContain(roles.contentBackground);
     expect(
       getEligibleTextColors({ background: roles.contentBackground, paletteHexes: merged }),

@@ -1,23 +1,23 @@
-/**
- * The scrape's AUTHORED palette (docs/proposals/brand-kit-user-control.md §3):
- * turn harvested colors plus the model's naming/categorization into
- * `BrandColor[]` — named, categorized entries a human can then edit.
- *
- * The owner's `--banana` idea lands here. `harvest.ts` already captures the
- * CSS custom property each color was declared as, and the prompt already shows
- * it to the model; the only thing missing was somewhere to PUT the name. Now
- * there is, and the name resolution is a three-rung ladder that always
- * terminates (lib/brand-kit.ts `resolveBrandColorName`):
- *   model's proposal → derived from `--banana` → a description of the color.
- *
- * FAITHFULNESS, same rule the logo pick follows: a color the model proposes
- * must appear VERBATIM in the harvested signals, or it is dropped. The model
- * names and categorizes; it never introduces a color the site doesn't use.
- *
- * CARDINALITY (§3.3): 2 primary / 2 secondary / 2 accent is a TARGET the
- * deterministic fill aims at and stops early rather than pads. A monochrome
- * brand gets three colors and no empty slots.
- */
+/*
+  The scrape's AUTHORED palette (docs/proposals/brand-kit-user-control.md §3):
+  turn harvested colors plus the model's naming/categorization into
+  `BrandColor[]` — named, categorized entries a human can then edit.
+
+  The owner's `--banana` idea lands here. `harvest.ts` already captures the
+  CSS custom property each color was declared as, and the prompt already shows
+  it to the model; the only thing missing was somewhere to PUT the name. Now
+  there is, and the name resolution is a three-rung ladder that always
+  terminates (lib/brand-kit.ts `resolveBrandColorName`):
+    model's proposal → derived from `--banana` → a description of the color.
+
+  FAITHFULNESS, same rule the logo pick follows: a color the model proposes
+  must appear VERBATIM in the harvested signals, or it is dropped. The model
+  names and categorizes; it never introduces a color the site doesn't use.
+
+  CARDINALITY (§3.3): 2 primary / 2 secondary / 2 accent is a TARGET the
+  deterministic fill aims at and stops early rather than pads. A monochrome
+  brand gets three colors and no empty slots.
+*/
 
 import {
   MAX_BRAND_COLORS,
@@ -29,7 +29,9 @@ import {
 import { buildBrandColorId, renumberBrandColors } from "@/lib/brand-kit-reconcile";
 import type { RankedColor } from "./harvest";
 
-/** What the model proposes per color: naming and role, never a new color. */
+/*
+  What the model proposes per color: naming and role, never a new color.
+*/
 export interface ModelBrandColor {
   hex: string;
   name: string;
@@ -45,7 +47,9 @@ function normalizeHex(hex: string): string | null {
   return `#${full.toLowerCase()}`;
 }
 
-/** Harvest provenance for one color, when the scrape saw it declared. */
+/*
+  Harvest provenance for one color, when the scrape saw it declared.
+*/
 function findHarvestProvenance({
   hex,
   rankedColors,
@@ -63,12 +67,12 @@ function findHarvestProvenance({
   };
 }
 
-/**
- * The deterministic palette, used when the model proposed nothing usable and
- * to top up a thin one. Accents come from the high-chroma candidate list (the
- * harvester's own "these are signature accents" signal); primaries and
- * secondaries come off the prominence ranking in order.
- */
+/*
+  The deterministic palette, used when the model proposed nothing usable and
+  to top up a thin one. Accents come from the high-chroma candidate list (the
+  harvester's own "these are signature accents" signal); primaries and
+  secondaries come off the prominence ranking in order.
+*/
 function buildDeterministicColors({
   rankedColors,
   accentCandidates,
@@ -111,8 +115,10 @@ function buildDeterministicColors({
       sourceUsageCount: ranked.count,
     });
   };
-  // Accents first: the harvester singled them out, and they are the colors a
-  // brand is actually recognized by.
+  /*
+    Accents first: the harvester singled them out, and they are the colors a
+    brand is actually recognized by.
+  */
   for (const candidate of accentCandidates) {
     take({ ranked: candidate, category: "accent" });
   }
@@ -129,11 +135,11 @@ function buildDeterministicColors({
   return results;
 }
 
-/**
- * Build the kit's authored palette. Model proposals lead (they carry the
- * names and the human-legible categories); the deterministic pass fills what
- * is missing so a kit always ships with SOME named palette.
- */
+/*
+  Build the kit's authored palette. Model proposals lead (they carry the
+  names and the human-legible categories); the deterministic pass fills what
+  is missing so a kit always ships with SOME named palette.
+*/
 export function buildBrandColors({
   modelColors,
   rankedColors,
@@ -153,7 +159,9 @@ export function buildBrandColors({
   const fromModel: BrandColor[] = [];
   for (const proposal of modelColors) {
     const hex = normalizeHex(proposal.hex);
-    // Faithfulness: the model may name and categorize, never introduce.
+    /*
+      Faithfulness: the model may name and categorize, never introduce.
+    */
     if (hex === null || claimed.has(hex) || !harvestedHexes.has(hex)) {
       continue;
     }

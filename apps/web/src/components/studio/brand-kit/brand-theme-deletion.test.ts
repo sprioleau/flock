@@ -7,24 +7,24 @@ import type { Id } from "@convex/_generated/dataModel";
 import schema from "@convex/schema";
 import { MAX_BRAND_KIT_VARIATIONS, MOCK_BRAND_KIT } from "@/lib/brand-kit";
 
-/**
- * SOFT THEME DELETION (docs/proposals/brand-kit-user-control.md §14.5b),
- * end to end through the real Convex functions.
- *
- * The pure planner has its own suite in `lib/brand-theme-lifecycle.test.ts`.
- * What only this file can prove is the property the whole decision rests on and
- * the four exclusions that make an unlink an unlink:
- *
- * - DELETING A THEME RESTYLES NOTHING. The draft that was rendering it renders
- *   the identical bytes afterwards — this is the assertion that would fail if
- *   anyone ever made deletion touch a document.
- * - The draft is UNLINKED: parentless (`never-applied`), not "overridden
- *   against a theme that no longer exists".
- * - A deleted theme is gone from the kit reads the dropdown is built from, is
- *   never a propagation target, and does not count against the 8-theme cap.
- * - Restoring re-links the draft — with its own overrides intact — again
- *   without writing to a document.
- */
+/*
+  SOFT THEME DELETION (docs/proposals/brand-kit-user-control.md §14.5b),
+  end to end through the real Convex functions.
+
+  The pure planner has its own suite in `lib/brand-theme-lifecycle.test.ts`.
+  What only this file can prove is the property the whole decision rests on and
+  the four exclusions that make an unlink an unlink:
+
+  - DELETING A THEME RESTYLES NOTHING. The draft that was rendering it renders
+    the identical bytes afterwards — this is the assertion that would fail if
+    anyone ever made deletion touch a document.
+  - The draft is UNLINKED: parentless (`never-applied`), not "overridden
+    against a theme that no longer exists".
+  - A deleted theme is gone from the kit reads the dropdown is built from, is
+    never a propagation target, and does not count against the 8-theme cap.
+  - Restoring re-links the draft — with its own overrides intact — again
+    without writing to a document.
+*/
 
 const modules = import.meta.glob([
   "../../../../../../convex/**/*.{ts,js}",
@@ -40,7 +40,9 @@ function createBackend() {
 
 type Backend = ReturnType<typeof createBackend>;
 
-/** Two complete, WCAG-passing variation payloads from the validated mock kit. */
+/*
+  Two complete, WCAG-passing variation payloads from the validated mock kit.
+*/
 function buildKitInput() {
   return {
     name: "Acme",
@@ -92,11 +94,11 @@ async function getDraftStatus({
   return draft;
 }
 
-/**
- * A bound canvas holding one draft that has adopted MIDNIGHT — the theme these
- * tests delete. Applying it through the theme menu's own recording path is what
- * gives the draft the pointer and baseline a real user's draft would carry.
- */
+/*
+  A bound canvas holding one draft that has adopted MIDNIGHT — the theme these
+  tests delete. Applying it through the theme menu's own recording path is what
+  gives the draft the pointer and baseline a real user's draft would carry.
+*/
 async function seedDraftOnMidnight(t: Backend): Promise<{
   documentId: Id<"documents">;
   canvasId: Id<"canvases">;
@@ -158,14 +160,18 @@ describe("deleting a theme unlinks drafts — and restyles none of them", () => 
     const t = createBackend();
     const { canvasId } = await seedDraftOnMidnight(t);
     await deleteMidnight(t);
-    /* The session read (the panel) and the canvas read (every collaborator's
-       theme menu) must agree — both go through the same projection. */
+    /*
+      The session read (the panel) and the canvas read (every collaborator's
+      theme menu) must agree — both go through the same projection.
+    */
     expect((await readKit(t)).variations.map((variation) => variation.id)).toEqual([
       "classic-light",
     ]);
     const canvasKit = await t.query(api.brandKits.getBrandKitForCanvas, { canvasId });
     expect(canvasKit?.kit.variations.map((variation) => variation.id)).toEqual(["classic-light"]);
-    /* But the row survives, which is what a restore needs. */
+    /*
+      But the row survives, which is what a restore needs.
+    */
     expect((await readKit(t)).deletedVariations?.map((variation) => variation.id)).toEqual([
       "midnight",
     ]);
@@ -175,7 +181,9 @@ describe("deleting a theme unlinks drafts — and restyles none of them", () => 
     const t = createBackend();
     const { documentId, canvasId } = await seedDraftOnMidnight(t);
     await deleteMidnight(t);
-    /* The preview the §5.2 prompt shows must not name a deleted theme. */
+    /*
+      The preview the §5.2 prompt shows must not name a deleted theme.
+    */
     expect((await getDraftStatus({ t, canvasId, documentId })).targetVariation.id).toBe(
       "classic-light",
     );
@@ -200,7 +208,9 @@ describe("deleting a theme unlinks drafts — and restyles none of them", () => 
       sessionId: SESSION_ID,
       brandKit: buildKitInput(),
     });
-    /* Fill the kit to the cap, delete one, and the next append must fit. */
+    /*
+      Fill the kit to the cap, delete one, and the next append must fit.
+    */
     for (let index = 2; index < MAX_BRAND_KIT_VARIATIONS; index += 1) {
       await t.mutation(api.brandKits.addBrandThemeVariation, {
         sessionId: SESSION_ID,
@@ -292,7 +302,9 @@ describe("restoring a deleted theme", () => {
       "buttonBackgroundColor",
     ]);
     await deleteMidnight(t);
-    /* Unlinked: no parent, so nothing to be overridden against. */
+    /*
+      Unlinked: no parent, so nothing to be overridden against.
+    */
     expect((await getDraftStatus({ t, canvasId, documentId })).overriddenGlobalKeys).toEqual([]);
     await deleteMidnight(t, false);
     const restored = await getDraftStatus({ t, canvasId, documentId });

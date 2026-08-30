@@ -14,22 +14,22 @@ import {
   type QuickPromptAnchor,
 } from "./use-quick-prompt-anchor";
 
-/**
- * The slash-summon quick prompt (the Resend-style UX): "/" anywhere outside a
- * text field opens this floating input; submitting sends the text AS A NORMAL
- * CHAT MESSAGE through the composer-handoff seam — the chat panel expands so
- * the user watches their prompt land in the main thread (and it queues exactly
- * like a composer submit when the agent is busy). No second chat pipeline:
- * this component owns only an input and a dismissal.
- *
- * With an `anchor` (the pointer was over a block when "/" fired) the card
- * opens AT THE CURSOR and names the block it is bound to; the block is already
- * selected, so the turn carries it with no extra plumbing. Without one it
- * opens centered and unbound, exactly as before.
- *
- * The card mounts fresh per open (state lives inside it), so the text always
- * starts empty and `autoFocus` lands the caret without effects.
- */
+/*
+  The slash-summon quick prompt (the Resend-style UX): "/" anywhere outside a
+  text field opens this floating input; submitting sends the text AS A NORMAL
+  CHAT MESSAGE through the composer-handoff seam — the chat panel expands so
+  the user watches their prompt land in the main thread (and it queues exactly
+  like a composer submit when the agent is busy). No second chat pipeline:
+  this component owns only an input and a dismissal.
+
+  With an `anchor` (the pointer was over a block when "/" fired) the card
+  opens AT THE CURSOR and names the block it is bound to; the block is already
+  selected, so the turn carries it with no extra plumbing. Without one it
+  opens centered and unbound, exactly as before.
+
+  The card mounts fresh per open (state lives inside it), so the text always
+  starts empty and `autoFocus` lands the caret without effects.
+*/
 export function QuickPromptOverlay({
   isOpen,
   anchor,
@@ -109,7 +109,9 @@ function QuickPromptCard({
 
   const handleKeyDown = (event: React.KeyboardEvent<HTMLTextAreaElement>): void => {
     if (event.key === "Enter" && !event.shiftKey) {
-      /* Enter sends; Shift+Enter is the newline, so the textarea keeps it. */
+      /*
+        Enter sends; Shift+Enter is the newline, so the textarea keeps it.
+      */
       event.preventDefault();
       submitPrompt();
     } else if (event.key === "Escape") {
@@ -138,7 +140,9 @@ function QuickPromptCard({
         placement === null && "bg-background/60 backdrop-blur-[2px]",
       )}
       onPointerDown={(event) => {
-        /* Only a direct backdrop hit dismisses — card clicks stop below. */
+        /*
+          Only a direct backdrop hit dismisses — card clicks stop below.
+        */
         if (event.target === event.currentTarget) {
           onClose();
         }
@@ -192,7 +196,9 @@ function QuickPromptCard({
         <div className="flex items-end">
           <textarea
             ref={textareaRef}
-            /* A summoned prompt exists to be typed into — focus is the point. */
+            /*
+              A summoned prompt exists to be typed into — focus is the point.
+            */
             autoFocus
             rows={1}
             value={promptText}

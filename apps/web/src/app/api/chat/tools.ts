@@ -35,40 +35,42 @@ import { toModelInputSchema } from "./model-schema";
 import { chatActionRegistry } from "./registry";
 import { sendTestEmailWithResend } from "./send-test-email";
 
-/**
- * Registry → AI SDK toolset (Phase 3.2/3.3, agent registry since Phase 3
- * integration).
- *
- * Every action in `chatActionRegistry` (email-sdk built-ins + agent analysis
- * actions) is advertised to the model as a tool (name, description, compact
- * agentInputSchema straight from `toAISDKToolDefinitions`). The kinds diverge
- * on execution:
- *
- * - CONTENT actions get NO execute(). The validated tool call streams to the
- *   client as a `tool-<name>` part; the CLIENT applies it optimistically
- *   (validateAndClassifyOp gate) and Phase 4 makes Convex authoritative.
- *   Server-side, streamText already validates the input against the tool's
- *   inputSchema before `tool-input-available` is emitted (gate layer 1).
- *
- * - EDITOR actions with `resultSource: "server"` execute server-side:
- *   `dispatchEditorAction` re-validates against the FULL schema and produces
- *   the typed EditorCommand, which is written onto the stream as a
- *   `data-editor-command` part for the Phase 3.4 frontend dispatcher. The tool
- *   output ({status:"dispatched"}) closes the tool-call loop so the model can
- *   confirm the result.
- *
- * - EDITOR actions with `resultSource: "client"` (undo, redo, createDraft) get
- *   NO execute() here at all — see the branch below. The server cannot know
- *   whether a history step existed to take, or which drafts landed under which
- *   names, so it must not answer for either.
- *
- * - ANALYSIS actions (getBlockDetails, §9.4 catalog-lookup) execute
- *   server-side against THIS REQUEST'S document and return their JSON result
- *   straight to the model in-loop. Read-only: nothing is applied client-side
- *   and no data part is written.
- */
+/*
+  Registry → AI SDK toolset (Phase 3.2/3.3, agent registry since Phase 3
+  integration).
 
-/** Thrown for terminal dispatch failures — see pipeline onError handling. */
+  Every action in `chatActionRegistry` (email-sdk built-ins + agent analysis
+  actions) is advertised to the model as a tool (name, description, compact
+  agentInputSchema straight from `toAISDKToolDefinitions`). The kinds diverge
+  on execution:
+
+  - CONTENT actions get NO execute(). The validated tool call streams to the
+    client as a `tool-<name>` part; the CLIENT applies it optimistically
+    (validateAndClassifyOp gate) and Phase 4 makes Convex authoritative.
+    Server-side, streamText already validates the input against the tool's
+    inputSchema before `tool-input-available` is emitted (gate layer 1).
+
+  - EDITOR actions with `resultSource: "server"` execute server-side:
+    `dispatchEditorAction` re-validates against the FULL schema and produces
+    the typed EditorCommand, which is written onto the stream as a
+    `data-editor-command` part for the Phase 3.4 frontend dispatcher. The tool
+    output ({status:"dispatched"}) closes the tool-call loop so the model can
+    confirm the result.
+
+  - EDITOR actions with `resultSource: "client"` (undo, redo, createDraft) get
+    NO execute() here at all — see the branch below. The server cannot know
+    whether a history step existed to take, or which drafts landed under which
+    names, so it must not answer for either.
+
+  - ANALYSIS actions (getBlockDetails, §9.4 catalog-lookup) execute
+    server-side against THIS REQUEST'S document and return their JSON result
+    straight to the model in-loop. Read-only: nothing is applied client-side
+    and no data part is written.
+*/
+
+/*
+  Thrown for terminal dispatch failures — see pipeline onError handling.
+*/
 export class TerminalChatError extends Error {
   readonly errors: ActionDispatchError[];
 
@@ -82,46 +84,52 @@ export class TerminalChatError extends Error {
 export interface BuildChatToolsInput {
   writer: UIMessageStreamWriter<FlockChatMessage>;
   actionContext: ActionContext;
-  /** This request's document — what analysis actions read (never mutated). */
+  /*
+    This request's document — what analysis actions read (never mutated).
+  */
   doc: EmailDocument;
-  /**
-   * The calling browser's anonymous session id (session cookie), or null.
-   * generateImage registers what it uploads under this session's library
-   * (Content Studio Stage S — every generation registers unconditionally).
-   */
+  /*
+    The calling browser's anonymous session id (session cookie), or null.
+    generateImage registers what it uploads under this session's library
+    (Content Studio Stage S — every generation registers unconditionally).
+  */
   sessionId: string | null;
-  /**
-   * True when this turn runs on the deterministic mock model. The person
-   * pipeline reads it to skip the live public-web search entirely — a mock
-   * run must cost no quota AND must never fabricate research results.
-   */
+  /*
+    True when this turn runs on the deterministic mock model. The person
+    pipeline reads it to skip the live public-web search entirely — a mock
+    run must cost no quota AND must never fabricate research results.
+  */
   isUsingMockModel: boolean;
 }
 
 export interface BuiltChatTools {
-  /** The toolset streamText advertises and executes. */
+  /*
+    The toolset streamText advertises and executes.
+  */
   tools: ToolSet;
-  /**
-   * The same tools WITHOUT execute() — passed to the repair re-ask call so a
-   * repair round can never re-trigger editor side effects.
-   */
+  /*
+    The same tools WITHOUT execute() — passed to the repair re-ask call so a
+    repair round can never re-trigger editor side effects.
+  */
   schemaOnlyTools: ToolSet;
-  /**
-   * streamText-level approval config (tool-level needsApproval is deprecated
-   * in AI SDK v7). Registry predicates are adapted by closing over the
-   * request's ActionContext.
-   */
+  /*
+    streamText-level approval config (tool-level needsApproval is deprecated
+    in AI SDK v7). Registry predicates are adapted by closing over the
+    request's ActionContext.
+  */
   toolApproval: Record<string, ToolApprovalStatus | ((input: unknown) => ToolApprovalStatus)>;
 }
 
-// ---------------------------------------------------------------------------
-// Generative-UI widget tools (host-side fulfillment — see widget-actions.ts)
-// ---------------------------------------------------------------------------
+/*
+  ---------------------------------------------------------------------------
+  Generative-UI widget tools (host-side fulfillment — see widget-actions.ts)
+  ---------------------------------------------------------------------------
+*/
 
-/**
- * Format an asset timestamp for the chat table ("Jul 30"). Server-side and
- * deterministic per run — the table is a snapshot, not a live clock.
- */
+/*
+  Format an asset timestamp for the chat table ("Jul 30"). Server-side and
+  deterministic per run — the table is a snapshot, not a live clock.
+*/
 function formatAssetDate(createdAtMs: number): string {
   return new Date(createdAtMs).toLocaleDateString("en-US", { month: "short", day: "numeric" });
 }
@@ -135,19 +143,19 @@ interface BuildWidgetToolInput {
   sessionId: string | null;
 }
 
-/**
- * The widget tools' host-side executions, or null when `name` is not a
- * host-fulfilled widget tool. Each execute runs the agent package's pure
- * computation, writes ONE `data-*` part with `id = toolCallId` (same-id
- * rewrites reconcile; the transcript's latest-part dedupe supersedes the tool
- * chip with the widget), and returns a COMPACT model-facing summary — the
- * full widget payload never rides the model loop. Failures throw, which the
- * SDK surfaces as a retryable tool error the model sees on the next step.
- *
- * askForClarification is NOT here on purpose: it registers schema-only (no
- * execute) so the turn ends on the call and the user's answer arrives as
- * their next message through the composer-handoff send seam.
- */
+/*
+  The widget tools' host-side executions, or null when `name` is not a
+  host-fulfilled widget tool. Each execute runs the agent package's pure
+  computation, writes ONE `data-*` part with `id = toolCallId` (same-id
+  rewrites reconcile; the transcript's latest-part dedupe supersedes the tool
+  chip with the widget), and returns a COMPACT model-facing summary — the
+  full widget payload never rides the model loop. Failures throw, which the
+  SDK surfaces as a retryable tool error the model sees on the next step.
+
+  askForClarification is NOT here on purpose: it registers schema-only (no
+  execute) so the turn ends on the call and the user's answer arrives as
+  their next message through the composer-handoff send seam.
+*/
 function buildWidgetTool({
   name,
   description,
@@ -240,7 +248,9 @@ function buildWidgetTool({
           throw new Error(outcome.message);
         }
         const { assets, totalCount } = outcome.result;
-        // An empty library needs no table — the model just says so in prose.
+        /*
+          An empty library needs no table — the model just says so in prose.
+        */
         if (assets.length > 0) {
           const rows = assets
             .slice(0, CHAT_TABLE_MAX_ROWS)
@@ -265,9 +275,11 @@ function buildWidgetTool({
   return null;
 }
 
-// ---------------------------------------------------------------------------
-// Web-content ingestion tools (Phase 7.4 — host-side fulfillment)
-// ---------------------------------------------------------------------------
+/*
+  ---------------------------------------------------------------------------
+  Web-content ingestion tools (Phase 7.4 — host-side fulfillment)
+  ---------------------------------------------------------------------------
+*/
 
 interface BuildIngestionToolInput {
   name: string;
@@ -277,23 +289,23 @@ interface BuildIngestionToolInput {
   isUsingMockModel: boolean;
 }
 
-/**
- * The ingestion tool, or null when `name` isn't it.
- *
- * It is a registry "analysis" action, but it is fulfilled HERE rather than
- * through the generic in-loop `action.run` for one reason: the pipeline needs
- * the CALLER'S SESSION so a rehosted image joins that session's Asset
- * Library. The registry is a module-level singleton (the
- * prompt-cache contract), so its injected executors cannot close over a
- * request. Same host-fulfillment pattern as generateImage and createPersona.
- *
- * A REFUSAL IS NOT AN ERROR. "This page is paywalled / blocked by robots.txt /
- * has nothing readable on it" comes back as a successful tool output carrying
- * `isOk: false` and a user-facing `message`, because that is information the
- * model must relay before stopping. Throwing would put it on the error path,
- * where the model is invited to retry — exactly the wrong instinct for a page
- * that cannot be read.
- */
+/*
+  The ingestion tool, or null when `name` isn't it.
+
+  It is a registry "analysis" action, but it is fulfilled HERE rather than
+  through the generic in-loop `action.run` for one reason: the pipeline needs
+  the CALLER'S SESSION so a rehosted image joins that session's Asset
+  Library. The registry is a module-level singleton (the
+  prompt-cache contract), so its injected executors cannot close over a
+  request. Same host-fulfillment pattern as generateImage and createPersona.
+
+  A REFUSAL IS NOT AN ERROR. "This page is paywalled / blocked by robots.txt /
+  has nothing readable on it" comes back as a successful tool output carrying
+  `isOk: false` and a user-facing `message`, because that is information the
+  model must relay before stopping. Throwing would put it on the error path,
+  where the model is invited to retry — exactly the wrong instinct for a page
+  that cannot be read.
+*/
 function buildIngestionTool({
   name,
   description,
@@ -342,7 +354,9 @@ function buildIngestionTool({
   });
 }
 
-/** Build the per-request toolset. The writer is this request's stream writer. */
+/*
+  Build the per-request toolset. The writer is this request's stream writer.
+*/
 export function buildChatTools({
   writer,
   actionContext,
@@ -356,10 +370,12 @@ export function buildChatTools({
 
   for (const definition of toAISDKToolDefinitions(chatActionRegistry)) {
     const action = getAction(chatActionRegistry, definition.name);
-    if (action === undefined) continue; // unreachable: definitions come from the registry
+    if (action === undefined) continue; /* unreachable: definitions come from the registry */
 
-    // Gemini-compatible JSON Schema declaration; validation still runs the
-    // registry's Zod schema (see model-schema.ts).
+    /*
+      Gemini-compatible JSON Schema declaration; validation still runs the
+      registry's Zod schema (see model-schema.ts).
+    */
     const modelInputSchema = toModelInputSchema(definition.inputSchema);
 
     const schemaOnlyTool = tool({
@@ -368,11 +384,13 @@ export function buildChatTools({
     });
     schemaOnlyTools[definition.name] = schemaOnlyTool;
 
-    // Widget tools (generative UI) come FIRST: they are registry "analysis"
-    // actions, but their fulfillment is host-side (data-part writes, the
-    // session-scoped asset query) rather than the generic in-loop run.
-    // askForClarification deliberately registers schema-only — the turn must
-    // END on the call so the widget can wait for the user's answer.
+    /*
+      Widget tools (generative UI) come FIRST: they are registry "analysis"
+      actions, but their fulfillment is host-side (data-part writes, the
+      session-scoped asset query) rather than the generic in-loop run.
+      askForClarification deliberately registers schema-only — the turn must
+      END on the call so the widget can wait for the user's answer.
+    */
     const widgetTool = buildWidgetTool({
       name: definition.name,
       description: definition.description,
@@ -381,8 +399,10 @@ export function buildChatTools({
       doc,
       sessionId,
     });
-    // Ingestion tools are likewise host-fulfilled — they need the request's
-    // session to file a rehosted image under the right library.
+    /*
+      Ingestion tools are likewise host-fulfilled — they need the request's
+      session to file a rehosted image under the right library.
+    */
     const ingestionTool = buildIngestionTool({
       name: definition.name,
       description: definition.description,
@@ -427,8 +447,10 @@ export function buildChatTools({
           });
           if (!result.isOk) {
             if (result.failureKind === "terminal") {
-              // Terminal (e.g. wrong_action_kind — a wiring bug): stop the
-              // turn with a structured error part, then fail the tool call.
+              /*
+                Terminal (e.g. wrong_action_kind — a wiring bug): stop the
+                turn with a structured error part, then fail the tool call.
+              */
               writer.write({
                 type: "error",
                 errorText: serializeChatError({
@@ -439,42 +461,52 @@ export function buildChatTools({
               });
               throw new TerminalChatError(result.errors);
             }
-            // Retryable: surface as a tool execution error — the model sees it
-            // on the next step (stopWhen allows one) and can correct itself.
+            /*
+              Retryable: surface as a tool execution error — the model sees it
+              on the next step (stopWhen allows one) and can correct itself.
+            */
             throw new Error(result.errors.map((error) => error.message).join("; "));
           }
-          // Phase 8.1: an approved sendTestEmail performs the REAL send here,
-          // server-side, against THIS request's document. The module's
-          // payload-hash idempotency key makes approval-loop double-fires
-          // no-ops. Failures throw with the module's clean human copy (raw
-          // provider errors stay in the server log) — surfaced through the
-          // chip's existing friendly-error + Details pattern, and the model
-          // sees the same sentence to relay. No data part is written on
-          // failure, so no stale "queued" chip renders.
+          /*
+            Phase 8.1: an approved sendTestEmail performs the REAL send here,
+            server-side, against THIS request's document. The module's
+            payload-hash idempotency key makes approval-loop double-fires
+            no-ops. Failures throw with the module's clean human copy (raw
+            provider errors stay in the server log) — surfaced through the
+            chip's existing friendly-error + Details pattern, and the model
+            sees the same sentence to relay. No data part is written on
+            failure, so no stale "queued" chip renders.
+          */
           let send: EditorToolOutput["send"];
           let command = result.command;
           if (command.type === "sendTestEmail") {
-            // The agent path is single-recipient: wrap the one address in the
-            // array the module now takes, and let subject/preview fall back to
-            // derivation (the studio dialog is the only caller that sets them).
+            /*
+              The agent path is single-recipient: wrap the one address in the
+              array the module now takes, and let subject/preview fall back to
+              derivation (the studio dialog is the only caller that sets them).
+            */
             const outcome = await sendTestEmailWithResend({ doc, to: [command.to] });
             if (!outcome.isSent) {
               throw new Error(`The test email to ${command.to} wasn't sent: ${outcome.message}`);
             }
             send = { messageId: outcome.messageId };
           }
-          // generateImage is fulfilled HERE (the effectful executor): validate
-          // the target against THIS request's document, generate + upload the
-          // binary to Convex storage server-side (no ephemeral phase on the
-          // agent path), and stream the FULFILLED command (durable https src +
-          // prompt-derived alt). The client dispatcher commits it as ONE
-          // updateBlockProperties op through the normal validated spine —
-          // base64 never reaches the stream, the op log, or Convex.
+          /*
+            generateImage is fulfilled HERE (the effectful executor): validate
+            the target against THIS request's document, generate + upload the
+            binary to Convex storage server-side (no ephemeral phase on the
+            agent path), and stream the FULFILLED command (durable https src +
+            prompt-derived alt). The client dispatcher commits it as ONE
+            updateBlockProperties op through the normal validated spine —
+            base64 never reaches the stream, the op log, or Convex.
+          */
           if (command.type === "generateImage") {
             const targetBlock = doc[command.blockId];
             if (targetBlock === undefined || targetBlock.type !== "image") {
-              // Retryable: the model sees this on the next step and can
-              // re-target an existing image block (or add one first).
+              /*
+                Retryable: the model sees this on the next step and can
+                re-target an existing image block (or add one first).
+              */
               throw new Error(
                 `Block "${command.blockId}" is not an image block in the current document — call generateImage with the id of an existing image block.`,
               );
@@ -487,23 +519,29 @@ export function buildChatTools({
             }
             command = { ...command, src: outcome.src, alt: outcome.alt };
           }
-          // createPersona is fulfilled HERE too (agent-parity actions): the
-          // session-owned Convex mutation runs server-side — its markdown
-          // validation, per-session quota, and advisory-only capability are
-          // the trust boundary — and the FULFILLED command (slug present)
-          // streams to the client, which enables the persona locally exactly
-          // like the picker's own create form.
+          /*
+            createPersona is fulfilled HERE too (agent-parity actions): the
+            session-owned Convex mutation runs server-side — its markdown
+            validation, per-session quota, and advisory-only capability are
+            the trust boundary — and the FULFILLED command (slug present)
+            streams to the client, which enables the persona locally exactly
+            like the picker's own create form.
+          */
           if (command.type === "createPersona") {
             const outcome = await createPersonaForSession({ command, sessionId });
             if (!outcome.isOk) {
-              // Retryable: the model sees the clean sentence on the next step
-              // (e.g. the per-session quota message) and relays it.
+              /*
+                Retryable: the model sees the clean sentence on the next step
+                (e.g. the per-session quota message) and relays it.
+              */
               throw new Error(`The persona "${command.name}" wasn't created: ${outcome.message}`);
             }
             command = outcome.command;
           }
-          // The Phase 3.4 editor-operations channel: one typed data part per
-          // dispatched command. id = toolCallId so re-writes reconcile.
+          /*
+            The Phase 3.4 editor-operations channel: one typed data part per
+            dispatched command. id = toolCallId so re-writes reconcile.
+          */
           writer.write({
             type: "data-editor-command",
             id: toolCallId,
@@ -525,9 +563,11 @@ export function buildChatTools({
         },
       });
     } else if (action.kind === "analysis") {
-      // Analysis actions run server-side against the request's document and
-      // hand their JSON straight back to the model (read-only, in-loop; no
-      // client application, no data part).
+      /*
+        Analysis actions run server-side against the request's document and
+        hand their JSON straight back to the model (read-only, in-loop; no
+        client application, no data part).
+      */
       tools[definition.name] = tool({
         description: definition.description,
         inputSchema: modelInputSchema,
@@ -587,12 +627,16 @@ export function buildChatTools({
         },
       });
     } else {
-      // Content actions: no execute — the tool call streams to the client,
-      // which validates and applies it.
+      /*
+        Content actions: no execute — the tool call streams to the client,
+        which validates and applies it.
+      */
       tools[definition.name] = schemaOnlyTool;
     }
 
-    // Approval mapping: registry `needsApproval` → streamText `toolApproval`.
+    /*
+      Approval mapping: registry `needsApproval` → streamText `toolApproval`.
+    */
     if (definition.needsApproval === true) {
       toolApproval[definition.name] = "user-approval";
     } else if (typeof definition.needsApproval === "function") {

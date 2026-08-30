@@ -41,7 +41,9 @@ import { SOCIAL_PLATFORM_LABELS, type SocialPlatform } from "@/lib/social-links"
 import { useEditorStore } from "@/lib/editor-store";
 import { useUiSurfaceOpenRequest } from "@/lib/ui-surfaces";
 
-/** Chip label for a stored platform key (tolerates unknown/legacy keys). */
+/*
+  Chip label for a stored platform key (tolerates unknown/legacy keys).
+*/
 function getSocialPlatformLabel(platform: string): string {
   return SOCIAL_PLATFORM_LABELS[platform as SocialPlatform] ?? platform;
 }
@@ -56,35 +58,37 @@ import { BrandThemeOverridesNote } from "./BrandThemeOverridesNote";
 import { BrandVoiceEditor, type BrandVoiceDraft } from "./BrandVoiceEditor";
 import { useSessionBrandKit } from "./useActiveBrandKit";
 
-/**
- * The brand kit panel: a "Brand kit" toolbar button (next to the theme
- * selector it feeds) opening a centered MODAL dialog (owner decision — it
- * was a right-side sheet before; the modal at sm:max-w-xl gives the fields
- * and swatch rows room to read comfortably).
- *
- * v1 scope (demo-lean, no multi-kit library):
- * - shows the session's ACTIVE kit (saved kit → MOCK_BRAND_KIT fallback);
- * - "Create from website URL" → POST /api/brand-kit/generate (the scraper
- *   pipeline) → previews the returned kit's variations with the same
- *   Aa+circles swatches → Save (patches the session's kit row in place) or
- *   Discard;
- * - Stage S (brand-kit architecture §8): the extracted logo/social card are
- *   SUGGESTIONS with confirm affordances — "Confirm & save" pulls the binary
- *   into Convex storage via POST /api/brand-kit/confirm-asset and the row's
- *   URL becomes durable ("Saved" chip). Unconfirmed suggestions render in
- *   this panel only (owner decision 4). The company name is a suggestion
- *   too: a plain editable input, persisted via renameBrandKit;
- * - "Reset to default" clears the saved kit, dropping every tab back to the
- *   mock kit live.
- *
- * All persistence is per anonymous session (the store's authorId), which is
- * exactly what makes the kit shared across every canvas of this browser.
- */
+/*
+  The brand kit panel: a "Brand kit" toolbar button (next to the theme
+  selector it feeds) opening a centered MODAL dialog (owner decision — it
+  was a right-side sheet before; the modal at sm:max-w-xl gives the fields
+  and swatch rows room to read comfortably).
+
+  v1 scope (demo-lean, no multi-kit library):
+  - shows the session's ACTIVE kit (saved kit → MOCK_BRAND_KIT fallback);
+  - "Create from website URL" → POST /api/brand-kit/generate (the scraper
+    pipeline) → previews the returned kit's variations with the same
+    Aa+circles swatches → Save (patches the session's kit row in place) or
+    Discard;
+  - Stage S (brand-kit architecture §8): the extracted logo/social card are
+    SUGGESTIONS with confirm affordances — "Confirm & save" pulls the binary
+    into Convex storage via POST /api/brand-kit/confirm-asset and the row's
+    URL becomes durable ("Saved" chip). Unconfirmed suggestions render in
+    this panel only (owner decision 4). The company name is a suggestion
+    too: a plain editable input, persisted via renameBrandKit;
+  - "Reset to default" clears the saved kit, dropping every tab back to the
+    mock kit live.
+
+  All persistence is per anonymous session (the store's authorId), which is
+  exactly what makes the kit shared across every canvas of this browser.
+*/
 export function BrandKitPanel() {
   const sessionId = useEditorStore((state) => state.authorId);
   const canvasId = useEditorStore((state) => state.canvasId);
-  // The panel edits the VIEWER's kit (session-scoped library object); the
-  // canvas binding below decides which kit this canvas USES (Stage M §3.2).
+  /*
+    The panel edits the VIEWER's kit (session-scoped library object); the
+    canvas binding below decides which kit this canvas USES (Stage M §3.2).
+  */
   const { brandKit: activeBrandKit, hasSavedKit, kitId: sessionKitId } = useSessionBrandKit();
   const brandStatus = useQuery(
     api.brandKits.getCanvasBrandStatus,
@@ -119,8 +123,10 @@ export function BrandKitPanel() {
   const [isBindingBusy, setIsBindingBusy] = useState(false);
   const [bindingErrorMessage, setBindingErrorMessage] = useState<string | null>(null);
   const [isApplyPromptOpen, setIsApplyPromptOpen] = useState(false);
-  // §8.2: what a re-scrape KEPT of the human's, said out loud. Silent skipping
-  // is the failure mode provenance exists to prevent.
+  /*
+    §8.2: what a re-scrape KEPT of the human's, said out loud. Silent skipping
+    is the failure mode provenance exists to prevent.
+  */
   const [reconciliationMessage, setReconciliationMessage] = useState<string | null>(null);
   const [contentErrorMessage, setContentErrorMessage] = useState<string | null>(null);
   const [isAddingTheme, setIsAddingTheme] = useState(false);
@@ -135,7 +141,9 @@ export function BrandKitPanel() {
   const handleOpenChange = (nextIsOpen: boolean): void => {
     setIsOpen(nextIsOpen);
     if (nextIsOpen) {
-      // Fresh visit: drop any stale preview/errors from the last session.
+      /*
+        Fresh visit: drop any stale preview/errors from the last session.
+      */
       setWebsiteUrl("");
       setIsGenerating(false);
       setGenerateErrorMessage(null);
@@ -149,8 +157,10 @@ export function BrandKitPanel() {
     }
   };
 
-  // Agent-parity: the chat's openPanel("brand-kit") command opens this dialog
-  // through the same reset-on-open path as a human click.
+  /*
+    Agent-parity: the chat's openPanel("brand-kit") command opens this dialog
+    through the same reset-on-open path as a human click.
+  */
   useUiSurfaceOpenRequest("brand-kit", () => handleOpenChange(true));
 
   const generateFromUrl = async (): Promise<void> => {
@@ -168,8 +178,10 @@ export function BrandKitPanel() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ url }),
       });
-      // Contract with the scraper route: ALWAYS a BrandKitGenerateResult JSON
-      // body — { isOk: true, brandKit } or { isOk: false, message (friendly) }.
+      /*
+        Contract with the scraper route: ALWAYS a BrandKitGenerateResult JSON
+        body — { isOk: true, brandKit } or { isOk: false, message (friendly) }.
+      */
       const result = (await response.json()) as BrandKitGenerateResult;
       if (result.isOk) {
         setPreviewKit(result.brandKit);
@@ -177,7 +189,9 @@ export function BrandKitPanel() {
         setGenerateErrorMessage(result.message);
       }
     } catch {
-      // Route unreachable / non-JSON reply — keep it friendly.
+      /*
+        Route unreachable / non-JSON reply — keep it friendly.
+      */
       setGenerateErrorMessage(
         "Couldn't generate a brand kit from that URL right now. Check the address and try again.",
       );
@@ -210,7 +224,9 @@ export function BrandKitPanel() {
           variations: previewKit.variations,
         },
       });
-      // §8.2: say what survived the re-scrape instead of skipping silently.
+      /*
+        §8.2: say what survived the re-scrape instead of skipping silently.
+      */
       setReconciliationMessage(
         describeBrandKitReconciliation({
           keptUserEditedColors: result.keptUserEditedColors,
@@ -218,19 +234,25 @@ export function BrandKitPanel() {
           keptUserEditedSocialLinks: result.keptUserEditedSocialLinks,
         }),
       );
-      // The active-kit card (and every tab's ThemeMenu) updates reactively.
+      /*
+        The active-kit card (and every tab's ThemeMenu) updates reactively.
+      */
       setPreviewKit(null);
       setWebsiteUrl("");
-      // Stage M §5.2 situation (b): saving the CANVAS-BOUND kit bumps its
-      // revision, so the actor — and only the actor — gets the propagation
-      // prompt. Everyone else sees per-draft pills.
+      /*
+        Stage M §5.2 situation (b): saving the CANVAS-BOUND kit bumps its
+        revision, so the actor — and only the actor — gets the propagation
+        prompt. Everyone else sees per-draft pills.
+      */
       if (isCanvasBoundToMyKit) {
         setIsOpen(false);
         setIsApplyPromptOpen(true);
       }
     } catch (error: unknown) {
-      // ConvexError.data carries the server's clear rejection message
-      // (e.g. a failing contrast pairing); anything else gets a fallback.
+      /*
+        ConvexError.data carries the server's clear rejection message
+        (e.g. a failing contrast pairing); anything else gets a fallback.
+      */
       setSaveErrorMessage(
         error instanceof ConvexError
           ? String(error.data)
@@ -255,7 +277,9 @@ export function BrandKitPanel() {
     }
   };
 
-  /** Persist a name edit on the SAVED kit (suggestion — the user's edit wins). */
+  /*
+    Persist a name edit on the SAVED kit (suggestion — the user's edit wins).
+  */
   const commitActiveKitName = async (name: string): Promise<void> => {
     const trimmedName = name.trim();
     if (
@@ -275,12 +299,12 @@ export function BrandKitPanel() {
     }
   };
 
-  /**
-   * Commit a font pick (v2 §1). The write re-fonts every theme in the kit, so
-   * it DOES bump the revision — bound drafts are legitimately out of date and
-   * their pills should say so. Nothing is restyled until somebody confirms
-   * "Update drafts…".
-   */
+  /*
+    Commit a font pick (v2 §1). The write re-fonts every theme in the kit, so
+    it DOES bump the revision — bound drafts are legitimately out of date and
+    their pills should say so. Nothing is restyled until somebody confirms
+    "Update drafts…".
+  */
   const commitBrandFonts = async (fonts: BrandKitFonts): Promise<void> => {
     if (sessionId === null || !hasSavedKit) {
       return;
@@ -295,12 +319,12 @@ export function BrandKitPanel() {
     }
   };
 
-  /**
-   * Commit the whole palette (§3.2): one write, no revision bump — the
-   * palette is a source for the picker and the agent, not something a draft
-   * renders. Provenance ("this one is the human's now") is stamped
-   * server-side, which is what makes the edit survive the next re-scrape.
-   */
+  /*
+    Commit the whole palette (§3.2): one write, no revision bump — the
+    palette is a source for the picker and the agent, not something a draft
+    renders. Provenance ("this one is the human's now") is stamped
+    server-side, which is what makes the edit survive the next re-scrape.
+  */
   const commitBrandColors = async (colors: BrandColor[]): Promise<void> => {
     if (sessionId === null || !hasSavedKit) {
       return;
@@ -439,7 +463,9 @@ export function BrandKitPanel() {
     }
   };
 
-  /** Commit the tone of voice (§5). `null` clears it back to the scrape's. */
+  /*
+    Commit the tone of voice (§5). `null` clears it back to the scrape's.
+  */
   const commitToneOfVoice = async (draft: BrandVoiceDraft | null): Promise<void> => {
     if (sessionId === null || !hasSavedKit) {
       return;
@@ -480,7 +506,9 @@ export function BrandKitPanel() {
     }
   };
 
-  /* Commit the whole social-link list (§7.2) — one write, no revision bump. */
+  /*
+    Commit the whole social-link list (§7.2) — one write, no revision bump.
+  */
   const commitSocialLinks = async (drafts: SocialLinkDraft[]): Promise<void> => {
     if (sessionId === null || !hasSavedKit) {
       return;
@@ -513,16 +541,18 @@ export function BrandKitPanel() {
     if (!outcome.isOk) {
       setAssetErrorMessage(outcome.message);
     }
-    // Success needs no local state: the kit row updated and the reactive
-    // query swaps the card to the durable URL + "Saved" chip live.
+    /*
+      Success needs no local state: the kit row updated and the reactive
+      query swaps the card to the durable URL + "Saved" chip live.
+    */
     setBusyAssetKind(null);
   };
 
-  /**
-   * Bind the viewer's kit as this canvas's brand (Stage M §3.3): a shared
-   * metadata write that restyles NOTHING — the §5.2 prompt that follows is
-   * where the user chooses which drafts actually update.
-   */
+  /*
+    Bind the viewer's kit as this canvas's brand (Stage M §3.3): a shared
+    metadata write that restyles NOTHING — the §5.2 prompt that follows is
+    where the user chooses which drafts actually update.
+  */
   const bindKitToCanvas = async (): Promise<void> => {
     if (canvasId === null || sessionId === null || isBindingBusy) {
       return;
@@ -544,7 +574,9 @@ export function BrandKitPanel() {
     }
   };
 
-  /** Remove the canvas binding (metadata only — drafts keep their look). */
+  /*
+    Remove the canvas binding (metadata only — drafts keep their look).
+  */
   const stopUsingOnCanvas = async (): Promise<void> => {
     if (canvasId === null || isBindingBusy) {
       return;
@@ -581,12 +613,16 @@ export function BrandKitPanel() {
 
   return (
     <>
-      {/* The §5.2 propagation prompt — a SIBLING dialog (the panel closes
-          first): opened after binding a kit here or saving the bound kit. */}
+      {/*
+        The §5.2 propagation prompt — a SIBLING dialog (the panel closes
+        first): opened after binding a kit here or saving the bound kit.
+      */}
       <BrandApplyDialog isOpen={isApplyPromptOpen} onOpenChange={setIsApplyPromptOpen} />
       <Dialog open={isOpen} onOpenChange={handleOpenChange}>
-      {/* Tooltip + dialog trigger on ONE element (base-ui render composition)
-          — below xl the trigger is icon-only, so hover carries the label. */}
+      {/*
+        Tooltip + dialog trigger on ONE element (base-ui render composition)
+        — below xl the trigger is icon-only, so hover carries the label.
+      */}
       <TooltipProvider>
         <Tooltip>
           <TooltipTrigger
@@ -598,8 +634,10 @@ export function BrandKitPanel() {
                 data-testid="brand-kit-open-button"
               >
                 <PaletteIcon className="size-4" />
-                {/* Narrow-width degradation: icon-only below xl (the header
-                    must never crowd into the property panel). */}
+                {/*
+                  Narrow-width degradation: icon-only below xl (the header
+                  must never crowd into the property panel).
+                */}
                 <span className="hidden xl:inline">Brand kit</span>
               </DialogTrigger>
             }
@@ -617,9 +655,11 @@ export function BrandKitPanel() {
         </DialogHeader>
 
         <div className="-mr-2 flex max-h-[70vh] min-h-0 flex-col gap-6 overflow-y-auto pr-2">
-          {/* The generate flow LEADS the modal (owner call): the URL scrape is
-              what creates the kit, so it reads as the primary entry point,
-              with its Preview directly below and the active kit after. */}
+          {/*
+            The generate flow LEADS the modal (owner call): the URL scrape is
+            what creates the kit, so it reads as the primary entry point,
+            with its Preview directly below and the active kit after.
+          */}
           <section className="flex flex-col gap-3">
             <Label htmlFor="brand-kit-url" className="text-sm leading-none font-semibold">
               Create from website URL
@@ -635,9 +675,11 @@ export function BrandKitPanel() {
                 void generateFromUrl();
               }}
             >
-              {/* type=text on purpose: scheme-less addresses ("cnn.com") are
-                  welcome — the backend normalizes them to https://. Native
-                  type=url validation would reject exactly those. */}
+              {/*
+                type=text on purpose: scheme-less addresses ("cnn.com") are
+                welcome — the backend normalizes them to https://. Native
+                type=url validation would reject exactly those.
+              */}
               <Input
                 id="brand-kit-url"
                 type="text"
@@ -650,8 +692,10 @@ export function BrandKitPanel() {
                 disabled={isGenerating}
                 data-testid="brand-kit-url-input"
               />
-              {/* Filled PRIMARY on purpose (owner call): the panel's main
-                  action. Default size = h-8, matching the input beside it. */}
+              {/*
+                Filled PRIMARY on purpose (owner call): the panel's main
+                action. Default size = h-8, matching the input beside it.
+              */}
               <Button
                 type="submit"
                 className="shrink-0"
@@ -716,10 +760,12 @@ export function BrandKitPanel() {
 
           <section className="flex flex-col gap-3 border-t pt-5">
             <h3 className="text-sm leading-none font-semibold">Active kit</h3>
-            {/* §14.5c: the way OUT of the scrape-or-nothing dead end. Every
-                editor below is gated on a saved row, so a person whose site
-                can't be scraped had no path at all — this gives them one, in
-                one click, with a kit that says whose brand it is. */}
+            {/*
+              §14.5c: the way OUT of the scrape-or-nothing dead end. Every
+              editor below is gated on a saved row, so a person whose site
+              can't be scraped had no path at all — this gives them one, in
+              one click, with a kit that says whose brand it is.
+            */}
             {!hasSavedKit && (
               <div className="flex flex-col gap-2 rounded-lg border border-dashed p-4">
                 <p className="text-sm text-muted-foreground">
@@ -767,10 +813,12 @@ export function BrandKitPanel() {
                 {reconciliationMessage}
               </p>
             )}
-            {/* §6.2: a typed address is an IMPORT into the kit, never a
-                reference to somebody else's server. It lands as a suggestion
-                and goes through the same confirm-and-rehost step a scraped
-                one does, which is what the copy has to convey. */}
+            {/*
+              §6.2: a typed address is an IMPORT into the kit, never a
+              reference to somebody else's server. It lands as a suggestion
+              and goes through the same confirm-and-rehost step a scraped
+              one does, which is what the copy has to convey.
+            */}
             {hasSavedKit && (
               <form
                 className="flex flex-col gap-1.5"
@@ -850,10 +898,12 @@ export function BrandKitPanel() {
             </section>
           )}
 
-          {/* Themes (v2 §2.1, user-control §14.5b). Placed under Colors on
-              purpose: a theme here IS a set of the kit's colors, so the palette
-              has to be the thing the user just looked at. The list edits and
-              deletes; the builder below it adds. */}
+          {/*
+            Themes (v2 §2.1, user-control §14.5b). Placed under Colors on
+            purpose: a theme here IS a set of the kit's colors, so the palette
+            has to be the thing the user just looked at. The list edits and
+            deletes; the builder below it adds.
+          */}
           {hasSavedKit && (activeBrandKit.colors ?? []).length > 0 && (
             <section
               className="flex flex-col gap-3 border-t pt-5"
@@ -884,7 +934,9 @@ export function BrandKitPanel() {
                 buttonShape={getButtonShapeFromRadius(
                   activeBrandKit.variations[0]?.globals.buttonBorderRadius,
                 )}
-                /* Deleted ids are still TAKEN — see BrandThemeBuilder's prop. */
+                /*
+                  Deleted ids are still TAKEN — see BrandThemeBuilder's prop.
+                */
                 existingVariationIds={[
                   ...activeBrandKit.variations,
                   ...(activeBrandKit.deletedVariations ?? []),
@@ -892,18 +944,22 @@ export function BrandKitPanel() {
                 isBusy={sessionId === null || isAddingTheme}
                 onAdd={(variation) => void commitNewTheme(variation)}
               />
-              {/* §14.5a: the canvas-wide half of the override indicator. Sits
-                  in the theme section because that is where the owner asked
-                  for it, and renders null unless a draft actually overrides
-                  something — this section is usually just the builder. */}
+              {/*
+                §14.5a: the canvas-wide half of the override indicator. Sits
+                in the theme section because that is where the owner asked
+                for it, and renders null unless a draft actually overrides
+                something — this section is usually just the builder.
+              */}
               {isCanvasBoundToMyKit && (
                 <BrandThemeOverridesNote drafts={brandStatus?.drafts ?? []} />
               )}
             </section>
           )}
 
-          {/* §7.2: the array was extracted, displayed, handed to the agent —
-              and unchangeable. This is its edit path. */}
+          {/*
+            §7.2: the array was extracted, displayed, handed to the agent —
+            and unchangeable. This is its edit path.
+          */}
           {hasSavedKit && (
             <section
               className="flex flex-col gap-3 border-t pt-5"
@@ -1047,22 +1103,24 @@ interface BrandKitAssetActions {
   onRemove: (kind: BrandKitAssetKind) => void;
 }
 
-/** Sub-label style shared by the card's inner groups (Fonts/Images/Themes). */
+/*
+  Sub-label style shared by the card's inner groups (Fonts/Images/Themes).
+*/
 const KIT_GROUP_LABEL_CLASSNAME = "text-xs font-medium tracking-wide text-muted-foreground";
 
-/**
- * One kit rendered as a card: the name (editable when `onNameCommit` is
- * given — the extracted name is only a suggestion), a "Default" badge for
- * the mock fallback, source URL, then labeled groups — the heading/body
- * fonts (email-safe dropdowns when `onFontsCommit` is given, otherwise the
- * stacks shown in themselves), the confirmable logo/social-card
- * asset squares (uniform 1:1 tiles; click to enlarge in a lightbox), social
- * links, and every variation as a ThemeSwatch row — the same Aa+circles cue
- * the theme dropdown uses. `assetActions` present = the saved-kit context
- * (Confirm & save / Remove buttons); absent = preview/default context
- * (chips only — decision 4 keeps unconfirmed suggestions display-only
- * everywhere regardless).
- */
+/*
+  One kit rendered as a card: the name (editable when `onNameCommit` is
+  given — the extracted name is only a suggestion), a "Default" badge for
+  the mock fallback, source URL, then labeled groups — the heading/body
+  fonts (email-safe dropdowns when `onFontsCommit` is given, otherwise the
+  stacks shown in themselves), the confirmable logo/social-card
+  asset squares (uniform 1:1 tiles; click to enlarge in a lightbox), social
+  links, and every variation as a ThemeSwatch row — the same Aa+circles cue
+  the theme dropdown uses. `assetActions` present = the saved-kit context
+  (Confirm & save / Remove buttons); absent = preview/default context
+  (chips only — decision 4 keeps unconfirmed suggestions display-only
+  everywhere regardless).
+*/
 function BrandKitSummary({
   brandKit,
   isStarterKit,
@@ -1083,7 +1141,9 @@ function BrandKitSummary({
   onFontsCommit?: (fonts: BrandKitFonts) => void;
   assetActions?: BrandKitAssetActions;
 }) {
-  // ONE lightbox per card, pointed at whichever asset square was clicked.
+  /*
+    ONE lightbox per card, pointed at whichever asset square was clicked.
+  */
   const [enlargedAsset, setEnlargedAsset] = useState<{ url: string; label: string } | null>(null);
   const hasAnyAsset = brandKit.logoUrl !== undefined || brandKit.socialImageUrl !== undefined;
 
@@ -1106,9 +1166,11 @@ function BrandKitSummary({
               {brandKit.name}
             </span>
           ) : (
-            // Uncontrolled + keyed by the current name: reactive updates (e.g.
-            // a rename from another tab) reset the field; commits happen on
-            // blur or Enter.
+            /*
+              Uncontrolled + keyed by the current name: reactive updates (e.g.
+              a rename from another tab) reset the field; commits happen on
+              blur or Enter.
+            */
             <Input
               key={brandKit.name}
               type="text"
@@ -1279,7 +1341,9 @@ function BrandKitSummary({
   );
 }
 
-/** Where an asset suggestion points, in friendly words. */
+/*
+  Where an asset suggestion points, in friendly words.
+*/
 function describeAssetSource({ url, isConfirmed }: { url: string; isConfirmed: boolean }): string {
   if (isConfirmed) {
     return "Saved to your kit";
@@ -1294,14 +1358,14 @@ function describeAssetSource({ url, isConfirmed }: { url: string; isConfirmed: b
   }
 }
 
-/**
- * One confirmable asset (§8.1) as a uniform grid tile: a 1:1 muted square
- * with the image contain-fit inside (the wide social card letterboxes, the
- * square-ish logo fills — the tiles stay identical side by side), then the
- * label + Suggested/Saved chip and the source line; in the saved-kit context
- * also [Confirm & save] / [Remove]. Clicking the square opens the card's
- * lightbox. Unconfirmed suggestions never leave this UI (owner decision 4).
- */
+/*
+  One confirmable asset (§8.1) as a uniform grid tile: a 1:1 muted square
+  with the image contain-fit inside (the wide social card letterboxes, the
+  square-ish logo fills — the tiles stay identical side by side), then the
+  label + Suggested/Saved chip and the source line; in the saved-kit context
+  also [Confirm & save] / [Remove]. Clicking the square opens the card's
+  lightbox. Unconfirmed suggestions never leave this UI (owner decision 4).
+*/
 function BrandAssetCard({
   kind,
   label,
@@ -1331,8 +1395,10 @@ function BrandAssetCard({
         aria-label={`View ${label.toLowerCase()} larger`}
         className="group relative flex aspect-square w-full cursor-zoom-in items-center justify-center overflow-hidden bg-muted p-4 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset"
       >
-        {/* Plain <img> on purpose: the source is an arbitrary external host
-            (or a data:image/svg+xml URI) — next/image can't optimize either. */}
+        {/*
+          Plain <img> on purpose: the source is an arbitrary external host
+          (or a data:image/svg+xml URI) — next/image can't optimize either.
+        */}
         {/* eslint-disable-next-line @next/next/no-img-element */}
         <img
           src={url}

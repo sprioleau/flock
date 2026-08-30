@@ -13,67 +13,71 @@ import { api } from "@convex/_generated/api";
 import type { Id } from "@convex/_generated/dataModel";
 import { fetchAuthMutation, fetchAuthQuery } from "@/lib/auth/auth-server";
 
-/**
- * Running ONE content action without a browser: load the stored document,
- * dispatch through the SDK action registry, persist through THE write path.
- *
- * The gap this closes. Every `kind: "content"` action is registered in
- * app/api/chat/tools.ts with NO `execute()` — the tool call streams to the
- * client and lib/editor-store.ts applies it. That store was the only non-test
- * caller of `dispatchContentAction`, so the registry's most important actions
- * could only ever run inside a live editor session. This module is the second
- * caller, and it needs no editor.
- *
- * DELIBERATELY NARROW. `updateText` is the one action proven end to end here
- * (module test: stored text changes, op row lands with the caller's
- * provenance, the recorded inverse really inverts). `name` is a parameter
- * rather than a constant because that is the shape the dispatcher already
- * has — not a claim that every other content action is verified through this
- * path. The sync-doc policy, called out where it bites below, is the
- * remaining thing a generalisation has to settle; the other one — the
- * dispatcher's discarded "ready-to-persist" log entry — is settled: it no
- * longer exists, and the seven lines that persist here are the whole
- * contract a second headless surface has to copy.
- *
- * NOT AN ENDPOINT, and that is a security property rather than an omission.
- * Documents are capability-scoped — convex/documents.ts: "the document id is
- * the capability — anyone holding it may read and write" — so an externally
- * reachable headless write path would widen that capability to anyone who can
- * guess or leak an id, with no session in the way. This module adds no HTTP
- * route, no Convex HTTP action, and no other reachable surface; `server-only`
- * keeps it out of client bundles, and the only way to call it is from
- * server-side code that has already decided the caller may act.
- */
+/*
+  Running ONE content action without a browser: load the stored document,
+  dispatch through the SDK action registry, persist through THE write path.
 
-/**
- * The two Convex calls this slice makes, as an injectable port.
- *
- * A port rather than a direct import because the production reader
- * (`fetchAuthQuery`) is REQUEST-SCOPED: it resolves the caller's Convex token
- * out of Next's request cookies, so it works from a route handler, server
- * component, or server action, and throws outside one. A cron, a CLI, or a
- * test has no request to read, and each supplies its own transport instead.
- * The module still owns WHICH functions get called — the signatures are typed
- * off those exact function references, so no implementation can quietly
- * substitute a different write path.
- */
+  The gap this closes. Every `kind: "content"` action is registered in
+  app/api/chat/tools.ts with NO `execute()` — the tool call streams to the
+  client and lib/editor-store.ts applies it. That store was the only non-test
+  caller of `dispatchContentAction`, so the registry's most important actions
+  could only ever run inside a live editor session. This module is the second
+  caller, and it needs no editor.
+
+  DELIBERATELY NARROW. `updateText` is the one action proven end to end here
+  (module test: stored text changes, op row lands with the caller's
+  provenance, the recorded inverse really inverts). `name` is a parameter
+  rather than a constant because that is the shape the dispatcher already
+  has — not a claim that every other content action is verified through this
+  path. The sync-doc policy, called out where it bites below, is the
+  remaining thing a generalisation has to settle; the other one — the
+  dispatcher's discarded "ready-to-persist" log entry — is settled: it no
+  longer exists, and the seven lines that persist here are the whole
+  contract a second headless surface has to copy.
+
+  NOT AN ENDPOINT, and that is a security property rather than an omission.
+  Documents are capability-scoped — convex/documents.ts: "the document id is
+  the capability — anyone holding it may read and write" — so an externally
+  reachable headless write path would widen that capability to anyone who can
+  guess or leak an id, with no session in the way. This module adds no HTTP
+  route, no Convex HTTP action, and no other reachable surface; `server-only`
+  keeps it out of client bundles, and the only way to call it is from
+  server-side code that has already decided the caller may act.
+*/
+
+/*
+  The two Convex calls this slice makes, as an injectable port.
+
+  A port rather than a direct import because the production reader
+  (`fetchAuthQuery`) is REQUEST-SCOPED: it resolves the caller's Convex token
+  out of Next's request cookies, so it works from a route handler, server
+  component, or server action, and throws outside one. A cron, a CLI, or a
+  test has no request to read, and each supplies its own transport instead.
+  The module still owns WHICH functions get called — the signatures are typed
+  off those exact function references, so no implementation can quietly
+  substitute a different write path.
+*/
 export interface StoredDocumentBackend {
-  /** `documents.getDocument` — the head document plus its metadata, or null. */
+  /*
+    `documents.getDocument` — the head document plus its metadata, or null.
+  */
   getDocument: (
     args: FunctionArgs<typeof api.documents.getDocument>,
   ) => Promise<FunctionReturnType<typeof api.documents.getDocument>>;
-  /** `documents.applyOperations` — THE write path (see the routing note below). */
+  /*
+    `documents.applyOperations` — THE write path (see the routing note below).
+  */
   applyOperations: (
     args: FunctionArgs<typeof api.documents.applyOperations>,
   ) => Promise<FunctionReturnType<typeof api.documents.applyOperations>>;
 }
 
-/**
- * The production transport: the caller's own signed Convex token, forwarded
- * from the surrounding Next request. Same helpers `/api/chat` already reads
- * documents with (see app/api/chat/generation-brief.ts), so this module gets
- * no more reach into Convex than the routes beside it.
- */
+/*
+  The production transport: the caller's own signed Convex token, forwarded
+  from the surrounding Next request. Same helpers `/api/chat` already reads
+  documents with (see app/api/chat/generation-brief.ts), so this module gets
+  no more reach into Convex than the routes beside it.
+*/
 export function createNextServerBackend(): StoredDocumentBackend {
   return {
     getDocument: (args) => fetchAuthQuery(api.documents.getDocument, args),
@@ -81,115 +85,129 @@ export function createNextServerBackend(): StoredDocumentBackend {
   };
 }
 
-/** One structured failure. `code` stays a string: it spans SDK codes and Convex transport codes. */
+/*
+  One structured failure. `code` stays a string: it spans SDK codes and Convex transport codes.
+*/
 export interface StoredActionError {
   code: string;
   message: string;
-  /** The block the failure is about, when the error names one. */
+  /*
+    The block the failure is about, when the error names one.
+  */
   blockId?: string;
 }
 
 export type RunStoredContentActionResult =
   | {
       isOk: true;
-      /**
-       * The document's head version after the write. Exactly one operation is
-       * sent per call, so this is also the version the operation landed at.
-       */
+      /*
+        The document's head version after the write. Exactly one operation is
+        sent per call, so this is also the version the operation landed at.
+      */
       headVersion: number;
-      /**
-       * The canonical operation that was persisted — for an intent-shaped
-       * action (styleTextSpan) the RESOLVED operation, never the intent.
-       */
+      /*
+        The canonical operation that was persisted — for an intent-shaped
+        action (styleTextSpan) the RESOLVED operation, never the intent.
+      */
       op: Operation;
     }
   | {
       isOk: false;
-      /**
-       * Which half failed. Worth discriminating because the halves fail for
-       * different reasons: "load" is a missing or unreadable document,
-       * "dispatch" is the SDK refusing the input (or the authorization gate
-       * refusing the caller) before anything was written, and "persist" is
-       * Convex rejecting the operation against the AUTHORITATIVE document,
-       * which can differ from the one we read.
-       */
+      /*
+        Which half failed. Worth discriminating because the halves fail for
+        different reasons: "load" is a missing or unreadable document,
+        "dispatch" is the SDK refusing the input (or the authorization gate
+        refusing the caller) before anything was written, and "persist" is
+        Convex rejecting the operation against the AUTHORITATIVE document,
+        which can differ from the one we read.
+      */
       stage: "load" | "dispatch" | "persist";
-      /** "retryable" → one repair round-trip; "terminal" → stop. */
+      /*
+        "retryable" → one repair round-trip; "terminal" → stop.
+      */
       failureKind: ActionFailureKind;
       errors: StoredActionError[];
     };
 
 export interface RunStoredContentActionInput {
-  /** Where the document is read from and written to. */
+  /*
+    Where the document is read from and written to.
+  */
   backend: StoredDocumentBackend;
   documentId: Id<"documents">;
-  /** The content action to run. `updateText` is the one this slice proves. */
+  /*
+    The content action to run. `updateText` is the one this slice proves.
+  */
   name: string;
-  /** Raw, unvalidated input — the dispatcher re-validates it against the action's FULL schema. */
+  /*
+    Raw, unvalidated input — the dispatcher re-validates it against the action's FULL schema.
+  */
   input: unknown;
-  /**
-   * Caller provenance, stamped onto the operation row.
-   *
-   * `authorId` is SELF-ASSERTED, not a verified principal: nothing here (and
-   * nothing in documents.applyOperations) checks that the caller is who the
-   * field says. History attribution therefore records a claim, not a proof.
-   * That is a known open item for the headless path, not something this slice
-   * fixes — the fix is an authenticated caller identity resolved by the
-   * surface and handed in here, which needs a surface to exist first.
-   */
+  /*
+    Caller provenance, stamped onto the operation row.
+
+    `authorId` is SELF-ASSERTED, not a verified principal: nothing here (and
+    nothing in documents.applyOperations) checks that the caller is who the
+    field says. History attribution therefore records a claim, not a proof.
+    That is a known open item for the headless path, not something this slice
+    fixes — the fix is an authenticated caller identity resolved by the
+    surface and handed in here, which needs a surface to exist first.
+  */
   context: ActionContext;
 }
 
-/** Codes the SDK classifies terminal, as a set, so a transport `string` can be checked without a cast. */
+/*
+  Codes the SDK classifies terminal, as a set, so a transport `string` can be checked without a cast.
+*/
 const TERMINAL_ERROR_CODES = new Set(
   Object.entries(ACTION_ERROR_FAILURE_KINDS)
     .filter(([, failureKind]) => failureKind === "terminal")
     .map(([code]) => code),
 );
 
-/**
- * Classify errors that came back over the wire, where `code` is a plain
- * string. Same rule as the SDK's `classifyActionErrors` — one terminal error
- * poisons the batch — and an unrecognised code reads retryable, which is that
- * function's default too.
- */
+/*
+  Classify errors that came back over the wire, where `code` is a plain
+  string. Same rule as the SDK's `classifyActionErrors` — one terminal error
+  poisons the batch — and an unrecognised code reads retryable, which is that
+  function's default too.
+*/
 function classifyTransportErrors(errors: readonly StoredActionError[]): ActionFailureKind {
   return errors.some((error) => TERMINAL_ERROR_CODES.has(error.code)) ? "terminal" : "retryable";
 }
 
-/**
- * Run one content action against the stored document.
- *
- * Never throws for an expected failure — a missing document, a bad input, an
- * action that is not a content action, and a server-side rejection all come
- * back as the failure arm. A headless caller has no repair UI, so a thrown
- * error would be indistinguishable from a bug.
- *
- * WHY documents.applyOperations AND NOT agentText.applyAgentTextEdit, which
- * also takes an `updateText` op. Both record the identical operation row
- * through `commitVersions`, so the history spine is the same either way; they
- * differ only in what they do to the block's live ProseMirror sync doc.
- * `applyAgentTextEdit` MERGES via a targeted server-side transform under
- * AI_AGENT_CLIENT_ID, and pulses agent presence in the document's room — it
- * exists for the agent editing ALONGSIDE a human in an open editor, which is
- * a session this caller is not in. `applyOperations` instead force-writes the
- * committed text back to the sync doc, and it does so precisely because we
- * are headless: its `shouldForceTextSyncDocs` is
- * `caller !== "frontend" || author === "agent"`, and the rule that flag
- * encodes (convex/model/emailDocuments.ts, commitVersions) names "non-frontend
- * callers (cli / mcp / http / tool)" as force-write-back cases by design. Its
- * own live-entry normalization comment ends "this catches raw http/cli/mcp
- * callers". So the write path already assigns this caller to applyOperations;
- * routing through agentText would be claiming a live editing session we do not
- * have, and would also narrow this module to `updateText` — the one content
- * action agentText accepts.
- *
- * The accepted cost of that choice, stated plainly: if someone has the block
- * open right now, a headless write replaces their in-flight sync-doc content
- * rather than rebasing onto it. That is the documented policy for
- * non-frontend callers, not a gap opened here — but it is the reason a
- * headless write is an authoritative act and should be gated like one.
- */
+/*
+  Run one content action against the stored document.
+
+  Never throws for an expected failure — a missing document, a bad input, an
+  action that is not a content action, and a server-side rejection all come
+  back as the failure arm. A headless caller has no repair UI, so a thrown
+  error would be indistinguishable from a bug.
+
+  WHY documents.applyOperations AND NOT agentText.applyAgentTextEdit, which
+  also takes an `updateText` op. Both record the identical operation row
+  through `commitVersions`, so the history spine is the same either way; they
+  differ only in what they do to the block's live ProseMirror sync doc.
+  `applyAgentTextEdit` MERGES via a targeted server-side transform under
+  AI_AGENT_CLIENT_ID, and pulses agent presence in the document's room — it
+  exists for the agent editing ALONGSIDE a human in an open editor, which is
+  a session this caller is not in. `applyOperations` instead force-writes the
+  committed text back to the sync doc, and it does so precisely because we
+  are headless: its `shouldForceTextSyncDocs` is
+  `caller !== "frontend" || author === "agent"`, and the rule that flag
+  encodes (convex/model/emailDocuments.ts, commitVersions) names "non-frontend
+  callers (cli / mcp / http / tool)" as force-write-back cases by design. Its
+  own live-entry normalization comment ends "this catches raw http/cli/mcp
+  callers". So the write path already assigns this caller to applyOperations;
+  routing through agentText would be claiming a live editing session we do not
+  have, and would also narrow this module to `updateText` — the one content
+  action agentText accepts.
+
+  The accepted cost of that choice, stated plainly: if someone has the block
+  open right now, a headless write replaces their in-flight sync-doc content
+  rather than rebasing onto it. That is the documented policy for
+  non-frontend callers, not a gap opened here — but it is the reason a
+  headless write is an authoritative act and should be gated like one.
+*/
 export async function runStoredContentAction({
   backend,
   documentId,

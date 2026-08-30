@@ -24,13 +24,13 @@ type RestorePhase =
   | { name: "restoring" }
   | { name: "failed"; message: string };
 
-/**
- * The drawer's preview pane: one historical version reconstructed via
- * `getDocumentAtVersion` (snapshot + replay), rendered read-only, with the
- * restore affordance. The live canvas is untouched — restoring goes through
- * `history.rollbackToVersion`, and the resulting head change flows back in
- * through the normal reactive snapshot feed.
- */
+/*
+  The drawer's preview pane: one historical version reconstructed via
+  `getDocumentAtVersion` (snapshot + replay), rendered read-only, with the
+  restore affordance. The live canvas is untouched — restoring goes through
+  `history.rollbackToVersion`, and the resulting head change flows back in
+  through the normal reactive snapshot feed.
+*/
 export function VersionPreview({
   documentId,
   version,
@@ -89,8 +89,10 @@ export function VersionPreview({
           Viewing version {version} of {versionSnapshot.headVersion}
         </p>
       </div>
-      {/* scrollbar-visible: a tall email must LOOK scrollable (overlay
-          scrollbars hide until scrolled); draws nothing when it fits. */}
+      {/*
+        scrollbar-visible: a tall email must LOOK scrollable (overlay
+        scrollbars hide until scrolled); draws nothing when it fits.
+      */}
       <div className="scrollbar-visible min-h-0 flex-1 overflow-y-auto p-3">
         <ReadOnlyEmailPreview doc={versionSnapshot.doc as EmailDocument} />
       </div>

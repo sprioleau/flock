@@ -22,12 +22,16 @@ describe("the shown set", () => {
       (starter) => starter.id,
     );
 
-    /* The demo moment leads for a canvas with no brand of its own. */
+    /*
+      The demo moment leads for a canvas with no brand of its own.
+    */
     expect(firstRun).toContain("brand-from-website");
     expect(firstRun).not.toContain("send-test");
 
-    /* Once the brand is in, that chip is redundant and the next move takes
-       its slot — the count must not quietly drop to three. */
+    /*
+      Once the brand is in, that chip is redundant and the next move takes
+      its slot — the count must not quietly drop to three.
+    */
     expect(returning).not.toContain("brand-from-website");
     expect(returning).toContain("send-test");
     expect(returning).toHaveLength(firstRun.length);
@@ -39,8 +43,10 @@ describe("the shown set", () => {
         MAX_VISIBLE_PROMPT_STARTERS,
       );
     }
-    /* Three or four. A list long enough to need reading is a worse version of
-       the text box it sits above. */
+    /*
+      Three or four. A list long enough to need reading is a worse version of
+      the text box it sits above.
+    */
     expect(MAX_VISIBLE_PROMPT_STARTERS).toBeLessThanOrEqual(4);
   });
 
@@ -58,9 +64,11 @@ describe("the shown set", () => {
 describe("the prompt text", () => {
   it("never names an internal identifier — it becomes the USER's own message", () => {
     for (const starter of PROMPT_STARTERS) {
-      /* Block ids (sec_a1b2, btn_x9k3) and tool names are the agent's private
-         vocabulary; the system prompt forbids them in prose for the same
-         reason they must not appear in a prompt we put in the user's mouth. */
+      /*
+        Block ids (sec_a1b2, btn_x9k3) and tool names are the agent's private
+        vocabulary; the system prompt forbids them in prose for the same
+        reason they must not appear in a prompt we put in the user's mouth.
+      */
       expect(starter.prompt).not.toMatch(/\b(?:sec|btn|txt|img|div|row|col|lnk)_[a-z0-9]+\b/i);
       expect(starter.prompt).not.toMatch(
         /scaffoldSection|applyTheme|openPanel|updateBlockProperties|sendTestEmail/,
@@ -69,9 +77,11 @@ describe("the prompt text", () => {
   });
 
   it("hard-codes no recipient address — the user types their own before sending", () => {
-    /* The test-send prompt deliberately trails off so the caret (dropped at
-       the end by the INSERT handoff) lands where the address goes. A baked-in
-       address would mail a stranger the moment someone hit send. */
+    /*
+      The test-send prompt deliberately trails off so the caret (dropped at
+      the end by the INSERT handoff) lands where the address goes. A baked-in
+      address would mail a stranger the moment someone hit send.
+    */
     for (const starter of PROMPT_STARTERS) {
       expect(starter.prompt).not.toContain("@");
     }
@@ -80,9 +90,11 @@ describe("the prompt text", () => {
   });
 
   it("says something more than the chip's own label — a category label is not a prompt", () => {
-    /* "Add a section" is a fine CHIP and a useless PROMPT: it teaches nothing
-       about what the copilot will take and produces a worse first result than
-       the specifics the user is meant to edit. */
+    /*
+      "Add a section" is a fine CHIP and a useless PROMPT: it teaches nothing
+      about what the copilot will take and produces a worse first result than
+      the specifics the user is meant to edit.
+    */
     for (const starter of PROMPT_STARTERS) {
       expect(starter.label.trim().length).toBeGreaterThan(0);
       expect(starter.prompt.trim().toLowerCase()).not.toBe(starter.label.trim().toLowerCase());
@@ -91,8 +103,10 @@ describe("the prompt text", () => {
   });
 
   it("gives no two chips the same words or the same ask", () => {
-    /* Two chips that read alike, or that send the same prompt, spend one of
-       only four slots on nothing. */
+    /*
+      Two chips that read alike, or that send the same prompt, spend one of
+      only four slots on nothing.
+    */
     const labels = PROMPT_STARTERS.map((starter) => starter.label.toLowerCase());
     const prompts = PROMPT_STARTERS.map((starter) => starter.prompt);
     expect(new Set(labels).size).toBe(labels.length);

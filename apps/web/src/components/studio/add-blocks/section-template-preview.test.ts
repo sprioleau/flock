@@ -9,7 +9,9 @@ describe("buildSectionTemplatePreviewDoc", () => {
       expect(doc).not.toBeNull();
       const root = doc![ROOT_BLOCK_ID];
       expect(root?.type === "root" && root.childrenIds).toHaveLength(1);
-      // inflate walks parentId/childrenIds integrity — a broken subtree throws.
+      /*
+        inflate walks parentId/childrenIds integrity — a broken subtree throws.
+      */
       const tree = inflate(doc!);
       expect(tree.children).toHaveLength(1);
       expect(tree.children[0]!.block.type).toBe("section");

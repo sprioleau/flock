@@ -1,20 +1,20 @@
-/**
- * The Phase 7.4 fetch primitive — ONE mode-agnostic server-side page fetch
- * shared by every ingestion purpose (this brand/theme mode today; the
- * article-content mode later reuses `fetchPage` / `fetchTextResource`
- * unchanged and layers its own extraction on top).
- *
- * Behaviors:
- * - SSRF-guarded (url-guard.ts), including EVERY redirect hop (redirects are
- *   followed manually so a public URL can't bounce us into a private range).
- * - Bounded: ~10s deadline, 2MB body cap, 5 redirect hops max.
- * - Honest: failures come back as a machine `reason` plus a friendly,
- *   user-facing `message` — never fabricated content for an unreadable page
- *   (plan §7.4 faithfulness rules).
- *
- * TLS note: behind a certificate-intercepting proxy the server process needs
- * NODE_EXTRA_CA_CERTS set for outbound TLS to succeed.
- */
+/*
+  The Phase 7.4 fetch primitive — ONE mode-agnostic server-side page fetch
+  shared by every ingestion purpose (this brand/theme mode today; the
+  article-content mode later reuses `fetchPage` / `fetchTextResource`
+  unchanged and layers its own extraction on top).
+
+  Behaviors:
+  - SSRF-guarded (url-guard.ts), including EVERY redirect hop (redirects are
+    followed manually so a public URL can't bounce us into a private range).
+  - Bounded: ~10s deadline, 2MB body cap, 5 redirect hops max.
+  - Honest: failures come back as a machine `reason` plus a friendly,
+    user-facing `message` — never fabricated content for an unreadable page
+    (plan §7.4 faithfulness rules).
+
+  TLS note: behind a certificate-intercepting proxy the server process needs
+  NODE_EXTRA_CA_CERTS set for outbound TLS to succeed.
+*/
 
 import { guardUrl } from "./url-guard";
 
@@ -23,8 +23,8 @@ const USER_AGENT =
 
 const MAX_REDIRECTS = 5;
 const DEFAULT_TIMEOUT_MS = 10_000;
-const MAX_HTML_BYTES = 2 * 1024 * 1024; // 2MB
-const MAX_CSS_BYTES = 400 * 1024; // per-stylesheet cap
+const MAX_HTML_BYTES = 2 * 1024 * 1024; /* 2MB */
+const MAX_CSS_BYTES = 400 * 1024; /* per-stylesheet cap */
 
 /*
   Two distinct flavors of "the site said no", because they need OPPOSITE
@@ -68,7 +68,9 @@ function failure({
   return { isOk: false, reason, message };
 }
 
-/** Read a response body up to `maxBytes`; truncates silently past the cap. */
+/*
+  Read a response body up to `maxBytes`; truncates silently past the cap.
+*/
 async function readBytesCapped({
   response,
   maxBytes,
@@ -117,10 +119,10 @@ interface GuardedFetchOk {
 
 type GuardedFetchResult = GuardedFetchOk | FetchPageFailure;
 
-/**
- * Fetch with manual, per-hop-guarded redirect following. Shared by the HTML
- * page fetch and the stylesheet fetches.
- */
+/*
+  Fetch with manual, per-hop-guarded redirect following. Shared by the HTML
+  page fetch and the stylesheet fetches.
+*/
 async function guardedFetch({
   url,
   deadlineAtMs,
@@ -221,10 +223,10 @@ function hasBotChallengeHeaders(response: Response): boolean {
   return (response.headers.get("cf-mitigated") ?? "").trim().length > 0;
 }
 
-/**
- * Fetch an HTML page — the reusable primitive. Returns the (capped) HTML and
- * the final URL after redirects, or an honest failure.
- */
+/*
+  Fetch an HTML page — the reusable primitive. Returns the (capped) HTML and
+  the final URL after redirects, or an honest failure.
+*/
 export async function fetchPage(
   rawUrl: string,
   options?: { timeoutMs?: number },
@@ -287,12 +289,12 @@ export type FetchBinaryResult =
   | { isOk: true; bytes: Uint8Array; contentType: string }
   | FetchPageFailure;
 
-/**
- * Fetch a binary resource through the same SSRF rails (per-hop guard,
- * deadline, byte cap) — the confirm-asset flow's image download. The body is
- * HARD-capped: a response larger than `maxBytes` is rejected, not truncated
- * (a truncated image is a corrupt image).
- */
+/*
+  Fetch a binary resource through the same SSRF rails (per-hop guard,
+  deadline, byte cap) — the confirm-asset flow's image download. The body is
+  HARD-capped: a response larger than `maxBytes` is rejected, not truncated
+  (a truncated image is a corrupt image).
+*/
 export async function fetchBinaryResource({
   url,
   timeoutMs = DEFAULT_TIMEOUT_MS,
@@ -314,8 +316,10 @@ export async function fetchBinaryResource({
       message: "We couldn't download that file (the site responded with an error).",
     });
   }
-  // Read one byte past the cap so an at-cap read distinguishes "exactly cap"
-  // from "over cap" — over-cap downloads are rejected outright.
+  /*
+    Read one byte past the cap so an at-cap read distinguishes "exactly cap"
+    from "over cap" — over-cap downloads are rejected outright.
+  */
   const bytes = await readBytesCapped({ response, maxBytes: maxBytes + 1 });
   if (bytes.byteLength > maxBytes) {
     return failure({
@@ -333,15 +337,15 @@ export type AssetProbeResult =
   | { isOk: true; status: number; contentType: string }
   | FetchPageFailure;
 
-/**
- * Probe an asset URL through the same SSRF rails WITHOUT downloading the
- * body — status + normalized content-type only (the body stream is cancelled
- * unread). The method is caller-chosen: verify-image-url.ts tries HEAD first
- * and falls back to GET because some CDNs reject HEAD outright.
- *
- * Unlike the page/binary fetchers, a non-2xx status is NOT mapped to a
- * failure here — the status code itself is the answer the caller wants.
- */
+/*
+  Probe an asset URL through the same SSRF rails WITHOUT downloading the
+  body — status + normalized content-type only (the body stream is cancelled
+  unread). The method is caller-chosen: verify-image-url.ts tries HEAD first
+  and falls back to GET because some CDNs reject HEAD outright.
+
+  Unlike the page/binary fetchers, a non-2xx status is NOT mapped to a
+  failure here — the status code itself is the answer the caller wants.
+*/
 export async function probeAssetUrl({
   url,
   method,
@@ -364,11 +368,11 @@ export async function probeAssetUrl({
   return { isOk: true, status: response.status, contentType };
 }
 
-/**
- * Fetch a small same-guard text resource (stylesheets today). Returns the
- * capped body or null — auxiliary fetches fail soft; only the page fetch
- * fails loud.
- */
+/*
+  Fetch a small same-guard text resource (stylesheets today). Returns the
+  capped body or null — auxiliary fetches fail soft; only the page fetch
+  fails loud.
+*/
 export async function fetchTextResource({
   url,
   timeoutMs = 5_000,

@@ -2,21 +2,23 @@ import type { AssetSummary, ListAssetsResult } from "@flock/agent";
 import { api } from "@convex/_generated/api";
 import { fetchAuthQuery } from "@/lib/auth/auth-server";
 
-/**
- * listAssets host executor — the session-scoped Convex query the agent
- * package cannot perform itself (see packages/agent/src/widget-actions.ts).
- * Newest-first, capped: the model gets enough to answer "what images do I
- * have?" and to reuse an asset URL as an image src; the chat table widget
- * renders an even smaller slice (CHAT_TABLE_MAX_ROWS).
- *
- * Goes through fetchAuthQuery, NOT a bare ConvexHttpClient: `assets` is keyed
- * by resolveOwnerId (convex/authIdentity.ts), so once identity exists this
- * route must present the caller's token or it would read a different library
- * than the browser writes to. With auth off there is no token and Convex falls
- * back to the `sessionId` argument — today's behaviour, unchanged.
- */
+/*
+  listAssets host executor — the session-scoped Convex query the agent
+  package cannot perform itself (see packages/agent/src/widget-actions.ts).
+  Newest-first, capped: the model gets enough to answer "what images do I
+  have?" and to reuse an asset URL as an image src; the chat table widget
+  renders an even smaller slice (CHAT_TABLE_MAX_ROWS).
 
-/** Cap on assets returned to the MODEL (the table part caps separately). */
+  Goes through fetchAuthQuery, NOT a bare ConvexHttpClient: `assets` is keyed
+  by resolveOwnerId (convex/authIdentity.ts), so once identity exists this
+  route must present the caller's token or it would read a different library
+  than the browser writes to. With auth off there is no token and Convex falls
+  back to the `sessionId` argument — today's behaviour, unchanged.
+*/
+
+/*
+  Cap on assets returned to the MODEL (the table part caps separately).
+*/
 export const MAX_ASSETS_FOR_MODEL = 30;
 
 export type ListSessionAssetsOutcome =
@@ -29,7 +31,9 @@ export async function listSessionAssets({
   sessionId: string | null;
 }): Promise<ListSessionAssetsOutcome> {
   if (sessionId === null) {
-    // No session yet — an empty library, not an error.
+    /*
+      No session yet — an empty library, not an error.
+    */
     return { isOk: true, result: { assets: [], totalCount: 0 } };
   }
   try {
@@ -53,7 +57,9 @@ export async function listSessionAssets({
   }
 }
 
-/** "generated" → "AI generated" etc. — user-facing kind words for the table. */
+/*
+  "generated" → "AI generated" etc. — user-facing kind words for the table.
+*/
 export const ASSET_KIND_LABELS: Readonly<Record<AssetSummary["kind"], string>> = {
   uploaded: "Uploaded",
   generated: "AI generated",

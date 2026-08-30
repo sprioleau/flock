@@ -26,42 +26,42 @@ import { createPageClassifier } from "./classify-page-model";
 import { isFetchAllowedByRobots } from "./robots";
 import { searchPublicWeb } from "./search-web";
 
-/**
- * The generic page pipeline: ONE public URL in, what the page ACTUALLY says
- * out — or an honest refusal.
- *
- * This replaces `ingest-article.ts` and `ingest-person.ts`, which were the same
- * four stages twice over, forked on a page type chosen from the user's sentence
- * before a single byte had been fetched. There is no page type at this layer.
- * Nothing below branches on one, and nothing below may: a page type is a later
- * step's OUTPUT, and a `switch` over it here is the deleted fork growing back.
- *
- * Stages, in order, each able to stop the pipeline:
- *   1. robots.txt  — the site's own rules decide whether we may read it, BEFORE
- *                    any page fetch. `robots.ts` fails OPEN on an unreachable
- *                    robots.txt and CLOSED on an explicit Disallow.
- *   2. fetchPage   — the shared, mode-agnostic fetch primitive: SSRF guard on
- *                    every redirect hop, 5 redirects, 10s deadline, 2MB cap,
- *                    typed failure reasons.
- *   3. extractPage — pure HTML → `PageScrape`, including the paywall and
- *                    no-readable-content refusals.
- *   3b. theme      — the page's own colours and fonts, derived DETERMINISTICALLY
- *                    from the HTML stage 2 already fetched (plus its
- *                    stylesheets), reusing the brand-kit harvester and its
- *                    contrast-repairing expansion. No model call, and no
- *                    second page fetch. Fail-soft: no theme is a normal
- *                    answer, and the draft keeps the theme it had.
- *   4. lead image  — EXACTLY ONE image is copied into Convex storage, so a
- *                    composed email never hot-links a CDN that may refuse the
- *                    recipient's browser. Fail-soft: an image that cannot be
- *                    stored is DROPPED, never hot-linked and never invented.
- *
- * THE HOUSE RULE: A REFUSAL IS NOT AN ERROR. robots Disallow, a fetch failure,
- * a paywall, and no readable content all come back as a SUCCESSFUL call
- * returning `{ isOk: false, reason, message }` with something worth relaying.
- * Throwing would put an unreadable page on the error path, where the model is
- * invited to retry — exactly the wrong instinct.
- */
+/*
+  The generic page pipeline: ONE public URL in, what the page ACTUALLY says
+  out — or an honest refusal.
+
+  This replaces `ingest-article.ts` and `ingest-person.ts`, which were the same
+  four stages twice over, forked on a page type chosen from the user's sentence
+  before a single byte had been fetched. There is no page type at this layer.
+  Nothing below branches on one, and nothing below may: a page type is a later
+  step's OUTPUT, and a `switch` over it here is the deleted fork growing back.
+
+  Stages, in order, each able to stop the pipeline:
+    1. robots.txt  — the site's own rules decide whether we may read it, BEFORE
+                     any page fetch. `robots.ts` fails OPEN on an unreachable
+                     robots.txt and CLOSED on an explicit Disallow.
+    2. fetchPage   — the shared, mode-agnostic fetch primitive: SSRF guard on
+                     every redirect hop, 5 redirects, 10s deadline, 2MB cap,
+                     typed failure reasons.
+    3. extractPage — pure HTML → `PageScrape`, including the paywall and
+                     no-readable-content refusals.
+    3b. theme      — the page's own colours and fonts, derived DETERMINISTICALLY
+                     from the HTML stage 2 already fetched (plus its
+                     stylesheets), reusing the brand-kit harvester and its
+                     contrast-repairing expansion. No model call, and no
+                     second page fetch. Fail-soft: no theme is a normal
+                     answer, and the draft keeps the theme it had.
+    4. lead image  — EXACTLY ONE image is copied into Convex storage, so a
+                     composed email never hot-links a CDN that may refuse the
+                     recipient's browser. Fail-soft: an image that cannot be
+                     stored is DROPPED, never hot-linked and never invented.
+
+  THE HOUSE RULE: A REFUSAL IS NOT AN ERROR. robots Disallow, a fetch failure,
+  a paywall, and no readable content all come back as a SUCCESSFUL call
+  returning `{ isOk: false, reason, message }` with something worth relaying.
+  Throwing would put an unreadable page on the error path, where the model is
+  invited to retry — exactly the wrong instinct.
+*/
 
 /*
   Page-mode overrides for fetch failures whose stock copy is brand-kit-flavored
@@ -86,7 +86,9 @@ const PAGE_FAILURE_MESSAGES: Partial<Record<FetchFailureReason, string>> = {
     "That address isn't a readable web page (it may be a file or a feed). Try a direct link to the page itself.",
 };
 
-/** The refusal returned when the site's robots.txt disallows the path. */
+/*
+  The refusal returned when the site's robots.txt disallows the path.
+*/
 export const PAGE_ROBOTS_REFUSAL: ReadWebPageResult = {
   isOk: false,
   reason: "blocked_by_robots",
@@ -94,30 +96,30 @@ export const PAGE_ROBOTS_REFUSAL: ReadWebPageResult = {
     "That site's robots.txt asks automated readers to stay off that page, so it wasn't fetched. Nothing was made up in its place — paste the text you'd like to use, or try a page the site allows.",
 };
 
-/**
- * How many images are worth spending bytes on, and in what order.
- *
- * Each copy is a fetch, a storage write, and an Asset Library row, so the cap
- * is real rather than defensive. The ORDER is what makes the cap safe: on a
- * page with a person on it, their portrait is the image the email most needs,
- * and taking images in document order would spend the budget on whatever
- * happened to appear first — usually a logo or a social card.
- */
+/*
+  How many images are worth spending bytes on, and in what order.
+
+  Each copy is a fetch, a storage write, and an Asset Library row, so the cap
+  is real rather than defensive. The ORDER is what makes the cap safe: on a
+  page with a person on it, their portrait is the image the email most needs,
+  and taking images in document order would spend the budget on whatever
+  happened to appear first — usually a logo or a social card.
+*/
 const MAX_REHOSTED_IMAGES = 4;
 
 const IMAGE_ROLE_PRIORITY: readonly ImageRole[] = ["portrait", "logo", "lead", "supporting"];
 
-/**
- * Copy the images the reader gave a role to, best roles first, up to the cap.
- *
- * CLASSIFICATION RUNS BEFORE ANY COPY, which is the payoff of deferring the
- * decision and is a cost win as well as a correctness one: the old pipeline
- * copied a hero unconditionally, before anyone knew whether the email would
- * use it. Here, bytes are only spent on images something actually asked for.
- *
- * Fail-soft per image: one that will not fetch becomes an absent image, never
- * a hot-link to the original site and never a substitute.
- */
+/*
+  Copy the images the reader gave a role to, best roles first, up to the cap.
+
+  CLASSIFICATION RUNS BEFORE ANY COPY, which is the payoff of deferring the
+  decision and is a cost win as well as a correctness one: the old pipeline
+  copied a hero unconditionally, before anyone knew whether the email would
+  use it. Here, bytes are only spent on images something actually asked for.
+
+  Fail-soft per image: one that will not fetch becomes an absent image, never
+  a hot-link to the original site and never a substitute.
+*/
 async function rehostAssignedImages({
   classification,
   scrape,
@@ -163,14 +165,14 @@ async function rehostAssignedImages({
   return images;
 }
 
-/**
- * `PageScrape` + the reading → `ReadWebPagePayload`, field by field.
- *
- * Written out rather than spread, because the difference between the types is
- * the point: `linkDensity` is INTERNAL EVIDENCE for admitting a list, not
- * something the model needs, so it is dropped here. A `...list` spread would
- * silently leak it back the first time either type gained a field.
- */
+/*
+  `PageScrape` + the reading → `ReadWebPagePayload`, field by field.
+
+  Written out rather than spread, because the difference between the types is
+  the point: `linkDensity` is INTERNAL EVIDENCE for admitting a list, not
+  something the model needs, so it is dropped here. A `...list` spread would
+  silently leak it back the first time either type gained a field.
+*/
 function toPayload({
   scrape,
   classification,
@@ -239,20 +241,20 @@ const SINGLE_IMAGE_TEMPLATE_IDS = new Set([
   "header-centered",
 ]);
 
-/**
- * Attach the rehosted images to the sections that can carry one.
- *
- * THE RULE THIS ENFORCES: the model never writes an image address; the
- * pipeline does. The reader emits image IDS and section COPY, and the two are
- * joined here, after validation, from URLs that are already in our own
- * storage. Any `imageSrc` the reader somehow produced is stripped rather than
- * trusted — the catalog listing does not offer the field, so a value in it
- * could only have been invented.
- *
- * `article` is a deliberate special case: it gates its image on `imageAlt`
- * rather than on the source, so passing a source without alt text renders no
- * image at all. Both go, or neither.
- */
+/*
+  Attach the rehosted images to the sections that can carry one.
+
+  THE RULE THIS ENFORCES: the model never writes an image address; the
+  pipeline does. The reader emits image IDS and section COPY, and the two are
+  joined here, after validation, from URLs that are already in our own
+  storage. Any `imageSrc` the reader somehow produced is stripped rather than
+  trusted — the catalog listing does not offer the field, so a value in it
+  could only have been invented.
+
+  `article` is a deliberate special case: it gates its image on `imageAlt`
+  rather than on the source, so passing a source without alt text renders no
+  image at all. Both go, or neither.
+*/
 function attachImagesToSections({
   sections,
   images,
@@ -302,32 +304,34 @@ function attachImagesToSections({
 }
 
 export interface IngestPageInput {
-  /** The page to read, exactly as the user gave it. */
+  /*
+    The page to read, exactly as the user gave it.
+  */
   url: string;
-  /**
-   * Session that should own the rehosted images (they join that session's
-   * Asset Library). Null still rehosts — the files are just unowned.
-   */
+  /*
+    Session that should own the rehosted images (they join that session's
+    Asset Library). Null still rehosts — the files are just unowned.
+  */
   sessionId?: string | null;
-  /**
-   * The reading step. Null means don't read — a mock run, or no API key — and
-   * the classifier falls to its deterministic floor, which is an honest answer
-   * rather than an error.
-   */
+  /*
+    The reading step. Null means don't read — a mock run, or no API key — and
+    the classifier falls to its deterministic floor, which is an honest answer
+    rather than an error.
+  */
   classify?: ClassifyFn | null;
 }
 
-/**
- * Fetch one public page, read what is on it, and work out what it is — or
- * refuse honestly. This is the `readWebPage` action's executor and the
- * POST /api/ingest path; both share this exact behavior.
- *
- * The ORDER of the last two stages is the design. The page is fetched and
- * scraped generically, and only then does anything decide what kind of page it
- * was. Nothing above this line knows, and nothing below it branches on the
- * answer — the classification is carried out to the model as a fact about the
- * page, not consumed as a switch.
- */
+/*
+  Fetch one public page, read what is on it, and work out what it is — or
+  refuse honestly. This is the `readWebPage` action's executor and the
+  POST /api/ingest path; both share this exact behavior.
+
+  The ORDER of the last two stages is the design. The page is fetched and
+  scraped generically, and only then does anything decide what kind of page it
+  was. Nothing above this line knows, and nothing below it branches on the
+  answer — the classification is carried out to the model as a fact about the
+  page, not consumed as a switch.
+*/
 export async function ingestPage({
   url,
   sessionId = null,
@@ -417,12 +421,12 @@ export async function ingestPage({
   };
 }
 
-/**
- * The session-less adapter injected into the agent action registry (a
- * module-level singleton, so it cannot close over a request's session). The
- * chat route fulfills the action host-side with the caller's session — see
- * app/api/chat/tools.ts.
- */
+/*
+  The session-less adapter injected into the agent action registry (a
+  module-level singleton, so it cannot close over a request's session). The
+  chat route fulfills the action host-side with the caller's session — see
+  app/api/chat/tools.ts.
+*/
 export async function readWebPage({ url }: { url: string }): Promise<ReadWebPageResult> {
   return ingestPage({ url, classify: createPageClassifier({ isMockRun: false }) });
 }

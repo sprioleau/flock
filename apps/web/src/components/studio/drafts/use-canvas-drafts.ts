@@ -6,23 +6,29 @@ import { api } from "@convex/_generated/api";
 import type { Id } from "@convex/_generated/dataModel";
 import { useEditorStore } from "@/lib/editor-store";
 
-/**
- * Shared data spine for the §10.2 frames UX: the ordered draft list of the
- * CONNECTED canvas plus the active (store-connected) draft. Every consumer
- * (frames canvas, selector dropdown, chat indicator) calls this hook with the
- * same args, so Convex dedupes it into ONE reactive subscription.
- */
+/*
+  Shared data spine for the §10.2 frames UX: the ordered draft list of the
+  CONNECTED canvas plus the active (store-connected) draft. Every consumer
+  (frames canvas, selector dropdown, chat indicator) calls this hook with the
+  same args, so Convex dedupes it into ONE reactive subscription.
+*/
 
 export type DraftListEntry = FunctionReturnType<
   typeof api.documents.listDocumentsByCanvas
 >[number];
 
 export interface CanvasDrafts {
-  /** Ordered by fractional orderIndex (undefined while the subscription warms up). */
+  /*
+    Ordered by fractional orderIndex (undefined while the subscription warms up).
+  */
   drafts: DraftListEntry[] | undefined;
-  /** The draft the editor store is CONNECTED to — "last frame clicked" wins. */
+  /*
+    The draft the editor store is CONNECTED to — "last frame clicked" wins.
+  */
   activeDocumentId: Id<"documents"> | null;
-  /** Index of the active draft in `drafts` (-1 while unknown). */
+  /*
+    Index of the active draft in `drafts` (-1 while unknown).
+  */
   activeIndex: number;
   canvasId: Id<"canvases"> | null;
 }

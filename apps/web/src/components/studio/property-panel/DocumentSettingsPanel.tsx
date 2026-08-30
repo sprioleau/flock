@@ -12,13 +12,13 @@ import { AlignField, ColorField, DropdownField, NumberField } from "./fields";
 import { getGlobalStyleHelp } from "./schema-help";
 import { useCommitGlobalStyles, useResolvedGlobals } from "./usePanelDispatch";
 
-/**
- * Document settings — shown when nothing is selected. Edits the root block's
- * global styles via `updateDocumentSettings` (shallow merge), dispatched on
- * every input event with store-side undo coalescing. Values shown are the
- * resolved globals (document values with renderer defaults filled in), so
- * committing a field pins it explicitly.
- */
+/*
+  Document settings — shown when nothing is selected. Edits the root block's
+  global styles via `updateDocumentSettings` (shallow merge), dispatched on
+  every input event with store-side undo coalescing. Values shown are the
+  resolved globals (document values with renderer defaults filled in), so
+  committing a field pins it explicitly.
+*/
 
 type GlobalColorKey = {
   [K in keyof GlobalStyles]-?: Required<GlobalStyles>[K] extends string ? K : never;

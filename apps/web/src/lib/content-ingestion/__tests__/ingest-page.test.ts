@@ -18,13 +18,13 @@ vi.mock("../search-web", () => ({ searchPublicWeb: searchPublicWebMock }));
 import { ingestPage } from "../ingest-page";
 import type { ClassifyFn } from "../classify-page";
 
-/**
- * A reader that returns exactly what a test wants, spending no quota.
- *
- * Supplies a minimal valid plan unless the test provides one, because a
- * reading with no sections is deliberately treated as unusable — these tests
- * are about images and payload plumbing, not about that rule.
- */
+/*
+  A reader that returns exactly what a test wants, spending no quota.
+
+  Supplies a minimal valid plan unless the test provides one, because a
+  reading with no sections is deliberately treated as unusable — these tests
+  are about images and payload plumbing, not about that rule.
+*/
 function cannedReader(reading: Record<string, unknown>): ClassifyFn {
   return async () => ({
     sections: [
@@ -39,14 +39,14 @@ function cannedReader(reading: Record<string, unknown>): ClassifyFn {
   });
 }
 
-/**
- * The staged pipeline's own guarantees, at the seam rather than end to end.
- *
- * THE HOUSE RULE these exist to pin: A REFUSAL IS NOT AN ERROR. A page that
- * cannot be read comes back as a SUCCESSFUL call carrying `isOk: false` and
- * something worth relaying — never a throw, because a throw puts an unreadable
- * page on the error path where the model is invited to retry.
- */
+/*
+  The staged pipeline's own guarantees, at the seam rather than end to end.
+
+  THE HOUSE RULE these exist to pin: A REFUSAL IS NOT AN ERROR. A page that
+  cannot be read comes back as a SUCCESSFUL call carrying `isOk: false` and
+  something worth relaying — never a throw, because a throw puts an unreadable
+  page on the error path where the model is invited to retry.
+*/
 
 const PAGE_URL = "https://studio.example/about";
 
@@ -103,7 +103,9 @@ describe("ingestPage — a refusal is a successful call", () => {
     const result = await ingestPage({ url: PAGE_URL });
     expect(result).toMatchObject({ isOk: false, reason: "blocked_by_site" });
     if (result.isOk) return;
-    /* The page-mode override replaces copy written for a different caller. */
+    /*
+      The page-mode override replaces copy written for a different caller.
+    */
     expect(result.message).not.toContain("branding");
     expect(result.message).toContain("blocks automated access");
   });
@@ -338,7 +340,9 @@ describe("ingestPage — the pipeline writes image addresses, never the reader",
           {
             templateId: "hero",
             copy: { headline: "Rowan Ellis", body: "Nine years of clinical software.", imageAlt: "Rowan Ellis" },
-            /* Not part of the vocabulary; present as if smuggled. */
+            /*
+              Not part of the vocabulary; present as if smuggled.
+            */
             params: { imageSrc: "https://evil.example/tracker.gif" },
             sourceBlockIndices: [0],
             rationale: "Her name.",
@@ -467,7 +471,9 @@ describe("ingestPage — searching beyond the page", () => {
     });
     expect(result.isOk).toBe(true);
     if (!result.isOk) return;
-    /* Absence must mean "nothing was consulted", never an empty-looking result. */
+    /*
+      Absence must mean "nothing was consulted", never an empty-looking result.
+    */
     expect(result.page.searchClaims).toBeUndefined();
   });
 
@@ -536,7 +542,9 @@ describe("ingestPage — the page's own theme", () => {
     expect(result.page.theme?.globals.buttonBackgroundColor).toBe("#ffc400");
     expect(result.page.theme?.globals.contentBackgroundColor).toBe("#16032c");
     expect(result.page.theme?.globals.heading1FontFamily).toBe("Georgia, 'Times New Roman', serif");
-    /* The theme says where it came from, so the agent can too. */
+    /*
+      The theme says where it came from, so the agent can too.
+    */
     expect(result.page.theme?.source).toContain("#ffc400");
   });
 
@@ -555,7 +563,9 @@ describe("ingestPage — the page's own theme", () => {
   });
 
   it("carries NO theme for a page that gave no colours, so the draft keeps its own", async () => {
-    /* PAGE_HTML is unstyled — an absent field, never an invented palette. */
+    /*
+      PAGE_HTML is unstyled — an absent field, never an invented palette.
+    */
     const result = await ingestPage({ url: PAGE_URL });
     expect(result.isOk).toBe(true);
     if (!result.isOk) return;

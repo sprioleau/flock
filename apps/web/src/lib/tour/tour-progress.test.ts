@@ -51,7 +51,9 @@ function installFakeBrowser(seed: Record<string, string> = {}): Map<string, stri
   return backingStore;
 }
 
-/** A freshly-loaded copy of the store, as a page load would get. */
+/*
+  A freshly-loaded copy of the store, as a page load would get.
+*/
 async function loadStoreAfterReload(): Promise<typeof import("./tour-progress")> {
   vi.resetModules();
   return import("./tour-progress");
@@ -165,7 +167,9 @@ describe("reading stored progress", () => {
       JSON.stringify({ status: "in-progress", resumeStopId: "retired-stop" }),
     );
     expect(parsed.resumeStopId).toBeNull();
-    /* And that user gets the tour from the top rather than a blank screen. */
+    /*
+      And that user gets the tour from the top rather than a blank screen.
+    */
     expect(selectActiveTourStopId(parsed)).toBe(FIRST_TOUR_STOP_ID);
   });
 

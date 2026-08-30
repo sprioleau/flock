@@ -2,19 +2,19 @@
 
 import { useBrandColorPalette } from "../brand-kit/useBrandColorPalette";
 
-/**
- * The "Brand colors" swatch row at the BOTTOM of the color-picker popover
- * (item 24 — the owner moved it out from under every field, where stacked
- * rows read as noise): the ACTIVE brand kit's prominence-ranked palette
- * (max 6, signature accent first) as clickable chips. Clicking hands the
- * color to the host picker's normal commit path via `onPick` — this
- * component never dispatches anything itself, so instant apply and undo
- * coalescing behave exactly like typing the hex would.
- *
- * Renders nothing when the session has no saved kit. Colors are inline
- * styles by necessity (they ARE the data); everything else uses semantic
- * tokens so the row reads correctly in dark mode.
- */
+/*
+  The "Brand colors" swatch row at the BOTTOM of the color-picker popover
+  (item 24 — the owner moved it out from under every field, where stacked
+  rows read as noise): the ACTIVE brand kit's prominence-ranked palette
+  (max 6, signature accent first) as clickable chips. Clicking hands the
+  color to the host picker's normal commit path via `onPick` — this
+  component never dispatches anything itself, so instant apply and undo
+  coalescing behave exactly like typing the hex would.
+
+  Renders nothing when the session has no saved kit. Colors are inline
+  styles by necessity (they ARE the data); everything else uses semantic
+  tokens so the row reads correctly in dark mode.
+*/
 export function BrandColorSwatches({ onPick }: { onPick: (color: string) => void }) {
   const palette = useBrandColorPalette();
   if (palette.length === 0) {

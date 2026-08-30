@@ -33,11 +33,15 @@ import {
  * {@link resolveStyleTextSpanOperation}.
  */
 
-// ---------------------------------------------------------------------------
-// Input schema (what the model sees — refined for LLM clarity)
-// ---------------------------------------------------------------------------
+/*
+  ---------------------------------------------------------------------------
+  Input schema (what the model sees — refined for LLM clarity)
+  ---------------------------------------------------------------------------
+*/
 
-/** The style changes for one span. Booleans toggle marks; values set, null removes. */
+/*
+  The style changes for one span. Booleans toggle marks; values set, null removes.
+*/
 export const styleTextSpanStyleSchema = z
   .strictObject({
     bold: z
@@ -108,7 +112,9 @@ export const styleTextSpanStyleSchema = z
 
 export type StyleTextSpanStyle = z.infer<typeof styleTextSpanStyleSchema>;
 
-/** Which occurrence(s) of `find` to style. */
+/*
+  Which occurrence(s) of `find` to style.
+*/
 export const styleTextSpanOccurrenceSchema = z
   .union([
     z
@@ -148,15 +154,17 @@ export const styleTextSpanInputSchema = z
 
 export type StyleTextSpanInput = z.infer<typeof styleTextSpanInputSchema>;
 
-// ---------------------------------------------------------------------------
-// Mark algebra (pure)
-// ---------------------------------------------------------------------------
+/*
+  ---------------------------------------------------------------------------
+  Mark algebra (pure)
+  ---------------------------------------------------------------------------
+*/
 
-/**
- * A text run's marks flattened into one explicit state record — the closed
- * mark vocabulary makes this lossless, and it gives set/remove semantics a
- * place to operate before the marks are rebuilt in canonical order.
- */
+/*
+  A text run's marks flattened into one explicit state record — the closed
+  mark vocabulary makes this lossless, and it gives set/remove semantics a
+  place to operate before the marks are rebuilt in canonical order.
+*/
 interface SpanMarkState {
   isBold: boolean;
   isItalic: boolean;
@@ -211,7 +219,9 @@ function readMarkState(marks: readonly TextMark[] | undefined): SpanMarkState {
   return state;
 }
 
-/** Apply the style's set/remove semantics to a mark state (returns a new state). */
+/*
+  Apply the style's set/remove semantics to a mark state (returns a new state).
+*/
 function applyStyleToMarkState(state: SpanMarkState, style: StyleTextSpanStyle): SpanMarkState {
   const next = { ...state };
   if (style.bold !== undefined) next.isBold = style.bold;
@@ -230,12 +240,12 @@ function applyStyleToMarkState(state: SpanMarkState, style: StyleTextSpanStyle):
   return next;
 }
 
-/**
- * Rebuild a schema-valid mark array from a state, in the canonical order
- * (the textMarkSchema union order). Returns undefined for an unmarked run —
- * the schema-preferred spelling over an empty array. An empty textStyle mark
- * is never emitted (the schema requires at least one attribute).
- */
+/*
+  Rebuild a schema-valid mark array from a state, in the canonical order
+  (the textMarkSchema union order). Returns undefined for an unmarked run —
+  the schema-preferred spelling over an empty array. An empty textStyle mark
+  is never emitted (the schema requires at least one attribute).
+*/
 function buildMarks(state: SpanMarkState): TextMark[] | undefined {
   const marks: TextMark[] = [];
   if (state.isBold) marks.push({ type: "bold" });
@@ -259,7 +269,9 @@ function buildMarks(state: SpanMarkState): TextMark[] | undefined {
   return marks.length > 0 ? marks : undefined;
 }
 
-/** Order-insensitive identity of a mark set, for adjacent-run merging. */
+/*
+  Order-insensitive identity of a mark set, for adjacent-run merging.
+*/
 function markSetKey(marks: readonly TextMark[] | undefined): string {
   const keys = (marks ?? []).map((mark) => {
     if (mark.type === "textStyle") {
@@ -273,11 +285,15 @@ function markSetKey(marks: readonly TextMark[] | undefined): string {
   return keys.sort().join("|");
 }
 
-// ---------------------------------------------------------------------------
-// Span location & application (pure)
-// ---------------------------------------------------------------------------
+/*
+  ---------------------------------------------------------------------------
+  Span location & application (pure)
+  ---------------------------------------------------------------------------
+*/
 
-/** One resolved match: char range [start, end) in a block node's flat text. */
+/*
+  One resolved match: char range [start, end) in a block node's flat text.
+*/
 interface SpanMatch {
   nodeIndex: number;
   start: number;
@@ -286,21 +302,21 @@ interface SpanMatch {
 
 const REGEXP_SPECIALS = /[.*+?^${}()|[\]\\]/g;
 
-/**
- * `find` as a regex: exact text, but any whitespace run in `find` matches any
- * whitespace run in the doc (spaces, hard breaks) — "normalize whitespace
- * sensibly" without ever editing the doc's actual characters.
- */
+/*
+  `find` as a regex: exact text, but any whitespace run in `find` matches any
+  whitespace run in the doc (spaces, hard breaks) — "normalize whitespace
+  sensibly" without ever editing the doc's actual characters.
+*/
 function buildFindPattern(find: string): RegExp {
   const escaped = find.trim().replace(REGEXP_SPECIALS, "\\$&");
   return new RegExp(escaped.replace(/\s+/g, "\\s+"), "g");
 }
 
-/**
- * A block node's inline content flattened to one string: text runs verbatim,
- * each hard break as "\n" (one char, so offsets map 1:1 back to inline nodes;
- * "\n" also lets the flexible-whitespace pattern match across breaks).
- */
+/*
+  A block node's inline content flattened to one string: text runs verbatim,
+  each hard break as "\n" (one char, so offsets map 1:1 back to inline nodes;
+  "\n" also lets the flexible-whitespace pattern match across breaks).
+*/
 function flattenNodeText(node: TextBlockNode): string {
   let text = "";
   for (const inline of node.content ?? []) {
@@ -309,7 +325,9 @@ function flattenNodeText(node: TextBlockNode): string {
   return text;
 }
 
-/** All matches of the pattern across the doc, in reading order. */
+/*
+  All matches of the pattern across the doc, in reading order.
+*/
 function findMatches(doc: TextDoc, find: string): SpanMatch[] {
   const matches: SpanMatch[] = [];
   for (const [nodeIndex, node] of doc.content.entries()) {
@@ -324,7 +342,9 @@ function findMatches(doc: TextDoc, find: string): SpanMatch[] {
   return matches;
 }
 
-/** Coalesce adjacent text runs whose (order-insensitive) mark sets are identical. */
+/*
+  Coalesce adjacent text runs whose (order-insensitive) mark sets are identical.
+*/
 function mergeAdjacentTextNodes(content: InlineNode[]): InlineNode[] {
   const merged: InlineNode[] = [];
   for (const inline of content) {
@@ -343,17 +363,19 @@ function mergeAdjacentTextNodes(content: InlineNode[]): InlineNode[] {
   return merged;
 }
 
-/** Build the styled text run, omitting `marks` entirely for an unmarked run. */
+/*
+  Build the styled text run, omitting `marks` entirely for an unmarked run.
+*/
 function buildTextNode(text: string, marks: TextMark[] | undefined): TextNode {
   return { type: "text", text, ...(marks !== undefined ? { marks } : {}) };
 }
 
-/**
- * Rebuild one block node's inline content with the style applied to the given
- * char ranges: text runs are split at range boundaries, covered pieces get
- * the transformed marks, hard breaks pass through untouched, and adjacent
- * identical-mark runs are re-merged so the output stays canonical.
- */
+/*
+  Rebuild one block node's inline content with the style applied to the given
+  char ranges: text runs are split at range boundaries, covered pieces get
+  the transformed marks, hard breaks pass through untouched, and adjacent
+  identical-mark runs are re-merged so the output stays canonical.
+*/
 function applyStyleToNodeContent({
   content,
   ranges,
@@ -399,16 +421,24 @@ function applyStyleToNodeContent({
   return mergeAdjacentTextNodes(rebuilt);
 }
 
-// ---------------------------------------------------------------------------
-// The pure translation
-// ---------------------------------------------------------------------------
+/*
+  ---------------------------------------------------------------------------
+  The pure translation
+  ---------------------------------------------------------------------------
+*/
 
 export interface ApplySpanStyleInput {
-  /** The text block's CURRENT rich-text doc. Never mutated. */
+  /*
+    The text block's CURRENT rich-text doc. Never mutated.
+  */
   text: TextDoc;
-  /** The exact text to locate (whitespace runs match flexibly). */
+  /*
+    The exact text to locate (whitespace runs match flexibly).
+  */
   find: string;
-  /** 1-based occurrence index or "all". Defaults to 1. */
+  /*
+    1-based occurrence index or "all". Defaults to 1.
+  */
   occurrence?: StyleTextSpanOccurrence;
   style: StyleTextSpanStyle;
 }
@@ -416,23 +446,29 @@ export interface ApplySpanStyleInput {
 export type ApplySpanStyleResult =
   | {
       isOk: true;
-      /** The resulting doc with marks applied to exactly the located span(s). */
+      /*
+        The resulting doc with marks applied to exactly the located span(s).
+      */
       text: TextDoc;
-      /** Total occurrences of `find` in the doc (styled: 1, or all of them). */
+      /*
+        Total occurrences of `find` in the doc (styled: 1, or all of them).
+      */
       matchCount: number;
     }
   | {
       isOk: false;
       reason: "span_not_found" | "occurrence_out_of_range";
-      /** Total occurrences found (0 for span_not_found). */
+      /*
+        Total occurrences found (0 for span_not_found).
+      */
       matchCount: number;
     };
 
-/**
- * The pure span-styling translation: locate `find` in the doc, apply the
- * style to exactly that span (splitting/merging text runs as needed), return
- * the new doc. Deterministic; the input doc is never mutated.
- */
+/*
+  The pure span-styling translation: locate `find` in the doc, apply the
+  style to exactly that span (splitting/merging text runs as needed), return
+  the new doc. Deterministic; the input doc is never mutated.
+*/
 export function applySpanStyle({
   text,
   find,
@@ -472,11 +508,15 @@ export function applySpanStyle({
   return { isOk: true, text: { ...text, content }, matchCount: matches.length };
 }
 
-// ---------------------------------------------------------------------------
-// Intent → canonical operation resolution
-// ---------------------------------------------------------------------------
+/*
+  ---------------------------------------------------------------------------
+  Intent → canonical operation resolution
+  ---------------------------------------------------------------------------
+*/
 
-/** Plain-text view of a doc for error messages — mirrors the outline's format. */
+/*
+  Plain-text view of a doc for error messages — mirrors the outline's format.
+*/
 function toPlainText(text: TextDoc): string {
   return text.content
     .map((node) =>
@@ -498,19 +538,23 @@ export type ResolveStyleTextSpanResult =
   | { isOk: false; errors: ResolvedOperationError[] };
 
 export interface ResolveStyleTextSpanOperationInput {
-  /** The document holding the target block's CURRENT text. Never mutated. */
+  /*
+    The document holding the target block's CURRENT text. Never mutated.
+  */
   doc: EmailDocument;
-  /** Validated styleTextSpan input. */
+  /*
+    Validated styleTextSpan input.
+  */
   input: StyleTextSpanInput;
 }
 
-/**
- * The deterministic intent→operation translation: resolve a styleTextSpan
- * input against a document into ONE canonical `updateText` operation (the op
- * that goes on the history spine). Every failure is a structured, retryable
- * repair hint — a not-found error names the block's ACTUAL current text so
- * the model can copy it verbatim and self-correct.
- */
+/*
+  The deterministic intent→operation translation: resolve a styleTextSpan
+  input against a document into ONE canonical `updateText` operation (the op
+  that goes on the history spine). Every failure is a structured, retryable
+  repair hint — a not-found error names the block's ACTUAL current text so
+  the model can copy it verbatim and self-correct.
+*/
 export function resolveStyleTextSpanOperation({
   doc,
   input,
@@ -562,16 +606,18 @@ export function resolveStyleTextSpanOperation({
   };
 }
 
-// ---------------------------------------------------------------------------
-// The action definition
-// ---------------------------------------------------------------------------
+/*
+  ---------------------------------------------------------------------------
+  The action definition
+  ---------------------------------------------------------------------------
+*/
 
-/**
- * The styleTextSpan content action. `resolveOperation` is the intent→op
- * translation above; per the dispatch contract (see dispatchContentAction),
- * `run` therefore receives the RESOLVED `updateText` operation — the op log,
- * undo/redo, and AI-batch revert only ever see a standard replayable op.
- */
+/*
+  The styleTextSpan content action. `resolveOperation` is the intent→op
+  translation above; per the dispatch contract (see dispatchContentAction),
+  `run` therefore receives the RESOLVED `updateText` operation — the op log,
+  undo/redo, and AI-batch revert only ever see a standard replayable op.
+*/
 export const styleTextSpanAction = defineEmailAction({
   name: "styleTextSpan",
   description:
@@ -579,10 +625,12 @@ export const styleTextSpanAction = defineEmailAction({
   kind: "content",
   schema: styleTextSpanInputSchema,
   readOnly: false,
-  parallelSafe: true, // span styles on distinct blocks are independent (updateText rationale)
+  parallelSafe: true, /* span styles on distinct blocks are independent (updateText rationale) */
   needsApproval: false,
   resolveOperation: (doc, input) => resolveStyleTextSpanOperation({ doc, input }),
-  // dispatchContentAction calls run with the RESOLVED updateText operation
-  // (never the raw intent input), hence the cast.
+  /*
+    dispatchContentAction calls run with the RESOLVED updateText operation
+    (never the raw intent input), hence the cast.
+  */
   run: (doc, input) => applyOperation(doc, input as unknown as Operation),
 });

@@ -14,26 +14,30 @@ import { useUiSurfaceOpenRequest } from "@/lib/ui-surfaces";
 import { PersonaPickerDialog } from "./PersonaPickerDialog";
 import { PersonaRecommendationsDialog } from "./PersonaRecommendationsDialog";
 
-/**
- * First-class entry point for the AI collaborators (owner decision: personas
- * are collaborators, not a debug setting — this moved OUT of the settings
- * FAB). Renders next to the presence facepile in the studio header, so
- * "who's here" and "add an AI teammate" read as one cluster; opens the
- * agent collaborators modal (PersonaPickerDialog). The history button beside
- * it opens the recommendations-history modal on its "All" tab (the same
- * modal a persona avatar click opens pre-filtered).
- */
+/*
+  First-class entry point for the AI collaborators (owner decision: personas
+  are collaborators, not a debug setting — this moved OUT of the settings
+  FAB). Renders next to the presence facepile in the studio header, so
+  "who's here" and "add an AI teammate" read as one cluster; opens the
+  agent collaborators modal (PersonaPickerDialog). The history button beside
+  it opens the recommendations-history modal on its "All" tab (the same
+  modal a persona avatar click opens pre-filtered).
+*/
 export function AgentCollaboratorsButton() {
   const [isPickerOpen, setIsPickerOpen] = useState(false);
   const [isRecommendationsOpen, setIsRecommendationsOpen] = useState(false);
-  // Paused recommendations (credit conservation) read at the entry point:
-  // a slashed, dimmed bot with an explanatory tooltip — the pause/resume
-  // control itself lives in the modal's header.
+  /*
+    Paused recommendations (credit conservation) read at the entry point:
+    a slashed, dimmed bot with an explanatory tooltip — the pause/resume
+    control itself lives in the modal's header.
+  */
   const arePersonasPaused = useArePersonasPaused();
 
-  // Agent-parity: openPanel("agents") opens the persona picker and
-  // openPanel("recommendations") opens the history modal — same state the
-  // two header buttons set.
+  /*
+    Agent-parity: openPanel("agents") opens the persona picker and
+    openPanel("recommendations") opens the history modal — same state the
+    two header buttons set.
+  */
   useUiSurfaceOpenRequest("agents", () => setIsPickerOpen(true));
   useUiSurfaceOpenRequest("recommendations", () => setIsRecommendationsOpen(true));
 

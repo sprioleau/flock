@@ -21,31 +21,31 @@ import { cn } from "@/lib/utils";
 import { PersonaCheckNowButton } from "./PersonaCheckNowButton";
 import { getRecommendationOutcome } from "./recommendation-outcome";
 
-/**
- * Persona presence UX — the recommendations-history modal: EVERY
- * recommendation the enabled agents have made for this document, newest
- * first, each labeled with what happened to it (Pending / Applied /
- * Dismissed for actionable ones; Informational for advice that carries no
- * ops). Tabs are one per REGISTRY persona plus "All" — derived from
- * personas.listPersonas, never hardcoded slugs (personas are pure data; the
- * marketplace invariant).
- *
- * Reached two ways: clicking a persona's avatar in the facepile opens it
- * PRE-FILTERED to that persona (initialPersonaSlug), and the history button
- * beside the AI-collaborators button opens it on "All".
- *
- * Data is the reactive personaFindings.listFindingsForDocument feed, so a
- * dismissal or apply in any tab (cards, another collaborator, this modal)
- * updates every open modal live. The per-row Dismiss action reuses the SAME
- * dismissFinding mutation the suggestion cards call — no new write path.
- *
- * Pending op-less rows that carry a runner-authored suggestedPrompt get the
- * cards' "Ask in chat" handoff here too: clicking closes the modal and
- * inserts the prompt into the chat composer (focused, editable, never
- * auto-sent). The insertion runs inside the dialog's finalFocus callback —
- * returning false there SKIPS the close-time focus restore for exactly this
- * close, so focus lands in the composer instead of back on the trigger.
- */
+/*
+  Persona presence UX — the recommendations-history modal: EVERY
+  recommendation the enabled agents have made for this document, newest
+  first, each labeled with what happened to it (Pending / Applied /
+  Dismissed for actionable ones; Informational for advice that carries no
+  ops). Tabs are one per REGISTRY persona plus "All" — derived from
+  personas.listPersonas, never hardcoded slugs (personas are pure data; the
+  marketplace invariant).
+
+  Reached two ways: clicking a persona's avatar in the facepile opens it
+  PRE-FILTERED to that persona (initialPersonaSlug), and the history button
+  beside the AI-collaborators button opens it on "All".
+
+  Data is the reactive personaFindings.listFindingsForDocument feed, so a
+  dismissal or apply in any tab (cards, another collaborator, this modal)
+  updates every open modal live. The per-row Dismiss action reuses the SAME
+  dismissFinding mutation the suggestion cards call — no new write path.
+
+  Pending op-less rows that carry a runner-authored suggestedPrompt get the
+  cards' "Ask in chat" handoff here too: clicking closes the modal and
+  inserts the prompt into the chat composer (focused, editable, never
+  auto-sent). The insertion runs inside the dialog's finalFocus callback —
+  returning false there SKIPS the close-time focus restore for exactly this
+  close, so focus lands in the composer instead of back on the trigger.
+*/
 
 type FindingHistoryRow = FunctionReturnType<
   typeof api.personaFindings.listFindingsForDocument
@@ -54,7 +54,9 @@ type FindingHistoryRow = FunctionReturnType<
 export interface PersonaRecommendationsDialogProps {
   isOpen: boolean;
   onOpenChange: (isOpen: boolean) => void;
-  /** Pre-filter to one persona (facepile avatar click); null opens on "All". */
+  /*
+    Pre-filter to one persona (facepile avatar click); null opens on "All".
+  */
   initialPersonaSlug: string | null;
 }
 
@@ -65,7 +67,9 @@ export function PersonaRecommendationsDialog({
 }: PersonaRecommendationsDialogProps) {
   const documentId = useEditorStore((state) => state.documentId);
   const enabledSlugs = useEnabledPersonaSlugs();
-  // Session id read only while open (a user gesture opened us — never SSR).
+  /*
+    Session id read only while open (a user gesture opened us — never SSR).
+  */
   const sessionId = isOpen ? getOrCreateSessionId() : null;
 
   const personas = useQuery(
@@ -77,8 +81,10 @@ export function PersonaRecommendationsDialog({
     isOpen && documentId !== null ? { documentId } : "skip",
   );
 
-  // The selected tab (null = All), re-seeded from the entry point each time
-  // the dialog OPENS (render-time adjustment on the isOpen edge).
+  /*
+    The selected tab (null = All), re-seeded from the entry point each time
+    the dialog OPENS (render-time adjustment on the isOpen edge).
+  */
   const [selectedSlug, setSelectedSlug] = useState<string | null>(initialPersonaSlug);
   const [wasOpen, setWasOpen] = useState(isOpen);
   if (wasOpen !== isOpen) {
@@ -92,9 +98,11 @@ export function PersonaRecommendationsDialog({
     (row) => selectedSlug === null || row.personaSlug === selectedSlug,
   );
 
-  // "Ask in chat" handoff staged across the close: the click stores the
-  // prompt and closes the dialog; the finalFocus callback then inserts it
-  // and returns false so the composer keeps the focus (see header note).
+  /*
+    "Ask in chat" handoff staged across the close: the click stores the
+    prompt and closes the dialog; the finalFocus callback then inserts it
+    and returns false so the composer keeps the focus (see header note).
+  */
   const pendingHandoffPromptRef = useRef<string | null>(null);
   const askInChat = (prompt: string): void => {
     pendingHandoffPromptRef.current = prompt;
@@ -103,7 +111,7 @@ export function PersonaRecommendationsDialog({
   const handleFinalFocus = (): boolean => {
     const prompt = pendingHandoffPromptRef.current;
     if (prompt === null) {
-      return true; // normal close — default focus restore
+      return true; /* normal close — default focus restore */
     }
     pendingHandoffPromptRef.current = null;
     handOffPromptToComposer(prompt);
@@ -148,17 +156,21 @@ export function PersonaRecommendationsDialog({
               />
             ))}
           </div>
-          {/* Sweep-all "Check now" (owner ask): every ENABLED agent reviews
-              the document as it is, right now — hidden when nothing is
-              enabled (history stays readable regardless). */}
+          {/*
+            Sweep-all "Check now" (owner ask): every ENABLED agent reviews
+            the document as it is, right now — hidden when nothing is
+            enabled (history stays readable regardless).
+          */}
           {enabledSlugs.length > 0 && (
             <PersonaCheckNowButton documentId={documentId} personaSlugs={enabledSlugs} />
           )}
         </div>
-        {/* FIXED height (owner ask): tab switches change the list contents,
-            never the modal dimensions — the list is the scrollable region.
-            One fixed value (not viewport-relative): tall enough for 2-3 rows,
-            scroll takes over beyond that, and no dead area with one row. */}
+        {/*
+          FIXED height (owner ask): tab switches change the list contents,
+          never the modal dimensions — the list is the scrollable region.
+          One fixed value (not viewport-relative): tall enough for 2-3 rows,
+          scroll takes over beyond that, and no dead area with one row.
+        */}
         <div className="flex h-[400px] flex-col gap-2 overflow-y-auto">
           {findingRows === undefined ? (
             <p className="py-6 text-center text-xs text-muted-foreground">
@@ -190,7 +202,9 @@ function RecommendationsTab({
   label: string;
   color?: string;
   isSelected: boolean;
-  /** Registry persona that isn't currently enabled — history stays browsable. */
+  /*
+    Registry persona that isn't currently enabled — history stays browsable.
+  */
   isInactive?: boolean;
   onSelect: () => void;
   testId: string;
@@ -224,7 +238,9 @@ function RecommendationsTab({
   );
 }
 
-/** Coarse, user-facing recency ("just now", "5 minutes ago", "2 hours ago"). */
+/*
+  Coarse, user-facing recency ("just now", "5 minutes ago", "2 hours ago").
+*/
 export function formatRelativeTime({ atMs, nowMs }: { atMs: number; nowMs: number }): string {
   const elapsedMs = Math.max(0, nowMs - atMs);
   const elapsedMinutes = Math.floor(elapsedMs / 60_000);
@@ -250,7 +266,9 @@ function RecommendationRow({
   onAskInChat: (prompt: string) => void;
 }) {
   const dismissFinding = useMutation(api.personaFindings.dismissFinding);
-  // Recency is captured at row mount (dialog open) — purity over ticking.
+  /*
+    Recency is captured at row mount (dialog open) — purity over ticking.
+  */
   const [mountedAtMs] = useState(() => Date.now());
   const outcome = getRecommendationOutcome(row);
   return (
@@ -290,7 +308,9 @@ function RecommendationRow({
             size="xs"
             className="shrink-0 text-muted-foreground"
             onClick={() => {
-              // The cards' exact dismissal write path — every tab converges.
+              /*
+                The cards' exact dismissal write path — every tab converges.
+              */
               dismissFinding({ findingId: row.findingId }).catch((error: unknown) => {
                 console.warn("[personas] dismissFinding from history failed", error);
               });
@@ -300,9 +320,11 @@ function RecommendationRow({
             Dismiss
           </Button>
         )}
-        {/* Pending op-less advice with a handoff prompt: the cards' "Ask in
-            chat" affordance — close the modal, land in the composer. Older
-            rows without the field simply show no CTA. */}
+        {/*
+          Pending op-less advice with a handoff prompt: the cards' "Ask in
+          chat" affordance — close the modal, land in the composer. Older
+          rows without the field simply show no CTA.
+        */}
         {row.status === "open" && !row.isActionable && row.suggestedPrompt !== undefined && (
           <Button
             type="button"

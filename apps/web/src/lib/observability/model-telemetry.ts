@@ -30,10 +30,10 @@ import {
  * its own `flock.model.call` record through {@link logModelCall}.
  */
 
-/**
- * Which call site produced a record. Low-cardinality and stable — the field
- * you group by to answer "which operation fails most".
- */
+/*
+  Which call site produced a record. Low-cardinality and stable — the field
+  you group by to answer "which operation fails most".
+*/
 export type ModelOperation =
   | "chat.main"
   | "chat.repair"
@@ -45,37 +45,55 @@ export type ModelOperation =
   | "image.generate";
 
 export interface ModelTelemetryContext {
-  /** The call site. */
+  /*
+    The call site.
+  */
   operation: ModelOperation;
-  /** Ties every record from one request together. See createTraceId(). */
+  /*
+    Ties every record from one request together. See createTraceId().
+  */
   traceId: string;
-  /** Whether this run used a deterministic mock instead of a provider. */
+  /*
+    Whether this run used a deterministic mock instead of a provider.
+  */
   isMock: boolean;
-  /**
-   * Short hash of the caller's anonymous session id, or null. Hashed, not
-   * verbatim — no diagnostic question needs the raw id.
-   */
+  /*
+    Short hash of the caller's anonymous session id, or null. Hashed, not
+    verbatim — no diagnostic question needs the raw id.
+  */
   sessionHash?: string | null;
 }
 
-// ---------------------------------------------------------------------------
-// Record emitters (also used directly by the non-SDK-instrumented image path)
-// ---------------------------------------------------------------------------
+/*
+  ---------------------------------------------------------------------------
+  Record emitters (also used directly by the non-SDK-instrumented image path)
+  ---------------------------------------------------------------------------
+*/
 
 export interface ModelCallOutcome {
-  /** Provider id as the SDK reports it, e.g. "google.generative-ai". */
+  /*
+    Provider id as the SDK reports it, e.g. "google.generative-ai".
+  */
   provider: string;
   modelId: string;
-  /** Provider-call wall time. */
+  /*
+    Provider-call wall time.
+  */
   latencyMs: number;
   finishReason?: string;
-  /** Token counts, when the provider reported them. */
+  /*
+    Token counts, when the provider reported them.
+  */
   usage?: unknown;
-  /** The SDK's per-generation id, for stitching multi-step turns. */
+  /*
+    The SDK's per-generation id, for stitching multi-step turns.
+  */
   callId?: string;
 }
 
-/** `flock.model.call` — one successful provider call. */
+/*
+  `flock.model.call` — one successful provider call.
+*/
 export function logModelCall(
   context: ModelTelemetryContext,
   outcome: ModelCallOutcome,
@@ -95,7 +113,9 @@ export function logModelCall(
   });
 }
 
-/** `flock.model.failed` — one provider call that threw. */
+/*
+  `flock.model.failed` — one provider call that threw.
+*/
 export function logModelFailure(
   context: ModelTelemetryContext,
   error: unknown,
@@ -111,25 +131,29 @@ export function logModelFailure(
     errorName: summary.name,
     statusCode: summary.statusCode,
     message: summary.message,
-    // The provider's own words about WHICH field it rejected. Absent for
-    // everything that is not an APICallError with a body.
+    /*
+      The provider's own words about WHICH field it rejected. Absent for
+      everything that is not an APICallError with a body.
+    */
     providerDetail: summary.providerDetail,
   });
 }
 
-// ---------------------------------------------------------------------------
-// The integration
-// ---------------------------------------------------------------------------
+/*
+  ---------------------------------------------------------------------------
+  The integration
+  ---------------------------------------------------------------------------
+*/
 
-/**
- * Build the per-call telemetry integration. Pass it as
- * `telemetry: { functionId, integrations: [createModelTelemetry(context)] }`.
- *
- * Records emitted:
- *   flock.model.call      — every provider round-trip that returned
- *   flock.model.failed    — every provider round-trip that threw
- *   flock.model.toolFailed— every client-side tool execute() that threw
- */
+/*
+  Build the per-call telemetry integration. Pass it as
+  `telemetry: { functionId, integrations: [createModelTelemetry(context)] }`.
+
+  Records emitted:
+    flock.model.call      — every provider round-trip that returned
+    flock.model.failed    — every provider round-trip that threw
+    flock.model.toolFailed— every client-side tool execute() that threw
+*/
 export function createModelTelemetry(context: ModelTelemetryContext): Telemetry {
   return {
     onLanguageModelCallEnd: (event) => {
@@ -148,9 +172,11 @@ export function createModelTelemetry(context: ModelTelemetryContext): Telemetry 
     },
 
     onToolExecutionEnd: (event) => {
-      // Only failures. A successful tool execution is already implied by the
-      // turn's flock.chat.request toolNames — logging both would double every
-      // turn's line count against Vercel's 256-lines-per-request ceiling.
+      /*
+        Only failures. A successful tool execution is already implied by the
+        turn's flock.chat.request toolNames — logging both would double every
+        turn's line count against Vercel's 256-lines-per-request ceiling.
+      */
       if (event.toolOutput.type !== "tool-error") {
         return;
       }
@@ -171,11 +197,11 @@ export function createModelTelemetry(context: ModelTelemetryContext): Telemetry 
   };
 }
 
-/**
- * The whole telemetry option object for a call site, so a call site reads as
- * one line instead of four. `functionId` is the SDK's own grouping key and is
- * kept identical to `operation` so the two never drift.
- */
+/*
+  The whole telemetry option object for a call site, so a call site reads as
+  one line instead of four. `functionId` is the SDK's own grouping key and is
+  kept identical to `operation` so the two never drift.
+*/
 export function modelTelemetryFor(context: ModelTelemetryContext): {
   functionId: string;
   integrations: [Telemetry];
@@ -186,10 +212,10 @@ export function modelTelemetryFor(context: ModelTelemetryContext): {
   };
 }
 
-/**
- * A context for a route that has no upstream trace id of its own. Convenience
- * so a one-model-call route is a single line at the call site.
- */
+/*
+  A context for a route that has no upstream trace id of its own. Convenience
+  so a one-model-call route is a single line at the call site.
+*/
 export function newModelContext(
   operation: ModelOperation,
   options: { isMock: boolean; sessionHash?: string | null } = { isMock: false },
@@ -202,11 +228,15 @@ export function newModelContext(
   };
 }
 
-// ---------------------------------------------------------------------------
-// Tool-input validation failures (the chat pipeline's blind spot)
-// ---------------------------------------------------------------------------
+/*
+  ---------------------------------------------------------------------------
+  Tool-input validation failures (the chat pipeline's blind spot)
+  ---------------------------------------------------------------------------
+*/
 
-/** Why a rejected tool call was never repaired. */
+/*
+  Why a rejected tool call was never repaired.
+*/
 export type UnrepairedReason =
   | "no_such_tool"
   | "repair_budget_exhausted"
@@ -217,22 +247,28 @@ export interface ToolInputRejectedInput {
   context: ModelTelemetryContext;
   toolName: string;
   toolCallId: string;
-  /** Validation issue list pulled off the error (codes + paths). */
+  /*
+    Validation issue list pulled off the error (codes + paths).
+  */
   issues: ReadonlyArray<{ code: string; path: string; message: string }>;
-  /** The offending payload, ALREADY truncated by the caller. */
+  /*
+    The offending payload, ALREADY truncated by the caller.
+  */
   rejectedInput: unknown;
-  /** How many repair attempts this tool call had already consumed. */
+  /*
+    How many repair attempts this tool call had already consumed.
+  */
   previousAttemptCount: number;
 }
 
-/**
- * `flock.chat.toolInputRejected` — the record that did not exist before.
- *
- * Fires the moment the SDK hands a failed tool call to the repairer, i.e. on
- * EVERY InvalidToolInputError, whether or not the repair later succeeds. It
- * carries the two things the previous logging threw away: the validation issue
- * codes and paths, and a truncated copy of what the model actually sent.
- */
+/*
+  `flock.chat.toolInputRejected` — the record that did not exist before.
+
+  Fires the moment the SDK hands a failed tool call to the repairer, i.e. on
+  EVERY InvalidToolInputError, whether or not the repair later succeeds. It
+  carries the two things the previous logging threw away: the validation issue
+  codes and paths, and a truncated copy of what the model actually sent.
+*/
 export function logToolInputRejected({
   context,
   toolName,
@@ -257,13 +293,13 @@ export function logToolInputRejected({
   });
 }
 
-/**
- * `flock.chat.toolInputUnrepaired` — the previously SILENT outcome.
- *
- * Before this record, "tried, re-asked, and failed again" produced exactly the
- * same log output as "never tried at all": the repairer just returned null.
- * `reason` is what distinguishes them.
- */
+/*
+  `flock.chat.toolInputUnrepaired` — the previously SILENT outcome.
+
+  Before this record, "tried, re-asked, and failed again" produced exactly the
+  same log output as "never tried at all": the repairer just returned null.
+  `reason` is what distinguishes them.
+*/
 export function logToolInputUnrepaired({
   context,
   toolName,

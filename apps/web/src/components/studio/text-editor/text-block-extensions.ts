@@ -4,77 +4,85 @@ import { Highlight } from "@tiptap/extension-highlight";
 import { TextAlign } from "@tiptap/extension-text-align";
 import { Color, FontFamily, FontSize, TextStyle } from "@tiptap/extension-text-style";
 
-/**
- * The kit's Heading with its React node view removed.
- *
- * Resend's heading node view renders `<Heading {...node.attrs}>` — react-email's
- * Heading forwards unknown props straight to the `<h1>`, so EVERY registered
- * node attribute lands on the DOM element as a raw attribute. Tiptap's own
- * `renderHTML` pipeline (which the node view bypasses) exists precisely to
- * avoid that: it asks each attribute for its rendered form, and the TextAlign
- * extension's answer is `style: text-align: …`.
- *
- * The visible symptom was React warning `React does not recognize the
- * textAlign prop on a DOM element` and emitting an invalid `textalign="center"`
- * attribute instead of a style. Returning null from `addNodeView` (a supported
- * return — Tiptap then registers no node view for the type) drops back to
- * `renderHTML`, so aligned headings get a real inline `text-align` in the
- * editor, exactly like paragraphs and exactly like the SDK renderer's export.
- * It cannot be done by simply omitting `addNodeView`: getExtensionField walks
- * up to the parent extension when a field is undefined, which would resurrect
- * the node view. Nothing else was riding it — its only other contribution was
- * a `node-h{level}` class no stylesheet references.
- */
+/*
+  The kit's Heading with its React node view removed.
+
+  Resend's heading node view renders `<Heading {...node.attrs}>` — react-email's
+  Heading forwards unknown props straight to the `<h1>`, so EVERY registered
+  node attribute lands on the DOM element as a raw attribute. Tiptap's own
+  `renderHTML` pipeline (which the node view bypasses) exists precisely to
+  avoid that: it asks each attribute for its rendered form, and the TextAlign
+  extension's answer is `style: text-align: …`.
+
+  The visible symptom was React warning `React does not recognize the
+  textAlign prop on a DOM element` and emitting an invalid `textalign="center"`
+  attribute instead of a style. Returning null from `addNodeView` (a supported
+  return — Tiptap then registers no node view for the type) drops back to
+  `renderHTML`, so aligned headings get a real inline `text-align` in the
+  editor, exactly like paragraphs and exactly like the SDK renderer's export.
+  It cannot be done by simply omitting `addNodeView`: getExtensionField walks
+  up to the parent extension when a field is undefined, which would resurrect
+  the node view. Nothing else was riding it — its only other contribution was
+  a `node-h{level}` class no stylesheet references.
+*/
 const HeadingWithoutNodeView = Heading.extend({ addNodeView: () => null });
 
-/**
- * The Resend editor's StarterKit reduced to a per-text-block schema
- * (Spike A §2.5, docs/decisions/spike-a-resend-editor-role.md): every
- * structural/email-chrome node disabled, plus everything outside the SDK's
- * text vocabulary (packages/email-sdk/src/schema/text.ts).
- *
- * What remains: doc > (paragraph | heading 1-3) > (text | hardBreak), with
- * bold / italic / underline / strike / link marks — exactly the shape
- * `textDocSchema` accepts (modulo the attr-stripping in
- * normalize-editor-doc.ts).
- *
- * Span-level typography (gap #7 candidate set, out-of-the-box only): the
- * Resend StarterKit ships no TextStyle-family extensions, so the OFFICIAL
- * Tiptap ones are layered on top — one `textStyle` mark carrying
- * fontFamily/color/fontSize attrs, plus the multicolor `highlight` mark.
- * Both map 1:1 onto the SDK's textStyleMarkSchema/highlightMarkSchema.
- * LineHeight/BackgroundColor (the rest of the text-style family) stay OUT:
- * they are not in the SDK vocabulary.
- */
+/*
+  The Resend editor's StarterKit reduced to a per-text-block schema
+  (Spike A §2.5, docs/decisions/spike-a-resend-editor-role.md): every
+  structural/email-chrome node disabled, plus everything outside the SDK's
+  text vocabulary (packages/email-sdk/src/schema/text.ts).
+
+  What remains: doc > (paragraph | heading 1-3) > (text | hardBreak), with
+  bold / italic / underline / strike / link marks — exactly the shape
+  `textDocSchema` accepts (modulo the attr-stripping in
+  normalize-editor-doc.ts).
+
+  Span-level typography (gap #7 candidate set, out-of-the-box only): the
+  Resend StarterKit ships no TextStyle-family extensions, so the OFFICIAL
+  Tiptap ones are layered on top — one `textStyle` mark carrying
+  fontFamily/color/fontSize attrs, plus the multicolor `highlight` mark.
+  Both map 1:1 onto the SDK's textStyleMarkSchema/highlightMarkSchema.
+  LineHeight/BackgroundColor (the rest of the text-style family) stay OUT:
+  they are not in the SDK vocabulary.
+*/
 export function createTextBlockExtensions(): Extensions {
   return [
     HeadingWithoutNodeView.configure({ levels: [1, 2, 3] }),
-    // One mark type ("textStyle") whose attrs the three sub-extensions
-    // register; renders as a plain inline-styled <span> — email-safe.
+    /*
+      One mark type ("textStyle") whose attrs the three sub-extensions
+      register; renders as a plain inline-styled <span> — email-safe.
+    */
     TextStyle,
     FontFamily,
     Color,
     FontSize,
-    // Renders <mark data-color style="background-color:…">; multicolor so the
-    // color is explicit (the SDK schema requires it — no UA-default yellow).
+    /*
+      Renders <mark data-color style="background-color:…">; multicolor so the
+      color is explicit (the SDK schema requires it — no UA-default yellow).
+    */
     Highlight.configure({ multicolor: true }),
-    // Per-node alignment override (text-block-model §2 amendment): the
-    // official TextAlign extension stores a `textAlign` attr on paragraph and
-    // heading nodes — the SAME attr name the SDK's textDocSchema accepts, so
-    // TextDoc JSON feeds nodeFromJSON at every server boundary (ensureBlockDoc
-    // seeding, agent merge transforms) with no renaming step. Default stays
-    // null (v3 defaultAlignment) = "inherit the block's flat-map alignment";
-    // alignments are the SDK vocabulary (no justify). The block-level
-    // properties.textAlign remains the default this attr overrides. Resend's
-    // own AlignmentAttribute (attr `alignment`) stays disabled below — its
-    // renderHTML drops explicit "left", breaking left-in-centered-block.
+    /*
+      Per-node alignment override (text-block-model §2 amendment): the
+      official TextAlign extension stores a `textAlign` attr on paragraph and
+      heading nodes — the SAME attr name the SDK's textDocSchema accepts, so
+      TextDoc JSON feeds nodeFromJSON at every server boundary (ensureBlockDoc
+      seeding, agent merge transforms) with no renaming step. Default stays
+      null (v3 defaultAlignment) = "inherit the block's flat-map alignment";
+      alignments are the SDK vocabulary (no justify). The block-level
+      properties.textAlign remains the default this attr overrides. Resend's
+      own AlignmentAttribute (attr `alignment`) stays disabled below — its
+      renderHTML drops explicit "left", breaking left-in-centered-block.
+    */
     TextAlign.configure({
       types: ["heading", "paragraph"],
       alignments: ["left", "center", "right"],
     }),
     StarterKit.configure({
-      // Structural / email chrome — the flat map owns structure; the editor
-      // never sees it (canvas-architecture decision).
+      /*
+        Structural / email chrome — the flat map owns structure; the editor
+        never sees it (canvas-architecture decision).
+      */
       Body: false,
       Container: false,
       Div: false,
@@ -93,7 +101,9 @@ export function createTextBlockExtensions(): Extensions {
       GlobalContent: false,
       MaxNesting: false,
       TrailingNode: false,
-      // Nodes/marks outside the SDK text schema (strict vocabulary).
+      /*
+        Nodes/marks outside the SDK text schema (strict vocabulary).
+      */
       BulletList: false,
       OrderedList: false,
       ListItem: false,
@@ -103,18 +113,24 @@ export function createTextBlockExtensions(): Extensions {
       Sup: false,
       Uppercase: false,
       PreservedStyle: false,
-      // Block-level styling lives on the flat-map block (text-block-model
-      // decision §2); the ONE node-attr exception is per-node textAlign,
-      // carried by the official TextAlign extension above — Resend's
-      // alignment attr stays off (see the TextAlign comment).
+      /*
+        Block-level styling lives on the flat-map block (text-block-model
+        decision §2); the ONE node-attr exception is per-node textAlign,
+        carried by the official TextAlign extension above — Resend's
+        alignment attr stays off (see the TextAlign comment).
+      */
       AlignmentAttribute: false,
       StyleAttribute: false,
       ClassAttribute: false,
-      // Single history authority: the store's undo replays SDK inverses —
-      // one committed updateText op per editing session.
+      /*
+        Single history authority: the store's undo replays SDK inverses —
+        one committed updateText op per editing session.
+      */
       UndoRedo: false,
-      // SDK headings are levels 1-3 only — registered above as
-      // HeadingWithoutNodeView, so the kit must not register its own.
+      /*
+        SDK headings are levels 1-3 only — registered above as
+        HeadingWithoutNodeView, so the kit must not register its own.
+      */
       Heading: false,
     }),
   ];

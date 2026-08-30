@@ -7,13 +7,13 @@ import {
 } from "../build-helpers";
 import { defineSectionTemplate } from "../types";
 
-/**
- * `image-gallery` — 2–6 images in a tidy grid of column rows. Reference:
- * react.email/components "four-images-in-a-grid" / "images-on-horizontal-grid".
- *
- * Row shape follows the image count: 2 and 4 images use rows of two (2, 2+2);
- * everything else uses rows of up to three (3, 3+2, 3+3).
- */
+/*
+  `image-gallery` — 2–6 images in a tidy grid of column rows. Reference:
+  react.email/components "four-images-in-a-grid" / "images-on-horizontal-grid".
+
+  Row shape follows the image count: 2 and 4 images use rows of two (2, 2+2);
+  everything else uses rows of up to three (3, 3+2, 3+3).
+*/
 
 /*
   A gallery image is a LIST item, so the image-source override cannot be
@@ -70,7 +70,9 @@ const imageGalleryModelFacingParamsSchema = z
   })
   .describe(IMAGE_GALLERY_PARAMS_DESCRIPTION);
 
-/** 2 or 4 images → rows of two; otherwise rows of up to three. */
+/*
+  2 or 4 images → rows of two; otherwise rows of up to three.
+*/
 export function chunkGalleryImages<T>(images: readonly T[]): T[][] {
   const rowSize = images.length === 2 || images.length === 4 ? 2 : 3;
   const rows: T[][] = [];

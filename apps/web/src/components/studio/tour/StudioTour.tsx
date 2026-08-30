@@ -416,8 +416,10 @@ function TourScrim({ anchor }: { anchor: { anchor: TourRect; viewport: TourViewp
           }}
         />
       ))}
-      {/* The halo. Purely decorative and never hit-tested, so the control
-          underneath it keeps every pixel of its own click target. */}
+      {/*
+        The halo. Purely decorative and never hit-tested, so the control
+        underneath it keeps every pixel of its own click target.
+      */}
       <div
         className="absolute rounded-lg ring-2 ring-primary/70"
         style={{
@@ -457,9 +459,11 @@ export function TourCard({ stop, onBack, onNext, onSkip, onOpenSurface }: TourCa
 
   return (
     <div className="flex flex-col gap-3">
-      {/* Not built yet — see TourStopPreview in tour-stops.ts. Every stop
-          omits `preview` today, so this branch is dormant until the images
-          land and the card is arrow-and-copy in the meantime. */}
+      {/*
+        Not built yet — see TourStopPreview in tour-stops.ts. Every stop
+        omits `preview` today, so this branch is dormant until the images
+        land and the card is arrow-and-copy in the meantime.
+      */}
       {stop.preview !== undefined && (
         /* eslint-disable-next-line @next/next/no-img-element -- the source is a
            remote storage URL resolved at runtime, not a build-time asset. */
@@ -511,9 +515,11 @@ export function TourCard({ stop, onBack, onNext, onSkip, onOpenSurface }: TourCa
           >
             {stopNumber} of {TOUR_STOP_COUNT}
           </span>
-          {/* Skip stays reachable on EVERY stop, not just the first — the
-              proposal's §3.3 rule, and the difference between a tour and a
-              hostage situation. */}
+          {/*
+            Skip stays reachable on EVERY stop, not just the first — the
+            proposal's §3.3 rule, and the difference between a tour and a
+            hostage situation.
+          */}
           <Button variant="ghost" size="sm" onClick={onSkip} data-testid="studio-tour-skip">
             Skip
           </Button>
@@ -524,8 +530,10 @@ export function TourCard({ stop, onBack, onNext, onSkip, onOpenSurface }: TourCa
               Back
             </Button>
           )}
-          {/* The exit: open the real surface and finish. Absent when the stop
-              has no named panel behind it (chat, comments). */}
+          {/*
+            The exit: open the real surface and finish. Absent when the stop
+            has no named panel behind it (chat, comments).
+          */}
           {stop.surface !== undefined && (
             <Button
               variant="outline"

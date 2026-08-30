@@ -2,16 +2,18 @@ import { describe, expect, it } from "vitest";
 import { DEFAULT_GLOBAL_STYLES } from "@flock/email-sdk";
 import { describeValueTransition, formatTransitionTooltip } from "./value-transition";
 
-/**
- * describeValueTransition — the pure before/after glance derivation.
- * Direction contract under test throughout: BEFORE comes from the inverse
- * payload, AFTER from the op payload; undo entries (whose op IS the original
- * inverse) therefore display the reversed pair with no special-casing.
- */
+/*
+  describeValueTransition — the pure before/after glance derivation.
+  Direction contract under test throughout: BEFORE comes from the inverse
+  payload, AFTER from the op payload; undo entries (whose op IS the original
+  inverse) therefore display the reversed pair with no special-casing.
+*/
 
 const BUTTON_ID = "btn_a1b2";
 
-/** A forward single-property edit as logged: partial op + full-snapshot inverse. */
+/*
+  A forward single-property edit as logged: partial op + full-snapshot inverse.
+*/
 function buttonColorEdit({ from, to }: { from: string; to: string }) {
   return {
     op: {
@@ -57,8 +59,10 @@ describe("describeValueTransition — colors", () => {
   });
 
   it("shows the reversed pair on an undo entry (undo of red→blue reads blue→red)", () => {
-    // The undo entry's own op is the original inverse (full snapshot with
-    // red); its own inverse snapshots the pre-undo state (blue).
+    /*
+      The undo entry's own op is the original inverse (full snapshot with
+      red); its own inverse snapshots the pre-undo state (blue).
+    */
     const undoEntry = {
       op: {
         name: "replaceBlockProperties",
@@ -329,7 +333,9 @@ describe("describeValueTransition — themes", () => {
   });
 
   it("renders an UNDO of a theme apply as the reversed swatch pair", () => {
-    // Undo entry: op restores the old root snapshot, inverse holds the theme'd one.
+    /*
+      Undo entry: op restores the old root snapshot, inverse holds the theme'd one.
+    */
     const transition = describeValueTransition({
       op: {
         name: "replaceBlockProperties",

@@ -13,30 +13,32 @@ import {
   normalizeMagicLinkEmail,
 } from "@convex/authMagicLink";
 
-/**
- * The guard behind the open sign-up door (convex/authMagicLink.ts).
- *
- * `/sign-in/magic-link` no longer refuses addresses it has never seen — a
- * first-time visitor typing their own email is the front door, not an attack.
- * What replaces the refusal is metering, and these tests are the proof that the
- * meter actually meters:
- *
- *   - a brand-new address gets its link (the whole point of the change);
- *   - the same address asking again immediately does not (one inbox cannot be
- *     buried, and repeated taps produce one email);
- *   - a client walking a list of DIFFERENT strangers runs out (the mail-relay
- *     attack the old refusal was really aimed at);
- *   - and no refusal says whether the address is registered — the guard never
- *     reads the user table, so sign-up and sign-in are indistinguishable from
- *     outside.
- *
- * The limiter is exercised through the real Convex mutation, so the rolling
- * window, the lazy expiry and the all-or-nothing write are all live here.
- */
+/*
+  The guard behind the open sign-up door (convex/authMagicLink.ts).
 
-// NOTE: convex-test's documented `!(*.*.*)` extglob matches nothing under
-// vitest 4 (tinyglobby has no extglob support) — the array form with negative
-// patterns is the equivalent that works.
+  `/sign-in/magic-link` no longer refuses addresses it has never seen — a
+  first-time visitor typing their own email is the front door, not an attack.
+  What replaces the refusal is metering, and these tests are the proof that the
+  meter actually meters:
+
+    - a brand-new address gets its link (the whole point of the change);
+    - the same address asking again immediately does not (one inbox cannot be
+      buried, and repeated taps produce one email);
+    - a client walking a list of DIFFERENT strangers runs out (the mail-relay
+      attack the old refusal was really aimed at);
+    - and no refusal says whether the address is registered — the guard never
+      reads the user table, so sign-up and sign-in are indistinguishable from
+      outside.
+
+  The limiter is exercised through the real Convex mutation, so the rolling
+  window, the lazy expiry and the all-or-nothing write are all live here.
+*/
+
+/*
+  NOTE: convex-test's documented `!(*.*.*)` extglob matches nothing under
+  vitest 4 (tinyglobby has no extglob support) — the array form with negative
+  patterns is the equivalent that works.
+*/
 const modules = import.meta.glob([
   "../../../../convex/**/*.{ts,js}",
   "!**/*.d.ts",
@@ -46,9 +48,13 @@ const modules = import.meta.glob([
 const COOLDOWN_FLAG = "FLOCK_MAGIC_LINK_COOLDOWN_SECONDS";
 const SENDS_FLAG = "FLOCK_MAGIC_LINK_SENDS_PER_HOUR";
 
-/** One browser, one network — the headers a proxied request actually carries. */
+/*
+  One browser, one network — the headers a proxied request actually carries.
+*/
 const CLIENT_HEADERS = new Headers({ "x-forwarded-for": "203.0.113.9, 198.51.100.1" });
-/** A different network entirely. */
+/*
+  A different network entirely.
+*/
 const OTHER_CLIENT_HEADERS = new Headers({ "x-forwarded-for": "192.0.2.44" });
 
 const previousCooldown = process.env[COOLDOWN_FLAG];
@@ -73,7 +79,9 @@ function createBackend() {
 
 type Backend = ReturnType<typeof createBackend>;
 
-/** One request for a sign-in link, exactly as the auth hook makes it. */
+/*
+  One request for a sign-in link, exactly as the auth hook makes it.
+*/
 async function requestLink(
   t: Backend,
   args: { email: string; headers?: Headers },
@@ -88,7 +96,9 @@ async function requestLink(
   });
 }
 
-/** The rollback the auth hook runs when the mail provider throws. */
+/*
+  The rollback the auth hook runs when the mail provider throws.
+*/
 async function releaseAfterFailedSend(t: Backend, email: string): Promise<void> {
   const { addressKey } = await deriveMagicLinkBucketKeys({ email, headers: undefined });
   await t.mutation(internal.authMagicLink.releaseMagicLinkAddressCooldown, { addressKey });
@@ -103,7 +113,9 @@ describe("a send that never went out", () => {
   it("lets the person try again immediately instead of claiming a link is coming", async () => {
     const t = createBackend();
     expect((await requestLink(t, { email: "sam@example.com" })).isAllowed).toBe(true);
-    // Resend throws — the cooldown was charged for mail nobody received.
+    /*
+      Resend throws — the cooldown was charged for mail nobody received.
+    */
     await releaseAfterFailedSend(t, "sam@example.com");
 
     const retry = await requestLink(t, { email: "sam@example.com" });
@@ -113,9 +125,11 @@ describe("a send that never went out", () => {
 
   it("still spends the origin allowance, so failures are not free retries", async () => {
     const t = createBackend();
-    // Three sends that all fail. The address is released every time, but the
-    // origin allowance (3/hour) is not — otherwise a client that can force
-    // failures gets unlimited attempts at strangers.
+    /*
+      Three sends that all fail. The address is released every time, but the
+      origin allowance (3/hour) is not — otherwise a client that can force
+      failures gets unlimited attempts at strangers.
+    */
     for (const email of ["a@example.com", "b@example.com", "c@example.com"]) {
       expect((await requestLink(t, { email })).isAllowed).toBe(true);
       await releaseAfterFailedSend(t, email);
@@ -133,7 +147,9 @@ describe("a send that never went out", () => {
 
 describe("a stranger's first sign-in link", () => {
   beforeEach(() => {
-    // Roomy enough that the origin allowance is never what refuses these.
+    /*
+      Roomy enough that the origin allowance is never what refuses these.
+    */
     process.env[SENDS_FLAG] = "10";
   });
 
@@ -183,8 +199,10 @@ describe("a stranger's first sign-in link", () => {
 
   it("lets the address back in once the cooldown has passed", async () => {
     const t = createBackend();
-    // One second: the cooldown is real time, not a mocked clock, so the test
-    // proves expiry without waiting three minutes for it.
+    /*
+      One second: the cooldown is real time, not a mocked clock, so the test
+      proves expiry without waiting three minutes for it.
+    */
     process.env[COOLDOWN_FLAG] = "1";
     await requestLink(t, { email: "brand.new@example.com" });
 
@@ -242,8 +260,10 @@ describe("one client walking a list of strangers", () => {
     await requestLink(t, { email: "b@example.com" });
     await requestLink(t, { email: "c@example.com" });
 
-    // The refused address must not have had a cooldown row written for it:
-    // otherwise a blocked send would silently lock that inbox out too.
+    /*
+      The refused address must not have had a cooldown row written for it:
+      otherwise a blocked send would silently lock that inbox out too.
+    */
     const keys = await deriveMagicLinkBucketKeys({
       email: "c@example.com",
       headers: CLIENT_HEADERS,
@@ -263,7 +283,9 @@ describe("one client walking a list of strangers", () => {
 
     expect((await requestLink(t, { email: "a@example.com", headers })).isAllowed).toBe(true);
     expect((await requestLink(t, { email: "a@example.com", headers })).isAllowed).toBe(false);
-    // Nothing to charge an origin allowance against, so other addresses flow.
+    /*
+      Nothing to charge an origin allowance against, so other addresses flow.
+    */
     expect((await requestLink(t, { email: "b@example.com", headers })).isAllowed).toBe(true);
   });
 });
@@ -273,9 +295,11 @@ describe("nothing the caller sees reveals whether the address is registered", ()
     const t = createBackend();
     process.env[SENDS_FLAG] = "1";
 
-    // A known address and an unknown one are indistinguishable by construction:
-    // the guard is keyed on a hash of the address and never reads the user
-    // table. These are the only strings a caller can ever be shown.
+    /*
+      A known address and an unknown one are indistinguishable by construction:
+      the guard is keyed on a hash of the address and never reads the user
+      table. These are the only strings a caller can ever be shown.
+    */
     const cooldownRefusal = await (async () => {
       await requestLink(t, { email: "known@example.com" });
       return await requestLink(t, { email: "known@example.com" });

@@ -93,7 +93,9 @@ import { resolveOwnerIdOrNull } from "./authIdentity";
   having that cap at all.
 */
 
-/* A full day of intense authoring. Someone who needs more is a real user. */
+/*
+  A full day of intense authoring. Someone who needs more is a real user.
+*/
 const DEFAULT_CLAIMED_TEST_SENDS = 30;
 /*
   Enough to iterate on a draft and watch it land several times over, which is
@@ -115,7 +117,9 @@ const DEFAULT_ANONYMOUS_ORIGIN_TEST_SENDS = 20;
   someone is testing.
 */
 const DEFAULT_RECIPIENT_TEST_SENDS = 40;
-/* Matches authCredits, so "today's allowance" means the same thing in both. */
+/*
+  Matches authCredits, so "today's allowance" means the same thing in both.
+*/
 const DEFAULT_PERIOD_HOURS = 24;
 
 function readPositiveInt(args: { name: string; fallback: number }): number {
@@ -141,7 +145,9 @@ function readPeriodMs(): number {
   have said "in about three hours" is withholding the only useful part.
 */
 
-/* Rounded, never precise: a countdown to the second invites watching it. */
+/*
+  Rounded, never precise: a countdown to the second invites watching it.
+*/
 export function describeRetryDelay(msUntilReset: number): string {
   if (msUntilReset <= 60_000) {
     return "in a moment";
@@ -154,7 +160,9 @@ export function describeRetryDelay(msUntilReset: number): string {
   return hours === 1 ? "in about an hour" : `in about ${hours} hours`;
 }
 
-/* Which bucket ran out — chooses the copy, and nothing else. */
+/*
+  Which bucket ran out — chooses the copy, and nothing else.
+*/
 type BucketKind = "owner" | "origin" | "recipient";
 
 type Bucket = { kind: BucketKind; key: string; limit: number };
@@ -280,7 +288,9 @@ function resolveBuckets(args: {
   return buckets;
 }
 
-/* One bucket's state, without writing — a peek must never start a window. */
+/*
+  One bucket's state, without writing — a peek must never start a window.
+*/
 async function peekBucket(
   ctx: MutationCtx,
   args: { bucket: Bucket; nowMs: number; periodMs: number },
@@ -343,14 +353,20 @@ export const reserveTestSend = mutation({
       is charged exactly once; owner/origin stay one-per-send. See resolveBuckets.
     */
     recipientKeys: v.array(v.string()),
-    /* Salted digest of the coarsened client address; absent when unknown. */
+    /*
+      Salted digest of the coarsened client address; absent when unknown.
+    */
     originKey: v.optional(v.string()),
   },
   returns: v.object({
     isAllowed: v.boolean(),
-    /* Empty when allowed; otherwise the exact words to show the person. */
+    /*
+      Empty when allowed; otherwise the exact words to show the person.
+    */
     refusalMessage: v.string(),
-    /* When the blocking bucket refills. Null when nothing blocked. */
+    /*
+      When the blocking bucket refills. Null when nothing blocked.
+    */
     retryAtMs: v.union(v.null(), v.number()),
   }),
   handler: async (ctx, args) => {
@@ -365,7 +381,9 @@ export const reserveTestSend = mutation({
       recipientKeys: args.recipientKeys,
     });
 
-    /* Read every bucket first. Nothing below writes until all of them pass. */
+    /*
+      Read every bucket first. Nothing below writes until all of them pass.
+    */
     const planned: { bucket: Bucket; sentCount: number; periodStartMs: number }[] = [];
     for (const bucket of buckets) {
       const state = await peekBucket(ctx, { bucket, nowMs, periodMs });

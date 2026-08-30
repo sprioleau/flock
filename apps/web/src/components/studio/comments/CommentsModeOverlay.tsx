@@ -23,24 +23,24 @@ import {
 } from "./comment-context";
 import { useCommentsModeStore, type PendingCommentPin } from "./comments-mode-store";
 
-/**
- * Comments-mode CAPTURE layer: while the mode is on, this overlay covers the
- * whole canvas root (crosshair cursor, all normal canvas interaction
- * suspended) and turns any click into a comment pin:
- *
- * - The click is hit-tested through the overlay (elementsFromPoint) to the
- *   innermost `[data-block-id]` under the pointer — the SAME anchor family
- *   as pointer presence: block-anchored pins store 0..1 fractions of the
- *   block rect; clicks on gutters/empty canvas anchor to the canvas root
- *   (`blockId: null`) as a DRAFT-level comment.
- * - The pin's context (breadcrumb, type, visible text) is frozen from the
- *   store's doc at click time; the server adds draftName/canvasId.
- * - One pending pin at a time: the inline composer opens at the pin; Escape
- *   or an outside click abandons it; Escape with no pin exits the mode.
- *
- * Mounted inside `[data-dnd-canvas-root]` (the overlay idiom) so pins live
- * in content space and scroll with the email.
- */
+/*
+  Comments-mode CAPTURE layer: while the mode is on, this overlay covers the
+  whole canvas root (crosshair cursor, all normal canvas interaction
+  suspended) and turns any click into a comment pin:
+
+  - The click is hit-tested through the overlay (elementsFromPoint) to the
+    innermost `[data-block-id]` under the pointer — the SAME anchor family
+    as pointer presence: block-anchored pins store 0..1 fractions of the
+    block rect; clicks on gutters/empty canvas anchor to the canvas root
+    (`blockId: null`) as a DRAFT-level comment.
+  - The pin's context (breadcrumb, type, visible text) is frozen from the
+    store's doc at click time; the server adds draftName/canvasId.
+  - One pending pin at a time: the inline composer opens at the pin; Escape
+    or an outside click abandons it; Escape with no pin exits the mode.
+
+  Mounted inside `[data-dnd-canvas-root]` (the overlay idiom) so pins live
+  in content space and scroll with the email.
+*/
 export function CommentsModeOverlay() {
   const isCommentsModeActive = useCommentsModeStore((state) => state.isCommentsModeActive);
   if (!isCommentsModeActive) {
@@ -50,24 +50,30 @@ export function CommentsModeOverlay() {
 }
 
 function CommentsCaptureLayer() {
-  // The FRAME's store instance: with multi-frame editing this overlay mounts
-  // in EVERY live frame's canvas, so pin context must come from the document
-  // the overlay actually covers (frames may share block ids across forks).
+  /*
+    The FRAME's store instance: with multi-frame editing this overlay mounts
+    in EVERY live frame's canvas, so pin context must come from the document
+    the overlay actually covers (frames may share block ids across forks).
+  */
   const editorStoreApi = useEditorStoreApi();
   const overlayRef = useRef<HTMLDivElement | null>(null);
   const pendingPin = useCommentsModeStore((state) => state.pendingPin);
   const setPendingPin = useCommentsModeStore((state) => state.setPendingPin);
 
-  // Escape walks back one step at a time: open composer → armed mode → off.
+  /*
+    Escape walks back one step at a time: open composer → armed mode → off.
+  */
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent): void => {
       if (event.key !== "Escape" || event.defaultPrevented) {
         return;
       }
-      // An Escape pressed inside an open dialog/popover (the review modal,
-      // a pin's thread popover) belongs to THAT surface — closing it must
-      // not also disarm the mode underneath (verified quirk: the review
-      // dialog's close-Escape used to exit the mode too).
+      /*
+        An Escape pressed inside an open dialog/popover (the review modal,
+        a pin's thread popover) belongs to THAT surface — closing it must
+        not also disarm the mode underneath (verified quirk: the review
+        dialog's close-Escape used to exit the mode too).
+      */
       if (
         event.target instanceof Element &&
         event.target.closest('[data-slot="dialog-content"], [data-slot="popover-content"], [role="dialog"]') !== null
@@ -86,10 +92,14 @@ function CommentsCaptureLayer() {
   }, []);
 
   const handleOverlayClick = (event: ReactMouseEvent<HTMLDivElement>): void => {
-    // Never bubble to the canvas shell (its click clears the selection).
+    /*
+      Never bubble to the canvas shell (its click clears the selection).
+    */
     event.stopPropagation();
-    // First click after an open composer just closes it (composer clicks
-    // stop propagation, so reaching here means "clicked elsewhere").
+    /*
+      First click after an open composer just closes it (composer clicks
+      stop propagation, so reaching here means "clicked elsewhere").
+    */
     if (useCommentsModeStore.getState().pendingPin !== null) {
       setPendingPin(null);
       return;
@@ -124,12 +134,12 @@ function CommentsCaptureLayer() {
   );
 }
 
-/**
- * Click → pending pin: hit-test beneath the overlay for the innermost block,
- * fall back to a canvas-root (draft-level) anchor. Context comes from the
- * FRAME's own doc (the overlay mounts per live frame under multi-frame
- * editing).
- */
+/*
+  Click → pending pin: hit-test beneath the overlay for the innermost block,
+  fall back to a canvas-root (draft-level) anchor. Context comes from the
+  FRAME's own doc (the overlay mounts per live frame under multi-frame
+  editing).
+*/
 function resolveClickToPendingPin({
   clientX,
   clientY,
@@ -143,7 +153,9 @@ function resolveClickToPendingPin({
   canvasRoot: HTMLElement;
   doc: EmailDocument;
 }): PendingCommentPin {
-  // Topmost-first hit list; skip our own layers (capture overlay + pins).
+  /*
+    Topmost-first hit list; skip our own layers (capture overlay + pins).
+  */
   const hitElements = document.elementsFromPoint(clientX, clientY);
   const contentElement =
     hitElements.find(
@@ -164,8 +176,10 @@ function resolveClickToPendingPin({
       ? buildCommentAnchorContext({ doc, blockId: blockId as BlockId })
       : null;
 
-  // A DOM block missing from the store doc (mid-apply flicker) degrades to a
-  // draft-level anchor rather than storing an id the doc can't explain.
+  /*
+    A DOM block missing from the store doc (mid-apply flicker) degrades to a
+    draft-level anchor rather than storing an id the doc can't explain.
+  */
   const anchorElement = blockContext !== null && blockElement !== null ? blockElement : canvasRoot;
   const anchorRect = anchorElement.getBoundingClientRect();
   const anchor: CommentAnchor = {
@@ -176,14 +190,16 @@ function resolveClickToPendingPin({
   return { anchor, context: blockContext ?? { breadcrumb: "" } };
 }
 
-/** Composer card width — used for edge clamping inside the overlay. */
+/*
+  Composer card width — used for edge clamping inside the overlay.
+*/
 const COMPOSER_WIDTH_PX = 264;
 
-/**
- * The inline first-comment composer at the pending pin. Position resolves
- * through the SAME anchor→layout resolution the pins and remote cursors use,
- * clamped so the card never clips at the frame's overflow-hidden edges.
- */
+/*
+  The inline first-comment composer at the pending pin. Position resolves
+  through the SAME anchor→layout resolution the pins and remote cursors use,
+  clamped so the card never clips at the frame's overflow-hidden edges.
+*/
 function PendingPinComposer({
   pendingPin,
   onClose,

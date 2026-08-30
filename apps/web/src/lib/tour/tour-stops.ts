@@ -77,9 +77,13 @@ export interface TourStopPreview {
 
 export interface TourStop {
   id: TourStopId;
-  /* The card's heading. A promise in the user's terms, not a feature name. */
+  /*
+    The card's heading. A promise in the user's terms, not a feature name.
+  */
   title: string;
-  /* Two sentences at most — what is behind the trigger, and why to care. */
+  /*
+    Two sentences at most — what is behind the trigger, and why to care.
+  */
   body: string;
   /*
     The element the card anchors to and the arrow points at, addressed by its
@@ -88,7 +92,9 @@ export interface TourStop {
     marked up for onboarding's sake.
   */
   anchorTestId: string;
-  /* Which side of the anchor the card sits on (Floating UI flips on collision). */
+  /*
+    Which side of the anchor the card sits on (Floating UI flips on collision).
+  */
   side: "top" | "bottom" | "left" | "right";
   align: "start" | "center" | "end";
   /*
@@ -106,9 +112,13 @@ export interface TourStop {
     open: the chat panel is a layout region, and comments mode is a mode.
   */
   surface?: UiPanel;
-  /* See TourStopPreparation. Absent for a stop whose anchor is always ready. */
+  /*
+    See TourStopPreparation. Absent for a stop whose anchor is always ready.
+  */
   prepare?: TourStopPreparation;
-  /* See TourStopPreview. Absent on every stop today. */
+  /*
+    See TourStopPreview. Absent on every stop today.
+  */
   preview?: TourStopPreview;
 }
 
@@ -212,15 +222,21 @@ export const TOUR_STOPS: readonly TourStop[] = [
 */
 export const FIRST_TOUR_STOP_ID: TourStopId = "chat";
 
-/** How many stops there are — the "2 of 5" denominator on every card. */
+/*
+  How many stops there are — the "2 of 5" denominator on every card.
+*/
 export const TOUR_STOP_COUNT = TOUR_STOPS.length;
 
-/** Narrow an unknown (a parsed localStorage value) to a live stop id. */
+/*
+  Narrow an unknown (a parsed localStorage value) to a live stop id.
+*/
 export function isTourStopId(value: unknown): value is TourStopId {
   return TOUR_STOPS.some((stop) => stop.id === value);
 }
 
-/** The stop with this id, or undefined for `null` and for retired ids. */
+/*
+  The stop with this id, or undefined for `null` and for retired ids.
+*/
 export function findTourStop(stopId: TourStopId | null): TourStop | undefined {
   if (stopId === null) {
     return undefined;
@@ -228,12 +244,16 @@ export function findTourStop(stopId: TourStopId | null): TourStop | undefined {
   return TOUR_STOPS.find((stop) => stop.id === stopId);
 }
 
-/** The stop's 1-based position, for "3 of 5". Zero for an id that is not here. */
+/*
+  The stop's 1-based position, for "3 of 5". Zero for an id that is not here.
+*/
 export function getTourStopNumber(stopId: TourStopId): number {
   return TOUR_STOPS.findIndex((stop) => stop.id === stopId) + 1;
 }
 
-/** The next stop, or `null` at the last one — which means the tour is done. */
+/*
+  The next stop, or `null` at the last one — which means the tour is done.
+*/
 export function getNextTourStopId(stopId: TourStopId): TourStopId | null {
   const index = TOUR_STOPS.findIndex((stop) => stop.id === stopId);
   if (index === -1) {
@@ -242,7 +262,9 @@ export function getNextTourStopId(stopId: TourStopId): TourStopId | null {
   return TOUR_STOPS[index + 1]?.id ?? null;
 }
 
-/** The previous stop, or `null` at the first one — which hides "Back". */
+/*
+  The previous stop, or `null` at the first one — which hides "Back".
+*/
 export function getPreviousTourStopId(stopId: TourStopId): TourStopId | null {
   const index = TOUR_STOPS.findIndex((stop) => stop.id === stopId);
   if (index <= 0) {

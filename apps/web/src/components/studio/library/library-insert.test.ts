@@ -13,11 +13,11 @@ import {
   type LibraryInsertAsset,
 } from "./library-insert";
 
-/**
- * Library → draft insertion (Content Studio Stage S): src-swap on a selected
- * image block, add-blocks placement rules otherwise, alt carried from the
- * asset (stored alt, else name) in every mode.
- */
+/*
+  Library → draft insertion (Content Studio Stage S): src-swap on a selected
+  image block, add-blocks placement rules otherwise, alt carried from the
+  asset (stored alt, else name) in every mode.
+*/
 
 const id = (value: string) => value as BlockId;
 
@@ -35,7 +35,9 @@ function apply(doc: EmailDocument, op: Operation): EmailDocument {
   return result.doc;
 }
 
-/** root > sec_aaaa [img_aaaa, txt_aaaa] */
+/*
+  root > sec_aaaa [img_aaaa, txt_aaaa]
+*/
 function buildFixtureDoc(): EmailDocument {
   let doc = createEmptyDocument();
   doc = apply(doc, { name: "addSection", section: createDefaultSection(id("sec_aaaa")), index: 0 });

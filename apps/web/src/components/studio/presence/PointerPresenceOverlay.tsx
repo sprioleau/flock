@@ -36,13 +36,15 @@ import "./pointer-presence.css";
 
 type PointerPresencePayload = NonNullable<PresenceData["pointer"]>;
 
-/** Local-receipt staleness: same pointer value for this long → fade out. */
+/*
+  Local-receipt staleness: same pointer value for this long → fade out.
+*/
 const STALE_HIDE_MS = 6000;
 
 export function PointerPresenceOverlay() {
   const roster = useOptionalPresenceRoster();
   if (roster === null) {
-    return null; // no presence room (no document open / no provider)
+    return null; /* no presence room (no document open / no provider) */
   }
   return <PointerOverlayLayer roster={roster} />;
 }
@@ -51,20 +53,26 @@ function PointerOverlayLayer({ roster }: { roster: PresenceRosterEntry[] }) {
   const canvasRootRef = useRef<HTMLElement | null>(null);
   const [layoutVersion, setLayoutVersion] = useState(0);
 
-  // STABLE ref callback (identity must never change): an inline callback
-  // would be detached (ref set to null) in every commit's mutation phase and
-  // re-attached only AFTER child layout effects ran — exactly when the
-  // cursors need the canvas root.
+  /*
+    STABLE ref callback (identity must never change): an inline callback
+    would be detached (ref set to null) in every commit's mutation phase and
+    re-attached only AFTER child layout effects ran — exactly when the
+    cursors need the canvas root.
+  */
   const attachOverlayElement = useCallback((element: HTMLDivElement | null): void => {
     canvasRootRef.current = element?.parentElement ?? null;
   }, []);
 
-  // Write half: capture THIS user's pointer on the canvas root (our parent).
+  /*
+    Write half: capture THIS user's pointer on the canvas root (our parent).
+  */
   usePointerPresence({ canvasRootRef });
 
-  // Re-anchor cursors on local layout shifts (viewport toggle, text reflow,
-  // blocks added/removed) — content height/width changes resize the canvas
-  // root, so one ResizeObserver covers them.
+  /*
+    Re-anchor cursors on local layout shifts (viewport toggle, text reflow,
+    blocks added/removed) — content height/width changes resize the canvas
+    root, so one ResizeObserver covers them.
+  */
   useEffect(() => {
     const canvasRoot = canvasRootRef.current;
     if (canvasRoot === null) {
@@ -105,13 +113,13 @@ function PointerOverlayLayer({ roster }: { roster: PresenceRosterEntry[] }) {
   );
 }
 
-/**
- * Anchor-relative position of a remote pointer in overlay (= canvas-content)
- * space, or null when it can't be resolved locally (anchor block deleted /
- * not yet rendered here, zero-size rects mid-layout). Shared with
- * PersonaCursorOverlay so persona cursors land on the same content geometry
- * as human ones.
- */
+/*
+  Anchor-relative position of a remote pointer in overlay (= canvas-content)
+  space, or null when it can't be resolved locally (anchor block deleted /
+  not yet rendered here, zero-size rects mid-layout). Shared with
+  PersonaCursorOverlay so persona cursors land on the same content geometry
+  as human ones.
+*/
 export function resolvePointerPosition({
   pointer,
   overlayElement,
@@ -124,16 +132,18 @@ export function resolvePointerPosition({
     return null;
   }
   if (pointer.blockId !== null) {
-    // Scoped to THIS overlay's canvas (multi-frame editing): several frames
-    // render live canvases at once and forked sibling drafts share block
-    // ids, so a document-wide query could anchor the cursor to another
-    // frame's copy of the block.
+    /*
+      Scoped to THIS overlay's canvas (multi-frame editing): several frames
+      render live canvases at once and forked sibling drafts share block
+      ids, so a document-wide query could anchor the cursor to another
+      frame's copy of the block.
+    */
     const canvasRoot = overlayElement.closest<HTMLElement>("[data-dnd-canvas-root]");
     const blockElement = (canvasRoot ?? document).querySelector<HTMLElement>(
       `[data-block-id="${CSS.escape(pointer.blockId)}"]`,
     );
     if (blockElement === null) {
-      return null; // anchor block missing locally → hidden until the next update
+      return null; /* anchor block missing locally → hidden until the next update */
     }
     const blockRect = blockElement.getBoundingClientRect();
     if (blockRect.width <= 0 || blockRect.height <= 0) {
@@ -144,8 +154,10 @@ export function resolvePointerPosition({
       top: blockRect.top - overlayRect.top + pointer.y * blockRect.height,
     };
   }
-  // Canvas-fraction fallback (off-block hover): horizontally exact,
-  // vertically approximate across differing canvas widths.
+  /*
+    Canvas-fraction fallback (off-block hover): horizontally exact,
+    vertically approximate across differing canvas widths.
+  */
   return { left: pointer.x * overlayRect.width, top: pointer.y * overlayRect.height };
 }
 
@@ -159,8 +171,10 @@ function RemotePointerCursor({
 }: {
   name: string;
   color: string;
-  /** Primitive pointer fields (not the payload object) so the positioning
-   * effect keys on values, immune to roster identity churn. */
+  /*
+    Primitive pointer fields (not the payload object) so the positioning
+    effect keys on values, immune to roster identity churn.
+  */
   blockId: string | null;
   x: number;
   y: number;
@@ -170,13 +184,15 @@ function RemotePointerCursor({
   const hasEverPositionedRef = useRef(false);
   const staleTimerRef = useRef<number | null>(null);
 
-  // Imperative positioning: resolve against the local layout and move the
-  // chip via transform — the CSS transition supplies the smoothing. The
-  // overlay is read as parentElement (not a ref prop): a parent's callback
-  // ref would be detached during commits exactly when this effect runs. The
-  // same effect (re)arms the reader-side stale fuse (hide rule 4): a pointer
-  // whose VALUE hasn't changed for ~6s of local receipt time fades out,
-  // covering a sender that died between heartbeats — no clock sync needed.
+  /*
+    Imperative positioning: resolve against the local layout and move the
+    chip via transform — the CSS transition supplies the smoothing. The
+    overlay is read as parentElement (not a ref prop): a parent's callback
+    ref would be detached during commits exactly when this effect runs. The
+    same effect (re)arms the reader-side stale fuse (hide rule 4): a pointer
+    whose VALUE hasn't changed for ~6s of local receipt time fades out,
+    covering a sender that died between heartbeats — no clock sync needed.
+  */
   useLayoutEffect(() => {
     const cursorElement = cursorRef.current;
     const overlayElement = cursorElement?.parentElement ?? null;
@@ -189,9 +205,11 @@ function RemotePointerCursor({
       if (hasEverPositionedRef.current) {
         cursorElement.style.transform = transform;
       } else {
-        // Materialize at the first known position instead of gliding in from
-        // the overlay origin: place it with the transition disarmed, flush,
-        // then re-arm for subsequent moves.
+        /*
+          Materialize at the first known position instead of gliding in from
+          the overlay origin: place it with the transition disarmed, flush,
+          then re-arm for subsequent moves.
+        */
         hasEverPositionedRef.current = true;
         cursorElement.style.transition = "none";
         cursorElement.style.transform = transform;
@@ -224,12 +242,12 @@ function RemotePointerCursor({
   );
 }
 
-/**
- * The shared cursor arrow glyph — its tip sits at the element origin, exactly
- * on the resolved point. Used by human remote cursors here and by
- * PersonaCursorOverlay (personas share the human cursor grammar on purpose —
- * owner decision 2026-07-30 overriding the §3.5 chip recommendation).
- */
+/*
+  The shared cursor arrow glyph — its tip sits at the element origin, exactly
+  on the resolved point. Used by human remote cursors here and by
+  PersonaCursorOverlay (personas share the human cursor grammar on purpose —
+  owner decision 2026-07-30 overriding the §3.5 chip recommendation).
+*/
 export function PointerCursorArrow({ color }: { color: string }) {
   return (
     <svg

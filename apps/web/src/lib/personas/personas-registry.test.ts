@@ -4,18 +4,20 @@ import { convexTest } from "convex-test";
 import { api } from "@convex/_generated/api";
 import schema from "@convex/schema";
 
-/**
- * Persona registry backend: createPersona (slug scheme, collision suffixing,
- * built-in shadow avoidance, validation) and deletePersona (ownership), plus
- * how created personas surface through listPersonas (isUserCreated flag,
- * sort position) and how they interact with resetPersonaToBuiltIn.
- *
- * Runs the REAL Convex functions against convex-test's in-memory backend.
- */
+/*
+  Persona registry backend: createPersona (slug scheme, collision suffixing,
+  built-in shadow avoidance, validation) and deletePersona (ownership), plus
+  how created personas surface through listPersonas (isUserCreated flag,
+  sort position) and how they interact with resetPersonaToBuiltIn.
 
-// NOTE: convex-test's documented `!(*.*.*)` extglob matches nothing under
-// vitest 4 (tinyglobby has no extglob support) — the array form with negative
-// patterns is the equivalent that works.
+  Runs the REAL Convex functions against convex-test's in-memory backend.
+*/
+
+/*
+  NOTE: convex-test's documented `!(*.*.*)` extglob matches nothing under
+  vitest 4 (tinyglobby has no extglob support) — the array form with negative
+  patterns is the equivalent that works.
+*/
 const modules = import.meta.glob([
   "../../../../../convex/**/*.{ts,js}",
   "!**/*.d.ts",
@@ -95,12 +97,16 @@ describe("createPersona", () => {
       api.personas.createPersona,
       buildCreateArgs({ name: "Tone Police" }),
     );
-    // "tone-police" is the copy-slug base for builtin/tone-police — skipped.
+    /*
+      "tone-police" is the copy-slug base for builtin/tone-police — skipped.
+    */
     expect(slug).toBe(`user/${SESSION_ID}/tone-police-2`);
 
     const personas = await t.query(api.personas.listPersonas, { sessionId: SESSION_ID });
     const slugs = personas.map((persona) => persona.slug);
-    // The pristine built-in is still visible alongside the created persona.
+    /*
+      The pristine built-in is still visible alongside the created persona.
+    */
     expect(slugs).toContain("builtin/tone-police");
     expect(slugs).toContain(slug);
   });
@@ -175,7 +181,9 @@ describe("listPersonas with created personas", () => {
 
     const ownList = await t.query(api.personas.listPersonas, { sessionId: SESSION_ID });
     const ownSlugs = ownList.map((persona) => persona.slug);
-    // Created persona sorts after every built-in ("user/…" > "builtin/…").
+    /*
+      Created persona sorts after every built-in ("user/…" > "builtin/…").
+    */
     expect(ownSlugs.at(-1)).toBe(slug);
     expect(ownSlugs.filter((s) => s.startsWith("builtin/"))).toHaveLength(4);
 

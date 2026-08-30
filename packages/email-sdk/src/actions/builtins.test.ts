@@ -44,7 +44,9 @@ const verifiedAgentContext: ActionContext = {
   verifiedCaller: { isVerified: true, ownerId: "user_9f2a" },
 };
 
-/* A deployment with identity switched off entirely: nobody has an id here. */
+/*
+  A deployment with identity switched off entirely: nobody has an id here.
+*/
 const noIdentitySystemContext: ActionContext = {
   ...agentContext,
   verifiedCaller: { isVerified: false, reason: "no_identity_system" },
@@ -60,9 +62,13 @@ describe("built-in content actions", () => {
       expect(action.kind).toBe("content");
       expect(action.readOnly).toBe(false);
       expect(action.needsApproval).toBe(false);
-      // No compact variants yet — Phase 3 tunes these; advertise = validate for now.
+      /*
+        No compact variants yet — Phase 3 tunes these; advertise = validate for now.
+      */
       expect(action.agentInputSchema).toBe(action.schema);
-      // Descriptions are single-sourced from the op schemas' .describe() text.
+      /*
+        Descriptions are single-sourced from the op schemas' .describe() text.
+      */
       expect(action.description.length).toBeGreaterThan(0);
     }
   });
@@ -127,10 +133,10 @@ describe("built-in editor actions", () => {
   });
 });
 
-/**
- * 11 op-mirroring content + styleTextSpan + scaffoldSection + 10 editor actions
- * + 1 analysis action (inspectRenderedEmail).
- */
+/*
+  11 op-mirroring content + styleTextSpan + scaffoldSection + 10 editor actions
+  + 1 analysis action (inspectRenderedEmail).
+*/
 const BUILTIN_ACTION_COUNT = 26;
 
 describe("emailActionRegistry", () => {
@@ -220,7 +226,9 @@ describe("emailActionRegistry", () => {
     });
     expect(dispatched.isOk).toBe(true);
     if (!dispatched.isOk) return;
-    /* An intent the browser will carry out — no createdDrafts, no note. */
+    /*
+      An intent the browser will carry out — no createdDrafts, no note.
+    */
     expect(Object.keys(dispatched.command).sort()).toEqual([
       "count",
       "drafts",
@@ -250,7 +258,9 @@ describe("emailActionRegistry", () => {
     if (!result.isOk) return;
     expect((result.doc.txt_e5f6!.properties as { paddingTop?: number }).paddingTop).toBe(32);
     expect(result.context.batchId).toBe("batch_1");
-    // Undo via the generated inverse round-trips exactly.
+    /*
+      Undo via the generated inverse round-trips exactly.
+    */
     const undone = applyOperation(result.doc, result.inverse);
     expect(undone.isOk).toBe(true);
     if (!undone.isOk) return;
@@ -263,26 +273,34 @@ describe("emailActionRegistry", () => {
       registry: emailActionRegistry,
       doc,
       name: "removeBlock",
-      // The caller states no cascade choice — the registry resolves it to true.
+      /*
+        The caller states no cascade choice — the registry resolves it to true.
+      */
       input: { name: "removeBlock", blockId: "txt_r7s8" },
       context: agentContext,
     });
     expect(result.isOk).toBe(true);
     if (!result.isOk) return;
-    // txt_r7s8 was col_m3n4's only block: the column collapses with it and
-    // the surviving column resets to the equal split (width stripped).
+    /*
+      txt_r7s8 was col_m3n4's only block: the column collapses with it and
+      the surviving column resets to the equal split (width stripped).
+    */
     expect(result.doc.col_m3n4).toBeUndefined();
     expect(result.doc.row_k1l2!.childrenIds).toEqual(["col_p5q6"]);
     expect(
       (result.doc.col_p5q6!.properties as { widthPercent?: number }).widthPercent,
     ).toBeUndefined();
-    // The RESOLVED op (explicit flag) is what reaches the replayable log.
+    /*
+      The RESOLVED op (explicit flag) is what reaches the replayable log.
+    */
     expect(result.op).toEqual({
       name: "removeBlock",
       blockId: "txt_r7s8",
       shouldRemoveEmptyAncestors: true,
     });
-    // Still one undo step: the single inverse restores the doc exactly.
+    /*
+      Still one undo step: the single inverse restores the doc exactly.
+    */
     const undone = applyOperation(result.doc, result.inverse);
     expect(undone.isOk).toBe(true);
     if (!undone.isOk) return;
@@ -319,7 +337,9 @@ describe("emailActionRegistry", () => {
       registry: emailActionRegistry,
       name: "sendTestEmail",
       input: { to: "reviewer@example.com" },
-      /* sendTestEmail requires a verified caller; see its own describe block. */
+      /*
+        sendTestEmail requires a verified caller; see its own describe block.
+      */
       context: verifiedAgentContext,
     });
     expect(sendResult.isOk).toBe(true);
@@ -350,7 +370,9 @@ describe("emailActionRegistry", () => {
     });
     expect(result.isOk).toBe(true);
     if (!result.isOk) return;
-    // No src/alt yet — the app executor fulfills those after generation+upload.
+    /*
+      No src/alt yet — the app executor fulfills those after generation+upload.
+    */
     expect(result.command).toEqual({
       type: "generateImage",
       blockId: "img_a1b2",
@@ -448,8 +470,10 @@ describe("emailActionRegistry", () => {
     });
     expect(withDefault.isOk).toBe(true);
     if (!withDefault.isOk) return;
-    // The bare form is unchanged apart from the resolved theme flag: one
-    // empty starter draft, no composition plan.
+    /*
+      The bare form is unchanged apart from the resolved theme flag: one
+      empty starter draft, no composition plan.
+    */
     expect(withDefault.command).toEqual({
       type: "createDraft",
       count: 1,
@@ -480,7 +504,9 @@ describe("emailActionRegistry", () => {
     });
     expect(result.isOk).toBe(true);
     if (!result.isOk) return;
-    // No slug yet — the app executor fulfills it after the Convex insert.
+    /*
+      No slug yet — the app executor fulfills it after the Convex insert.
+    */
     expect(result.command).toEqual({
       type: "createPersona",
       name: "Accessibility Advocate",
@@ -491,13 +517,13 @@ describe("emailActionRegistry", () => {
   });
 });
 
-/**
- * `sendTestEmail`'s authorization gate — the first `authorize` consumer.
- *
- * `needsApproval` already asks a human to bless a send, but only where a human
- * is present to ask, which is the agent loop and nowhere else. These pin the
- * property that does NOT depend on a chat window being attached.
- */
+/*
+  `sendTestEmail`'s authorization gate — the first `authorize` consumer.
+
+  `needsApproval` already asks a human to bless a send, but only where a human
+  is present to ask, which is the agent loop and nowhere else. These pin the
+  property that does NOT depend on a chat window being attached.
+*/
 describe("sendTestEmail authorization", () => {
   it("admits a caller the server verified", () => {
     const result = dispatchEditorAction({

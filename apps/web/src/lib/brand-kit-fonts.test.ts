@@ -7,12 +7,12 @@ import {
   isEmailSafeFontStack,
 } from "./brand-kit-fonts";
 
-/**
- * Editable brand fonts (brand-kit-v2 §1): the two rules that make the feature
- * real — a brand font is always one of the email-safe stacks, and changing
- * one reaches the kit's themes (otherwise the edit changes nothing anybody
- * can see).
- */
+/*
+  Editable brand fonts (brand-kit-v2 §1): the two rules that make the feature
+  real — a brand font is always one of the email-safe stacks, and changing
+  one reaches the kit's themes (otherwise the edit changes nothing anybody
+  can see).
+*/
 
 const GEORGIA = "Georgia, 'Times New Roman', serif";
 const VERDANA = "Verdana, Geneva, sans-serif";
@@ -48,7 +48,7 @@ describe("getBrandFontsValidationErrors — selection, never free text", () => {
 
   it("knows which stacks are on the list", () => {
     expect(isEmailSafeFontStack(GEORGIA)).toBe(true);
-    expect(isEmailSafeFontStack("Georgia, serif")).toBe(false); // near-miss, not the same stack
+    expect(isEmailSafeFontStack("Georgia, serif")).toBe(false); /* near-miss, not the same stack */
   });
 });
 

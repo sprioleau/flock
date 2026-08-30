@@ -7,15 +7,15 @@ import {
 } from "./brand-kit";
 import { planThemeVariationDeletion } from "./brand-theme-lifecycle";
 
-/**
- * Soft theme deletion (§14.5b), at the layer that decides it.
- *
- * The end-to-end proof that no draft is restyled lives in
- * `components/studio/brand-kit/brand-theme-deletion.test.ts`, against the real
- * Convex functions. What only this suite can prove is the arithmetic the
- * mutation delegates: what may be deleted, what may be restored, and that a
- * deleted row keeps everything a restore needs.
- */
+/*
+  Soft theme deletion (§14.5b), at the layer that decides it.
+
+  The end-to-end proof that no draft is restyled lives in
+  `components/studio/brand-kit/brand-theme-deletion.test.ts`, against the real
+  Convex functions. What only this suite can prove is the arithmetic the
+  mutation delegates: what may be deleted, what may be restored, and that a
+  deleted row keeps everything a restore needs.
+*/
 
 function buildVariations(count: number): ThemeVariation[] {
   return Array.from({ length: count }, (_unused, index) => {
@@ -45,9 +45,13 @@ describe("planThemeVariationDeletion", () => {
     expect(plan.variations).toHaveLength(2);
     const deleted = plan.variations.find((variation) => variation.id === "theme-0");
     expect(deleted?.deletedAtMs).toBe(1_700_000_000_000);
-    /* Its payload is untouched — a restore has to bring back the same theme. */
+    /*
+      Its payload is untouched — a restore has to bring back the same theme.
+    */
     expect(deleted?.globals).toEqual(variations[0]!.globals);
-    /* And it is no longer a theme the kit has. */
+    /*
+      And it is no longer a theme the kit has.
+    */
     expect(getLiveThemeVariations(plan.variations).map((variation) => variation.id)).toEqual([
       "theme-1",
     ]);
@@ -78,7 +82,9 @@ describe("planThemeVariationDeletion", () => {
       isDeleted: true,
       nowMs: 9,
     });
-    /* Two deleted siblings do not make this deletable — one live theme is one. */
+    /*
+      Two deleted siblings do not make this deletable — one live theme is one.
+    */
     expect(plan.isOk).toBe(false);
   });
 
@@ -119,7 +125,9 @@ describe("planThemeVariationDeletion", () => {
   });
 
   it("is a no-op rather than an error when the theme is already in the requested state", () => {
-    /* Two tabs, or a double click. Neither is a problem worth a message. */
+    /*
+      Two tabs, or a double click. Neither is a problem worth a message.
+    */
     const variations = buildVariations(2);
     const plan = planThemeVariationDeletion({
       variations,

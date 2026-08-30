@@ -12,33 +12,33 @@ import {
 } from "@/lib/brand-kit-extraction/confirm-asset";
 import { fetchBinaryResource } from "@/lib/brand-kit-extraction/fetch-page";
 
-/**
- * POST /api/brand-kit/confirm-asset — Stage S of the brand-kit architecture
- * (docs/proposals/brand-kit-architecture.md §8): make an extracted asset
- * suggestion DURABLE. Owner decision 4: only assets confirmed through here
- * (Convex storage URLs) may ever enter documents.
- *
- * Contract (the brand-kit panel codes against exactly this):
- *   request:  { sessionId: string, kind: "logo" | "socialCard" }
- *   response: { isOk: true, url: string }        // the durable serving URL
- *           | { isOk: false, message: string }   // friendly, user-facing
- *
- * Flow: re-read the asset URL from the session's kit row (NEVER trust a
- * client-supplied URL — the row's URL already passed the extraction guards)
- * → data:image/svg+xml URIs decode locally, external URLs go through the
- * same SSRF rails as the page fetch (url-guard per redirect hop, deadline,
- * hard 2MB cap) with an image content-type allowlist → upload to Convex
- * storage (the generate-image server-upload pattern) → `confirmAsset`
- * patches the kit row (durable URL + provenance + revision bump; the
- * previous confirmed file for the kind is deleted) → `assets.register`
- * (Content Studio Stage S: the confirmed binary joins the session's asset
- * library as kind "logo"/"social-card" — "any logos that were scraped").
- *
- * Stage M seam (content-studio §7.1) — CONVERTED: kit-side deletes
- * (replace/clear/remove) now go through deleteStorageFilesUnlessRegistered
- * (convex/brandKits.ts), so a replaced file that this route registered into
- * the library is RETAINED and its lifecycle belongs to the registry.
- */
+/*
+  POST /api/brand-kit/confirm-asset — Stage S of the brand-kit architecture
+  (docs/proposals/brand-kit-architecture.md §8): make an extracted asset
+  suggestion DURABLE. Owner decision 4: only assets confirmed through here
+  (Convex storage URLs) may ever enter documents.
+
+  Contract (the brand-kit panel codes against exactly this):
+    request:  { sessionId: string, kind: "logo" | "socialCard" }
+    response: { isOk: true, url: string }        // the durable serving URL
+            | { isOk: false, message: string }   // friendly, user-facing
+
+  Flow: re-read the asset URL from the session's kit row (NEVER trust a
+  client-supplied URL — the row's URL already passed the extraction guards)
+  → data:image/svg+xml URIs decode locally, external URLs go through the
+  same SSRF rails as the page fetch (url-guard per redirect hop, deadline,
+  hard 2MB cap) with an image content-type allowlist → upload to Convex
+  storage (the generate-image server-upload pattern) → `confirmAsset`
+  patches the kit row (durable URL + provenance + revision bump; the
+  previous confirmed file for the kind is deleted) → `assets.register`
+  (Content Studio Stage S: the confirmed binary joins the session's asset
+  library as kind "logo"/"social-card" — "any logos that were scraped").
+
+  Stage M seam (content-studio §7.1) — CONVERTED: kit-side deletes
+  (replace/clear/remove) now go through deleteStorageFilesUnlessRegistered
+  (convex/brandKits.ts), so a replaced file that this route registered into
+  the library is RETAINED and its lifecycle belongs to the registry.
+*/
 
 const requestBodySchema = z.object({
   sessionId: z.string().min(1),
@@ -58,7 +58,9 @@ type ObtainBinaryOutcome =
   | { isOk: true; binary: AssetBinary }
   | { isOk: false; message: string; status: number };
 
-/** Turn the row's asset URL (data URI or external URL) into upload bytes. */
+/*
+  Turn the row's asset URL (data URI or external URL) into upload bytes.
+*/
 async function obtainAssetBinary(assetUrl: string): Promise<ObtainBinaryOutcome> {
   if (assetUrl.startsWith("data:")) {
     const decoded = decodeSvgDataUri(assetUrl);
@@ -87,7 +89,9 @@ async function obtainAssetBinary(assetUrl: string): Promise<ObtainBinaryOutcome>
     };
   }
   if (contentType === "image/svg+xml") {
-    // SVGs are text — run the same safety gate as inline ones.
+    /*
+      SVGs are text — run the same safety gate as inline ones.
+    */
     const prepared = prepareSvgBinary(new TextDecoder("utf-8").decode(fetched.bytes));
     return prepared.isOk
       ? { isOk: true, binary: prepared.binary }
@@ -115,11 +119,15 @@ export async function POST(request: Request) {
   const assetNoun = ASSET_NOUNS[kind];
 
   try {
-    // Authenticated throughout: brandKits and assets are both keyed by
-    // resolveOwnerId (convex/authIdentity.ts). A bare client would read and
-    // write a different owner's rows than the browser once identity exists.
+    /*
+      Authenticated throughout: brandKits and assets are both keyed by
+      resolveOwnerId (convex/authIdentity.ts). A bare client would read and
+      write a different owner's rows than the browser once identity exists.
+    */
 
-    // 1. Re-read the suggestion from the row — the source of truth.
+    /*
+      1. Re-read the suggestion from the row — the source of truth.
+    */
     const brandKit = await fetchAuthQuery(api.brandKits.getActiveBrandKit, { sessionId });
     if (brandKit === null) {
       return failureResponse({
@@ -139,18 +147,24 @@ export async function POST(request: Request) {
         ? brandKit.logoConfirmedAtMs !== undefined
         : brandKit.socialImageConfirmedAtMs !== undefined;
     if (isAlreadyConfirmed) {
-      // Idempotent: the row already holds the durable URL.
+      /*
+        Idempotent: the row already holds the durable URL.
+      */
       return Response.json({ isOk: true, url: assetUrl });
     }
 
-    // 2. Bytes: decode inline SVG locally, or fetch through the SSRF rails.
+    /*
+      2. Bytes: decode inline SVG locally, or fetch through the SSRF rails.
+    */
     const obtained = await obtainAssetBinary(assetUrl);
     if (!obtained.isOk) {
       return failureResponse({ status: obtained.status, message: obtained.message });
     }
     const { bytes, contentType } = obtained.binary;
 
-    // 3. Upload — the shipped server-side pattern (generate-image route).
+    /*
+      3. Upload — the shipped server-side pattern (generate-image route).
+    */
     const postUrl = await fetchAuthMutation(api.files.generateUploadUrl, {});
     const uploadResponse = await fetch(postUrl, {
       method: "POST",
@@ -162,7 +176,9 @@ export async function POST(request: Request) {
     }
     const { storageId } = (await uploadResponse.json()) as { storageId: Id<"_storage"> };
 
-    // 4. Patch the row (durable URL, provenance, revision bump).
+    /*
+      4. Patch the row (durable URL, provenance, revision bump).
+    */
     const { url } = await fetchAuthMutation(api.brandKits.confirmAsset, {
       sessionId,
       kind,
@@ -170,18 +186,22 @@ export async function POST(request: Request) {
       expectedSourceUrl: assetUrl,
     });
 
-    // 5. Register the confirmed binary in the session's asset library
-    // (AFTER confirmAsset: a concurrent-re-scrape rejection deletes the
-    // upload, and a just-deleted file must never gain a registry row).
-    // Failure here never fails the confirm — the kit row already holds the
-    // durable URL; the file is then merely an unregistered legacy upload.
+    /*
+      5. Register the confirmed binary in the session's asset library
+      (AFTER confirmAsset: a concurrent-re-scrape rejection deletes the
+      upload, and a just-deleted file must never gain a registry row).
+      Failure here never fails the confirm — the kit row already holds the
+      durable URL; the file is then merely an unregistered legacy upload.
+    */
     try {
       await fetchAuthMutation(api.assets.register, {
         sessionId,
         storageId,
         kind: kind === "logo" ? "logo" : "social-card",
         name: brandKit.name,
-        // Scrape origin — inline data: URIs aren't an origin worth recording.
+        /*
+          Scrape origin — inline data: URIs aren't an origin worth recording.
+        */
         ...(assetUrl.startsWith("data:") ? {} : { sourceUrl: assetUrl }),
       });
     } catch (registerError) {

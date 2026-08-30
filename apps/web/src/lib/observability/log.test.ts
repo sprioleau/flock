@@ -95,8 +95,10 @@ describe("unwrapThrown", () => {
   });
 
   it("classifies an enveloped error instead of reporting [object Object]", () => {
-    // Observed live: without unwrapping this produced
-    // name "object" / code "unknown" / message "[object Object]".
+    /*
+      Observed live: without unwrapping this produced
+      name "object" / code "unknown" / message "[object Object]".
+    */
     const enveloped = { error: Object.assign(new Error("nope"), { statusCode: 429 }) };
     const summary = summarizeError(enveloped);
     expect(summary.code).toBe("rate_limited");
@@ -193,8 +195,10 @@ describe("summarizeError", () => {
 
 describe("extractValidationIssues", () => {
   it("digs the Zod issue list out of the AI SDK's nested cause chain", () => {
-    // The real production shape: InvalidToolInputError → TypeValidationError
-    // → ZodError. Only the innermost link carries `issues`.
+    /*
+      The real production shape: InvalidToolInputError → TypeValidationError
+      → ZodError. Only the innermost link carries `issues`.
+    */
     const zodError = Object.assign(new Error("validation failed"), {
       issues: [
         { code: "invalid_type", path: ["children", 0, "text"], message: "Expected string" },

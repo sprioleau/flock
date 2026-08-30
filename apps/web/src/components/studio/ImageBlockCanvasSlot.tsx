@@ -4,15 +4,15 @@ import { ImageBlockView, type ImageBlock, type ResolvedImageStyles } from "@floc
 import { Loader2 } from "lucide-react";
 import { useImagePreviewStore } from "@/lib/image-preview-store";
 
-/**
- * Canvas-only wrapper around the SDK's ImageBlockView: consults the ephemeral
- * AI-preview store BEFORE the block's committed properties. While a preview
- * exists the canvas renders the generated image from its data URI (instant —
- * no Convex round-trip on the paint path) with a status overlay; once the
- * background upload commits the storage URL, the preview clears and the plain
- * SDK view takes over. The SDK view itself stays untouched — the HTML email
- * renderer shares it and must never see ephemeral state.
- */
+/*
+  Canvas-only wrapper around the SDK's ImageBlockView: consults the ephemeral
+  AI-preview store BEFORE the block's committed properties. While a preview
+  exists the canvas renders the generated image from its data URI (instant —
+  no Convex round-trip on the paint path) with a status overlay; once the
+  background upload commits the storage URL, the preview clears and the plain
+  SDK view takes over. The SDK view itself stays untouched — the HTML email
+  renderer shares it and must never see ephemeral state.
+*/
 
 export interface ImageBlockCanvasSlotProps {
   block: ImageBlock;
@@ -26,8 +26,10 @@ export function ImageBlockCanvasSlot({ block, resolvedStyles }: ImageBlockCanvas
     return <ImageBlockView block={block} resolvedStyles={resolvedStyles} />;
   }
 
-  // While generating there is no image yet — keep the current image visible
-  // under a shimmer. Once generated, the data URI replaces the src instantly.
+  /*
+    While generating there is no image yet — keep the current image visible
+    under a shimmer. Once generated, the data URI replaces the src instantly.
+  */
   const generated = preview.status === "generating" ? undefined : preview.generated;
   const displayBlock: ImageBlock =
     generated === undefined
