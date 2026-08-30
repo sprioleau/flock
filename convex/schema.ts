@@ -84,6 +84,22 @@ export default defineSchema({
     brandKitId: v.optional(v.id("brandKits")),
     /** The kit `revision` observed when the binding was last set (bind-time provenance). */
     brandKitBoundRevision: v.optional(v.number()),
+    /**
+     * The email's subject line. CANVAS-LEVEL: shared by every draft on the
+     * canvas, not stored per document. A canvas holds several draft variations
+     * but only ONE is ever actually sent, so the subject the recipient sees is
+     * a property of the canvas (the thing that gets sent), not of any one
+     * draft. Optional so every canvas that predates this field stays valid with
+     * no backfill; absent means "no subject chosen yet".
+     */
+    subject: v.optional(v.string()),
+    /**
+     * The inbox preview / preheader text. CANVAS-LEVEL for the same reason as
+     * `subject`: it is what the recipient sees for the ONE sent draft, so it
+     * belongs to the canvas rather than to any individual draft variation.
+     * Optional; absent means "no preview text chosen yet".
+     */
+    previewText: v.optional(v.string()),
     createdAtMs: v.number(),
     updatedAtMs: v.number(),
   }).index("by_sessionId", ["sessionId"]),

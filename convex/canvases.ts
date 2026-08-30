@@ -260,6 +260,14 @@ const canvasListEntryValidator = v.object({
   title: v.string(),
   /** True when `title` was derived rather than chosen, so the UI can say so. */
   isTitleDerived: v.boolean(),
+  /**
+   * Canvas-level email subject / inbox preview, shared by every draft on the
+   * canvas (only one draft is ever sent — see the schema comments). Absent when
+   * never set; the dashboard card shows them so a user can tell canvases apart
+   * by what will actually land in the inbox.
+   */
+  subject: v.optional(v.string()),
+  previewText: v.optional(v.string()),
   draftCount: v.number(),
   /** The draft a click should open: the most recently touched one. */
   entryDocumentId: v.union(v.null(), v.id("documents")),
@@ -307,6 +315,8 @@ export const listMyCanvases = query({
       canvasId: Id<"canvases">;
       title: string;
       isTitleDerived: boolean;
+      subject?: string;
+      previewText?: string;
       draftCount: number;
       entryDocumentId: Id<"documents"> | null;
       draftPreviews: Array<{
@@ -388,6 +398,10 @@ export function buildCanvasListEntry({
     canvasId: canvas._id,
     title,
     isTitleDerived: !hasStoredTitle,
+    // Canvas-level and independent of the derived/stored title above; forwarded
+    // only when present so an unset field stays absent rather than "".
+    ...(canvas.subject !== undefined ? { subject: canvas.subject } : {}),
+    ...(canvas.previewText !== undefined ? { previewText: canvas.previewText } : {}),
     draftCount: orderedDrafts.length,
     entryDocumentId: mostRecentDraft === null ? null : mostRecentDraft._id,
     draftPreviews: orderedDrafts.slice(0, MAX_DRAFT_PREVIEWS_PER_CANVAS).map((draft) => ({
@@ -439,6 +453,121 @@ export const renameCanvas = mutation({
     }
     await ctx.db.patch(args.canvasId, { title, updatedAtMs: Date.now() });
     return true;
+  },
+});
+
+/**
+ * Ceilings on the canvas-level email subject / preview text. A subject much
+ * over this never survives an inbox's own truncation, and the preview is a
+ * short preheader, so 200 is generous for both. Over-length input is TRUNCATED
+ * rather than rejected: like `renameCanvas`, this mutation never throws for a
+ * merely-too-long value — the dialog enforces the limit at the input, and a
+ * server that silently clamps a stray long paste is friendlier than one that
+ * fails the save. The client-facing UI owns the hard cap; this is the backstop.
+ */
+const MAX_SUBJECT_LENGTH = 200;
+const MAX_PREVIEW_LENGTH = 200;
+
+/**
+ * Set the canvas-level email subject and/or preview text.
+ *
+ * CANVAS-LEVEL, not per draft: only one draft is ever sent, so the subject and
+ * preview the recipient sees belong to the canvas (schema comments carry the
+ * full reasoning). Modelled on `renameCanvas` — same ownership guard, same
+ * pre-auth `sessionId` fallback-key posture — because this is library
+ * management of the container, not editing of a draft's content.
+ *
+ * PARTIAL PATCH: each of `subject` / `previewText` is written ONLY when the
+ * caller passed it. A dialog that saves just the subject must not wipe the
+ * preview text, so an omitted arg is left exactly as it was.
+ *
+ * EMPTY CLEARS: a provided value is trimmed; if nothing survives the trim the
+ * field is CLEARED to a clean absent state (`patch({ field: undefined })`)
+ * rather than stored as `""`. This mirrors `brandKits.unbindCanvasBrandKit`,
+ * which clears `brandKitId` the same way — Convex's `db.patch` treats an
+ * explicit `undefined` as "remove this optional field", so a later read sees
+ * the field genuinely absent, not an empty string the UI would have to special
+ * case (verified empirically by the "empty clears" test for this mutation).
+ *
+ * Returns true when the canvas was found and (any) update applied, false when
+ * it no longer exists. A non-owner is REFUSED by `assertCanvasOwner` before any
+ * of this runs.
+ */
+export const setCanvasEmailMeta = mutation({
+  args: {
+    canvasId: v.id("canvases"),
+    subject: v.optional(v.string()),
+    previewText: v.optional(v.string()),
+    /** Pre-auth fallback key only; a verified identity always wins. */
+    sessionId: v.optional(v.string()),
+  },
+  returns: v.boolean(),
+  handler: async (ctx, args) => {
+    await assertCanvasOwner(ctx, {
+      canvasId: args.canvasId,
+      claimedSessionId: args.sessionId ?? "",
+    });
+    const canvas = await ctx.db.get(args.canvasId);
+    if (canvas === null) {
+      return false;
+    }
+
+    // Build the patch from ONLY the fields the caller sent. `undefined` in the
+    // patch means "clear this optional field"; a field never added to `patch`
+    // is left untouched. A trimmed-to-empty value maps to the clear.
+    const patch: {
+      subject?: string | undefined;
+      previewText?: string | undefined;
+      updatedAtMs: number;
+    } = { updatedAtMs: Date.now() };
+
+    if (args.subject !== undefined) {
+      const subject = args.subject.trim().slice(0, MAX_SUBJECT_LENGTH);
+      patch.subject = subject.length === 0 ? undefined : subject;
+    }
+    if (args.previewText !== undefined) {
+      const previewText = args.previewText.trim().slice(0, MAX_PREVIEW_LENGTH);
+      patch.previewText = previewText.length === 0 ? undefined : previewText;
+    }
+
+    await ctx.db.patch(args.canvasId, patch);
+    return true;
+  },
+});
+
+/**
+ * The canvas-level email subject / preview for a single canvas, or null when
+ * the canvas is gone.
+ *
+ * The send dialog lives in the studio, whose other canvas-level reads are
+ * already keyed by `canvasId` (brandKits.getBrandKitForCanvas /
+ * getCanvasBrandStatus). This follows that convention rather than bolting
+ * canvas-level fields onto the per-draft document payload. Absent fields are
+ * omitted, so the shape is `{}` for a canvas that has neither set — the
+ * frontend reads `subject` / `previewText` as optional.
+ *
+ * NOT an access gate (see this file's header): the id in the URL is the
+ * capability, so — like every other canvas READ — this asks the caller nobody
+ * who they are. Only the WRITE (`setCanvasEmailMeta`) checks ownership.
+ */
+export const getCanvasEmailMeta = query({
+  args: { canvasId: v.id("canvases") },
+  returns: v.union(
+    v.null(),
+    v.object({
+      subject: v.optional(v.string()),
+      previewText: v.optional(v.string()),
+    }),
+  ),
+  handler: async (ctx, args) => {
+    const canvas = await ctx.db.get(args.canvasId);
+    if (canvas === null) {
+      return null;
+    }
+    return {
+      ...(canvas.subject !== undefined ? { subject: canvas.subject } : {}),
+      ...(canvas.previewText !== undefined ? { previewText: canvas.previewText } : {}),
+    };
   },
 });
 
