@@ -14,9 +14,11 @@ import {
   getBrandColorsValidationErrors,
   getBrandKitValidationErrors,
   getConfirmedBrandAssetUrl,
+  getEmailDesignDocValidationErrors,
   getLiveThemeVariations,
   getToneOfVoiceValidationErrors,
   MAX_BRAND_KIT_VARIATIONS,
+  type BrandEmailDesignDoc,
   type BrandKit,
   type BrandToneOfVoice,
 } from "../apps/web/src/lib/brand-kit";
@@ -35,6 +37,7 @@ import { planSocialLinksUpdate } from "../apps/web/src/lib/brand-social-links";
 import {
   planBrandColorsUpdate,
   reconcileBrandColors,
+  reconcileEmailDesignDoc,
   reconcileSocialLinks,
   reconcileToneOfVoice,
   stampUserEditedSocialLinks,
@@ -133,6 +136,18 @@ const toneOfVoiceValidator = v.object({
 });
 
 /*
+  email-design.md (§3). Prose the model reads only via brand-email-design.ts.
+  READ shape and scrape-input shape share this validator; `"user"` is minted
+  server-side by updateBrandEmailDesignDoc, and reconcile keeps a user doc
+  through a re-scrape.
+*/
+const emailDesignDocValidator = v.object({
+  markdown: v.string(),
+  origin: v.union(v.literal("scraped"), v.literal("agent"), v.literal("user")),
+  userEditedAtMs: v.optional(v.number()),
+});
+
+/*
   One STORED social profile link. `origin` is the re-scrape lock — optional,
   and absent means machine-owned, so every row saved before it existed is swept
   and refreshed by a scrape exactly as it always was (see reconcileSocialLinks
@@ -161,6 +176,7 @@ export const brandKitValidator = v.object({
   socialLinks: v.optional(v.array(v.object({ platform: v.string(), url: v.string() }))),
   colors: v.optional(v.array(brandColorValidator)),
   toneOfVoice: v.optional(toneOfVoiceValidator),
+  emailDesignDoc: v.optional(emailDesignDocValidator),
   variations: v.array(
     v.object({
       id: v.string(),
@@ -192,6 +208,7 @@ const activeBrandKitValidator = v.object({
   socialLinks: v.optional(v.array(storedSocialLinkValidator)),
   colors: v.optional(v.array(brandColorValidator)),
   toneOfVoice: v.optional(toneOfVoiceValidator),
+  emailDesignDoc: v.optional(emailDesignDocValidator),
   revision: v.number(),
   logoConfirmedAtMs: v.optional(v.number()),
   socialImageConfirmedAtMs: v.optional(v.number()),
@@ -261,6 +278,7 @@ function projectBrandKitRow(row: Doc<"brandKits">): ActiveBrandKitPayload {
     ...(row.socialLinks !== undefined ? { socialLinks: row.socialLinks } : {}),
     ...(row.colors !== undefined ? { colors: row.colors } : {}),
     ...(row.toneOfVoice !== undefined ? { toneOfVoice: row.toneOfVoice } : {}),
+    ...(row.emailDesignDoc !== undefined ? { emailDesignDoc: row.emailDesignDoc } : {}),
     revision: getEffectiveRevision(row),
     ...(row.logoConfirmedAtMs !== undefined ? { logoConfirmedAtMs: row.logoConfirmedAtMs } : {}),
     ...(row.socialImageConfirmedAtMs !== undefined
@@ -474,6 +492,10 @@ export const saveBrandKit = mutation({
       existing: primaryRow.socialLinks,
       incoming: args.brandKit.socialLinks,
     });
+    const reconciledEmailDesignDoc = reconcileEmailDesignDoc({
+      existing: primaryRow.emailDesignDoc,
+      incoming: args.brandKit.emailDesignDoc,
+    });
     const { patch, storageIdsToDelete } = planBrandKitSavePatch({
       existing: primaryRow,
       incomingLogoUrl: args.brandKit.logoUrl,
@@ -503,6 +525,12 @@ export const saveBrandKit = mutation({
           : undefined,
       colors: reconciledColors.colors.length > 0 ? reconciledColors.colors : undefined,
       toneOfVoice: reconciledTone.toneOfVoice,
+      /*
+        Reconciled, not replaced (§8.2/§3): an email-design.md the human edited
+        (origin "user") survives this scrape; a machine-authored one is
+        refreshed from the incoming payload.
+      */
+      emailDesignDoc: reconciledEmailDesignDoc.emailDesignDoc,
       /*
         A scrape REPLACES the starter kit outright — that is the frictionless
         overwrite §14.5c promises. The starter's colors and tone carry
@@ -982,6 +1010,41 @@ export const updateBrandToneOfVoice = mutation({
       throw new ConvexError(errors.join(" "));
     }
     await ctx.db.patch(row._id, { toneOfVoice, updatedAtMs: Date.now() });
+    return null;
+  },
+});
+
+/*
+  Save the session's email-design.md (brand-memory §3). A user edit stamps
+  origin "user", which is the re-scrape lock: a later scrape keeps this doc
+  instead of overwriting it (matching colors/toneOfVoice). `null` clears it.
+
+  Like toneOfVoice, this is prose the model reads and nothing renders it into a
+  document, so it deliberately does NOT bump `revision`.
+*/
+export const updateBrandEmailDesignDoc = mutation({
+  args: {
+    sessionId: v.string(),
+    markdown: v.union(v.null(), v.string()),
+  },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    const ownerId = await resolveOwnerId(ctx, { claimedSessionId: args.sessionId });
+    const row = await requireOwnerBrandKitRow(ctx, ownerId);
+    if (args.markdown === null) {
+      await ctx.db.patch(row._id, { emailDesignDoc: undefined, updatedAtMs: Date.now() });
+      return null;
+    }
+    const emailDesignDoc: BrandEmailDesignDoc = {
+      markdown: args.markdown,
+      origin: "user",
+      userEditedAtMs: Date.now(),
+    };
+    const errors = getEmailDesignDocValidationErrors(emailDesignDoc);
+    if (errors.length > 0) {
+      throw new ConvexError(errors.join(" "));
+    }
+    await ctx.db.patch(row._id, { emailDesignDoc, updatedAtMs: Date.now() });
     return null;
   },
 });

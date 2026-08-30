@@ -1,5 +1,6 @@
 import { api } from "@convex/_generated/api";
 import { formatBrandVoiceContextLine } from "@/lib/brand-voice";
+import { formatBrandEmailDesignContextLine } from "@/lib/brand-email-design";
 import { fetchAuthQuery } from "@/lib/auth/auth-server";
 
 /*
@@ -61,7 +62,7 @@ export async function buildBrandContextBlock({
       return null;
     }
     /*
-      Either half can be absent; a kit with only a voice still contributes.
+      Any part can be absent; a kit with only one of them still contributes.
     */
     const lines = [
       formatBrandSocialContextLine({
@@ -71,6 +72,10 @@ export async function buildBrandContextBlock({
       formatBrandVoiceContextLine({
         brandName: brandKit.name,
         toneOfVoice: brandKit.toneOfVoice,
+      }),
+      formatBrandEmailDesignContextLine({
+        brandName: brandKit.name,
+        emailDesignDoc: brandKit.emailDesignDoc,
       }),
     ].filter((line): line is string => line !== null);
     return lines.length === 0 ? null : lines.join("\n\n");

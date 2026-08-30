@@ -49,6 +49,18 @@ export const STUDIO_PATH = "/studio";
 export const DASHBOARD_PATH = "/dashboard";
 
 /*
+  The immersive brand workspace (brand-memory §1): the brand kit promoted from
+  a modal to a page, with its own section sub-nav. `/brand` lands on the
+  default section; `/brand/<slug>` deep-links one.
+*/
+export const BRAND_PATH = "/brand";
+
+/*
+  The scripted stranger demo (docs/proposals/demo-mode.md).
+*/
+export const DEMO_PATH = "/demo";
+
+/*
   Where a magic link lands after it verifies: a route that confirms the
   session server-side and forwards to a fresh studio draft, rather than
   dropping a failed link into the editor as a stranger. See

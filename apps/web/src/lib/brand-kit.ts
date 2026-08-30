@@ -274,6 +274,18 @@ export interface BrandToneOfVoice {
 }
 
 /*
+  email-design.md — standing brand guidance the agent reads (the CEILING over
+  the structured kit's FLOOR). Prose only; the model reads `markdown` verbatim
+  from a sanitized data block. `origin` is the re-scrape lock: "user" survives
+  a later scrape. See apps/web/src/lib/brand-email-design.ts for the injection.
+*/
+export interface BrandEmailDesignDoc {
+  markdown: string;
+  origin: BrandDataOrigin;
+  userEditedAtMs?: number;
+}
+
+/*
   A brand kit: source provenance, brand basics, and its theme variations.
 */
 export interface BrandKit {
@@ -338,6 +350,11 @@ export interface BrandKit {
     The brand's tone of voice (§5) — kit metadata; nothing renders from it.
   */
   toneOfVoice?: BrandToneOfVoice;
+  /*
+    email-design.md standing guidance (§3) — the CEILING. Kit metadata read by
+    the agent; nothing renders it into a document, so it never bumps revision.
+  */
+  emailDesignDoc?: BrandEmailDesignDoc;
   /*
     3–4 agent-generated color variations; the theme dropdown's content.
   */
@@ -617,6 +634,28 @@ export function getToneOfVoiceValidationErrors(tone: BrandToneOfVoice | undefine
     errors.push(`Keep the "avoid" list to ${MAX_VOICE_AVOID_WORDS} entries or fewer.`);
   }
   return errors;
+}
+
+/*
+  Longest email-design.md we store (and hand to the model). Matches the ~16k
+  budget an author needs for the 7-section guidance doc while capping the
+  per-request context this adds outside the cached prefix.
+*/
+export const MAX_EMAIL_DESIGN_DOC_LENGTH = 16000;
+
+/*
+  Hard (blocking) problems with an email-design.md payload.
+*/
+export function getEmailDesignDocValidationErrors(
+  doc: BrandEmailDesignDoc | undefined,
+): string[] {
+  if (doc === undefined) {
+    return [];
+  }
+  if (doc.markdown.length > MAX_EMAIL_DESIGN_DOC_LENGTH) {
+    return [`Email design guidance can be up to ${MAX_EMAIL_DESIGN_DOC_LENGTH} characters.`];
+  }
+  return [];
 }
 
 /*

@@ -644,6 +644,39 @@ export default defineSchema({
       }),
     ),
     /*
+      email-design.md (brand-memory-and-scrape-confidence §3): the CEILING to
+      the structured kit's FLOOR. A durable, user-editable markdown document of
+      standing brand guidance — layout habits, signature moves, component
+      recipes, voice — authored first by the scrape (origin "agent") and edited
+      by the user thereafter.
+
+      Prose the model reads, like `toneOfVoice.guidance`: it reaches the agent
+      only through the sanitized, delimited block in
+      apps/web/src/lib/brand-email-design.ts, and scraped copy is untrusted
+      input. Nothing renders from it into a document, so writes here never bump
+      `revision`.
+
+      NOT a second source of truth for colours: the kit's `colors` are the
+      floor. The md carries colour USAGE; where it names a hex it is guidance
+      the renderer chips against the kit, not a token the model must transcribe
+      between tool calls (the design law: the model names a theme, never
+      supplies a colour).
+
+      `origin` is the SAME re-scrape lock `colors`/`toneOfVoice` carry (§8.2):
+      a doc stamped "user" survives a later scrape; anything else is replaced.
+
+      ADDITIVE + OPTIONAL, and ABSENT MEANS NO GUIDANCE DOC — which is every
+      row written before this landed. Nothing needs a backfill; the agent
+      simply runs on the structured floor alone until a doc exists.
+    */
+    emailDesignDoc: v.optional(
+      v.object({
+        markdown: v.string(),
+        origin: v.union(v.literal("scraped"), v.literal("agent"), v.literal("user")),
+        userEditedAtMs: v.optional(v.number()),
+      }),
+    ),
+    /*
       ThemeVariation[]: complete `Required<GlobalStyles>` payloads (see guard note above).
     */
     variations: v.array(

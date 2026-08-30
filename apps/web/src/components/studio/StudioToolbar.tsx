@@ -1,8 +1,10 @@
 "use client";
 
-import { Redo2Icon, Undo2Icon } from "lucide-react";
+import { Redo2Icon, SquareArrowOutUpRightIcon, Undo2Icon } from "lucide-react";
+import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
+import { BRAND_PATH } from "@/lib/auth/config";
 import { DashboardLinkFallback } from "@/lib/auth/DashboardLinkFallback";
 import { UserButton } from "@/lib/auth/UserButton";
 import { selectCanRedo, selectCanUndo, useEditorStore } from "@/lib/editor-store";
@@ -72,6 +74,19 @@ export function StudioToolbar({
         {leading}
         <ThemeMenu />
         <BrandKitPanel />
+        {/*
+          The full brand workspace (/brand): the quick modal beside this is for
+          in-flow tweaks; this link opens the immersive page, where the
+          email-design.md guidance and the section sub-nav live.
+        */}
+        <Button
+          variant="ghost"
+          size="icon"
+          nativeButton={false}
+          render={<Link href={BRAND_PATH} aria-label="Open the brand page" />}
+        >
+          <SquareArrowOutUpRightIcon />
+        </Button>
         {/*
           The session's asset library — user-level like the brand kit
           beside it (Content Studio Stage S, owner placement decision).

@@ -28,6 +28,7 @@ import {
   type BrandColor,
   type BrandColorCategory,
   type BrandDataOrigin,
+  type BrandEmailDesignDoc,
   type BrandToneOfVoice,
 } from "./brand-kit";
 import { SOCIAL_PLATFORM_ORDER } from "./social-links";
@@ -176,6 +177,40 @@ export function reconcileToneOfVoice({
     return { toneOfVoice: existing, keptUserEdit: true };
   }
   return { toneOfVoice: incoming ?? existing, keptUserEdit: false };
+}
+
+/*
+  True when a human authored or edited the email-design.md.
+*/
+export function isHumanOwnedEmailDesignDoc(doc: BrandEmailDesignDoc): boolean {
+  return doc.origin === "user" || doc.userEditedAtMs !== undefined;
+}
+
+export interface EmailDesignDocReconciliation {
+  emailDesignDoc: BrandEmailDesignDoc | undefined;
+  /*
+    True when the human's doc was kept and the scrape's was discarded.
+  */
+  keptUserEdit: boolean;
+}
+
+/*
+  email-design.md is one document, so reconciliation is all-or-nothing like the
+  tone of voice: a human who edited their guidance keeps it verbatim through a
+  re-scrape, and the scrape's freshly authored doc is discarded. Merging two
+  prose docs would produce contradictory guidance, which is worse than either.
+*/
+export function reconcileEmailDesignDoc({
+  existing,
+  incoming,
+}: {
+  existing: BrandEmailDesignDoc | undefined;
+  incoming: BrandEmailDesignDoc | undefined;
+}): EmailDesignDocReconciliation {
+  if (existing !== undefined && isHumanOwnedEmailDesignDoc(existing)) {
+    return { emailDesignDoc: existing, keptUserEdit: true };
+  }
+  return { emailDesignDoc: incoming ?? existing, keptUserEdit: false };
 }
 
 /*

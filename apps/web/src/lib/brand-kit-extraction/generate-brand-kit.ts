@@ -35,6 +35,7 @@ import { modelTelemetryFor } from "@/lib/observability/model-telemetry";
 import {
   BRAND_VOICE_DESCRIPTOR_OPTIONS,
   MAX_VOICE_DESCRIPTORS,
+  type BrandEmailDesignDoc,
   type BrandKit,
   type BrandKitFonts,
   type BrandToneOfVoice,
@@ -189,6 +190,35 @@ const modelToneOfVoiceSchema = z.object({
     ),
 });
 
+/*
+  email-design.md (brand-kit-user-control §3): the standing guidance doc the
+  agent reads as the CEILING over the structured kit's FLOOR. Authored in
+  THIS same call — a second round trip is not worth it on a free-tier-quota-
+  sensitive model. Returned unconditionally by the schema but DISCARDED by
+  the pipeline below when the model has nothing to say (empty string), same
+  honest-degrade stance as toneOfVoice.
+*/
+const modelEmailDesignSchema = z
+  .string()
+  .max(16000)
+  .describe(
+    [
+      "A first-draft email-design.md for THIS brand, written in Markdown, or \"\" if there isn't",
+      "enough signal to say anything useful. Up to ~16000 characters. Use exactly these seven",
+      "'## ' sections, in order: Brand Essence, Signature Moves, Color System, Typography,",
+      "Layout & Structure, Components (with Header / Hero / CTA / Card / Divider / Footer",
+      "sub-sections), and Voice & Tone.",
+      "Base every claim ONLY on the harvested signals you were given (palette with usage counts,",
+      "fonts, layout/button-shape hints, and the copy sample) — never invent details the signals",
+      "don't support, and keep sections short and concrete rather than padded.",
+      "CRITICAL — colour authority: the structured brand kit (the named, categorized palette) is",
+      "the SINGLE SOURCE OF TRUTH for colour values. In this document, describe colour USAGE and",
+      "refer to colours by ROLE (\"the accent\", \"the page background\", \"the muted text colour\")",
+      "rather than by hex; a hex may appear only as an illustrative aside, never as the thing a",
+      "reader should copy. Never introduce a colour that wasn't in the harvested palette.",
+    ].join(" "),
+  );
+
 const brandKitModelOutputSchema = z.object({
   brandName: z.string().min(1).max(60).describe("The brand/site name, cleaned (no taglines)."),
   headingFont: z
@@ -211,6 +241,7 @@ const brandKitModelOutputSchema = z.object({
       "The brand's palette, named and categorized. Aim for about two of each category and STOP EARLY rather than padding — a one-color brand should return one primary, not six near-identical entries.",
     ),
   toneOfVoice: modelToneOfVoiceSchema,
+  emailDesignMarkdown: modelEmailDesignSchema,
   variations: z
     .array(semanticVariationSchema)
     .min(3)
@@ -260,6 +291,13 @@ export const brandKitSchema = z.object({
       person: z.enum(["first-person-plural", "third-person"]).optional(),
       guidance: z.string().optional(),
       avoid: z.array(z.string()).optional(),
+      origin: z.enum(["scraped", "agent", "user"]),
+      userEditedAtMs: z.number().optional(),
+    })
+    .optional(),
+  emailDesignDoc: z
+    .object({
+      markdown: z.string(),
       origin: z.enum(["scraped", "agent", "user"]),
       userEditedAtMs: z.number().optional(),
     })
@@ -326,6 +364,16 @@ function buildPrompt({
     `- Map the site's fonts to the CLOSEST email-safe option (web fonts don't ship in email): geometric/grotesque sans → Helvetica or Arial; humanist sans → Verdana, Tahoma or Trebuchet MS; serif → Georgia or Times New Roman; monospace → Courier New.`,
     `- For "colors": copy hex values VERBATIM from the harvested palette above (anything else is discarded). Name each one from its declared CSS variable when that name means something to a person — a yellow declared as "--banana" is "Banana" — and otherwise describe the color plainly ("Deep Navy"). Never invent brand mythology like "Sunrise Optimism".`,
     `- For "toneOfVoice": describe how the copy sample ACTUALLY reads. If the sample is thin, stay generic rather than inventing a personality. "descriptors" must come from this list: ${VOICE_DESCRIPTORS.join(", ")}.`,
+    `- For "emailDesignMarkdown": write a first-draft email-design.md for THIS brand from the signals above — a`,
+    `  standing guidance doc a designer would read before building an email. Use exactly these seven "## "`,
+    `  sections, in this order: Brand Essence, Signature Moves, Color System, Typography, Layout & Structure,`,
+    `  Components (with Header / Hero / CTA / Card / Divider / Footer sub-sections), Voice & Tone. Ground every`,
+    `  claim in the harvested palette (with usage counts), fonts, button shape, and copy sample — never invent`,
+    `  colors, fonts, or voice traits beyond what was harvested. The structured "colors" you return above are the`,
+    `  SINGLE SOURCE OF TRUTH for color VALUES — in this document describe color USAGE and refer to colors by`,
+    `  ROLE ("the accent", "the page background", "the muted text color"), using a hex only as an illustrative`,
+    `  aside, never as the value a reader should copy from here. If the signals are too thin to say anything`,
+    `  concrete (e.g. almost no copy and only one or two colors), return "" rather than padding with filler.`,
   ].join("\n");
 }
 
@@ -516,6 +564,18 @@ export async function generateBrandKit({ url }: { url: string }): Promise<BrandK
         }
       : undefined;
 
+  /*
+    email-design.md (§3): kept ONLY when the model actually wrote something.
+    Structured output has no clean "skip", so — same stance as toneOfVoice —
+    the honest gate is here: empty/blank markdown means no field, never a
+    padded-out doc.
+  */
+  const emailDesignMarkdown = modelOutput.emailDesignMarkdown.trim();
+  const emailDesignDoc: BrandEmailDesignDoc | undefined =
+    emailDesignMarkdown.length > 0
+      ? { markdown: emailDesignMarkdown, origin: "agent" }
+      : undefined;
+
   const brandKit: BrandKit = {
     sourceUrl: page.finalUrl,
     /*
@@ -528,6 +588,7 @@ export async function generateBrandKit({ url }: { url: string }): Promise<BrandK
     ...(identity.socialLinks.length > 0 ? { socialLinks: identity.socialLinks } : {}),
     ...(colors.length > 0 ? { colors } : {}),
     ...(toneOfVoice === undefined ? {} : { toneOfVoice }),
+    ...(emailDesignDoc === undefined ? {} : { emailDesignDoc }),
     variations: dedupeVariationIds(expandedVariations),
   };
 

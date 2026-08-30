@@ -2,7 +2,7 @@
 
 import { api } from "@convex/_generated/api";
 import { useMutation, useQuery } from "convex/react";
-import { LogInIcon, PlusIcon, SparklesIcon } from "lucide-react";
+import { LogInIcon, PaletteIcon, PlusIcon, SparklesIcon } from "lucide-react";
 import Link from "next/link";
 import { useCallback, useState, type FormEvent } from "react";
 import { Button } from "@/components/ui/button";
@@ -17,7 +17,7 @@ import {
 } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { LOGIN_PATH, STUDIO_PATH } from "@/lib/auth/config";
+import { BRAND_PATH, LOGIN_PATH, STUDIO_PATH } from "@/lib/auth/config";
 import { UserButton } from "@/lib/auth/UserButton";
 import { useFlockAuth } from "@/lib/auth/use-flock-auth";
 import { getOrCreateSessionId } from "@/lib/session";
@@ -171,6 +171,10 @@ export function DashboardShell() {
             nativeButton={false}: this renders an <a>, not a <button>. Base UI
             warns otherwise, and in a production build that warning throws.
           */}
+          <Button variant="outline" nativeButton={false} render={<Link href={BRAND_PATH} />}>
+            <PaletteIcon />
+            Brand
+          </Button>
           <Button nativeButton={false} render={<Link href={STUDIO_PATH} />}>
             <PlusIcon />
             New email

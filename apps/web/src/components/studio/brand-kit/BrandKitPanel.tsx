@@ -221,6 +221,9 @@ export function BrandKitPanel() {
           ...(previewKit.socialLinks !== undefined ? { socialLinks: previewKit.socialLinks } : {}),
           ...(previewKit.colors !== undefined ? { colors: previewKit.colors } : {}),
           ...(previewKit.toneOfVoice !== undefined ? { toneOfVoice: previewKit.toneOfVoice } : {}),
+          ...(previewKit.emailDesignDoc !== undefined
+            ? { emailDesignDoc: previewKit.emailDesignDoc }
+            : {}),
           variations: previewKit.variations,
         },
       });

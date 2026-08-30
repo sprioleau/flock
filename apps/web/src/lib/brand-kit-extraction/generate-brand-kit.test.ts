@@ -21,7 +21,7 @@ vi.mock("./fetch-page", () => ({
   probeAssetUrl: probeAssetUrlMock,
 }));
 
-import { generateBrandKit } from "./generate-brand-kit";
+import { brandKitSchema, generateBrandKit } from "./generate-brand-kit";
 
 const FINAL_URL = "https://acme.test/";
 const LOGO_URL = "https://acme.test/apple-touch.png";
@@ -46,6 +46,24 @@ const semanticVariation = (name: string) => ({
   paragraphTextColor: "#2a3540",
 });
 
+const SAMPLE_EMAIL_DESIGN_MARKDOWN = [
+  "## Brand Essence",
+  "Acme reads as plain-spoken and utilitarian: one robot at a time, told plainly.",
+  "## Signature Moves",
+  "A single warm accent used sparingly against a deep ink surface.",
+  "## Color System",
+  "Use the accent for buttons and links; the ink surface for headings.",
+  "## Typography",
+  "Headings in the mapped Georgia stack; body in the mapped Helvetica stack.",
+  "## Layout & Structure",
+  "Single-column, 600px max width.",
+  "## Components",
+  "### Header\nLogo left-aligned.\n### Hero\nHeadline, then CTA.\n### CTA\nSolid accent button.",
+  "### Card\nInk-surface panel.\n### Divider\nHairline rule.\n### Footer\nMuted text, unsubscribe.",
+  "## Voice & Tone",
+  "Plain-spoken, first-person-plural, short sentences.",
+].join("\n\n");
+
 const MODEL_OUTPUT = {
   brandName: "Acme",
   headingFont: "Georgia",
@@ -62,6 +80,7 @@ const MODEL_OUTPUT = {
     person: "first-person-plural" as const,
     guidance: "Short sentences.",
   },
+  emailDesignMarkdown: SAMPLE_EMAIL_DESIGN_MARKDOWN,
   variations: [semanticVariation("Clean"), semanticVariation("Tint"), semanticVariation("Deep")],
 };
 
@@ -195,5 +214,47 @@ describe("generateBrandKit authored palette + tone of voice", () => {
     */
     expect(banana?.name).toBe("Banana");
     expect(banana?.origin).toBe("scraped");
+  });
+});
+
+/*
+  email-design.md authoring (brand-kit-user-control §3): the scrape's ONE
+  model call also drafts the standing guidance doc. Honest degrade mirrors
+  toneOfVoice — empty markdown means an ABSENT field, never a padded doc.
+*/
+describe("generateBrandKit email-design.md authoring", () => {
+  it("ships an agent-authored email-design.md when the model writes one", async () => {
+    stubProbes([]);
+    const result = await generateBrandKit({ url: "acme.test" });
+    expect(result.isOk).toBe(true);
+    if (!result.isOk) return;
+    expect(result.brandKit.emailDesignDoc).toEqual({
+      markdown: SAMPLE_EMAIL_DESIGN_MARKDOWN,
+      origin: "agent",
+    });
+    expect(brandKitSchema.safeParse(result.brandKit).success).toBe(true);
+  });
+
+  it("omits email-design.md when the model returns empty markdown", async () => {
+    generateObjectMock.mockResolvedValue({
+      object: { ...MODEL_OUTPUT, emailDesignMarkdown: "" },
+    });
+    stubProbes([]);
+    const result = await generateBrandKit({ url: "acme.test" });
+    expect(result.isOk).toBe(true);
+    if (!result.isOk) return;
+    expect(result.brandKit.emailDesignDoc).toBeUndefined();
+    expect(brandKitSchema.safeParse(result.brandKit).success).toBe(true);
+  });
+
+  it("omits email-design.md when the model returns only whitespace", async () => {
+    generateObjectMock.mockResolvedValue({
+      object: { ...MODEL_OUTPUT, emailDesignMarkdown: "   \n  " },
+    });
+    stubProbes([]);
+    const result = await generateBrandKit({ url: "acme.test" });
+    expect(result.isOk).toBe(true);
+    if (!result.isOk) return;
+    expect(result.brandKit.emailDesignDoc).toBeUndefined();
   });
 });
