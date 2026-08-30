@@ -77,7 +77,7 @@ describe("POST /api/send-test-email", () => {
   it("refuses a caller with no identity, and never reaches the send module", async () => {
     fetchAuthQueryMock.mockResolvedValue(null);
     const response = await POST(
-      makeRequest({ document: createEmptyDocument(), to: "stranger@example.com" }),
+      makeRequest({ document: createEmptyDocument(), to: ["stranger@example.com"] }),
     );
     expect(response.status).toBe(401);
     expect(await response.json()).toMatchObject({ error: "not_signed_in" });
@@ -90,7 +90,7 @@ describe("POST /api/send-test-email", () => {
     vi.spyOn(console, "warn").mockImplementation(() => {});
     fetchAuthQueryMock.mockRejectedValue(new Error("convex unreachable"));
     const response = await POST(
-      makeRequest({ document: createEmptyDocument(), to: "delivered@resend.dev" }),
+      makeRequest({ document: createEmptyDocument(), to: ["delivered@resend.dev"] }),
     );
     expect(response.status).toBe(401);
     expect(await response.json()).toMatchObject({ error: "not_signed_in" });
@@ -108,7 +108,7 @@ describe("POST /api/send-test-email", () => {
     });
     const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
     const response = await POST(
-      makeRequest({ document: createEmptyDocument(), to: "delivered@resend.dev" }),
+      makeRequest({ document: createEmptyDocument(), to: ["delivered@resend.dev"] }),
     );
     expect(response.status).toBe(200);
     expect(sendTestEmailWithResendMock).toHaveBeenCalledTimes(1);
@@ -133,7 +133,7 @@ describe("POST /api/send-test-email", () => {
       idempotencyKey: "test-send/no-auth",
     });
     const response = await POST(
-      makeRequest({ document: createEmptyDocument(), to: "delivered@resend.dev" }),
+      makeRequest({ document: createEmptyDocument(), to: ["delivered@resend.dev"] }),
     );
     expect(response.status).toBe(200);
     expect(sendTestEmailWithResendMock).toHaveBeenCalledTimes(1);
@@ -149,14 +149,14 @@ describe("POST /api/send-test-email", () => {
   });
 
   it("rejects a body without a document", async () => {
-    const response = await POST(makeRequest({ to: "delivered@resend.dev" }));
+    const response = await POST(makeRequest({ to: ["delivered@resend.dev"] }));
     expect(response.status).toBe(400);
     expect(await response.json()).toMatchObject({ error: "invalid_request" });
     expect(sendTestEmailWithResendMock).not.toHaveBeenCalled();
   });
 
   it("rejects a blank recipient", async () => {
-    const response = await POST(makeRequest({ document: createEmptyDocument(), to: "   " }));
+    const response = await POST(makeRequest({ document: createEmptyDocument(), to: ["   "] }));
     expect(response.status).toBe(400);
     expect(await response.json()).toMatchObject({ error: "invalid_request" });
     expect(sendTestEmailWithResendMock).not.toHaveBeenCalled();
@@ -173,7 +173,7 @@ describe("POST /api/send-test-email", () => {
         childrenIds: ["sec_gone" as BlockId],
       },
     };
-    const response = await POST(makeRequest({ document: brokenDoc, to: "delivered@resend.dev" }));
+    const response = await POST(makeRequest({ document: brokenDoc, to: ["delivered@resend.dev"] }));
     expect(response.status).toBe(400);
     expect(await response.json()).toMatchObject({ error: "invalid_document" });
     expect(sendTestEmailWithResendMock).not.toHaveBeenCalled();
@@ -186,14 +186,67 @@ describe("POST /api/send-test-email", () => {
       idempotencyKey: "test-send/abc",
     });
     const document = createEmptyDocument();
-    const response = await POST(makeRequest({ document, to: "  delivered@resend.dev  " }));
+    const response = await POST(makeRequest({ document, to: ["  delivered@resend.dev  "] }));
     expect(response.status).toBe(200);
-    expect(await response.json()).toEqual({ messageId: "em_test_123", to: "delivered@resend.dev" });
+    expect(await response.json()).toEqual({ messageId: "em_test_123", to: ["delivered@resend.dev"] });
     // The recipient reaches the module trimmed; the doc rides through as-is.
     expect(sendTestEmailWithResendMock).toHaveBeenCalledWith({
       doc: document,
-      to: "delivered@resend.dev",
+      to: ["delivered@resend.dev"],
+      subject: undefined,
+      previewText: undefined,
     });
+  });
+
+  it("carries several recipients, the subject and the preview text through to the module", async () => {
+    // The dialog's full payload: up to five addresses plus an explicit subject
+    // and preheader. The route threads all of them into the send module and
+    // echoes the (trimmed) recipient list back in the response.
+    sendTestEmailWithResendMock.mockResolvedValue({
+      isSent: true,
+      messageId: "em_multi",
+      idempotencyKey: "test-send/multi",
+    });
+    const document = createEmptyDocument();
+    const response = await POST(
+      makeRequest({
+        document,
+        to: [" a@example.com ", "b@example.com", "c@example.com"],
+        subject: "  Quarter in review  ",
+        previewText: "  What changed  ",
+      }),
+    );
+    expect(response.status).toBe(200);
+    expect(await response.json()).toEqual({
+      messageId: "em_multi",
+      to: ["a@example.com", "b@example.com", "c@example.com"],
+    });
+    expect(sendTestEmailWithResendMock).toHaveBeenCalledWith({
+      doc: document,
+      to: ["a@example.com", "b@example.com", "c@example.com"],
+      // The schema trims the optional fields before they reach the module.
+      subject: "Quarter in review",
+      previewText: "What changed",
+    });
+  });
+
+  it("rejects a recipient list longer than the cap without touching the send module", async () => {
+    const response = await POST(
+      makeRequest({
+        document: createEmptyDocument(),
+        to: [
+          "one@example.com",
+          "two@example.com",
+          "three@example.com",
+          "four@example.com",
+          "five@example.com",
+          "six@example.com",
+        ],
+      }),
+    );
+    expect(response.status).toBe(400);
+    expect(await response.json()).toMatchObject({ error: "invalid_request" });
+    expect(sendTestEmailWithResendMock).not.toHaveBeenCalled();
   });
 
   it("maps an invalid_recipient outcome to a 400 with the module's copy", async () => {
@@ -202,7 +255,7 @@ describe("POST /api/send-test-email", () => {
       reason: "invalid_recipient",
       message: '"nope" doesn\'t look like a valid email address.',
     });
-    const response = await POST(makeRequest({ document: createEmptyDocument(), to: "nope" }));
+    const response = await POST(makeRequest({ document: createEmptyDocument(), to: ["nope"] }));
     expect(response.status).toBe(400);
     expect(await response.json()).toEqual({
       error: "invalid_recipient",
@@ -219,7 +272,7 @@ describe("POST /api/send-test-email", () => {
       message: "this server can't send email yet — no email service has been connected.",
     });
     const response = await POST(
-      makeRequest({ document: createEmptyDocument(), to: "delivered@resend.dev" }),
+      makeRequest({ document: createEmptyDocument(), to: ["delivered@resend.dev"] }),
     );
     expect(response.status).toBe(503);
     const body = (await response.json()) as { error: string; message: string };
@@ -235,7 +288,7 @@ describe("POST /api/send-test-email", () => {
       message: "the email service returned an unexpected error.",
     });
     const response = await POST(
-      makeRequest({ document: createEmptyDocument(), to: "delivered@resend.dev" }),
+      makeRequest({ document: createEmptyDocument(), to: ["delivered@resend.dev"] }),
     );
     expect(response.status).toBe(502);
     expect(await response.json()).toEqual({
@@ -261,7 +314,7 @@ describe("POST /api/send-test-email", () => {
     });
     const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
     const response = await POST(
-      makeRequest({ document: createEmptyDocument(), to: "delivered@resend.dev" }),
+      makeRequest({ document: createEmptyDocument(), to: ["delivered@resend.dev"] }),
     );
     expect(response.status).toBe(429);
     expect(await response.json()).toEqual({
@@ -281,10 +334,10 @@ describe("POST /api/send-test-email", () => {
       messageId: "em_metered",
       idempotencyKey: "test-send/metered",
     });
-    await POST(makeRequest({ document: createEmptyDocument(), to: "  delivered@resend.dev  " }));
+    await POST(makeRequest({ document: createEmptyDocument(), to: ["  delivered@resend.dev  "] }));
 
     expect(reserveTestSendMock).toHaveBeenCalledTimes(1);
-    expect(reserveTestSendMock.mock.calls[0]?.[0]).toMatchObject({ to: "delivered@resend.dev" });
+    expect(reserveTestSendMock.mock.calls[0]?.[0]).toMatchObject({ to: ["delivered@resend.dev"] });
   });
 
   it("does not spend an allowance on a request it was going to reject anyway", async () => {
@@ -294,7 +347,7 @@ describe("POST /api/send-test-email", () => {
     const response = await POST(
       makeRequest({
         document: { ...doc, [ROOT_BLOCK_ID]: { ...doc[ROOT_BLOCK_ID]!, childrenIds: ["sec_gone" as BlockId] } },
-        to: "delivered@resend.dev",
+        to: ["delivered@resend.dev"],
       }),
     );
     expect(response.status).toBe(400);
@@ -314,7 +367,7 @@ describe("POST /api/send-test-email", () => {
     });
     const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
     const response = await POST(
-      makeRequest({ document: createEmptyDocument(), to: "delivered@resend.dev" }),
+      makeRequest({ document: createEmptyDocument(), to: ["delivered@resend.dev"] }),
     );
 
     expect(fetchAuthQueryMock).not.toHaveBeenCalled();

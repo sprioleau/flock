@@ -93,16 +93,23 @@ export function deriveRecipientKey(recipient: string): string {
 
 export async function reserveTestSend(args: {
   request: Request;
-  /** The recipient exactly as the request asked for it. */
-  to: string;
+  /** The recipients exactly as the request asked for them (1–5). */
+  to: string[];
 }): Promise<TestSendReservation> {
   /*
     Derived HERE, not in Convex: `x-forwarded-for` is visible to a Next route and
-    invisible to a Convex function, and the recipient must be a digest before it
+    invisible to a Convex function, and each recipient must be a digest before it
     crosses into a stored row at all.
   */
   const originKey = deriveOriginKey(args.request);
-  const recipientKey = deriveRecipientKey(args.to);
+  /*
+    One digest per DISTINCT recipient. `deriveRecipientKey` normalizes before
+    hashing, so two spellings of one inbox collapse to a single key here — the
+    meter charges that inbox's bucket once for the send, never twice. The origin
+    and owner buckets are still charged once each by the mutation, because a
+    send is one human action however many people it is addressed to.
+  */
+  const recipientKeys = [...new Set(args.to.map(deriveRecipientKey))];
 
   try {
     /*
@@ -112,7 +119,7 @@ export async function reserveTestSend(args: {
       convex/authTestSends.ts for why that matters.
     */
     const result = await fetchAuthMutation(api.authTestSends.reserveTestSend, {
-      recipientKey,
+      recipientKeys,
       ...(originKey === undefined ? {} : { originKey }),
     });
     return {

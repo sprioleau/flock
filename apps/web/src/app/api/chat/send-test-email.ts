@@ -19,12 +19,17 @@ import { z } from "zod";
  *
  * - from    = RESEND_FROM_EMAIL (env default; per-document config is a future
  *             phase), reply-to = RESEND_REPLY_TO_EMAIL when set.
- * - subject = the document's first heading (the wire document carries no
- *             name/subject field), falling back to "Flock test email".
+ * - subject = the caller's explicit `subject` when given (the studio dialog
+ *             supplies one), otherwise the document's first heading, falling
+ *             back to "Flock test email". Provided subject and preview text
+ *             are threaded into the render, so the email actually carries them
+ *             (`<title>` / `<Preview>`).
  * - Idempotency: the key is a hash of the exact send payload
- *   (from + to + subject + html). Resend replays the ORIGINAL response for
- *   the same key + same payload within 24h, so approval-loop double-fires
- *   (the scripted mock is known to re-emit approvals) can never double-send.
+ *   (from + the SORTED recipient list + subject + html). Sorting makes the key
+ *   order-independent, so `[a, b]` and `[b, a]` are one send, not two. Resend
+ *   replays the ORIGINAL response for the same key + same payload within 24h,
+ *   so approval-loop double-fires (the scripted mock is known to re-emit
+ *   approvals) can never double-send.
  *
  * The Resend Node SDK does NOT throw for API errors — it returns
  * `{ data, error }`; only network-level failures reject, which we catch.
@@ -166,8 +171,20 @@ function toFriendlySendFailureMessage(error: { name?: string; message?: string }
 export interface SendTestEmailWithResendInput {
   /** The CURRENT document (this request's body) — rendered as sent. */
   doc: EmailDocument;
-  /** Recipient — re-validated here so scripted callers get the same gate. */
-  to: string;
+  /**
+   * One to five recipients — a SINGLE email delivered to all of them (one
+   * Resend call, one `to` array). Each address is re-validated here so
+   * scripted callers get the same gate the route's schema applies.
+   */
+  to: string[];
+  /**
+   * The subject the recipient sees. When omitted the module falls back to
+   * {@link deriveTestSendSubject} — the behaviour the agent send path has
+   * always had, so it can keep calling without one.
+   */
+  subject?: string;
+  /** Preheader / inbox-preview text. Omitted means no `<Preview>` is emitted. */
+  previewText?: string;
   /** Env source, overridable in tests (e.g. `{}` to exercise not-configured). */
   env?: Record<string, string | undefined>;
 }
@@ -176,17 +193,24 @@ export interface SendTestEmailWithResendInput {
 export async function sendTestEmailWithResend({
   doc,
   to,
+  subject,
+  previewText,
   env = process.env,
 }: SendTestEmailWithResendInput): Promise<SendTestEmailOutcome> {
-  const parsedRecipient = z.email().safeParse(to.trim());
-  if (!parsedRecipient.success) {
-    return {
-      isSent: false,
-      reason: "invalid_recipient",
-      message: `"${to}" doesn't look like a valid email address.`,
-    };
+  // Every address is gated the same way, so one bad entry in the array fails
+  // the whole send (as it would at Resend) rather than quietly dropping it.
+  const recipients: string[] = [];
+  for (const raw of to) {
+    const parsedRecipient = z.email().safeParse(raw.trim());
+    if (!parsedRecipient.success) {
+      return {
+        isSent: false,
+        reason: "invalid_recipient",
+        message: `"${raw}" doesn't look like a valid email address.`,
+      };
+    }
+    recipients.push(parsedRecipient.data);
   }
-  const recipient = parsedRecipient.data;
 
   const config = getResendSendConfig(env);
   if (config === undefined) {
@@ -206,12 +230,15 @@ export async function sendTestEmailWithResend({
     };
   }
 
-  let subject: string;
+  // The caller's subject wins; an omitted one falls back to the first-heading
+  // derivation the agent path has always relied on.
+  const resolvedSubject = subject ?? deriveTestSendSubject(doc);
   let html: string;
   let text: string;
   try {
-    const email = renderToReactEmail(doc);
-    subject = deriveTestSendSubject(doc);
+    // Thread subject + preview text into the render so the email carries them
+    // (`<title>` and `<Preview>`); the renderer omits an absent/blank preview.
+    const email = renderToReactEmail(doc, { subject: resolvedSubject, previewText });
     html = await render(email);
     text = await render(email, { plainText: true });
   } catch (error) {
@@ -228,11 +255,14 @@ export async function sendTestEmailWithResend({
     };
   }
 
-  // Same document + same recipient + same sender ⇒ same key ⇒ Resend returns
-  // the original response instead of sending again (24h window). Any edit to
-  // the document changes the html hash, so a genuinely new test send goes out.
+  // Same document + same recipients + same subject + same sender ⇒ same key ⇒
+  // Resend returns the original response instead of sending again (24h window).
+  // Any edit to the document changes the html hash, so a genuinely new test
+  // send goes out. The recipient list is SORTED before hashing so the key is
+  // order-independent: `[a, b]` and `[b, a]` are one send, not two.
+  const sortedRecipients = [...recipients].sort();
   const payloadFingerprint = createHash("sha256")
-    .update(JSON.stringify({ from: config.fromEmail, to: recipient, subject, html }))
+    .update(JSON.stringify({ from: config.fromEmail, to: sortedRecipients, subject: resolvedSubject, html }))
     .digest("hex")
     .slice(0, 40);
   const idempotencyKey = `test-send/${payloadFingerprint}`;
@@ -242,8 +272,8 @@ export async function sendTestEmailWithResend({
     const { data, error } = await resend.emails.send(
       {
         from: config.fromEmail,
-        to: [recipient],
-        subject,
+        to: recipients,
+        subject: resolvedSubject,
         html,
         text,
         ...(config.replyToEmail === undefined ? {} : { replyTo: config.replyToEmail }),
@@ -255,7 +285,7 @@ export async function sendTestEmailWithResend({
       console.error(
         JSON.stringify({
           tag: "flock.sendTestEmail.failed",
-          to: recipient,
+          to: recipients,
           idempotencyKey,
           errorName: error.name,
           errorMessage: error.message,
@@ -273,7 +303,7 @@ export async function sendTestEmailWithResend({
     console.log(
       JSON.stringify({
         tag: "flock.sendTestEmail.sent",
-        to: recipient,
+        to: recipients,
         messageId: data.id,
         idempotencyKey,
       }),
@@ -284,7 +314,7 @@ export async function sendTestEmailWithResend({
     console.error(
       JSON.stringify({
         tag: "flock.sendTestEmail.networkError",
-        to: recipient,
+        to: recipients,
         message: error instanceof Error ? error.message : String(error),
       }),
     );

@@ -8,11 +8,42 @@ import { z } from "zod";
 
 export const SEND_TEST_EMAIL_API_PATH = "/api/send-test-email";
 
+/**
+ * A test send goes to at most this many recipients in ONE email. A test send
+ * is "mail myself and a couple of teammates the same draft", not a campaign —
+ * the cap is deliberately small, and the send meter still counts each recipient
+ * so a large `to` cannot be a rate-limit end-run (see convex/authTestSends.ts).
+ */
+export const MAX_TEST_SEND_RECIPIENTS = 5;
+
 export const sendTestEmailRequestBodySchema = z.strictObject({
   /** The draft to send — rendered server-side exactly as it will arrive. */
   document: emailDocumentSchema,
-  /** Recipient address (format is validated by the send module itself). */
-  to: z.string().trim().min(1, "Recipient address is required."),
+  /**
+   * One to five recipients — a SINGLE email delivered to all of them (one
+   * Resend call, one `to` array), not five separate sends. Per-address format
+   * is validated by the send module itself; this only bounds the count.
+   */
+  to: z
+    .array(z.string().trim().min(1, "Recipient address is required."))
+    .min(1, "At least one recipient is required.")
+    .max(
+      MAX_TEST_SEND_RECIPIENTS,
+      `A test send goes to at most ${MAX_TEST_SEND_RECIPIENTS} recipients.`,
+    ),
+  /**
+   * The subject the recipient sees. Optional on the wire: the studio dialog
+   * always supplies it (prefilled from the canvas, or the first heading when
+   * the canvas has none), but when it is absent the send module falls back to
+   * deriving one from the document — the same behaviour the agent send path
+   * has always had, so neither caller regresses.
+   */
+  subject: z.string().trim().min(1, "A subject can't be only spaces.").optional(),
+  /**
+   * Preheader / inbox-preview text. Absent means no `<Preview>` is emitted at
+   * all (an empty one still stamps padding into the body — see the email SDK).
+   */
+  previewText: z.string().trim().min(1, "Preview text can't be only spaces.").optional(),
 });
 
 export type SendTestEmailRequestBody = z.infer<typeof sendTestEmailRequestBodySchema>;
@@ -20,8 +51,11 @@ export type SendTestEmailRequestBody = z.infer<typeof sendTestEmailRequestBodySc
 export interface SendTestEmailResponseBody {
   /** Resend's message id — proof the provider accepted the send. */
   messageId: string;
-  /** The (trimmed) recipient the email went to — echoed for the success copy. */
-  to: string;
+  /**
+   * The (trimmed) recipients the email went to — echoed for the success copy.
+   * An array to match the request: one send, one to many addresses.
+   */
+  to: string[];
 }
 
 export interface SendTestEmailErrorResponseBody {

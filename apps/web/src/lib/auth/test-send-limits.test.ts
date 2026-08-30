@@ -101,14 +101,20 @@ type SendAttempt = { isAllowed: boolean; refusalMessage: string; retryAtMs: numb
 */
 async function attemptSend(
   t: Backend,
-  args: { identity?: string; originKey?: string; recipientKey?: string },
+  args: {
+    identity?: string;
+    originKey?: string;
+    recipientKey?: string;
+    /* A multi-recipient send. Takes precedence over `recipientKey` when given. */
+    recipientKeys?: string[];
+  },
 ): Promise<SendAttempt> {
   const caller =
     args.identity === undefined
       ? t
       : t.withIdentity({ subject: args.identity, sessionId: `session_${args.identity}` });
   return await caller.mutation(api.authTestSends.reserveTestSend, {
-    recipientKey: args.recipientKey ?? RECIPIENT,
+    recipientKeys: args.recipientKeys ?? [args.recipientKey ?? RECIPIENT],
     ...(args.originKey === undefined ? {} : { originKey: args.originKey }),
   });
 }
@@ -296,6 +302,114 @@ describe("the inbox on the receiving end", () => {
       recipientKey: OTHER_RECIPIENT,
     });
     expect(different.isAllowed).toBe(true);
+  });
+});
+
+/*
+  ONE SEND ADDRESSED TO SEVERAL INBOXES.
+
+  A test send now carries up to five recipients in one email. The rule the
+  recipient bucket exists to enforce must survive that: a fat `to` array is one
+  human action against the SENDER (owner/origin charged once) but N arrivals
+  against the RECEIVERS (each distinct recipient bucket charged once). If a send
+  were counted as a single recipient — or later recipients skipped — a capped
+  victim could be smuggled through alongside addresses that still have room,
+  which is precisely the end-run this bucket was built to stop.
+
+  Five distinct salted digests, the shape `deriveRecipientKey` produces.
+*/
+const FIVE_RECIPIENTS = [
+  "1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a1a",
+  "2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b2b",
+  "3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c3c",
+  "4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d4d",
+  "5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e5e",
+];
+
+describe("one send addressed to several inboxes", () => {
+  beforeEach(() => {
+    /* Headroom everywhere, so the counts below come only from this one send. */
+    process.env[ANONYMOUS_FLAG] = "99";
+    process.env[ORIGIN_FLAG] = "99";
+    process.env[RECIPIENT_FLAG] = "99";
+  });
+
+  it("charges each recipient bucket once, and owner/origin once — not once per recipient", async () => {
+    const t = createBackend();
+
+    const sent = await attemptSend(t, {
+      identity: "user_1",
+      originKey: HOME_ORIGIN,
+      recipientKeys: FIVE_RECIPIENTS,
+    });
+    expect(sent.isAllowed).toBe(true);
+
+    const buckets = await readBuckets(t);
+    const byKey = new Map(buckets.map((row) => [row.bucketKey, row.sentCount]));
+
+    /* One increment per DISTINCT recipient — five buckets, each at 1. */
+    for (const recipientKey of FIVE_RECIPIENTS) {
+      expect(byKey.get(`recipient:${recipientKey}`)).toBe(1);
+    }
+    /* The sender is charged ONCE, however many people the one send addressed. */
+    expect(byKey.get("owner:user_1")).toBe(1);
+    expect(byKey.get(`origin:${HOME_ORIGIN}`)).toBe(1);
+  });
+
+  it("counts a repeated address in one send as a single recipient", async () => {
+    // Dedupe first: listing the same inbox twice cannot charge it twice, and it
+    // cannot dodge the cap by not being counted either.
+    const t = createBackend();
+    const [victim] = FIVE_RECIPIENTS;
+
+    await attemptSend(t, { identity: "user_1", recipientKeys: [victim, victim, victim] });
+
+    const buckets = await readBuckets(t);
+    expect(buckets.find((row) => row.bucketKey === `recipient:${victim}`)?.sentCount).toBe(1);
+  });
+
+  /*
+    THE NEGATIVE TEST. One recipient in the array is already at its cap, while
+    the sending identity and the origin have plenty of headroom. The WHOLE send
+    must be refused, and — all-or-nothing — nothing may be charged: not the
+    fresh owner bucket, not the origin, not the other recipients.
+
+    The capped address is deliberately NOT first in the list, so an
+    implementation that counted the send as a single recipient (metering only
+    `to[0]`) would wave it straight through. That is the failure this pins.
+  */
+  it("refuses the whole send when ANY one recipient is capped, though identity and origin have room", async () => {
+    process.env[RECIPIENT_FLAG] = "1";
+    const t = createBackend();
+    const [capped, ...others] = FIVE_RECIPIENTS;
+
+    /* Fill the victim's bucket with a send addressed only to them. */
+    const first = await attemptSend(t, {
+      identity: "user_filler",
+      originKey: OTHER_ORIGIN,
+      recipientKeys: [capped],
+    });
+    expect(first.isAllowed).toBe(true);
+
+    /* A brand-new identity, a different origin — both with headroom to spare. */
+    const refused = await attemptSend(t, {
+      identity: "user_fresh",
+      originKey: HOME_ORIGIN,
+      /* The capped address sits AFTER a healthy one on purpose. */
+      recipientKeys: [others[0], capped, others[1]],
+    });
+    expect(refused.isAllowed).toBe(false);
+    expect(refused.refusalMessage).toContain("That address has had a lot of test emails");
+
+    /* All-or-nothing: nothing about the refused send was charged. */
+    const buckets = await readBuckets(t);
+    const keys = buckets.map((row) => row.bucketKey);
+    expect(keys).not.toContain("owner:user_fresh");
+    expect(keys).not.toContain(`origin:${HOME_ORIGIN}`);
+    expect(keys).not.toContain(`recipient:${others[0]}`);
+    expect(keys).not.toContain(`recipient:${others[1]}`);
+    /* The victim's own bucket stays exactly where the first send left it. */
+    expect(buckets.find((row) => row.bucketKey === `recipient:${capped}`)?.sentCount).toBe(1);
   });
 });
 

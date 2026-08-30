@@ -54,6 +54,16 @@ import { resolveOwnerIdOrNull } from "./authIdentity";
       well ABOVE the per-identity tiers precisely so it never bites the ordinary
       case, which is a person mailing drafts to their own address all day.
 
+      ONE SEND CAN ADDRESS SEVERAL INBOXES (the test-send dialog allows up to
+      five). Each DISTINCT recipient in that one send charges its OWN recipient
+      bucket by one — the owner and origin buckets are still charged once, since
+      it is one human action. That keeps this cap meaningful under multi-send:
+      burying five inboxes at once still costs five arrivals, and listing one
+      victim across many sends still accrues against that victim's bucket. The
+      all-or-nothing rule below then refuses the WHOLE send if any one of those
+      recipient buckets is full, so a fat `to` array cannot smuggle a capped
+      address past the meter alongside ones that still have room.
+
   ALL-OR-NOTHING, the correctness rule taken verbatim from authCredits.spend:
   every applicable bucket is read before ANY is written. A refusal therefore
   never leaves the origin bucket charged for a send the owner bucket blocked.
@@ -205,7 +215,7 @@ function resolveBuckets(args: {
   ownerId: string | null;
   isClaimed: boolean;
   originKey: string | undefined;
-  recipientKey: string;
+  recipientKeys: string[];
 }): Bucket[] {
   const buckets: Bucket[] = [];
   /*
@@ -241,14 +251,32 @@ function resolveBuckets(args: {
       }),
     });
   }
-  buckets.push({
-    kind: "recipient",
-    key: `recipient:${args.recipientKey}`,
-    limit: readPositiveInt({
-      name: "FLOCK_RECIPIENT_TEST_SENDS_PER_PERIOD",
-      fallback: DEFAULT_RECIPIENT_TEST_SENDS,
-    }),
-  });
+  /*
+    ONE RECIPIENT BUCKET PER DISTINCT ADDRESS. A send to five inboxes charges
+    five recipient buckets — one each — while the owner and origin buckets above
+    are charged once, because one human action addressed to five people is still
+    one action against the sender but five arrivals against the receivers. The
+    keys arrive already deduped from the route, but a Set here makes the
+    per-distinct-recipient property hold whatever a direct caller passes: listing
+    the same victim twice in one `to` cannot charge their bucket twice, and it
+    cannot dodge the cap by NOT being counted either.
+
+    This is what stops a large `to` being a rate-limit end-run: every applicable
+    bucket is read below before any is written, so the whole send is refused if
+    ANY single recipient's bucket is full, however much headroom owner/origin
+    have. Counting the send as a single recipient — or skipping later recipients
+    — would quietly reopen exactly the hole the recipient bucket exists to close.
+  */
+  for (const recipientKey of new Set(args.recipientKeys)) {
+    buckets.push({
+      kind: "recipient",
+      key: `recipient:${recipientKey}`,
+      limit: readPositiveInt({
+        name: "FLOCK_RECIPIENT_TEST_SENDS_PER_PERIOD",
+        fallback: DEFAULT_RECIPIENT_TEST_SENDS,
+      }),
+    });
+  }
   return buckets;
 }
 
@@ -309,8 +337,12 @@ async function peekBucket(
 */
 export const reserveTestSend = mutation({
   args: {
-    /* Salted digest of the normalized recipient address. Never the address. */
-    recipientKey: v.string(),
+    /*
+      One salted digest per recipient of this single send (1–5), never the
+      addresses themselves. Deduped again here so a distinct recipient's bucket
+      is charged exactly once; owner/origin stay one-per-send. See resolveBuckets.
+    */
+    recipientKeys: v.array(v.string()),
     /* Salted digest of the coarsened client address; absent when unknown. */
     originKey: v.optional(v.string()),
   },
@@ -330,7 +362,7 @@ export const reserveTestSend = mutation({
       ownerId,
       isClaimed,
       originKey: args.originKey,
-      recipientKey: args.recipientKey,
+      recipientKeys: args.recipientKeys,
     });
 
     /* Read every bucket first. Nothing below writes until all of them pass. */

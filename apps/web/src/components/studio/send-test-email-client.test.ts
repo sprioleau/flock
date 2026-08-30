@@ -1,10 +1,16 @@
-import { createEmptyDocument } from "@flock/email-sdk";
+import { createEmptyDocument, createStarterDocument } from "@flock/email-sdk";
 import { describe, expect, it, vi } from "vitest";
-import { SEND_TEST_EMAIL_API_PATH } from "@/app/api/send-test-email/contract";
 import {
+  MAX_TEST_SEND_RECIPIENTS,
+  SEND_TEST_EMAIL_API_PATH,
+} from "@/app/api/send-test-email/contract";
+import {
+  describeSentRecipients,
+  deriveSubjectFromDocument,
   requestTestEmailSend,
   resolveDefaultRecipient,
   validateRecipient,
+  validateRecipients,
 } from "./send-test-email-client";
 
 /**
@@ -85,25 +91,75 @@ describe("validateRecipient", () => {
 });
 
 describe("requestTestEmailSend", () => {
-  it("posts the document and recipient to the human send route", async () => {
+  it("posts the document and the recipient ARRAY to the human send route", async () => {
     const fetchImpl = vi
       .fn<typeof fetch>()
-      .mockResolvedValue(jsonResponse(200, { messageId: "em_1", to: "owner@example.com" }));
+      .mockResolvedValue(jsonResponse(200, { messageId: "em_1", to: ["owner@example.com"] }));
 
     const result = await requestTestEmailSend({
       document: DOCUMENT,
-      to: "owner@example.com",
+      to: ["owner@example.com"],
       fetchImpl,
     });
 
-    expect(result).toEqual({ isSent: true, recipient: "owner@example.com" });
+    expect(result).toEqual({ isSent: true, recipients: ["owner@example.com"] });
     const [url, init] = fetchImpl.mock.calls[0]!;
     expect(url).toBe(SEND_TEST_EMAIL_API_PATH);
     expect(init?.method).toBe("POST");
-    expect(JSON.parse(String(init?.body))).toEqual({
+    const body = JSON.parse(String(init?.body));
+    // `to` is an ARRAY on the wire, matching the frozen contract.
+    expect(Array.isArray(body.to)).toBe(true);
+    expect(body).toEqual({ document: DOCUMENT, to: ["owner@example.com"] });
+  });
+
+  it("includes subject and previewText in the body only when they are set", async () => {
+    const fetchImpl = vi
+      .fn<typeof fetch>()
+      .mockResolvedValue(jsonResponse(200, { messageId: "em_2", to: ["owner@example.com"] }));
+
+    await requestTestEmailSend({
       document: DOCUMENT,
-      to: "owner@example.com",
+      to: ["owner@example.com"],
+      subject: "  Quarterly update  ",
+      previewText: "  A quick look inside  ",
+      fetchImpl,
     });
+
+    const withMeta = JSON.parse(String(fetchImpl.mock.calls[0]![1]?.body));
+    // Trimmed, and present because the caller supplied them.
+    expect(withMeta).toEqual({
+      document: DOCUMENT,
+      to: ["owner@example.com"],
+      subject: "Quarterly update",
+      previewText: "A quick look inside",
+    });
+
+    fetchImpl.mockClear();
+    await requestTestEmailSend({
+      document: DOCUMENT,
+      to: ["owner@example.com"],
+      // A whitespace-only subject is treated as absent so the server derives one.
+      subject: "   ",
+      fetchImpl,
+    });
+    const withoutMeta = JSON.parse(String(fetchImpl.mock.calls[0]![1]?.body));
+    expect(withoutMeta).toEqual({ document: DOCUMENT, to: ["owner@example.com"] });
+    expect("subject" in withoutMeta).toBe(false);
+    expect("previewText" in withoutMeta).toBe(false);
+  });
+
+  it("maps a multi-recipient success, echoing the server's trimmed `to` array", async () => {
+    const fetchImpl = vi
+      .fn<typeof fetch>()
+      .mockResolvedValue(jsonResponse(200, { messageId: "em_3", to: ["a@b.com", "c@d.com"] }));
+
+    const result = await requestTestEmailSend({
+      document: DOCUMENT,
+      to: ["a@b.com", "c@d.com"],
+      fetchImpl,
+    });
+
+    expect(result).toEqual({ isSent: true, recipients: ["a@b.com", "c@d.com"] });
   });
 
   it("reports a provider failure with the server's user-facing copy", async () => {
@@ -116,7 +172,7 @@ describe("requestTestEmailSend", () => {
 
     const result = await requestTestEmailSend({
       document: DOCUMENT,
-      to: "owner@example.com",
+      to: ["owner@example.com"],
       fetchImpl,
     });
 
@@ -137,7 +193,7 @@ describe("requestTestEmailSend", () => {
 
     const result = await requestTestEmailSend({
       document: DOCUMENT,
-      to: "owner@example.com",
+      to: ["owner@example.com"],
       fetchImpl,
     });
 
@@ -162,7 +218,7 @@ describe("requestTestEmailSend", () => {
 
     const result = await requestTestEmailSend({
       document: DOCUMENT,
-      to: "owner@example.com",
+      to: ["owner@example.com"],
       fetchImpl,
     });
 
@@ -178,7 +234,7 @@ describe("requestTestEmailSend", () => {
       }),
     );
 
-    const result = await requestTestEmailSend({ document: DOCUMENT, to: "nope", fetchImpl });
+    const result = await requestTestEmailSend({ document: DOCUMENT, to: ["nope"], fetchImpl });
 
     expect(result).toEqual({
       isSent: false,
@@ -194,7 +250,7 @@ describe("requestTestEmailSend", () => {
 
     const result = await requestTestEmailSend({
       document: DOCUMENT,
-      to: "owner@example.com",
+      to: ["owner@example.com"],
       fetchImpl,
     });
 
@@ -206,7 +262,7 @@ describe("requestTestEmailSend", () => {
 
     const result = await requestTestEmailSend({
       document: DOCUMENT,
-      to: "owner@example.com",
+      to: ["owner@example.com"],
       fetchImpl,
     });
 
@@ -215,5 +271,90 @@ describe("requestTestEmailSend", () => {
       kind: "unreachable",
       message: expect.stringContaining("check your connection"),
     });
+  });
+});
+
+describe("validateRecipients", () => {
+  it("asks for at least one address when every row is blank", () => {
+    const result = validateRecipients(["", "   ", "\t"]);
+    expect(result.isValid).toBe(false);
+    expect(result).toMatchObject({ message: expect.stringContaining("at least one") });
+  });
+
+  it("asks for at least one address when the list is empty", () => {
+    expect(validateRecipients([]).isValid).toBe(false);
+  });
+
+  it("drops blank rows and trims the survivors", () => {
+    expect(validateRecipients(["  a@b.com  ", "", "   "])).toEqual({
+      isValid: true,
+      recipients: ["a@b.com"],
+    });
+  });
+
+  it("dedupes case-insensitively, keeping the first occurrence and its order", () => {
+    expect(validateRecipients(["A@B.com", "c@d.com", "a@b.COM"])).toEqual({
+      isValid: true,
+      recipients: ["A@B.com", "c@d.com"],
+    });
+  });
+
+  it(`rejects more than ${MAX_TEST_SEND_RECIPIENTS} DISTINCT recipients`, () => {
+    // All six are valid and distinct, so only the count check can catch them.
+    const sixValid = ["a@x.com", "b@x.com", "c@x.com", "d@x.com", "e@x.com", "f@x.com"];
+    expect(sixValid).toHaveLength(MAX_TEST_SEND_RECIPIENTS + 1);
+    const result = validateRecipients(sixValid);
+    expect(result.isValid).toBe(false);
+    expect(result).toMatchObject({ message: expect.stringContaining("at most") });
+  });
+
+  it("counts AFTER the dedupe, so a repeated address is not over the limit", () => {
+    // Six rows, but one is a dupe → five distinct → a legal send.
+    const result = validateRecipients([
+      "a@x.com",
+      "b@x.com",
+      "c@x.com",
+      "d@x.com",
+      "e@x.com",
+      "A@X.com",
+    ]);
+    expect(result).toEqual({
+      isValid: true,
+      recipients: ["a@x.com", "b@x.com", "c@x.com", "d@x.com", "e@x.com"],
+    });
+  });
+
+  it("rejects the whole list when a single address is malformed, naming it", () => {
+    const result = validateRecipients(["good@example.com", "nope"]);
+    expect(result.isValid).toBe(false);
+    expect(result).toMatchObject({ message: expect.stringContaining("nope") });
+  });
+
+  it("accepts one-to-five distinct real addresses", () => {
+    expect(validateRecipients(["one@a.com", "two@b.com"])).toEqual({
+      isValid: true,
+      recipients: ["one@a.com", "two@b.com"],
+    });
+  });
+});
+
+describe("deriveSubjectFromDocument", () => {
+  it("takes the draft's first heading as the subject", () => {
+    // The starter document opens with a heading (mirrors the server derivation).
+    expect(deriveSubjectFromDocument(createStarterDocument())).toBe("Welcome to Flock.");
+  });
+
+  it("returns empty for a document with no heading, deferring to the server fallback", () => {
+    expect(deriveSubjectFromDocument(createEmptyDocument())).toBe("");
+  });
+});
+
+describe("describeSentRecipients", () => {
+  it("names the single inbox a solo send reached", () => {
+    expect(describeSentRecipients(["owner@example.com"])).toBe("Sent to owner@example.com.");
+  });
+
+  it("counts the inboxes when a send reached several", () => {
+    expect(describeSentRecipients(["a@b.com", "c@d.com", "e@f.com"])).toBe("Sent to 3 recipients.");
   });
 });

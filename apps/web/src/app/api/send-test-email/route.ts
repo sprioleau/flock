@@ -190,7 +190,7 @@ export async function POST(request: Request): Promise<Response> {
       message: parsedBody.error.issues.map((issue) => issue.message).join("; "),
     });
   }
-  const { document, to } = parsedBody.data;
+  const { document, to, subject, previewText } = parsedBody.data;
 
   // Schema-valid but structurally broken documents (orphans, cycles, pointer
   // disagreements) are rejected before rendering — mirroring /api/chat.
@@ -251,7 +251,7 @@ export async function POST(request: Request): Promise<Response> {
     }),
   );
 
-  const outcome = await sendTestEmailWithResend({ doc: document, to });
+  const outcome = await sendTestEmailWithResend({ doc: document, to, subject, previewText });
   if (!outcome.isSent) {
     // invalid_recipient is the caller's input (400). not_configured is this
     // deployment missing a capability rather than a provider fault, so it is a

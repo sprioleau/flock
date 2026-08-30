@@ -454,7 +454,10 @@ export function buildChatTools({
           let send: EditorToolOutput["send"];
           let command = result.command;
           if (command.type === "sendTestEmail") {
-            const outcome = await sendTestEmailWithResend({ doc, to: command.to });
+            // The agent path is single-recipient: wrap the one address in the
+            // array the module now takes, and let subject/preview fall back to
+            // derivation (the studio dialog is the only caller that sets them).
+            const outcome = await sendTestEmailWithResend({ doc, to: [command.to] });
             if (!outcome.isSent) {
               throw new Error(`The test email to ${command.to} wasn't sent: ${outcome.message}`);
             }
