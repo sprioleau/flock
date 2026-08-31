@@ -21,7 +21,8 @@ vi.mock("./fetch-page", () => ({
   probeAssetUrl: probeAssetUrlMock,
 }));
 
-import { brandKitSchema, generateBrandKit } from "./generate-brand-kit";
+import { brandKitModelOutputSchema, brandKitSchema, generateBrandKit } from "./generate-brand-kit";
+import { MAX_EMAIL_DESIGN_DOC_LENGTH } from "@/lib/brand-kit";
 
 const FINAL_URL = "https://acme.test/";
 const LOGO_URL = "https://acme.test/apple-touch.png";
@@ -46,23 +47,52 @@ const semanticVariation = (name: string) => ({
   paragraphTextColor: "#2a3540",
 });
 
-const SAMPLE_EMAIL_DESIGN_MARKDOWN = [
+const SAMPLE_EMAIL_DESIGN_SECTIONS = {
+  brandEssence: "Acme reads as plain-spoken and utilitarian: one robot at a time, told plainly.",
+  signatureMoves: "A single warm accent used sparingly against a deep ink surface.",
+  colorSystem: "Use the accent for buttons and links; the ink surface for headings.",
+  typography: "Headings in the mapped Georgia stack; body in the mapped Helvetica stack.",
+  layoutStructure: "Single-column, 600px max width.",
+  components: {
+    header: "Logo left-aligned.",
+    hero: "Headline, then CTA.",
+    cta: "Solid accent button.",
+    card: "Ink-surface panel.",
+    divider: "Hairline rule.",
+    footer: "Muted text, unsubscribe.",
+  },
+  voiceAndTone: "Plain-spoken, first-person-plural, short sentences.",
+};
+
+/*
+  Every canonical header the assembler must always emit — a page can be
+  summarised but never allowed to drop one.
+*/
+const CANONICAL_HEADERS = [
   "## Brand Essence",
-  "Acme reads as plain-spoken and utilitarian: one robot at a time, told plainly.",
   "## Signature Moves",
-  "A single warm accent used sparingly against a deep ink surface.",
   "## Color System",
-  "Use the accent for buttons and links; the ink surface for headings.",
   "## Typography",
-  "Headings in the mapped Georgia stack; body in the mapped Helvetica stack.",
   "## Layout & Structure",
-  "Single-column, 600px max width.",
   "## Components",
-  "### Header\nLogo left-aligned.\n### Hero\nHeadline, then CTA.\n### CTA\nSolid accent button.",
-  "### Card\nInk-surface panel.\n### Divider\nHairline rule.\n### Footer\nMuted text, unsubscribe.",
+  "### Header",
+  "### Hero",
+  "### CTA",
+  "### Card",
+  "### Divider",
+  "### Footer",
   "## Voice & Tone",
-  "Plain-spoken, first-person-plural, short sentences.",
-].join("\n\n");
+];
+
+const EMPTY_EMAIL_DESIGN_SECTIONS = {
+  brandEssence: "",
+  signatureMoves: "",
+  colorSystem: "",
+  typography: "",
+  layoutStructure: "",
+  components: { header: "", hero: "", cta: "", card: "", divider: "", footer: "" },
+  voiceAndTone: "",
+};
 
 const MODEL_OUTPUT = {
   brandName: "Acme",
@@ -80,7 +110,7 @@ const MODEL_OUTPUT = {
     person: "first-person-plural" as const,
     guidance: "Short sentences.",
   },
-  emailDesignMarkdown: SAMPLE_EMAIL_DESIGN_MARKDOWN,
+  emailDesign: SAMPLE_EMAIL_DESIGN_SECTIONS,
   variations: [semanticVariation("Clean"), semanticVariation("Tint"), semanticVariation("Deep")],
 };
 
@@ -222,22 +252,75 @@ describe("generateBrandKit authored palette + tone of voice", () => {
   model call also drafts the standing guidance doc. Honest degrade mirrors
   toneOfVoice — empty markdown means an ABSENT field, never a padded doc.
 */
+/*
+  The dominant prod 502: a palette-rich brand (a real Shopify store harvested
+  ~11 colors) made the model return 7+ colors, and a `.max(6)` ceiling on the
+  MODEL output schema rejected the WHOLE object — a ~60% failure rate measured
+  live. The pipeline's own tests mock generateObject and so never apply this
+  schema, which is how it slipped through; the regression is pinned against
+  the schema directly, the way the AI SDK applies it.
+*/
+describe("brandKitModelOutputSchema colors ceiling", () => {
+  const paletteColor = (i: number) => ({
+    hex: `#${i.toString(16).padStart(2, "0")}44aa`,
+    name: `Color ${i}`,
+    category: "primary" as const,
+  });
+  /*
+    A schema-valid model output, varied only in its color count — built fresh
+    rather than from MODEL_OUTPUT so an unrelated field can't mask the ceiling
+    being exercised.
+  */
+  const outputWithColors = (n: number) => ({
+    brandName: "Acme",
+    headingFont: "Georgia",
+    bodyFont: "Helvetica",
+    buttonShape: "rounded",
+    logoUrl: "",
+    toneOfVoice: {
+      descriptors: ["warm"],
+      formality: "casual",
+      person: "first-person-plural",
+      guidance: "Short.",
+    },
+    emailDesign: SAMPLE_EMAIL_DESIGN_SECTIONS,
+    variations: [semanticVariation("Clean"), semanticVariation("Tint"), semanticVariation("Deep")],
+    colors: Array.from({ length: n }, (_, i) => paletteColor(i + 1)),
+  });
+
+  it("accepts an 11-color palette (this exact shape 502'd under the old max of 6)", () => {
+    expect(brandKitModelOutputSchema.safeParse(outputWithColors(11)).success).toBe(true);
+  });
+
+  it("still rejects a runaway palette beyond the ceiling, so padding stays bounded", () => {
+    const result = brandKitModelOutputSchema.safeParse(outputWithColors(17));
+    expect(result.success).toBe(false);
+  });
+});
+
 describe("generateBrandKit email-design.md authoring", () => {
-  it("ships an agent-authored email-design.md when the model writes one", async () => {
+  it("assembles an agent-authored email-design.md from the structured sections", async () => {
     stubProbes([]);
     const result = await generateBrandKit({ url: "acme.test" });
     expect(result.isOk).toBe(true);
     if (!result.isOk) return;
-    expect(result.brandKit.emailDesignDoc).toEqual({
-      markdown: SAMPLE_EMAIL_DESIGN_MARKDOWN,
-      origin: "agent",
-    });
+    const doc = result.brandKit.emailDesignDoc;
+    expect(doc?.origin).toBe("agent");
+    /*
+      Every canonical header is laid out, in order, and the section prose is
+      carried through verbatim (these bodies are well under budget).
+    */
+    for (const header of CANONICAL_HEADERS) {
+      expect(doc?.markdown).toContain(header);
+    }
+    expect(doc?.markdown).toContain("Acme reads as plain-spoken and utilitarian");
+    expect(doc?.markdown).toContain("Solid accent button.");
     expect(brandKitSchema.safeParse(result.brandKit).success).toBe(true);
   });
 
-  it("omits email-design.md when the model returns empty markdown", async () => {
+  it("omits email-design.md when every section is empty (honest no-signal degrade)", async () => {
     generateObjectMock.mockResolvedValue({
-      object: { ...MODEL_OUTPUT, emailDesignMarkdown: "" },
+      object: { ...MODEL_OUTPUT, emailDesign: EMPTY_EMAIL_DESIGN_SECTIONS },
     });
     stubProbes([]);
     const result = await generateBrandKit({ url: "acme.test" });
@@ -247,14 +330,47 @@ describe("generateBrandKit email-design.md authoring", () => {
     expect(brandKitSchema.safeParse(result.brandKit).success).toBe(true);
   });
 
-  it("omits email-design.md when the model returns only whitespace", async () => {
+  it("still ships a doc — with every header and within the length limit — when a content-heavy page overruns every section", async () => {
+    /*
+      The regression the owner hit: a long page used to sink the whole call.
+      Here the model floods every section far past its budget; the doc must
+      still be produced, keep all headers, and never exceed the ceiling.
+    */
+    const flood = "This is a sentence about the brand and how it presents itself. ".repeat(400);
     generateObjectMock.mockResolvedValue({
-      object: { ...MODEL_OUTPUT, emailDesignMarkdown: "   \n  " },
+      object: {
+        ...MODEL_OUTPUT,
+        emailDesign: {
+          brandEssence: flood,
+          signatureMoves: flood,
+          colorSystem: flood,
+          typography: flood,
+          layoutStructure: flood,
+          components: {
+            header: flood,
+            hero: flood,
+            cta: flood,
+            card: flood,
+            divider: flood,
+            footer: flood,
+          },
+          voiceAndTone: flood,
+        },
+      },
     });
     stubProbes([]);
     const result = await generateBrandKit({ url: "acme.test" });
     expect(result.isOk).toBe(true);
     if (!result.isOk) return;
-    expect(result.brandKit.emailDesignDoc).toBeUndefined();
+    const doc = result.brandKit.emailDesignDoc;
+    expect(doc).toBeDefined();
+    for (const header of CANONICAL_HEADERS) {
+      expect(doc?.markdown).toContain(header);
+    }
+    expect(doc?.markdown.length).toBeLessThanOrEqual(MAX_EMAIL_DESIGN_DOC_LENGTH);
+    /*
+      And the assembled doc still passes the wire contract's own length check.
+    */
+    expect(brandKitSchema.safeParse(result.brandKit).success).toBe(true);
   });
 });

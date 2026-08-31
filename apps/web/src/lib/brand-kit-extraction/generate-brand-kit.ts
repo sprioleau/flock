@@ -49,6 +49,7 @@ import { fetchPage, fetchTextResource } from "./fetch-page";
 import { harvestBrandSignals, type BrandSignals } from "./harvest";
 import { normalizeWebsiteUrl } from "./url-guard";
 import { pickFirstRenderableImageUrl } from "./verify-image-url";
+import { assembleEmailDesignMarkdown, type EmailDesignSections } from "./assemble-email-design-doc";
 
 export type BrandKitGenerationResult =
   | { isOk: true; brandKit: BrandKit }
@@ -192,34 +193,86 @@ const modelToneOfVoiceSchema = z.object({
 
 /*
   email-design.md (brand-kit-user-control §3): the standing guidance doc the
-  agent reads as the CEILING over the structured kit's FLOOR. Authored in
-  THIS same call — a second round trip is not worth it on a free-tier-quota-
-  sensitive model. Returned unconditionally by the schema but DISCARDED by
-  the pipeline below when the model has nothing to say (empty string), same
-  honest-degrade stance as toneOfVoice.
+  agent reads as the CEILING over the structured kit's FLOOR. Authored in THIS
+  same call — a second round trip is not worth it on a free-tier-quota-
+  sensitive model.
+
+  It is returned as STRUCTURED per-section prose, not one free-form string.
+  Each field is a few sentences; assemble-email-design-doc.ts lays them out
+  under canonical headers and clamps each to a budget. This is what lets the
+  doc survive a content-heavy page: the model can no longer overrun a 16000-
+  char string and fail validation for the whole brand-kit call (the observed
+  502). The generous per-field ceilings below are pure runaway guards, sized
+  far above the few-sentence target so ordinary prose never trips them.
+
+  Honest-degrade still holds: empty fields across the board mean an absent
+  doc downstream (assemble returns ""), same stance as toneOfVoice.
 */
-const modelEmailDesignSchema = z
-  .string()
-  .max(16000)
+const emailDesignProseSchema = z.string().max(6000);
+const emailDesignComponentProseSchema = z.string().max(3000);
+
+const emailDesignSectionsSchema = z
+  .object({
+    brandEssence: emailDesignProseSchema.describe(
+      "Brand Essence: 2-4 sentences on what this brand feels like, grounded in the copy sample and palette. \"\" if there is no signal.",
+    ),
+    signatureMoves: emailDesignProseSchema.describe(
+      "Signature Moves: 2-4 sentences on the distinctive design moves you can infer (accent usage, contrast, shape language). \"\" if none.",
+    ),
+    colorSystem: emailDesignProseSchema.describe(
+      "Color System: 2-4 sentences describing colour USAGE by ROLE (\"the accent\", \"the page background\", \"the muted text\"). The structured palette is the source of truth for VALUES — a hex here is an illustrative aside only. Never introduce a colour that wasn't harvested. \"\" if none.",
+    ),
+    typography: emailDesignProseSchema.describe(
+      "Typography: 2-3 sentences on how headings and body type are used, in terms of the mapped email-safe fonts. \"\" if none.",
+    ),
+    layoutStructure: emailDesignProseSchema.describe(
+      "Layout & Structure: 2-4 sentences on column count, width, rhythm and how sections stack. \"\" if none.",
+    ),
+    components: z
+      .object({
+        header: emailDesignComponentProseSchema.describe("Header: 1-2 sentences. \"\" if nothing to say."),
+        hero: emailDesignComponentProseSchema.describe("Hero: 1-2 sentences. \"\" if nothing to say."),
+        cta: emailDesignComponentProseSchema.describe("CTA: 1-2 sentences. \"\" if nothing to say."),
+        card: emailDesignComponentProseSchema.describe("Card: 1-2 sentences. \"\" if nothing to say."),
+        divider: emailDesignComponentProseSchema.describe("Divider: 1 sentence. \"\" if nothing to say."),
+        footer: emailDesignComponentProseSchema.describe("Footer: 1-2 sentences. \"\" if nothing to say."),
+      })
+      .describe("Per-component recipes. Each a sentence or two; empty string when there is nothing concrete to say."),
+    voiceAndTone: emailDesignProseSchema.describe(
+      "Voice & Tone: 2-4 sentences on how the copy reads, grounded in the copy sample. \"\" if the sample is thin.",
+    ),
+  })
   .describe(
-    [
-      "A first-draft email-design.md for THIS brand, written in Markdown, or \"\" if there isn't",
-      "enough signal to say anything useful. Up to ~16000 characters. Use exactly these seven",
-      "'## ' sections, in order: Brand Essence, Signature Moves, Color System, Typography,",
-      "Layout & Structure, Components (with Header / Hero / CTA / Card / Divider / Footer",
-      "sub-sections), and Voice & Tone.",
-      "Base every claim ONLY on the harvested signals you were given (palette with usage counts,",
-      "fonts, layout/button-shape hints, and the copy sample) — never invent details the signals",
-      "don't support, and keep sections short and concrete rather than padded.",
-      "CRITICAL — colour authority: the structured brand kit (the named, categorized palette) is",
-      "the SINGLE SOURCE OF TRUTH for colour values. In this document, describe colour USAGE and",
-      "refer to colours by ROLE (\"the accent\", \"the page background\", \"the muted text colour\")",
-      "rather than by hex; a hex may appear only as an illustrative aside, never as the thing a",
-      "reader should copy. Never introduce a colour that wasn't in the harvested palette.",
-    ].join(" "),
+    "A first-draft email-design.md for THIS brand, returned as SHORT per-section prose (a few sentences each), not one long string. Ground every claim ONLY in the harvested signals — never invent colours, fonts, or voice traits. Keep it concrete and brief; the sections are laid out and length-clamped by code.",
   );
 
-const brandKitModelOutputSchema = z.object({
+/*
+  The shape the assembler consumes — kept in lockstep with the schema above.
+*/
+const _emailDesignShapeCheck: z.infer<typeof emailDesignSectionsSchema> extends EmailDesignSections
+  ? true
+  : never = true;
+void _emailDesignShapeCheck;
+
+/*
+  Ceiling on the palette the model may return. It was 6, which REJECTED the
+  whole structured call on palette-rich brands: a site with ~11 distinct brand
+  colors (measured on a real Shopify store) made the model return 7+ entries,
+  Zod threw `colors: too_big`, and the entire brand kit 502'd ~60% of the
+  time. The cap exists only to stop the model padding with near-identical
+  filler — the prompt still tells it to stop early, and buildBrandColors drops
+  any hex that wasn't harvested — so a generous ceiling costs nothing and ends
+  the failure. The wire contract downstream has no cap at all.
+*/
+const MAX_MODEL_BRAND_COLORS = 16;
+
+/*
+  Exported for a schema-level regression test only. The mocked pipeline tests
+  bypass this schema entirely (they hand back a canned object), which is
+  exactly how the `colors: too_big` 502 went unnoticed — so the guard has to
+  be asserted against the schema itself, the way the AI SDK applies it.
+*/
+export const brandKitModelOutputSchema = z.object({
   brandName: z.string().min(1).max(60).describe("The brand/site name, cleaned (no taglines)."),
   headingFont: z
     .enum(FONT_LABELS)
@@ -236,12 +289,12 @@ const brandKitModelOutputSchema = z.object({
   colors: z
     .array(modelBrandColorSchema)
     .min(1)
-    .max(6)
+    .max(MAX_MODEL_BRAND_COLORS)
     .describe(
-      "The brand's palette, named and categorized. Aim for about two of each category and STOP EARLY rather than padding — a one-color brand should return one primary, not six near-identical entries.",
+      `The brand's palette, named and categorized. Return only the colors that genuinely belong to the brand (up to ${MAX_MODEL_BRAND_COLORS}); STOP EARLY rather than padding — a one-color brand should return one primary, not near-identical filler. A palette-rich brand may legitimately have a dozen.`,
     ),
   toneOfVoice: modelToneOfVoiceSchema,
-  emailDesignMarkdown: modelEmailDesignSchema,
+  emailDesign: emailDesignSectionsSchema,
   variations: z
     .array(semanticVariationSchema)
     .min(3)
@@ -364,16 +417,16 @@ function buildPrompt({
     `- Map the site's fonts to the CLOSEST email-safe option (web fonts don't ship in email): geometric/grotesque sans → Helvetica or Arial; humanist sans → Verdana, Tahoma or Trebuchet MS; serif → Georgia or Times New Roman; monospace → Courier New.`,
     `- For "colors": copy hex values VERBATIM from the harvested palette above (anything else is discarded). Name each one from its declared CSS variable when that name means something to a person — a yellow declared as "--banana" is "Banana" — and otherwise describe the color plainly ("Deep Navy"). Never invent brand mythology like "Sunrise Optimism".`,
     `- For "toneOfVoice": describe how the copy sample ACTUALLY reads. If the sample is thin, stay generic rather than inventing a personality. "descriptors" must come from this list: ${VOICE_DESCRIPTORS.join(", ")}.`,
-    `- For "emailDesignMarkdown": write a first-draft email-design.md for THIS brand from the signals above — a`,
-    `  standing guidance doc a designer would read before building an email. Use exactly these seven "## "`,
-    `  sections, in this order: Brand Essence, Signature Moves, Color System, Typography, Layout & Structure,`,
-    `  Components (with Header / Hero / CTA / Card / Divider / Footer sub-sections), Voice & Tone. Ground every`,
-    `  claim in the harvested palette (with usage counts), fonts, button shape, and copy sample — never invent`,
-    `  colors, fonts, or voice traits beyond what was harvested. The structured "colors" you return above are the`,
-    `  SINGLE SOURCE OF TRUTH for color VALUES — in this document describe color USAGE and refer to colors by`,
-    `  ROLE ("the accent", "the page background", "the muted text color"), using a hex only as an illustrative`,
-    `  aside, never as the value a reader should copy from here. If the signals are too thin to say anything`,
-    `  concrete (e.g. almost no copy and only one or two colors), return "" rather than padding with filler.`,
+    `- For "emailDesign": draft the standing email-design.md a designer would read before building an email FOR`,
+    `  THIS brand, returned as the structured per-section object — brandEssence, signatureMoves, colorSystem,`,
+    `  typography, layoutStructure, components (header/hero/cta/card/divider/footer), voiceAndTone. Write each`,
+    `  field as a FEW SENTENCES and no more — it is laid out and length-clamped by code, so be concrete and brief`,
+    `  rather than exhaustive; a longer page does NOT mean longer fields. Ground every claim in the harvested`,
+    `  palette (with usage counts), fonts, button shape, and copy sample — never invent colors, fonts, or voice`,
+    `  traits beyond what was harvested. The structured "colors" you return above are the SINGLE SOURCE OF TRUTH`,
+    `  for color VALUES — in "colorSystem" describe color USAGE and refer to colors by ROLE ("the accent", "the`,
+    `  page background", "the muted text color"), using a hex only as an illustrative aside. Leave any field ""`,
+    `  when the signals say nothing concrete about it, rather than padding with filler.`,
   ].join("\n");
 }
 
@@ -462,34 +515,45 @@ export async function generateBrandKit({ url }: { url: string }): Promise<BrandK
     3. ONE structured Gemini call — semantic assignments only.
   */
   const traceId = createTraceId();
-  let modelOutput: z.infer<typeof brandKitModelOutputSchema>;
-  try {
+  const prompt = buildPrompt({ signals, copySignals, sourceUrl: page.finalUrl });
+
+  /*
+    One structured Gemini call, factored so the degraded retry below reuses
+    the identical config. A FRESH abort budget is created per attempt — a
+    single shared signal would let a slow first attempt starve the retry.
+
+    maxRetries: 1 — the free-tier quota is small and a quota failure would
+    otherwise be retried into the ground. Minimal thinking: palette assignment
+    doesn't need deliberation, and default thinking pushed flash-lite past the
+    latency budget (thinkingBudget: 0 is rejected by the 3.x models — use
+    levels).
+  */
+  async function requestBrandKitModel<T>(schema: z.ZodType<T>): Promise<T> {
     const { object } = await generateObject({
       model: google(BRAND_KIT_MODEL_ID),
-      schema: brandKitModelOutputSchema,
-      prompt: buildPrompt({ signals, copySignals, sourceUrl: page.finalUrl }),
+      schema,
+      prompt,
       abortSignal: AbortSignal.timeout(GENERATION_TIMEOUT_MS),
       telemetry: modelTelemetryFor({ operation: "brandKit.extract", traceId, isMock: false }),
-      /*
-        One retry only — the free-tier quota is small and a quota failure
-        would otherwise be retried into the ground.
-      */
       maxRetries: 1,
       providerOptions: {
         google: {
-          /*
-            Minimal thinking: palette assignment doesn't need deliberation,
-            and default thinking pushed flash-lite past the latency budget.
-            (thinkingBudget: 0 is rejected by the 3.x models — use levels.)
-          */
           thinkingConfig: { thinkingLevel: "minimal" },
         },
       },
     });
-    modelOutput = object;
+    return object;
+  }
+
+  let modelOutput: z.infer<typeof brandKitModelOutputSchema>;
+  try {
+    modelOutput = await requestBrandKitModel(brandKitModelOutputSchema);
   } catch {
     /*
       Already logged as flock.model.failed by the telemetry integration above.
+      Length can no longer sink this call — email-design.md is bounded per
+      section (assemble-email-design-doc.ts) — so a failure here is a genuine
+      model/quota problem, not a schema overrun.
     */
     logRecord({ tag: "flock.brandKit.generationAbandoned", traceId });
     return { isOk: false, statusCode: 502, message: FRIENDLY_GENERATION_FAILURE };
@@ -565,12 +629,14 @@ export async function generateBrandKit({ url }: { url: string }): Promise<BrandK
       : undefined;
 
   /*
-    email-design.md (§3): kept ONLY when the model actually wrote something.
-    Structured output has no clean "skip", so — same stance as toneOfVoice —
-    the honest gate is here: empty/blank markdown means no field, never a
-    padded-out doc.
+    email-design.md (§3): the model returns structured per-section prose;
+    assembleEmailDesignMarkdown lays it out under canonical headers and clamps
+    each section so the doc can never overrun MAX_EMAIL_DESIGN_DOC_LENGTH. Kept
+    ONLY when the model actually wrote something — the assembler returns "" for
+    all-empty sections, the same honest "no signal, no doc" stance as
+    toneOfVoice, never a padded-out skeleton.
   */
-  const emailDesignMarkdown = modelOutput.emailDesignMarkdown.trim();
+  const emailDesignMarkdown = assembleEmailDesignMarkdown(modelOutput.emailDesign);
   const emailDesignDoc: BrandEmailDesignDoc | undefined =
     emailDesignMarkdown.length > 0
       ? { markdown: emailDesignMarkdown, origin: "agent" }
