@@ -15,8 +15,9 @@ vi.mock("../rehost-image", () => ({ rehostImageToStorage: rehostImageToStorageMo
 const searchPublicWebMock = vi.hoisted(() => vi.fn());
 vi.mock("../search-web", () => ({ searchPublicWeb: searchPublicWebMock }));
 
-import { ingestPage } from "../ingest-page";
-import type { ClassifyFn } from "../classify-page";
+import type { ReadWebPageImage } from "@flock/agent";
+import { attachImagesToSections, ingestPage } from "../ingest-page";
+import type { ClassifyFn, MappedSection } from "../classify-page";
 
 /*
   A reader that returns exactly what a test wants, spending no quota.
@@ -148,10 +149,14 @@ describe("ingestPage — the images", () => {
     );
   });
 
-  it("copies at most four, however many roles the reader assigns", async () => {
+  it("copies every image the reader assigns, up to the cost cap", async () => {
     /*
-      Each copy is a fetch, a storage write, and an Asset Library row. The cap
-      is a real cost bound, so the fixture assigns more than it.
+      Each copy is a fetch, a storage write, and an Asset Library row, so a cap
+      still bounds it — but it was raised from 4 to 12 (MAX_REHOSTED_IMAGES)
+      alongside the higher section ceiling, because a cap of 4 left every
+      section past the fourth on the grey placeholder. The fixture supplies
+      five candidates; all five are under the cap and so all five are copied,
+      where the old cap of 4 would have dropped one.
     */
     const result = await ingestPage({
       url: PAGE_URL,
@@ -171,8 +176,8 @@ describe("ingestPage — the images", () => {
     });
     expect(result.isOk).toBe(true);
     if (!result.isOk) return;
-    expect(result.page.images).toHaveLength(4);
-    expect(rehostImageToStorageMock).toHaveBeenCalledTimes(4);
+    expect(result.page.images).toHaveLength(5);
+    expect(rehostImageToStorageMock).toHaveBeenCalledTimes(5);
   });
 
   it("spends the budget by ROLE, not by where the image sat on the page", async () => {
@@ -588,5 +593,58 @@ describe("ingestPage — the page's own theme", () => {
     if (!result.isOk) return;
     expect(result.page.blocks.length).toBeGreaterThan(0);
     expect(result.page.theme?.globals.buttonBackgroundColor).toBe("#ffc400");
+  });
+});
+
+/*
+  attachImagesToSections is the seam where rehosted images are handed to the
+  planned sections. A gallery slot and a later single-image section used to
+  receive the SAME image — the gallery read `ordered[index]` without consuming
+  from the shared queue while single-image sections `.shift()`ed it — which
+  both duplicated an image and starved later sections onto the grey
+  placeholder. These pin the fix: one front-consuming queue, every image
+  handed out at most once.
+*/
+function planSection(templateId: string, params: Record<string, unknown> = {}): MappedSection {
+  return { templateId, params, sourceBlockIndices: [0], rationale: "x" };
+}
+
+function storedImage(url: string): ReadWebPageImage {
+  return { url, role: "supporting", alt: `alt ${url}` };
+}
+
+describe("attachImagesToSections", () => {
+  const A = storedImage("https://store/a.png");
+  const B = storedImage("https://store/b.png");
+  const C = storedImage("https://store/c.png");
+
+  it("never hands the same image to a gallery slot and a later single-image section", () => {
+    const result = attachImagesToSections({
+      sections: [planSection("image-gallery", { images: [{}, {}] }), planSection("article")],
+      images: [A, B, C],
+    });
+
+    const gallerySrcs = (result[0].params.images as Array<{ src?: string }>).map((image) => image.src);
+    const articleSrc = result[1].params.imageSrc as string | undefined;
+
+    /*
+      Gallery consumes A and B from the front; the article gets the NEXT image,
+      C — not a repeat of A (the old bug).
+    */
+    expect(gallerySrcs).toEqual([A.url, B.url]);
+    expect(articleSrc).toBe(C.url);
+
+    const allSrcs = [...gallerySrcs, articleSrc].filter((src): src is string => Boolean(src));
+    expect(new Set(allSrcs).size).toBe(allSrcs.length);
+  });
+
+  it("leaves sections past the image count without a src (fail-soft, no reused image)", () => {
+    const result = attachImagesToSections({
+      sections: [planSection("hero"), planSection("article"), planSection("product")],
+      images: [A],
+    });
+    expect(result[0].params.imageSrc).toBe(A.url);
+    expect(result[1].params.imageSrc).toBeUndefined();
+    expect(result[2].params.imageSrc).toBeUndefined();
   });
 });

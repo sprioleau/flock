@@ -404,7 +404,14 @@ export const pageClassificationSchema = z.object({
         rationale: z.string().max(GENEROUS),
       }),
     )
-    .max(10),
+    /*
+      16, aligned with MAX_DRAFT_PLAN_SECTIONS in @flock/email-sdk — this plan
+      maps one-to-one onto createDraft's sections (header + body + footer), so
+      the two caps must agree or a rich plan is rejected downstream. 10 was a
+      silent content ceiling: a page with a dozen real items could never be
+      planned in full, however faithfully the model tried.
+    */
+    .max(16),
   searchSubject: z.string().max(GENEROUS).optional(),
 });
 
@@ -606,7 +613,7 @@ searchSubject — OPTIONAL, and usually absent. Set it only when the page names 
 
 These four pages are made up, and they are deliberately unalike. Read them for HOW the evidence decides the answer — not for the answers themselves. They reach four different page types, three different confidence levels, and very different image outcomes, BECAUSE the pages differ.
 
-They also produce FOUR, TWO, THREE, and ZERO sections, in different orders, sharing almost no templates. That is not decoration: the number and shape of an email come from what the page has, and a page with two things to say makes a two-section email. Do not carry a section count, a section order, or a template choice from an example onto the page in front of you. If your plan looks like one of these and the page does not, you have copied instead of read — and every section must cite a line on THIS page, so a copied one has nothing to point at.
+They also produce FOUR, TWO, THREE, and ZERO sections, in different orders, sharing almost no templates. That is not decoration: the number and shape of an email come from what the page has. A page with two things to say makes a two-section email — and, just as much, a page with a dozen distinct things to say (a run of events, products, people, posts, or listings) makes a long, many-section email: plan one faithful section per distinct item, up to the ceiling, rather than collapsing them into a generic two-or-three-section summary. This cuts both ways — match the page's real length, neither padding a sparse page nor starving a rich one. When a list is genuinely long, cover a representative, recent sample and summarize the tail in prose rather than naming every item. Do not carry a section count, a section order, or a template choice from an example onto the page in front of you. If your plan looks like one of these and the page does not, you have copied instead of read — and every section must cite a line on THIS page, so a copied one has nothing to point at.
 
 ────────────────────── EXAMPLE A ──────────────────────
 URL: https://marisol-okonkwo.example/

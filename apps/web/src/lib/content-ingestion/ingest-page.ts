@@ -104,8 +104,15 @@ export const PAGE_ROBOTS_REFUSAL: ReadWebPageResult = {
   page with a person on it, their portrait is the image the email most needs,
   and taking images in document order would spend the budget on whatever
   happened to appear first — usually a logo or a social card.
+
+  Raised from 4 to 12 alongside the higher section ceiling
+  (MAX_DRAFT_PLAN_SECTIONS): a content-rich email can now carry a dozen
+  image-bearing sections, and a cap of 4 left every section past the fourth on
+  the grey placeholder. 12 covers the classifier's own image-assignment cap
+  (the images array is bounded at 12) without letting one page trigger an
+  unbounded number of large fetches.
 */
-const MAX_REHOSTED_IMAGES = 4;
+const MAX_REHOSTED_IMAGES = 12;
 
 const IMAGE_ROLE_PRIORITY: readonly ImageRole[] = ["portrait", "logo", "lead", "supporting"];
 
@@ -255,7 +262,7 @@ const SINGLE_IMAGE_TEMPLATE_IDS = new Set([
   rather than on the source, so passing a source without alt text renders no
   image at all. Both go, or neither.
 */
-function attachImagesToSections({
+export function attachImagesToSections({
   sections,
   images,
 }: {
@@ -273,10 +280,18 @@ function attachImagesToSections({
         ...section,
         params: {
           ...params,
-          images: galleryImages.map((image, index) => {
+          images: galleryImages.map((image) => {
             const rest = { ...((image ?? {}) as Record<string, unknown>) };
             delete rest.src;
-            const source = ordered[index];
+            /*
+              Consume from the FRONT of the shared queue, exactly like the
+              single-image branch below. Reading `ordered[index]` without
+              consuming handed the same rehosted image to a gallery slot AND
+              a later single-image section, and starved sections past the
+              image count onto the grey placeholder — both the duplicate and
+              the placeholder the owner saw.
+            */
+            const source = ordered.shift();
             return source === undefined ? rest : { ...rest, src: source.url };
           }),
         },

@@ -66,8 +66,19 @@ export const MAX_CREATE_DRAFT_COUNT = 5;
 
 /*
   Ceiling on sections in one composed draft's plan (before repair).
+
+  10 was sized for the generic starter case (a handful of hand-planned
+  sections) and silently doubled as a content ceiling: a reference page with
+  a dozen real items (events, products, team members, listings) could never
+  produce a plan that named them all, however faithfully the model tried to
+  build one — the schema rejected the plan before a single section landed.
+  16 leaves room for a header, a footer, and up to 14 body sections, which is
+  "within reason" for even a content-rich page — the model is still expected
+  to summarize a long tail in prose rather than naming every item past a
+  representative, recent sample (see tool-guidance.ts's source-page
+  workflow).
 */
-export const MAX_DRAFT_PLAN_SECTIONS = 10;
+export const MAX_DRAFT_PLAN_SECTIONS = 16;
 
 /*
   Longest draft name accepted from the model.

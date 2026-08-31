@@ -14,6 +14,7 @@ import {
   createDraftInputSchema,
   deriveDraftContentClues,
   diversifyDraftSections,
+  MAX_DRAFT_PLAN_SECTIONS,
   resolveCreateDraftCommand,
   resolveSectionsToAvailableContent,
   type ComposedDraft,
@@ -278,6 +279,30 @@ describe("createDraft input schema", () => {
     const parsed = createDraftInputSchema.safeParse({
       drafts: [{ sections: [{ templateId: "not-a-template" }] }],
     });
+    expect(parsed.success).toBe(false);
+  });
+
+  /*
+    A content-rich reference page (an events page with a dozen listings, a
+    product catalog, a team roster) needs a section per item plus a header
+    and footer — 14 sections here (12 items + frame). The OLD ceiling of 10
+    rejected this outright, which is one of the two ways a rich page still
+    came out as a 2-3 section email even when the model tried to build more:
+    the schema itself had no room. This is a fixed number, not
+    MAX_DRAFT_PLAN_SECTIONS, precisely so it still fails if the constant is
+    ever lowered back down.
+  */
+  it("accepts a plan sized for a content-rich page (14 sections)", () => {
+    const sections = Array.from({ length: 14 }, () => ({ templateId: "article" }));
+    const parsed = createDraftInputSchema.safeParse({ drafts: [{ sections }] });
+    expect(parsed.success).toBe(true);
+  });
+
+  it("still rejects a plan one section past the (raised) ceiling", () => {
+    const sections = Array.from({ length: MAX_DRAFT_PLAN_SECTIONS + 1 }, () => ({
+      templateId: "article",
+    }));
+    const parsed = createDraftInputSchema.safeParse({ drafts: [{ sections }] });
     expect(parsed.success).toBe(false);
   });
 });

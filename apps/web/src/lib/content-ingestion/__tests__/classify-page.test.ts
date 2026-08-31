@@ -3,6 +3,7 @@ import {
   buildClassificationPrompt,
   buildDeterministicFloor,
   classifyPage,
+  pageClassificationSchema,
   validateClassification,
   validateSections,
   type PlannedSection,
@@ -536,5 +537,40 @@ describe("buildDeterministicFloor", () => {
       It must not invent a page kind it has no evidence for.
     */
     expect(floor.pageTypeNote).toContain("not interpreted");
+  });
+});
+
+/*
+  The classifier's own output schema caps the section plan. It was 10, which
+  silently ceilinged a content-rich page: a run of a dozen distinct items
+  could never be planned in full. Raised to 16 to match MAX_DRAFT_PLAN_SECTIONS
+  in @flock/email-sdk — the plan maps one-to-one onto createDraft's sections
+  (header + body + footer), so the two caps must agree or a rich plan is
+  rejected downstream. Pinned against the exported schema directly.
+*/
+function classificationWith(sectionCount: number) {
+  return {
+    pageType: "other" as const,
+    otherPageType: "a test page",
+    confidence: "medium" as const,
+    isPlanUsable: true,
+    sourceSummary: "A made-up page used only to exercise the section-count ceiling.",
+    images: [],
+    sections: Array.from({ length: sectionCount }, (_, i) => ({
+      templateId: "article",
+      copy: { headline: `Section ${i}`, body: "Body copy." },
+      sourceBlockIndices: [i],
+      rationale: `item ${i}`,
+    })),
+  };
+}
+
+describe("pageClassificationSchema section ceiling", () => {
+  it("accepts a content-rich 16-section plan (rejected under the old cap of 10)", () => {
+    expect(pageClassificationSchema.safeParse(classificationWith(16)).success).toBe(true);
+  });
+
+  it("still rejects a plan past the ceiling, so a runaway plan stays bounded", () => {
+    expect(pageClassificationSchema.safeParse(classificationWith(17)).success).toBe(false);
   });
 });

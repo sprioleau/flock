@@ -6,6 +6,7 @@ import {
   SECTION_TEMPLATES,
 } from "@flock/email-sdk";
 import { describe, expect, it } from "vitest";
+import { buildAgentActionRegistry } from "../actions";
 import { generateDocumentOutline } from "../outline";
 import {
   SYSTEM_STATIC,
@@ -267,6 +268,60 @@ describe("buildToolGuidance (layer b — cacheable per registry)", () => {
     );
     const listingLines = listing.split("\n").filter((line) => line.startsWith("- "));
     expect(listingLines).toHaveLength(SECTION_TEMPLATES.length);
+  });
+});
+
+describe("source-page workflow (readWebPage) — section count scales to content", () => {
+  /*
+    readWebPage is agent-only (registered by buildAgentActionRegistry, not
+    the sdk's base emailActionRegistry used above), so its guidance needs a
+    registry built with a readWebPage executor injected.
+  */
+  const guidanceWithReadWebPage = buildToolGuidance(
+    buildAgentActionRegistry({ readWebPage: async () => ({ isOk: false, reason: "x", message: "x" }) }),
+  );
+
+  /*
+    THE BUG THIS PINS: "pass those sections to createDraft as they are —
+    do not re-plan the email from scratch" told the model the classifier's
+    conservative, schema-capped section plan (apps/web's classify-page.ts
+    caps at 10 and is deliberately terse — "a page with two things to say
+    makes a two-section email") was the WHOLE email, full stop. That is
+    correct for a sparse page and wrong for a rich one: the model also
+    receives the page's full, uncapped `blocks` and `lists`, so it could
+    build a fuller email from a content-rich page — but the guidance
+    forbade exactly that ("do not re-plan"). This is a generic steer (no
+    mention of events), not an events special-case.
+  */
+  it("treats the section plan as a floor, not a ceiling, for a content-rich page", () => {
+    expect(guidanceWithReadWebPage).toMatch(
+      /floor, not a ceiling|starting point, not the whole email|more than the plan surfaced/i,
+    );
+    /*
+      It must name the mechanism (build from blocks/lists beyond the plan),
+      not just assert the principle.
+    */
+    expect(guidanceWithReadWebPage).toMatch(
+      /blocks.{0,80}lists|lists.{0,80}blocks/is,
+    );
+  });
+
+  it("still caps a rich page's email within reason instead of surfacing every item", () => {
+    expect(guidanceWithReadWebPage).toMatch(
+      /representative|recent sample|within reason/i,
+    );
+  });
+
+  it("no longer forbids building beyond the plan verbatim", () => {
+    expect(guidanceWithReadWebPage).not.toContain(
+      "do not re-plan the email from scratch",
+    );
+  });
+
+  it("keeps the faithfulness rule: never substitute the model's own words for the page's", () => {
+    expect(guidanceWithReadWebPage).toMatch(
+      /(do not|never) rewrite copy (that was )?drawn from the page into copy of your own/,
+    );
   });
 });
 
