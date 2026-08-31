@@ -214,36 +214,50 @@ const emailDesignComponentProseSchema = z.string().max(3000);
 const emailDesignSectionsSchema = z
   .object({
     brandEssence: emailDesignProseSchema.describe(
-      "Brand Essence: 2-4 sentences on what this brand feels like, grounded in the copy sample and palette. \"\" if there is no signal.",
+      "Brand Essence: 2-3 short paragraphs. A vivid image of the brand's feeling and personality grounded in the palette, fonts and copy sample, then a line on what this brand's EMAILS should feel like to a reader. \"\" only if there is truly no signal.",
     ),
     signatureMoves: emailDesignProseSchema.describe(
-      "Signature Moves: 2-4 sentences on the distinctive design moves you can infer (accent usage, contrast, shape language). \"\" if none.",
+      "Signature Moves: a NUMBERED markdown list (3-5 items) of the brand's most distinctive, repeatable design moves inferable from the signals — accent usage, contrast, shape/border language, imagery treatment. Bold a short name for each, describe it, and where possible note an email-safe way to reproduce it (a table cell, a border, a padded block). Concrete over generic. \"\" if the signals are too thin.",
     ),
     colorSystem: emailDesignProseSchema.describe(
-      "Color System: 2-4 sentences describing colour USAGE by ROLE (\"the accent\", \"the page background\", \"the muted text\"). The structured palette is the source of truth for VALUES — a hex here is an illustrative aside only. Never introduce a colour that wasn't harvested. \"\" if none.",
+      "Color System: a markdown bullet list mapping each harvested colour to a ROLE — page background, surface/card, body text, muted text, accent / primary action, secondary accent, hairline/border, link — with a note on how dominant or scarce each is. State whether this is a light- or dark-background brand. End with a one-line Rule capturing the palette's discipline. The structured brand kit is the SINGLE SOURCE OF TRUTH for colour VALUES — name colours by role; a hex may appear only as an illustrative aside beside a role, and never introduce a colour that wasn't harvested. \"\" if there is no colour signal.",
     ),
     typography: emailDesignProseSchema.describe(
-      "Typography: 2-3 sentences on how headings and body type are used, in terms of the mapped email-safe fonts. \"\" if none.",
+      "Typography: name the detected heading / body / accent fonts and the email-safe stack each maps to, then a short TYPE SCALE as a bullet list (display/hero, H1, H2, H3, body, caption, eyebrow) with approximate size / line-height / weight / colour-by-role for each, and any type rule you can infer. Use sensible email type defaults where the site doesn't state sizes; never invent a font the site doesn't use. \"\" if there is no type signal.",
     ),
     layoutStructure: emailDesignProseSchema.describe(
-      "Layout & Structure: 2-4 sentences on column count, width, rhythm and how sections stack. \"\" if none.",
+      "Layout & Structure: a markdown bullet list of concrete rules — max content width, section padding, vertical rhythm, divider treatment, mobile stacking, and how CTAs and images are handled. Use sensible email defaults (600px width, single-column-first) where the page doesn't dictate otherwise. \"\" if nothing concrete.",
     ),
     components: z
       .object({
-        header: emailDesignComponentProseSchema.describe("Header: 1-2 sentences. \"\" if nothing to say."),
-        hero: emailDesignComponentProseSchema.describe("Hero: 1-2 sentences. \"\" if nothing to say."),
-        cta: emailDesignComponentProseSchema.describe("CTA: 1-2 sentences. \"\" if nothing to say."),
-        card: emailDesignComponentProseSchema.describe("Card: 1-2 sentences. \"\" if nothing to say."),
-        divider: emailDesignComponentProseSchema.describe("Divider: 1 sentence. \"\" if nothing to say."),
-        footer: emailDesignComponentProseSchema.describe("Footer: 1-2 sentences. \"\" if nothing to say."),
+        header: emailDesignComponentProseSchema.describe(
+          "Header recipe: background, padding, logo placement/size, any right-side label, closing rule. \"\" if nothing concrete.",
+        ),
+        hero: emailDesignComponentProseSchema.describe(
+          "Hero recipe: the ORDER of elements (eyebrow → headline → supporting line → CTA), feature-image treatment, background and padding. \"\" if nothing concrete.",
+        ),
+        cta: emailDesignComponentProseSchema.describe(
+          "CTA button recipe: fill vs outline, border, corner radius, label colour-by-role and font, padding; prefer a table-based button. \"\" if nothing concrete.",
+        ),
+        card: emailDesignComponentProseSchema.describe(
+          "Card recipe: surface role, radius, padding, inner text roles, any border. \"\" if nothing concrete.",
+        ),
+        divider: emailDesignComponentProseSchema.describe(
+          "Divider recipe: default hairline colour-by-role and technique, plus any accent variant and when to use it. \"\" if nothing concrete.",
+        ),
+        footer: emailDesignComponentProseSchema.describe(
+          "Footer recipe: background band, padding, top border, the content lines (name/contact/links/unsubscribe/address) and their type treatment. \"\" if nothing concrete.",
+        ),
       })
-      .describe("Per-component recipes. Each a sentence or two; empty string when there is nothing concrete to say."),
+      .describe(
+        "Per-component recipes a designer follows when building each block. Each a few concrete sentences; empty string only when there is nothing concrete to say.",
+      ),
     voiceAndTone: emailDesignProseSchema.describe(
-      "Voice & Tone: 2-4 sentences on how the copy reads, grounded in the copy sample. \"\" if the sample is thin.",
+      "Voice & Tone: how the brand's copy reads — point of view (first-person singular/plural or third-person), formality, sentence rhythm and reading level — grounded in the copy sample. Where the sample supports it, add short 'Do use' / 'Don't use' lists and one line each of subject-line, preheader, and CTA-microcopy guidance in the brand's own register. \"\" if the copy sample is too thin to say anything honest.",
     ),
   })
   .describe(
-    "A first-draft email-design.md for THIS brand, returned as SHORT per-section prose (a few sentences each), not one long string. Ground every claim ONLY in the harvested signals — never invent colours, fonts, or voice traits. Keep it concrete and brief; the sections are laid out and length-clamped by code.",
+    "A first-draft email-design.md for THIS brand — a standing guidance doc a designer reads before building an email, roughly the depth of a one-page design system (aim for a RICH, specific document, not a thin summary). Returned as the structured per-section object; each field is markdown prose/lists, laid out under canonical headers by code. Ground EVERY claim only in the harvested signals plus sensible email defaults for structure the page doesn't reveal — never invent colours, fonts, or voice traits.",
   );
 
 /*
@@ -417,16 +431,26 @@ function buildPrompt({
     `- Map the site's fonts to the CLOSEST email-safe option (web fonts don't ship in email): geometric/grotesque sans → Helvetica or Arial; humanist sans → Verdana, Tahoma or Trebuchet MS; serif → Georgia or Times New Roman; monospace → Courier New.`,
     `- For "colors": copy hex values VERBATIM from the harvested palette above (anything else is discarded). Name each one from its declared CSS variable when that name means something to a person — a yellow declared as "--banana" is "Banana" — and otherwise describe the color plainly ("Deep Navy"). Never invent brand mythology like "Sunrise Optimism".`,
     `- For "toneOfVoice": describe how the copy sample ACTUALLY reads. If the sample is thin, stay generic rather than inventing a personality. "descriptors" must come from this list: ${VOICE_DESCRIPTORS.join(", ")}.`,
-    `- For "emailDesign": draft the standing email-design.md a designer would read before building an email FOR`,
-    `  THIS brand, returned as the structured per-section object — brandEssence, signatureMoves, colorSystem,`,
-    `  typography, layoutStructure, components (header/hero/cta/card/divider/footer), voiceAndTone. Write each`,
-    `  field as a FEW SENTENCES and no more — it is laid out and length-clamped by code, so be concrete and brief`,
-    `  rather than exhaustive; a longer page does NOT mean longer fields. Ground every claim in the harvested`,
-    `  palette (with usage counts), fonts, button shape, and copy sample — never invent colors, fonts, or voice`,
-    `  traits beyond what was harvested. The structured "colors" you return above are the SINGLE SOURCE OF TRUTH`,
-    `  for color VALUES — in "colorSystem" describe color USAGE and refer to colors by ROLE ("the accent", "the`,
-    `  page background", "the muted text color"), using a hex only as an illustrative aside. Leave any field ""`,
-    `  when the signals say nothing concrete about it, rather than padding with filler.`,
+    `- For "emailDesign": draft the standing email-design.md a designer reads before building an email FOR THIS`,
+    `  brand, returned as the structured per-section object. Aim for a RICH, SPECIFIC one-page design system`,
+    `  (think roughly 6000-9000 characters across all sections combined) — not a thin summary. Make each section`,
+    `  concrete and structured:`,
+    `    • Signature Moves — a numbered list of distinctive, reproducible design moves; bold a short name for`,
+    `      each, then say how to reproduce it in an email.`,
+    `    • Color System — a bulleted ROLE map (page background, surface, body text, muted, accent, secondary,`,
+    `      hairline, link), whether it is a light- or dark-background brand, and a closing discipline rule.`,
+    `    • Typography — the detected → email-safe font mapping plus a short type scale (display/H1/H2/H3/body/`,
+    `      caption/eyebrow with size, line-height, weight, colour-by-role).`,
+    `    • Layout & Structure and each Component (header/hero/cta/card/divider/footer) — concrete recipes: order`,
+    `      of elements, backgrounds, padding, borders, radii, image and CTA treatment.`,
+    `    • Voice & Tone — point of view, formality, rhythm, plus short Do/Don't lists and one line each of`,
+    `      subject-line, preheader, and CTA-microcopy guidance.`,
+    `  Ground EVERY claim in the harvested signals (palette with usage counts, fonts, button shape, layout hints,`,
+    `  copy sample); use sensible email defaults (600px width, single-column-first, a standard type scale) ONLY`,
+    `  for structural details the page doesn't reveal, and NEVER invent colors, fonts, or voice traits. The`,
+    `  structured "colors" you return above are the SINGLE SOURCE OF TRUTH for color VALUES — in "colorSystem"`,
+    `  describe color USAGE by ROLE and let any hex be an illustrative aside only. Leave a field "" only when the`,
+    `  signals genuinely say nothing about it.`,
   ].join("\n");
 }
 

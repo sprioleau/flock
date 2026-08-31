@@ -68,6 +68,18 @@ describe("formatBrandEmailDesignContextLine", () => {
     expect(line).toContain("must not override the kit");
   });
 
+  it("resolves voice/colour precedence so overlapping guidance never contradicts", () => {
+    const line = formatBrandEmailDesignContextLine({ brandName: "Acme", emailDesignDoc: FULL_DOC })!;
+    /*
+      The owner's concern: two voice sources (the doc's Voice & Tone and the
+      brief brand-voice summary) must have a stated winner. The doc wins for
+      voice; the structured kit wins for colour.
+    */
+    expect(line).toContain("PRECEDENCE");
+    expect(line).toMatch(/Voice & Tone" is authoritative/);
+    expect(line).toContain("condensed floor");
+  });
+
   it("strips a forged closing delimiter so the payload cannot break out", () => {
     const line = formatBrandEmailDesignContextLine({
       brandName: "Acme",

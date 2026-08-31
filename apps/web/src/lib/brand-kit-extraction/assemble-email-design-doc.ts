@@ -51,21 +51,21 @@ export interface EmailDesignSections {
   document can never overrun.
 */
 const SECTION_BUDGETS = {
-  brandEssence: 1600,
-  signatureMoves: 1600,
-  colorSystem: 1600,
-  typography: 1400,
-  layoutStructure: 1800,
-  voiceAndTone: 1600,
+  brandEssence: 1300,
+  signatureMoves: 1900,
+  colorSystem: 1900,
+  typography: 1700,
+  layoutStructure: 1500,
+  voiceAndTone: 1700,
 } as const;
 
 const COMPONENT_BUDGETS = {
-  header: 900,
+  header: 850,
   hero: 1000,
-  cta: 800,
-  card: 900,
-  divider: 600,
-  footer: 900,
+  cta: 950,
+  card: 950,
+  divider: 550,
+  footer: 950,
 } as const;
 
 /*
