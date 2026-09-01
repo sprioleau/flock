@@ -26,15 +26,15 @@ export const featureListParamsSchema = z
     features: z
       .array(featureSchema)
       .min(2)
-      .max(5)
+      .max(8)
       .default([
         { title: "Drag, drop, done", body: "Compose from prebuilt sections and rearrange them in seconds." },
         { title: "Always on brand", body: "Every block inherits your theme — swap palettes without touching a single section." },
         { title: "Preview everywhere", body: "See exactly what lands in the inbox, on desktop and phone alike." },
       ])
-      .describe("2–5 features, listed top to bottom."),
+      .describe("2–8 features, listed top to bottom."),
   })
-  .describe("Feature-list content: an optional intro heading and 2–5 stacked features.");
+  .describe("Feature-list content: an optional intro heading and 2–8 stacked features.");
 
 export const featureListTemplate = defineSectionTemplate({
   id: "feature-list",

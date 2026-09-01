@@ -611,9 +611,11 @@ searchSubject — OPTIONAL, and usually absent. Set it only when the page names 
 
 ## Worked examples
 
-These four pages are made up, and they are deliberately unalike. Read them for HOW the evidence decides the answer — not for the answers themselves. They reach four different page types, three different confidence levels, and very different image outcomes, BECAUSE the pages differ.
+These five pages are made up, and they are deliberately unalike. Read them for HOW the evidence decides the answer — not for the answers themselves. They reach four different page types, three different confidence levels, and very different image outcomes, BECAUSE the pages differ.
 
-They also produce FOUR, TWO, THREE, and ZERO sections, in different orders, sharing almost no templates. That is not decoration: the number and shape of an email come from what the page has. A page with two things to say makes a two-section email — and, just as much, a page with a dozen distinct things to say (a run of events, products, people, posts, or listings) makes a long, many-section email: plan one faithful section per distinct item, up to the ceiling, rather than collapsing them into a generic two-or-three-section summary. This cuts both ways — match the page's real length, neither padding a sparse page nor starving a rich one. When a list is genuinely long, cover a representative, recent sample and summarize the tail in prose rather than naming every item. Do not carry a section count, a section order, or a template choice from an example onto the page in front of you. If your plan looks like one of these and the page does not, you have copied instead of read — and every section must cite a line on THIS page, so a copied one has nothing to point at.
+They also produce FOUR, TWO, THREE, ZERO, and FIVE sections, in different orders, sharing almost no templates. That is not decoration: the number and shape of an email come from what the page has. A page with two things to say makes a two-section email — and, just as much, a page with a dozen distinct things to say (a run of events, products, people, posts, or listings) makes a long, many-section email: plan one faithful section per distinct item, up to the ceiling, rather than collapsing them into a generic two-or-three-section summary. This cuts both ways — match the page's real length, neither padding a sparse page nor starving a rich one. When a list is genuinely long, cover a representative, recent sample and summarize the tail in prose rather than naming every item. Do not carry a section count, a section order, or a template choice from an example onto the page in front of you. If your plan looks like one of these and the page does not, you have copied instead of read — and every section must cite a line on THIS page, so a copied one has nothing to point at.
+
+EVERY repeated-content template — feature-list, feature-columns, testimonial-columns, stats, pricing's features, a gallery's images — holds only a handful of entries (two to six, depending on the template; the catalog listing below says which). That cap is a page-design limit, not a reading of how much the source page has to say, so when the page repeats more distinct things than ONE section of that template can hold, use a SECOND section of the same template for the next batch — do not let the template's own ceiling become the plan's ceiling. Example E below shows exactly this: eight talks, two feature-list sections of four apiece, because one list only goes to five.
 
 ────────────────────── EXAMPLE A ──────────────────────
 URL: https://marisol-okonkwo.example/
@@ -764,15 +766,15 @@ IMAGES:
             { "title": "22 Mar", "body": "Comfrey and nettle feeds." },
             { "title": "5 Apr", "body": "Hardening off." } ] },
         "sourceBlockIndices": [3],
-        "rationale": "The dated sessions. Five of six shown — the template takes at most five." },
+        "rationale": "The dated sessions. The template holds five; the sixth (19 Apr, companion planting) closes the CTA below instead of being silently dropped." },
       { "templateId": "cta",
         "copy": {
           "headline": "Free to members, £4 otherwise",
-          "body": "Sign up on the board by the gate.",
+          "body": "Sign up on the board by the gate — plus a sixth morning on 19 Apr, companion planting.",
           "ctaLabel": "See the season",
           "ctaHref": "https://wrenfield-garden.example/sowing-season" },
-        "sourceBlockIndices": [2],
-        "rationale": "The page's own instruction. There is no booking link on the page, so the button goes back to the page rather than to an address I would have had to invent." }
+        "sourceBlockIndices": [2, 3],
+        "rationale": "The page's own instruction, plus the sixth session the list above had no room for. There is no booking link on the page, so the button goes back to the page rather than to an address I would have had to invent." }
     ]
   }
 
@@ -803,6 +805,73 @@ IMAGES:
   }
 
 Deciding there is not enough here is a correct answer, and this is what it looks like. The list is at link density 0.96, which means it is navigation rather than content — building an email out of forty link labels would have produced something that says nothing, which is worse than saying so. An empty plan is a real answer and this is what one looks like.
+
+────────────────────── EXAMPLE E ──────────────────────
+URL: https://harrowgate-summit.example/schedule
+SITE: Harrowgate Summit
+TITLE: 2025 Schedule
+STRUCTURED DATA:
+  (none — this page declares nothing about itself)
+CONTENT:
+  [0] H  Harrowgate Summit — 2025 Schedule
+  [1] P  One day, eight talks, in the order they run. Doors at nine, first talk at half past.
+  [2] H  Morning
+  [3] LIST[0.00] (under "Morning")  9:30 — Reading a room before you speak, Priya Nakamura · 10:15 — Debugging in front of people, Femi Osei · 11:00 — What a slide is for, Talia Bergström · 11:45 — Naming things badly on purpose, Rutger Voss
+  [4] H  Afternoon
+  [5] LIST[0.00] (under "Afternoon")  1:00 — The talk you didn't give, Dov Ashkenazi · 1:45 — Q&A is not the enemy, Priya Nakamura · 2:30 — Shipping on a Friday, Femi Osei · 3:15 — Closing remarks, Talia Bergström
+IMAGES:
+  img_1  origin=og-image  alt="Harrowgate Summit 2025"  order=0
+  img_2  origin=inline  alt="Priya Nakamura speaking"  order=1  near="Morning"
+
+→ {
+    "pageType": "event",
+    "confidence": "high",
+    "isPlanUsable": true,
+    "sourceSummary": "Harrowgate Summit's own schedule page for its 2025 conference: a one-day, eight-talk programme run in two halves, morning and afternoon, each talk named with its speaker and time. One event photo and one photo of a speaker.",
+    "images": [
+      { "candidateId": "img_1", "role": "lead" },
+      { "candidateId": "img_2", "role": "supporting", "subject": "Priya Nakamura" }
+    ],
+    "sections": [
+      { "templateId": "hero",
+        "copy": {
+          "headline": "Harrowgate Summit — 2025 Schedule",
+          "body": "One day, eight talks, in the order they run. Doors at nine, first talk at half past.",
+          "imageAlt": "Harrowgate Summit 2025" },
+        "sourceBlockIndices": [0, 1],
+        "rationale": "The page's own opening — what today is and how many talks." },
+      { "templateId": "feature-list",
+        "copy": {
+          "headline": "Morning",
+          "items": [
+            { "title": "9:30 — Reading a room before you speak", "body": "Priya Nakamura." },
+            { "title": "10:15 — Debugging in front of people", "body": "Femi Osei." },
+            { "title": "11:00 — What a slide is for", "body": "Talia Bergström." },
+            { "title": "11:45 — Naming things badly on purpose", "body": "Rutger Voss." } ] },
+        "sourceBlockIndices": [2, 3],
+        "rationale": "The four morning talks, in the order they run." },
+      { "templateId": "feature-list",
+        "copy": {
+          "headline": "Afternoon",
+          "items": [
+            { "title": "1:00 — The talk you didn't give", "body": "Dov Ashkenazi." },
+            { "title": "1:45 — Q&A is not the enemy", "body": "Priya Nakamura." },
+            { "title": "2:30 — Shipping on a Friday", "body": "Femi Osei." },
+            { "title": "3:15 — Closing remarks", "body": "Talia Bergström." } ] },
+        "sourceBlockIndices": [4, 5],
+        "rationale": "The four afternoon talks — a SECOND feature-list, not folded into the first. One list holds at most five; eight talks needs two lists, not a plan that stops after the first list's worth and calls the rest covered." },
+      { "templateId": "cta",
+        "copy": {
+          "headline": "Doors at nine",
+          "body": "First talk at half past.",
+          "ctaLabel": "See the full schedule",
+          "ctaHref": "https://harrowgate-summit.example/schedule" },
+        "sourceBlockIndices": [0, 1],
+        "rationale": "The page's own timing, closing the email." }
+    ]
+  }
+
+Eight talks, two feature-list sections of four. Not one list truncated to its first five and the other three quietly dropped — a second section of the SAME template for the rest, because the page had eight things to say and the template only says five at a time. Nothing here invents a per-talk hero or a portrait for every speaker; the page presents these as a schedule, so the plan stays in the shape the page itself used and repeats the template that shape needs.
 
 ## The section catalog
 
