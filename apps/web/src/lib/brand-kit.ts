@@ -376,6 +376,53 @@ export interface BrandKit {
 }
 
 /*
+  The `saveBrandKit` mutation's `brandKit` argument: every field a caller may
+  set on a save, server-managed fields (`revision`, `isStarterKit`, the
+  confirmed-asset timestamps, `deletedVariations`) excluded.
+*/
+export type SaveBrandKitPayload = Pick<BrandKit, "name" | "fonts" | "variations"> &
+  Partial<
+    Pick<
+      BrandKit,
+      | "sourceUrl"
+      | "logoUrl"
+      | "socialImageUrl"
+      | "socialLinks"
+      | "colors"
+      | "toneOfVoice"
+      | "emailDesignDoc"
+    >
+  >;
+
+/*
+  Shape a `BrandKit` into `saveBrandKit`'s argument (brand-kit-user-control):
+  every field the mutation accepts, with every OPTIONAL field either present
+  or genuinely absent from the object — never present with value `undefined`.
+
+  WHY THIS MATTERS: Convex's object validator distinguishes a missing key
+  from a key holding `undefined`, so `{ logoUrl: kit.logoUrl }` where
+  `kit.logoUrl` is `undefined` is a validation error the mutation rejects,
+  not a no-op. Three call sites now build this exact payload (the brand kit
+  panel's own save, and the brand-first onboarding gate's URL-scrape save
+  and archetype save) — one shaping function is what keeps them from
+  drifting on which fields that guard covers.
+*/
+export function buildSaveBrandKitPayload(kit: BrandKit): SaveBrandKitPayload {
+  return {
+    name: kit.name,
+    ...(kit.sourceUrl !== undefined ? { sourceUrl: kit.sourceUrl } : {}),
+    fonts: kit.fonts,
+    ...(kit.logoUrl !== undefined ? { logoUrl: kit.logoUrl } : {}),
+    ...(kit.socialImageUrl !== undefined ? { socialImageUrl: kit.socialImageUrl } : {}),
+    ...(kit.socialLinks !== undefined ? { socialLinks: kit.socialLinks } : {}),
+    ...(kit.colors !== undefined ? { colors: kit.colors } : {}),
+    ...(kit.toneOfVoice !== undefined ? { toneOfVoice: kit.toneOfVoice } : {}),
+    ...(kit.emailDesignDoc !== undefined ? { emailDesignDoc: kit.emailDesignDoc } : {}),
+    variations: kit.variations,
+  };
+}
+
+/*
   ---------------------------------------------------------------------------
   Contrast (WCAG 2.x)
   ---------------------------------------------------------------------------

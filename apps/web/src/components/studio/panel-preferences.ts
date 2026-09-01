@@ -20,11 +20,19 @@ const PANEL_PREFERENCES_STORAGE_KEY = "flock:panel-preferences";
 export interface PanelPreferences {
   isChatPanelExpanded: boolean;
   isRightRailExpanded: boolean;
+  /*
+    The in-canvas brand kit bottom sheet's height state (Decision 3):
+    compact (peek) by default, expanded on request — same expand/collapse
+    idiom as the other two panels above, just applied to a sheet's height
+    instead of a rail's width.
+  */
+  isBrandSheetExpanded: boolean;
 }
 
 const DEFAULT_PANEL_PREFERENCES: PanelPreferences = {
   isChatPanelExpanded: false,
   isRightRailExpanded: true,
+  isBrandSheetExpanded: false,
 };
 
 /*
@@ -53,6 +61,9 @@ function readPreferencesFromStorage(): PanelPreferences {
         : {}),
       ...(typeof candidate.isRightRailExpanded === "boolean"
         ? { isRightRailExpanded: candidate.isRightRailExpanded }
+        : {}),
+      ...(typeof candidate.isBrandSheetExpanded === "boolean"
+        ? { isBrandSheetExpanded: candidate.isBrandSheetExpanded }
         : {}),
     };
   } catch {

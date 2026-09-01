@@ -1,10 +1,8 @@
 "use client";
 
-import { Redo2Icon, SquareArrowOutUpRightIcon, Undo2Icon } from "lucide-react";
-import Link from "next/link";
+import { Redo2Icon, Undo2Icon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import { BRAND_PATH } from "@/lib/auth/config";
 import { DashboardLinkFallback } from "@/lib/auth/DashboardLinkFallback";
 import { UserButton } from "@/lib/auth/UserButton";
 import { selectCanRedo, selectCanUndo, useEditorStore } from "@/lib/editor-store";
@@ -73,20 +71,13 @@ export function StudioToolbar({
       <div className="flex min-w-0 shrink items-center gap-2 overflow-hidden">
         {leading}
         <ThemeMenu />
-        <BrandKitPanel />
         {/*
-          The full brand workspace (/brand): the quick modal beside this is for
-          in-flow tweaks; this link opens the immersive page, where the
-          email-design.md guidance and the section sub-nav live.
+          ONE brand entry point (owner: the modal button and the "Open the
+          brand page" link used to sit side by side here). The immersive
+          /brand workspace is still reachable — from a link inside this
+          modal — it just no longer gets its own header icon.
         */}
-        <Button
-          variant="ghost"
-          size="icon"
-          nativeButton={false}
-          render={<Link href={BRAND_PATH} aria-label="Open the brand page" />}
-        >
-          <SquareArrowOutUpRightIcon />
-        </Button>
+        <BrandKitPanel />
         {/*
           The session's asset library — user-level like the brand kit
           beside it (Content Studio Stage S, owner placement decision).

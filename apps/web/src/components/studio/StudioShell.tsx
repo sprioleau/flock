@@ -17,6 +17,7 @@ import {
 } from "@/lib/editor-store";
 import { PresenceProvider } from "@/lib/presence";
 import { getOrCreateSessionId } from "@/lib/session";
+import { BrandOnboardingGate } from "./brand-kit/BrandOnboardingGate";
 import { ChatPanel } from "./chat/ChatPanel";
 import { DemoRunPanel } from "./demo/DemoRunPanel";
 import { CanvasDndContext } from "./dnd/CanvasDndContext";
@@ -286,6 +287,15 @@ export function StudioShell() {
         (progress lives in localStorage, so anonymous visitors keep it).
       */}
       <StudioTour />
+      {/*
+        Brand-first onboarding: a full-screen prompt that sits ABOVE the tour
+        (z-50 vs. the tour's z-45/z-44) and covers the mounted layout rather
+        than replacing it — same rationale as StudioTour, the document below
+        it is already created and connected. Renders null once a saved kit
+        resolves or the user skips/picks a placeholder look for this
+        browser, so it never re-traps a returning visitor.
+      */}
+      <BrandOnboardingGate />
     </CanvasDndContext>
   );
 

@@ -3,7 +3,18 @@
 import { useState } from "react";
 import { useMutation, useQuery } from "convex/react";
 import { ConvexError } from "convex/values";
-import { CheckIcon, Loader2Icon, PaletteIcon, SparklesIcon, ZoomInIcon } from "lucide-react";
+import {
+  CheckIcon,
+  ChevronDownIcon,
+  ChevronUpIcon,
+  Loader2Icon,
+  PaletteIcon,
+  SparklesIcon,
+  SquareArrowOutUpRightIcon,
+  XIcon,
+  ZoomInIcon,
+} from "lucide-react";
+import Link from "next/link";
 import { api } from "@convex/_generated/api";
 import { Button } from "@/components/ui/button";
 import { ImageLightbox } from "@/components/ui/image-lightbox";
@@ -16,21 +27,23 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip";
 import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogHeader,
-  DialogTitle,
-  DialogTrigger,
-} from "@/components/ui/dialog";
+  Sheet,
+  SheetClose,
+  SheetContent,
+  SheetDescription,
+  SheetHeader,
+  SheetTitle,
+  SheetTrigger,
+} from "@/components/ui/sheet";
+import { cn } from "@/lib/utils";
 import {
   BRAND_COLOR_CATEGORY_LABELS,
+  buildSaveBrandKitPayload,
   sortBrandColorsForDisplay,
   type BrandColor,
   type BrandKit,
   type BrandKitAssetKind,
   type BrandKitFonts,
-  type BrandKitGenerateResult,
   type ThemeVariation,
 } from "@/lib/brand-kit";
 import { confirmBrandAsset } from "@/lib/brand-asset-confirm";
@@ -38,8 +51,11 @@ import { getButtonShapeFromRadius } from "@/lib/brand-theme-builder";
 import { describeBrandKitReconciliation } from "@/lib/brand-kit-reconcile";
 import type { SocialLinkDraft } from "@/lib/brand-social-links";
 import { SOCIAL_PLATFORM_LABELS, type SocialPlatform } from "@/lib/social-links";
+import { BRAND_PATH } from "@/lib/auth/config";
 import { useEditorStore } from "@/lib/editor-store";
 import { useUiSurfaceOpenRequest } from "@/lib/ui-surfaces";
+import { updatePanelPreferences, usePanelPreferences } from "../panel-preferences";
+import { generateBrandKitFromUrl } from "./brand-kit-generate-client";
 
 /*
   Chip label for a stored platform key (tolerates unknown/legacy keys).
@@ -138,6 +154,16 @@ export function BrandKitPanel() {
   const isCanvasBoundToMyKit =
     canvasBinding !== null && sessionKitId !== null && canvasBinding.kitId === sessionKitId;
 
+  /*
+    The sheet's height state (Decision 3) — same persisted expand/collapse
+    idiom as the chat panel and the right rail (panel-preferences.ts), just
+    toggling how tall a bottom sheet sits instead of how wide a rail sits.
+  */
+  const isSheetExpanded = usePanelPreferences().isBrandSheetExpanded;
+  const toggleSheetExpanded = (): void => {
+    updatePanelPreferences({ isBrandSheetExpanded: !isSheetExpanded });
+  };
+
   const handleOpenChange = (nextIsOpen: boolean): void => {
     setIsOpen(nextIsOpen);
     if (nextIsOpen) {
@@ -172,32 +198,17 @@ export function BrandKitPanel() {
     setGenerateErrorMessage(null);
     setPreviewKit(null);
     setSaveErrorMessage(null);
-    try {
-      const response = await fetch("/api/brand-kit/generate", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ url }),
-      });
-      /*
-        Contract with the scraper route: ALWAYS a BrandKitGenerateResult JSON
-        body — { isOk: true, brandKit } or { isOk: false, message (friendly) }.
-      */
-      const result = (await response.json()) as BrandKitGenerateResult;
-      if (result.isOk) {
-        setPreviewKit(result.brandKit);
-      } else {
-        setGenerateErrorMessage(result.message);
-      }
-    } catch {
-      /*
-        Route unreachable / non-JSON reply — keep it friendly.
-      */
-      setGenerateErrorMessage(
-        "Couldn't generate a brand kit from that URL right now. Check the address and try again.",
-      );
-    } finally {
-      setIsGenerating(false);
+    /*
+      Shared with the brand-first onboarding gate (brand-kit-generate-client)
+      so the two surfaces never drift on the request shape or fallback copy.
+    */
+    const result = await generateBrandKitFromUrl(url);
+    if (result.isOk) {
+      setPreviewKit(result.brandKit);
+    } else {
+      setGenerateErrorMessage(result.message);
     }
+    setIsGenerating(false);
   };
 
   const savePreviewKit = async (): Promise<void> => {
@@ -210,22 +221,7 @@ export function BrandKitPanel() {
     try {
       const result = await saveBrandKit({
         sessionId,
-        brandKit: {
-          name: previewKit.name,
-          ...(previewKit.sourceUrl !== undefined ? { sourceUrl: previewKit.sourceUrl } : {}),
-          fonts: previewKit.fonts,
-          ...(previewKit.logoUrl !== undefined ? { logoUrl: previewKit.logoUrl } : {}),
-          ...(previewKit.socialImageUrl !== undefined
-            ? { socialImageUrl: previewKit.socialImageUrl }
-            : {}),
-          ...(previewKit.socialLinks !== undefined ? { socialLinks: previewKit.socialLinks } : {}),
-          ...(previewKit.colors !== undefined ? { colors: previewKit.colors } : {}),
-          ...(previewKit.toneOfVoice !== undefined ? { toneOfVoice: previewKit.toneOfVoice } : {}),
-          ...(previewKit.emailDesignDoc !== undefined
-            ? { emailDesignDoc: previewKit.emailDesignDoc }
-            : {}),
-          variations: previewKit.variations,
-        },
+        brandKit: buildSaveBrandKitPayload(previewKit),
       });
       /*
         §8.2: say what survived the re-scrape instead of skipping silently.
@@ -621,16 +617,16 @@ export function BrandKitPanel() {
         first): opened after binding a kit here or saving the bound kit.
       */}
       <BrandApplyDialog isOpen={isApplyPromptOpen} onOpenChange={setIsApplyPromptOpen} />
-      <Dialog open={isOpen} onOpenChange={handleOpenChange}>
+      <Sheet open={isOpen} onOpenChange={handleOpenChange}>
       {/*
-        Tooltip + dialog trigger on ONE element (base-ui render composition)
+        Tooltip + sheet trigger on ONE element (base-ui render composition)
         — below xl the trigger is icon-only, so hover carries the label.
       */}
       <TooltipProvider>
         <Tooltip>
           <TooltipTrigger
             render={
-              <DialogTrigger
+              <SheetTrigger
                 render={
                   <Button variant="outline" size="sm" className="gap-1.5" aria-label="Brand kit" />
                 }
@@ -642,22 +638,100 @@ export function BrandKitPanel() {
                   must never crowd into the property panel).
                 */}
                 <span className="hidden xl:inline">Brand kit</span>
-              </DialogTrigger>
+              </SheetTrigger>
             }
           />
           <TooltipContent side="bottom">Brand kit</TooltipContent>
         </Tooltip>
       </TooltipProvider>
-      <DialogContent className="gap-5 p-6 sm:max-w-xl" data-testid="brand-kit-panel">
-        <DialogHeader>
-          <DialogTitle className="text-lg font-semibold">Brand kit</DialogTitle>
-          <DialogDescription>
-            Your kit is saved per browser. Choose it for a canvas and everyone there shares its
-            themes.
-          </DialogDescription>
-        </DialogHeader>
+      {/*
+        A FLOATING BOTTOM SHEET (owner decision 3), not the old centered
+        modal: it rises from the bottom of the editor so brand and canvas can
+        be seen and edited side by side, inset from the left/right/top edges
+        (a visible gap reveals the dimmed canvas on three sides — the fourth,
+        the bottom, stays flush, which is what makes it read as anchored
+        there rather than floating free) with rounded top corners only.
+        `top-*` is the one thing the expand toggle changes: it swaps between
+        a compact peek and a tall near-full view, both of them still leaving
+        that top gap so the canvas above is never fully hidden.
+      */}
+      <SheetContent
+        side="bottom"
+        showCloseButton={false}
+        className={cn(
+          "inset-x-4 bottom-0 mx-auto max-w-3xl gap-0 rounded-t-2xl rounded-b-none border-t-0 p-0 sm:inset-x-10",
+          isSheetExpanded ? "top-[8vh]" : "top-[52vh]",
+        )}
+        data-testid="brand-kit-panel"
+      >
+        <SheetHeader className="flex-row items-start justify-between gap-3">
+          <div className="flex min-w-0 flex-col gap-1">
+            <SheetTitle>Brand kit</SheetTitle>
+            <SheetDescription>
+              Your kit is saved per browser. Choose it for a canvas and everyone there shares its
+              themes.
+            </SheetDescription>
+          </div>
+          <div className="flex shrink-0 items-center gap-1">
+            {/*
+              Expand/collapse (owner decision 3, "follow the existing
+              editor-canvas panel pattern" — same idiom PropertyPanelSlot
+              uses for the right rail, applied to the sheet's height).
+            */}
+            <TooltipProvider>
+              <Tooltip>
+                <TooltipTrigger
+                  render={
+                    <Button
+                      variant="ghost"
+                      size="icon-sm"
+                      aria-label={isSheetExpanded ? "Collapse brand kit" : "Expand brand kit"}
+                      onClick={toggleSheetExpanded}
+                      data-testid="brand-kit-sheet-toggle"
+                    />
+                  }
+                >
+                  {isSheetExpanded ? <ChevronDownIcon /> : <ChevronUpIcon />}
+                </TooltipTrigger>
+                <TooltipContent side="bottom">
+                  {isSheetExpanded ? "Collapse" : "Expand"}
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+            {/*
+              The ONE remaining path to the immersive /brand workspace from
+              inside the editor (owner: the header used to carry a second,
+              separate icon for this — consolidated down to this one entry
+              point). This sheet stays for in-flow tweaks; the full page is
+              where the email-design.md guidance and section sub-nav live.
+            */}
+            <Button
+              variant="ghost"
+              size="sm"
+              className="gap-1.5 text-xs text-muted-foreground"
+              nativeButton={false}
+              render={<Link href={BRAND_PATH} />}
+              data-testid="brand-kit-open-full-page"
+            >
+              <span className="hidden sm:inline">Full brand page</span>
+              <SquareArrowOutUpRightIcon className="size-3.5" />
+            </Button>
+            {/*
+              Close affordance (owner decision 3, explicit alongside
+              expand/collapse). Placed in-flow next to the other header
+              controls rather than the sheet's own absolutely-positioned
+              default, which would collide with them in this corner.
+            */}
+            <SheetClose
+              render={<Button variant="ghost" size="icon-sm" aria-label="Close brand kit" />}
+              data-testid="brand-kit-sheet-close"
+            >
+              <XIcon />
+            </SheetClose>
+          </div>
+        </SheetHeader>
 
-        <div className="-mr-2 flex max-h-[70vh] min-h-0 flex-col gap-6 overflow-y-auto pr-2">
+        <div className="-mr-2 flex min-h-0 flex-1 flex-col gap-6 overflow-y-auto p-6 pr-4">
           {/*
             The generate flow LEADS the modal (owner call): the URL scrape is
             what creates the kit, so it reads as the primary entry point,
@@ -1094,8 +1168,8 @@ export function BrandKitPanel() {
             )}
           </section>
         </div>
-      </DialogContent>
-      </Dialog>
+      </SheetContent>
+      </Sheet>
     </>
   );
 }

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { getRelativeLuminance } from "./brand-kit-extraction/color-utils";
-import { getContrastRatio } from "./brand-kit";
+import { buildSaveBrandKitPayload, getContrastRatio, MOCK_BRAND_KIT, type BrandKit } from "./brand-kit";
 
 /**
  * CHARACTERIZATION of the WCAG contrast primitive.
@@ -134,5 +134,67 @@ describe("getRelativeLuminance (the shared primitive)", () => {
     expect(getRelativeLuminance("rebeccapurple")).toBeNull();
     expect(getRelativeLuminance("rgb(0,0,0)")).toBeNull();
     expect(getRelativeLuminance("#12345")).toBeNull();
+  });
+});
+
+/*
+  `buildSaveBrandKitPayload` is the one place three call sites (the brand kit
+  panel's save, and the onboarding gate's URL-scrape save and archetype save)
+  shape a `BrandKit` into `saveBrandKit`'s argument. The load-bearing rule is
+  Convex-specific and easy to get wrong by hand: an optional field holding
+  `undefined` must be an ABSENT KEY, not a present key valued `undefined` —
+  Convex's object validator rejects the latter as a type mismatch rather than
+  treating it as "no value".
+*/
+describe("buildSaveBrandKitPayload", () => {
+  it("omits an unset optional field as a key entirely, rather than sending it as undefined", () => {
+    const kit: BrandKit = {
+      name: "Acme",
+      fonts: MOCK_BRAND_KIT.fonts,
+      variations: MOCK_BRAND_KIT.variations,
+    };
+    const payload = buildSaveBrandKitPayload(kit);
+    expect("logoUrl" in payload).toBe(false);
+    expect("sourceUrl" in payload).toBe(false);
+    expect("colors" in payload).toBe(false);
+    expect("toneOfVoice" in payload).toBe(false);
+    expect("socialImageUrl" in payload).toBe(false);
+    expect("socialLinks" in payload).toBe(false);
+    expect("emailDesignDoc" in payload).toBe(false);
+  });
+
+  it("carries every set optional field through, plus the always-required fields", () => {
+    const kit: BrandKit = {
+      name: "Acme",
+      sourceUrl: "https://acme.example",
+      fonts: MOCK_BRAND_KIT.fonts,
+      logoUrl: "https://acme.example/logo.png",
+      colors: [
+        { id: "color-111111", hex: "#111111", name: "Ink", category: "primary", orderIndex: 0, origin: "agent" },
+      ],
+      variations: MOCK_BRAND_KIT.variations,
+    };
+    const payload = buildSaveBrandKitPayload(kit);
+    expect(payload.name).toBe("Acme");
+    expect(payload.sourceUrl).toBe("https://acme.example");
+    expect(payload.logoUrl).toBe("https://acme.example/logo.png");
+    expect(payload.colors).toEqual(kit.colors);
+    expect(payload.fonts).toBe(kit.fonts);
+    expect(payload.variations).toBe(kit.variations);
+  });
+
+  it("never carries a server-managed field the mutation doesn't accept", () => {
+    const kit: BrandKit = {
+      name: "Acme",
+      fonts: MOCK_BRAND_KIT.fonts,
+      variations: MOCK_BRAND_KIT.variations,
+      revision: 7,
+      isStarterKit: true,
+      logoConfirmedAtMs: Date.now(),
+    };
+    const payload: Record<string, unknown> = buildSaveBrandKitPayload(kit);
+    expect("revision" in payload).toBe(false);
+    expect("isStarterKit" in payload).toBe(false);
+    expect("logoConfirmedAtMs" in payload).toBe(false);
   });
 });
