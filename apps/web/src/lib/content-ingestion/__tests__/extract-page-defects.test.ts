@@ -1,8 +1,17 @@
+import { readFileSync } from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import { collectProseBlocks, extractPage } from "../extract-page";
 
+const fixturesDir = path.join(path.dirname(fileURLToPath(import.meta.url)), "fixtures");
+
+function loadFixture(name: string): string {
+  return readFileSync(path.join(fixturesDir, name), "utf-8");
+}
+
 /*
-  Regressions for five defects that only a corpus of REAL pages exposed.
+  Regressions for defects that only a corpus of REAL pages exposed.
 
   Every one of these passed against hand-written fixtures and failed against
   live markup, which is the argument for the corpus: a fixture written by the
@@ -23,6 +32,34 @@ function padding(sentences: number): string {
       `<p>Sentence number ${index} exists so this fixture clears the readable-content floor without inventing a long page.</p>`,
   ).join("");
 }
+
+describe("extractPage — nested and competing article scopes", () => {
+  it("selects the substantive article instead of a larger card or account shell", () => {
+    const result = extractPage({
+      html: loadFixture("nested-article-page.html"),
+      finalUrl: "https://news.yale.example/campus-collection",
+    });
+
+    expect(result.isOk).toBe(true);
+    if (!result.isOk) return;
+    const text = result.scrape.blocks.map((block) => block.text).join(" ");
+    expect(text).toContain("Archivists began the survey");
+    expect(text).toContain("Students are now using the archive");
+    expect(text).not.toContain("Undergraduate admissions");
+    expect(text).not.toContain("Sign in to continue reading");
+  });
+
+  it("still refuses a paywall when no substantive public article exists", () => {
+    const html = `<html><head><title>Subscriber report</title></head><body><main>
+      <article><h1>Subscriber report</h1>
+        <p>Sign in to continue reading the full article and unlock the complete archive, saved reading lists, subscriber discussions, newsletters, podcasts, event recordings, and every issue of the digital edition.</p>
+        <p><a href="/subscribe">Subscribe for full access</a> <a href="/login">Log in</a></p>
+      </article>
+    </main></body></html>`;
+    const result = extractPage({ html, finalUrl: "https://news.yale.example/report" });
+    expect(result).toMatchObject({ isOk: false, reason: "paywalled" });
+  });
+});
 
 describe("extractPage — a <header> holding the page's own <h1>", () => {
   /*

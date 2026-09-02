@@ -212,28 +212,37 @@ export function removeTagBlocks({ html, tagName }: { html: string; tagName: stri
   return result;
 }
 
+interface TagBlock {
+  innerHtml: string;
+  startIndex: number;
+}
+
 /*
-  Inner HTML of every top-level `<tagName>` block.
+  Inner HTML and document position of every `<tagName>` block, including
+  same-name blocks nested inside another one.
+
+  Keeping the nested blocks is load-bearing for component-built publishing
+  pages. They commonly use `<article>` both for a page region and for cards
+  inside that region; the page's actual story may be another nested article.
+  Returning only the outer block makes the focused story impossible to choose.
 */
-function extractTagBlocks({ html, tagName }: { html: string; tagName: string }): string[] {
+function extractTagBlocks({ html, tagName }: { html: string; tagName: string }): TagBlock[] {
   const tokens = tokenizeTag(tagName, html);
-  const blocks: string[] = [];
-  let depth = 0;
-  let openEndsAt = -1;
+  const blocks: TagBlock[] = [];
+  const openings: TagToken[] = [];
   for (const token of tokens) {
     if (!token.isClosing && !token.isSelfClosing) {
-      if (depth === 0) {
-        openEndsAt = token.index + token.length;
-      }
-      depth += 1;
-    } else if (token.isClosing && depth > 0) {
-      depth -= 1;
-      if (depth === 0 && openEndsAt >= 0) {
-        blocks.push(html.slice(openEndsAt, token.index));
-      }
+      openings.push(token);
+    } else if (token.isClosing) {
+      const opening = openings.pop();
+      if (opening === undefined) continue;
+      blocks.push({
+        innerHtml: html.slice(opening.index + opening.length, token.index),
+        startIndex: opening.index,
+      });
     }
   }
-  return blocks;
+  return blocks.sort((left, right) => left.startIndex - right.startIndex);
 }
 
 /*
@@ -502,17 +511,73 @@ export function toAbsoluteHttpUrl({
 
 type ScopeKind = "article" | "main" | "body";
 
+interface ContentScopeCandidate {
+  scopeHtml: string;
+  scopeKind: Exclude<ScopeKind, "body">;
+  startIndex: number;
+  plainTextLength: number;
+  substantiveTextLength: number;
+}
+
+const MIN_CONTENT_SCOPE_CHARS = 250;
+
+function cleanContentScope(scopeHtml: string): string {
+  let cleanedScope = removeJunkBlocks(scopeHtml);
+  for (const tagName of NON_CONTENT_TAGS) {
+    cleanedScope = removeNonContentTag({ html: cleanedScope, tagName });
+  }
+  return cleanedScope;
+}
+
+/*
+  Measure only content that the extractor would actually retain. Raw text
+  length rewards link directories, account gates, and card grids precisely
+  because they repeat a lot of words; prose/list admission is the existing
+  deterministic firewall that distinguishes those words from page content.
+*/
+function measureSubstantiveText(scopeHtml: string): number {
+  const cleanedScope = cleanContentScope(scopeHtml);
+  if (PAYWALL_TEXT_PATTERN.test(toPlainText(cleanedScope))) {
+    return 0;
+  }
+  const admittedLists = collectLists(cleanedScope);
+  const blocks = collectProseBlocks(
+    removeSpans({ html: cleanedScope, spans: admittedLists.map((admitted) => admitted.span) }),
+  );
+  return [
+    ...blocks.map((block) => block.text),
+    ...admittedLists.flatMap((admitted) => admitted.list.items),
+  ].join("\n\n").length;
+}
+
 export function selectContentScope(html: string): { scopeHtml: string; scopeKind: ScopeKind } {
-  for (const tagName of ["article", "main"] as const) {
-    const blocks = extractTagBlocks({ html, tagName });
-    if (blocks.length === 0) continue;
-    const largest = blocks.reduce((best, block) =>
-      toPlainText(block).length > toPlainText(best).length ? block : best,
-    );
-    if (toPlainText(largest).length >= 250) {
-      return { scopeHtml: largest, scopeKind: tagName };
+  const candidates: ContentScopeCandidate[] = [];
+  for (const scopeKind of ["article", "main"] as const) {
+    for (const block of extractTagBlocks({ html, tagName: scopeKind })) {
+      candidates.push({
+        scopeHtml: block.innerHtml,
+        scopeKind,
+        startIndex: block.startIndex,
+        plainTextLength: toPlainText(block.innerHtml).length,
+        substantiveTextLength: measureSubstantiveText(block.innerHtml),
+      });
     }
   }
+
+  const selected = candidates
+    .filter((candidate) => candidate.substantiveTextLength >= MIN_CONTENT_SCOPE_CHARS)
+    .sort((left, right) => {
+      const substantiveDifference = right.substantiveTextLength - left.substantiveTextLength;
+      if (substantiveDifference !== 0) return substantiveDifference;
+      const sizeDifference = left.plainTextLength - right.plainTextLength;
+      if (sizeDifference !== 0) return sizeDifference;
+      if (left.scopeKind !== right.scopeKind) return left.scopeKind === "article" ? -1 : 1;
+      return left.startIndex - right.startIndex;
+    })[0];
+  if (selected !== undefined) {
+    return { scopeHtml: selected.scopeHtml, scopeKind: selected.scopeKind };
+  }
+
   const bodyMatch = html.match(/<body\b[^>]*>([\s\S]*)<\/body>/i);
   return { scopeHtml: bodyMatch === null ? html : bodyMatch[1], scopeKind: "body" };
 }
@@ -1683,10 +1748,7 @@ export function extractPage({
     non-content tags.
   */
   const { scopeHtml } = selectContentScope(html);
-  let cleanedScope = removeJunkBlocks(scopeHtml);
-  for (const tagName of NON_CONTENT_TAGS) {
-    cleanedScope = removeNonContentTag({ html: cleanedScope, tagName });
-  }
+  const cleanedScope = cleanContentScope(scopeHtml);
 
   /*
     The PAYWALL gate is measured exactly as the article extractor measured it —
