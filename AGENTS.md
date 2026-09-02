@@ -4,7 +4,7 @@ Before starting continuation work, look in `/Users/temiloluwaprioleau/Desktop/ðŸ
 
 # Verification and delivery
 
-Always run the relevant test suites and confirm the linter passes. For substantial features, open the app in a browser, exercise the complete user-facing flow, and verify it behaves according to the owner's requirements. As soon as a feature set passes its automated and browser verification, commit and push it so continuous deployment can begin before starting the next feature set.
+Always run the relevant test suites and confirm the linter passes. For substantial features, open the app in a browser, exercise the complete user-facing flow, and verify it behaves according to the owner's requirements. For any Convex schema change, run `convex deploy` successfully before committing and pushing; that deploy triggers the Vercel deployment. As soon as a feature set passes its automated and browser verification, commit and push it so continuous deployment can begin before starting the next feature set.
 
 # Project memory
 
