@@ -260,7 +260,10 @@ export async function sendTestEmailWithResend({
     The caller's subject wins; an omitted one falls back to the first-heading
     derivation the agent path has always relied on.
   */
-  const resolvedSubject = subject ?? deriveTestSendSubject(doc);
+  const resolvedSubject = subject?.trim() || deriveTestSendSubject(doc);
+  const testSubject = resolvedSubject.startsWith("[Test] ")
+    ? resolvedSubject
+    : `[Test] ${resolvedSubject}`;
   let html: string;
   let text: string;
   try {
@@ -268,7 +271,7 @@ export async function sendTestEmailWithResend({
       Thread subject + preview text into the render so the email carries them
       (`<title>` and `<Preview>`); the renderer omits an absent/blank preview.
     */
-    const email = renderToReactEmail(doc, { subject: resolvedSubject, previewText });
+    const email = renderToReactEmail(doc, { subject: testSubject, previewText });
     html = await render(email);
     text = await render(email, { plainText: true });
   } catch (error) {
@@ -294,7 +297,7 @@ export async function sendTestEmailWithResend({
   */
   const sortedRecipients = [...recipients].sort();
   const payloadFingerprint = createHash("sha256")
-    .update(JSON.stringify({ from: config.fromEmail, to: sortedRecipients, subject: resolvedSubject, html }))
+    .update(JSON.stringify({ from: config.fromEmail, to: sortedRecipients, subject: testSubject, html }))
     .digest("hex")
     .slice(0, 40);
   const idempotencyKey = `test-send/${payloadFingerprint}`;
@@ -305,7 +308,7 @@ export async function sendTestEmailWithResend({
       {
         from: config.fromEmail,
         to: recipients,
-        subject: resolvedSubject,
+        subject: testSubject,
         html,
         text,
         ...(config.replyToEmail === undefined ? {} : { replyTo: config.replyToEmail }),

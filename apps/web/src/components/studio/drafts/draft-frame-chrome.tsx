@@ -6,6 +6,7 @@ import { Loader2Icon } from "lucide-react";
 import { ROOT_BLOCK_ID, type EmailDocument } from "@flock/email-sdk";
 import { api } from "@convex/_generated/api";
 import { cn } from "@/lib/utils";
+import { getOrCreateSessionId } from "@/lib/session";
 import { DraftBrandPill } from "../brand-kit/DraftBrandPill";
 import type { DraftListEntry } from "./use-canvas-drafts";
 
@@ -170,30 +171,121 @@ export function DraftFrameLabel({
   }
 
   return (
-    <div className="flex h-6 shrink-0 items-center pb-1">
-      <button
-        type="button"
-        onClick={onActivate}
-        onDoubleClick={
-          isActive
-            ? () => {
-                setNameInput(draft.name);
-                setIsRenaming(true);
-              }
-            : undefined
-        }
+    <div className="shrink-0 pb-2">
+      <div className="flex h-6 items-center">
+        <button
+          type="button"
+          onClick={onActivate}
+          onDoubleClick={
+            isActive
+              ? () => {
+                  setNameInput(draft.name);
+                  setIsRenaming(true);
+                }
+              : undefined
+          }
+          className={cn(
+            "max-w-full truncate text-xs",
+            isActive
+              ? "cursor-text font-semibold text-foreground"
+              : "cursor-pointer font-medium text-muted-foreground hover:text-foreground",
+          )}
+          title={draft.agentName !== undefined ? draft.agentName : undefined}
+          data-testid="draft-frame-label"
+        >
+          {draft.name}
+        </button>
+        <DraftBrandPill documentId={draft._id} />
+      </div>
+      <DraftFrameEmailMeta draft={draft} onActivate={onActivate} />
+    </div>
+  );
+}
+
+function parseAudience(value: string): string[] {
+  return value
+    .split(",")
+    .map((address) => address.trim())
+    .filter((address) => address.length > 0);
+}
+
+function isValidAudience(audience: string[]): boolean {
+  return audience.every((address) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(address));
+}
+
+/*
+  Compact per-draft send metadata. Values save independently on blur so a
+  subject edit never overwrites preview text or the audience list.
+*/
+function DraftFrameEmailMeta({
+  draft,
+  onActivate,
+}: {
+  draft: DraftListEntry;
+  onActivate?: () => void;
+}) {
+  const convexClient = useConvex();
+  const [audienceError, setAudienceError] = useState<string | null>(null);
+
+  function saveField(field: "subject" | "previewText" | "audience", value: string): void {
+    if (field === "audience") {
+      const parsedAudience = parseAudience(value);
+      if (!isValidAudience(parsedAudience)) {
+        setAudienceError("Use comma-separated email addresses.");
+        return;
+      }
+      setAudienceError(null);
+      void convexClient
+        .mutation(api.documents.setDraftEmailMeta, {
+          documentId: draft._id,
+          audience: parsedAudience,
+          sessionId: getOrCreateSessionId(),
+        })
+        .catch((error: unknown) => console.error("setDraftEmailMeta failed", error));
+      return;
+    }
+    void convexClient
+      .mutation(api.documents.setDraftEmailMeta, {
+        documentId: draft._id,
+        [field]: value,
+        sessionId: getOrCreateSessionId(),
+      })
+      .catch((error: unknown) => console.error("setDraftEmailMeta failed", error));
+  }
+
+  return (
+    <div
+      className="grid gap-1.5 text-[11px] text-muted-foreground"
+      onPointerDown={onActivate}
+      data-testid="draft-frame-email-meta"
+    >
+      <input
+        defaultValue={draft.subject ?? ""}
+        onBlur={(event) => saveField("subject", event.currentTarget.value)}
+        placeholder="Subject line"
+        aria-label={`Subject for ${draft.name}`}
+        maxLength={200}
+        className="h-6 rounded border border-border/70 bg-background/80 px-2 outline-none focus-visible:ring-1 focus-visible:ring-ring"
+      />
+      <input
+        defaultValue={draft.previewText ?? ""}
+        onBlur={(event) => saveField("previewText", event.currentTarget.value)}
+        placeholder="Preview text"
+        aria-label={`Preview text for ${draft.name}`}
+        maxLength={200}
+        className="h-6 rounded border border-border/70 bg-background/80 px-2 outline-none focus-visible:ring-1 focus-visible:ring-ring"
+      />
+      <input
+        defaultValue={(draft.audience ?? []).join(", ")}
+        onBlur={(event) => saveField("audience", event.currentTarget.value)}
+        placeholder="Audience emails, comma-separated"
+        aria-label={`Audience for ${draft.name}`}
         className={cn(
-          "max-w-full truncate text-xs",
-          isActive
-            ? "cursor-text font-semibold text-foreground"
-            : "cursor-pointer font-medium text-muted-foreground hover:text-foreground",
+          "h-6 rounded border border-border/70 bg-background/80 px-2 outline-none focus-visible:ring-1 focus-visible:ring-ring",
+          audienceError !== null && "border-destructive",
         )}
-        title={draft.agentName !== undefined ? draft.agentName : undefined}
-        data-testid="draft-frame-label"
-      >
-        {draft.name}
-      </button>
-      <DraftBrandPill documentId={draft._id} />
+      />
+      {audienceError !== null && <span className="text-destructive">{audienceError}</span>}
     </div>
   );
 }

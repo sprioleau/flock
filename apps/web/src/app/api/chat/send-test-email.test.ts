@@ -163,7 +163,7 @@ describe("the subject the recipient sees", () => {
     /*
       The starter document's first heading.
     */
-    expect(lastSendCall().payload.subject).toBe("Welcome to Flock.");
+    expect(lastSendCall().payload.subject).toBe("[Test] Welcome to Flock.");
   });
 
   it("uses the caller's subject verbatim when one is given, overriding the heading", async () => {
@@ -177,7 +177,21 @@ describe("the subject the recipient sees", () => {
     logSpy.mockRestore();
 
     expect(outcome).toMatchObject({ isSent: true });
-    expect(lastSendCall().payload.subject).toBe("A subject the sender chose");
+    expect(lastSendCall().payload.subject).toBe("[Test] A subject the sender chose");
+  });
+
+  it("adds the test marker exactly once when the caller already includes it", async () => {
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+    const outcome = await sendTestEmailWithResend({
+      doc: createEmptyDocument(),
+      to: ["owner@example.com"],
+      subject: "[Test] Already marked",
+      env: CONFIGURED_ENV,
+    });
+    logSpy.mockRestore();
+
+    expect(outcome).toMatchObject({ isSent: true });
+    expect(lastSendCall().payload.subject).toBe("[Test] Already marked");
   });
 });
 
@@ -199,7 +213,7 @@ describe("subject and preview text reach the rendered html", () => {
 
     expect(outcome).toMatchObject({ isSent: true });
     const { html } = lastSendCall().payload;
-    expect(html).toContain("<title>Quarterly update</title>");
+    expect(html).toContain("<title>[Test] Quarterly update</title>");
     /*
       React Email's <Preview> emits the preheader text into a hidden div.
     */

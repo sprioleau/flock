@@ -7,11 +7,12 @@ import {
   withRemoveBlockCascadeDefault,
   type Operation,
 } from "@flock/email-sdk";
-import { v } from "convex/values";
+import { ConvexError, v } from "convex/values";
 import { internal } from "./_generated/api";
-import type { Id } from "./_generated/dataModel";
+import type { Doc, Id } from "./_generated/dataModel";
 import { mutation, query, type MutationCtx, type QueryCtx } from "./_generated/server";
 import { inheritCanvasOwners, recordCanvasOwnerFromCaller } from "./canvases";
+import { resolveOwnerIdOrNull } from "./authIdentity";
 import {
   createEmptyCleanupStats,
   deleteDocumentCascade,
@@ -48,6 +49,113 @@ import {
   ---------------------------------------------------------------------------
 */
 
+export const MAX_DRAFT_SUBJECT_LENGTH = 200;
+export const MAX_DRAFT_PREVIEW_TEXT_LENGTH = 200;
+export const MAX_DRAFT_AUDIENCE_COUNT = 100;
+export const MAX_DRAFT_AUDIENCE_ADDRESS_LENGTH = 254;
+
+const EMAIL_ADDRESS_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+function normalizeOptionalDraftText({
+  value,
+  fieldName,
+  maxLength,
+}: {
+  value: string | undefined;
+  fieldName: string;
+  maxLength: number;
+}): string | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+  const normalized = value.trim();
+  if (normalized.length > maxLength) {
+    throw new ConvexError(`${fieldName} cannot exceed ${maxLength} characters.`);
+  }
+  return normalized.length === 0 ? undefined : normalized;
+}
+
+function normalizeDraftAudience(audience: string[] | undefined): string[] | undefined {
+  if (audience === undefined) {
+    return undefined;
+  }
+  if (audience.length > MAX_DRAFT_AUDIENCE_COUNT) {
+    throw new ConvexError(
+      `Audience cannot contain more than ${MAX_DRAFT_AUDIENCE_COUNT} email addresses.`,
+    );
+  }
+  const normalized: string[] = [];
+  const seen = new Set<string>();
+  for (const rawAddress of audience) {
+    const address = rawAddress.trim().toLowerCase();
+    const [localPart, domain] = address.split("@");
+    const isValid =
+      address.length > 0 &&
+      address.length <= MAX_DRAFT_AUDIENCE_ADDRESS_LENGTH &&
+      localPart !== undefined &&
+      localPart.length <= 64 &&
+      domain !== undefined &&
+      domain.length <= 253 &&
+      EMAIL_ADDRESS_PATTERN.test(address);
+    if (!isValid) {
+      throw new ConvexError(`Audience contains an invalid email address: ${rawAddress}`);
+    }
+    if (!seen.has(address)) {
+      seen.add(address);
+      normalized.push(address);
+    }
+  }
+  return normalized.length === 0 ? undefined : normalized;
+}
+
+function normalizeDraftEmailMeta(args: {
+  subject?: string;
+  previewText?: string;
+  audience?: string[];
+}) {
+  return {
+    subject: normalizeOptionalDraftText({
+      value: args.subject,
+      fieldName: "Subject",
+      maxLength: MAX_DRAFT_SUBJECT_LENGTH,
+    }),
+    previewText: normalizeOptionalDraftText({
+      value: args.previewText,
+      fieldName: "Preview text",
+      maxLength: MAX_DRAFT_PREVIEW_TEXT_LENGTH,
+    }),
+    audience: normalizeDraftAudience(args.audience),
+  };
+}
+
+async function assertDocumentOwner(
+  ctx: QueryCtx | MutationCtx,
+  args: { documentId: Id<"documents">; claimedSessionId: string },
+): Promise<Doc<"documents">> {
+  const ownerId = await resolveOwnerIdOrNull(ctx, {
+    claimedSessionId: args.claimedSessionId,
+  });
+  const document = await ctx.db.get(args.documentId);
+  if (ownerId === null || ownerId.length === 0 || document === null) {
+    throw new ConvexError("That draft isn't in your list, so its email settings can't be changed.");
+  }
+  const ownership = await ctx.db
+    .query("canvasOwners")
+    .withIndex("by_ownerId_and_canvasId", (q) =>
+      q.eq("ownerId", ownerId).eq("canvasId", document.canvasId),
+    )
+    .first();
+  /*
+    Capability links created before ownership indexing (including anonymous
+    drafts) still need to edit their own draft. The document session is the
+    existing capability key; a different session remains blocked.
+  */
+  if (ownership === null && document.sessionId !== args.claimedSessionId) {
+    throw new ConvexError("That draft isn't in your list, so its email settings can't be changed.");
+  }
+  return document;
+}
+
 /*
   Next orderIndex after the last draft on a canvas (drafts per canvas stay small; collect is bounded).
 */
@@ -73,6 +181,9 @@ export const createDocument = mutation({
       Draft display name (unique per canvas by convention).
     */
     name: v.optional(v.string()),
+    subject: v.optional(v.string()),
+    previewText: v.optional(v.string()),
+    audience: v.optional(v.array(v.string())),
     /*
       Title for the canvas, used only when `canvasId` is omitted.
     */
@@ -104,6 +215,7 @@ export const createDocument = mutation({
   },
   returns: v.object({ documentId: v.id("documents"), canvasId: v.id("canvases") }),
   handler: async (ctx, args) => {
+    const metadata = normalizeDraftEmailMeta(args);
     const now = Date.now();
     let canvasId = args.canvasId;
     if (canvasId === undefined) {
@@ -148,6 +260,9 @@ export const createDocument = mutation({
       canvasId,
       sessionId: args.sessionId,
       name: args.name ?? "Draft 1",
+      ...(metadata.subject !== undefined ? { subject: metadata.subject } : {}),
+      ...(metadata.previewText !== undefined ? { previewText: metadata.previewText } : {}),
+      ...(metadata.audience !== undefined ? { audience: metadata.audience } : {}),
       orderIndex: await computeAppendOrderIndex(ctx, canvasId),
       headVersion: 0,
       /*
@@ -221,6 +336,9 @@ export const duplicateDocument = mutation({
       canvasId: source.canvasId,
       sessionId: source.sessionId,
       name: args.name ?? `${source.name} (copy)`,
+      ...(source.subject !== undefined ? { subject: source.subject } : {}),
+      ...(source.previewText !== undefined ? { previewText: source.previewText } : {}),
+      ...(source.audience !== undefined ? { audience: source.audience } : {}),
       orderIndex,
       headVersion: 0,
       forkedFromDocumentId: source._id,
@@ -278,6 +396,74 @@ export const renameDocument = mutation({
     await ctx.db.patch(args.documentId, { name, updatedAtMs: now });
     await ctx.db.patch(document.canvasId, { updatedAtMs: now });
     return true;
+  },
+});
+
+const draftEmailMetaValidator = v.object({
+  subject: v.optional(v.string()),
+  previewText: v.optional(v.string()),
+  audience: v.optional(v.array(v.string())),
+});
+
+/*
+  Owner-managed send settings for one draft. Each field is a partial patch:
+  omitted means untouched, while a blank string or empty audience clears the
+  optional field. Audience values are normalized and validated before any row
+  is changed, so a rejected address cannot leave a partial update behind.
+*/
+export const setDraftEmailMeta = mutation({
+  args: {
+    documentId: v.id("documents"),
+    subject: v.optional(v.string()),
+    previewText: v.optional(v.string()),
+    audience: v.optional(v.array(v.string())),
+    /*
+      Pre-auth fallback key only; verified identity always wins.
+    */
+    sessionId: v.optional(v.string()),
+  },
+  returns: v.boolean(),
+  handler: async (ctx, args) => {
+    const document = await assertDocumentOwner(ctx, {
+      documentId: args.documentId,
+      claimedSessionId: args.sessionId ?? "",
+    });
+    const metadata = normalizeDraftEmailMeta(args);
+    const patch: {
+      subject?: string | undefined;
+      previewText?: string | undefined;
+      audience?: string[] | undefined;
+      updatedAtMs: number;
+    } = { updatedAtMs: Date.now() };
+    if (args.subject !== undefined) patch.subject = metadata.subject;
+    if (args.previewText !== undefined) patch.previewText = metadata.previewText;
+    if (args.audience !== undefined) patch.audience = metadata.audience;
+    await ctx.db.patch(document._id, patch);
+    await ctx.db.patch(document.canvasId, { updatedAtMs: patch.updatedAtMs });
+    return true;
+  },
+});
+
+/*
+  Audience addresses are owner data rather than share-link content, so this
+  focused metadata read uses the same ownership assertion as its write.
+*/
+export const getDraftEmailMeta = query({
+  args: {
+    documentId: v.id("documents"),
+    sessionId: v.optional(v.string()),
+  },
+  returns: draftEmailMetaValidator,
+  handler: async (ctx, args) => {
+    const document = await assertDocumentOwner(ctx, {
+      documentId: args.documentId,
+      claimedSessionId: args.sessionId ?? "",
+    });
+    return {
+      ...(document.subject !== undefined ? { subject: document.subject } : {}),
+      ...(document.previewText !== undefined ? { previewText: document.previewText } : {}),
+      ...(document.audience !== undefined ? { audience: document.audience } : {}),
+    };
   },
 });
 
@@ -548,6 +734,9 @@ const documentPayloadValidator = v.object({
   headVersion: v.number(),
   canvasId: v.id("canvases"),
   name: v.string(),
+  subject: v.optional(v.string()),
+  previewText: v.optional(v.string()),
+  audience: v.optional(v.array(v.string())),
   orderIndex: v.number(),
   forkedFromDocumentId: v.optional(v.id("documents")),
   forkedFromVersion: v.optional(v.number()),
@@ -575,6 +764,9 @@ async function readDocumentPayload(ctx: QueryCtx, documentId: Id<"documents">) {
     headVersion: document.headVersion,
     canvasId: document.canvasId,
     name: document.name,
+    ...(document.subject !== undefined ? { subject: document.subject } : {}),
+    ...(document.previewText !== undefined ? { previewText: document.previewText } : {}),
+    ...(document.audience !== undefined ? { audience: document.audience } : {}),
     orderIndex: document.orderIndex,
     ...(document.forkedFromDocumentId !== undefined
       ? { forkedFromDocumentId: document.forkedFromDocumentId }
@@ -838,6 +1030,9 @@ const documentListEntryValidator = v.object({
   _id: v.id("documents"),
   canvasId: v.id("canvases"),
   name: v.string(),
+  subject: v.optional(v.string()),
+  previewText: v.optional(v.string()),
+  audience: v.optional(v.array(v.string())),
   /*
     Agent-authored semantic summary (§10.2 dual naming) — displayed, never user-edited.
   */
@@ -854,6 +1049,9 @@ interface DocumentListEntrySource {
   _id: Id<"documents">;
   canvasId: Id<"canvases">;
   name: string;
+  subject?: string;
+  previewText?: string;
+  audience?: string[];
   agentName?: string;
   orderIndex: number;
   headVersion: number;
@@ -868,6 +1066,9 @@ function toDocumentListEntry(row: DocumentListEntrySource) {
     _id: row._id,
     canvasId: row.canvasId,
     name: row.name,
+    ...(row.subject !== undefined ? { subject: row.subject } : {}),
+    ...(row.previewText !== undefined ? { previewText: row.previewText } : {}),
+    ...(row.audience !== undefined ? { audience: row.audience } : {}),
     ...(row.agentName !== undefined ? { agentName: row.agentName } : {}),
     orderIndex: row.orderIndex,
     headVersion: row.headVersion,

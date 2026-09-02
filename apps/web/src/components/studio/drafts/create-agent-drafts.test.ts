@@ -535,3 +535,40 @@ describe("what createDraft reports back", () => {
     expect(output.note).toContain("EMPTY starter draft");
   });
 });
+
+describe("a composed draft's inbox metadata", () => {
+  it("persists subject and preview text on the created draft without inventing an audience", async () => {
+    const t = createBackend();
+    const outcome = await runCreateDraft({
+      t,
+      hasIngestedSource: true,
+      input: {
+        drafts: [
+          {
+            name: "Managed agents",
+            subject: "A practical guide to managed agents",
+            previewText: "How to preserve the brain while replacing the hands.",
+            sections: [
+              {
+                templateId: "article",
+                params: {
+                  headline: "A practical guide to managed agents",
+                  body: "How to preserve the brain while replacing the hands.",
+                },
+              },
+            ],
+          },
+        ],
+      },
+    });
+
+    const metadata = await t.query(api.documents.getDraftEmailMeta, {
+      documentId: outcome.createdDocumentIds[0]!,
+      sessionId: BROWSER_SESSION_ID,
+    });
+    expect(metadata).toEqual({
+      subject: "A practical guide to managed agents",
+      previewText: "How to preserve the brain while replacing the hands.",
+    });
+  });
+});

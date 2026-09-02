@@ -13,3 +13,7 @@ Project documentation is currently git-ignored and stored in `/Users/temiloluwap
 # Communication
 
 Respond to the owner in a straight-to-the-point manner. Include enough context to support decisions about direction, but omit highly detailed explanations unless the owner explicitly asks for them.
+
+# Orchestration
+
+Keep the main agent's context lean by acting as an orchestrator. For each substantial task, dispatch bounded exploration or implementation slices to parallel subagents whenever possible, using the Luna model for subagents when supported. Give every subagent an explicit file fence, required verification and failing-first/negative tests, and a no-git-mutation rule. Reconcile and personally review the results in the main agent before integrating, committing, or pushing.

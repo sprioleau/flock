@@ -86,6 +86,13 @@ export const MAX_DRAFT_PLAN_SECTIONS = 16;
 export const DRAFT_NAME_MAX_LENGTH = 60;
 
 /*
+  Hard model-input bounds for inbox metadata. They are safety ceilings, not
+  writing targets; omitted values are derived from copy that really rendered.
+*/
+export const MAX_DRAFT_SUBJECT_LENGTH = 200;
+export const MAX_DRAFT_PREVIEW_TEXT_LENGTH = 200;
+
+/*
   Longest text clue carried over from the source draft into a param.
 */
 const MAX_CLUE_LENGTH = 300;
@@ -151,7 +158,7 @@ function describeDraftPlanFailure(keys: readonly string[]): string {
     stray.length === 0
       ? ""
       : `${stray.map((key) => `"${key}"`).join(", ")} ${stray.length === 1 ? "is not a field" : "are not fields"} of a draft. `;
-  return `${misplacedNote}${strayNote}A draft takes only "name" and "sections".`;
+  return `${misplacedNote}${strayNote}A draft takes only "name", "subject", "previewText", and "sections".`;
 }
 
 const draftPlanSchema = z
@@ -163,6 +170,24 @@ const draftPlanSchema = z
       .optional()
       .describe(
         'Short, user-facing name for this draft, describing its angle ("Bold launch", "Story first"). Omit to let the editor number it.',
+      ),
+    subject: z
+      .string()
+      .trim()
+      .min(1)
+      .max(MAX_DRAFT_SUBJECT_LENGTH)
+      .optional()
+      .describe(
+        "The inbox subject for this draft. It must be faithful to the draft's own copy. Omit it to derive one from the first heading that actually renders.",
+      ),
+    previewText: z
+      .string()
+      .trim()
+      .min(1)
+      .max(MAX_DRAFT_PREVIEW_TEXT_LENGTH)
+      .optional()
+      .describe(
+        "The inbox preview/preheader for this draft. It must be faithful to the draft's own copy. Omit it to derive one from the first paragraph that actually renders.",
       ),
     sections: z
       .array(draftSectionPlanSchema)
@@ -709,6 +734,11 @@ export interface ComposedDraftComposition {
   droppedSectionCount: number;
 }
 
+export interface DraftEmailMeta {
+  subject?: string;
+  previewText?: string;
+}
+
 /*
   One composed draft: what to call it, the ops that build it, and its provenance.
 */
@@ -717,6 +747,11 @@ export interface ComposedDraft {
     The model's name for this draft, when it gave one.
   */
   name?: string;
+  /*
+    Per-draft inbox metadata. Explicit plan values win; omitted values come
+    from the first heading and paragraph that actually reached this draft.
+  */
+  emailMeta: DraftEmailMeta;
   /*
     Ops in apply order: an optional applyTheme, then one addSection per section.
   */
@@ -965,6 +1000,8 @@ export function buildComposedDrafts({
       substitutedSectionCount: 0,
       droppedSectionCount: 0,
     };
+    let derivedSubject: string | undefined;
+    let derivedPreviewText: string | undefined;
     /*
       Ids must be unique across the WHOLE new document, not just per section.
     */
@@ -1016,6 +1053,17 @@ export function buildComposedDrafts({
             index: documentIndex,
             children: built.children,
           });
+          /*
+            Derive only from blocks that passed eligibility and were added.
+            Planned-but-dropped copy and catalog defaults never get a vote.
+          */
+          const renderedCopy = readSectionCopy([built.section, ...built.children]);
+          if (derivedSubject === undefined && renderedCopy.headline !== undefined) {
+            derivedSubject = renderedCopy.headline.slice(0, MAX_DRAFT_SUBJECT_LENGTH);
+          }
+          if (derivedPreviewText === undefined && renderedCopy.body !== undefined) {
+            derivedPreviewText = renderedCopy.body.slice(0, MAX_DRAFT_PREVIEW_TEXT_LENGTH);
+          }
           documentIndex += 1;
           if (resolution.outcome === "substituted") {
             composition.substitutedSectionCount += 1;
@@ -1034,7 +1082,17 @@ export function buildComposedDrafts({
         }
       }
     });
-    return { ...(plan.name === undefined ? {} : { name: plan.name }), ops, composition };
+    const subject = plan.subject ?? derivedSubject;
+    const previewText = plan.previewText ?? derivedPreviewText;
+    return {
+      ...(plan.name === undefined ? {} : { name: plan.name }),
+      emailMeta: {
+        ...(subject === undefined ? {} : { subject }),
+        ...(previewText === undefined ? {} : { previewText }),
+      },
+      ops,
+      composition,
+    };
   });
 }
 

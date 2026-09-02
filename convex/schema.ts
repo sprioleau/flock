@@ -173,6 +173,14 @@ export default defineSchema({
     */
     name: v.string(),
     /*
+      Per-draft send metadata. Optional and additive so rows created while
+      subject/preview lived only on the canvas remain valid. Canvas fields are
+      intentionally retained for backward compatibility during the migration.
+    */
+    subject: v.optional(v.string()),
+    previewText: v.optional(v.string()),
+    audience: v.optional(v.array(v.string())),
+    /*
       AGENT-FACING draft name: an agent-authored semantic summary of the
       draft's content ("Spring sale — bold hero, single CTA"), maintained
       ASYNCHRONOUSLY off the LLM hot path and persisted here. Read-only to

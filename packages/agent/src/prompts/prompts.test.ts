@@ -232,6 +232,13 @@ describe("buildToolGuidance (layer b — cacheable per registry)", () => {
     expect(guidance).toContain("lets the current wording carry over");
   });
 
+  it("asks for faithful per-draft inbox metadata without inventing recipients", () => {
+    expect(guidance).toMatch(/each composed draft[\s\S]*subject[\s\S]*previewText/);
+    expect(guidance).toContain("faithful to that draft's own copy");
+    expect(guidance).toMatch(/derive it from those words/);
+    expect(guidance).toContain("Never invent recipients");
+  });
+
   it("points the after-the-call narration at the report, not at the plan", () => {
     /*
       The sentence this replaced — "tell the user in plain language what each
