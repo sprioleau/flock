@@ -9,11 +9,10 @@ import { getPanelPreferences } from "./panel-preferences";
   a real boolean everywhere the panel reads it before mount.
 */
 describe("getPanelPreferences", () => {
-  it("falls back to the full set of documented defaults, including the brand sheet's", () => {
+  it("falls back to the full set of documented defaults", () => {
     expect(getPanelPreferences()).toEqual({
       isChatPanelExpanded: false,
       isRightRailExpanded: true,
-      isBrandSheetExpanded: false,
     });
   });
 });

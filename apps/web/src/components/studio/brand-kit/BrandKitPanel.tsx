@@ -5,8 +5,6 @@ import { useMutation, useQuery } from "convex/react";
 import { ConvexError } from "convex/values";
 import {
   CheckIcon,
-  ChevronDownIcon,
-  ChevronUpIcon,
   Loader2Icon,
   PaletteIcon,
   SparklesIcon,
@@ -35,7 +33,6 @@ import {
   SheetTitle,
   SheetTrigger,
 } from "@/components/ui/sheet";
-import { cn } from "@/lib/utils";
 import {
   BRAND_COLOR_CATEGORY_LABELS,
   buildSaveBrandKitPayload,
@@ -54,7 +51,6 @@ import { SOCIAL_PLATFORM_LABELS, type SocialPlatform } from "@/lib/social-links"
 import { BRAND_PATH } from "@/lib/auth/config";
 import { useEditorStore } from "@/lib/editor-store";
 import { useUiSurfaceOpenRequest } from "@/lib/ui-surfaces";
-import { updatePanelPreferences, usePanelPreferences } from "../panel-preferences";
 import { generateBrandKitFromUrl } from "./brand-kit-generate-client";
 
 /*
@@ -153,16 +149,6 @@ export function BrandKitPanel() {
   const canvasBinding = brandStatus?.binding ?? null;
   const isCanvasBoundToMyKit =
     canvasBinding !== null && sessionKitId !== null && canvasBinding.kitId === sessionKitId;
-
-  /*
-    The sheet's height state (Decision 3) — same persisted expand/collapse
-    idiom as the chat panel and the right rail (panel-preferences.ts), just
-    toggling how tall a bottom sheet sits instead of how wide a rail sits.
-  */
-  const isSheetExpanded = usePanelPreferences().isBrandSheetExpanded;
-  const toggleSheetExpanded = (): void => {
-    updatePanelPreferences({ isBrandSheetExpanded: !isSheetExpanded });
-  };
 
   const handleOpenChange = (nextIsOpen: boolean): void => {
     setIsOpen(nextIsOpen);
@@ -645,23 +631,15 @@ export function BrandKitPanel() {
         </Tooltip>
       </TooltipProvider>
       {/*
-        A FLOATING BOTTOM SHEET (owner decision 3), not the old centered
-        modal: it rises from the bottom of the editor so brand and canvas can
-        be seen and edited side by side, inset from the left/right/top edges
-        (a visible gap reveals the dimmed canvas on three sides — the fourth,
-        the bottom, stays flush, which is what makes it read as anchored
-        there rather than floating free) with rounded top corners only.
-        `top-*` is the one thing the expand toggle changes: it swaps between
-        a compact peek and a tall near-full view, both of them still leaving
-        that top gap so the canvas above is never fully hidden.
+        A bottom sheet that enters and exits from the bottom of the editor.
+        Equal top and side gaps reveal the dimmed canvas while the flush
+        bottom edge keeps the surface visually anchored. It has only two
+        states: open at this size or fully dismissed.
       */}
       <SheetContent
         side="bottom"
         showCloseButton={false}
-        className={cn(
-          "inset-x-4 bottom-0 mx-auto max-w-3xl gap-0 rounded-t-2xl rounded-b-none border-t-0 p-0 sm:inset-x-10",
-          isSheetExpanded ? "top-[8vh]" : "top-[52vh]",
-        )}
+        className="inset-x-[10vw] top-[10vw] bottom-0 max-w-none gap-0 rounded-t-2xl rounded-b-none p-0"
         data-testid="brand-kit-panel"
       >
         <SheetHeader className="flex-row items-start justify-between gap-3">
@@ -673,31 +651,6 @@ export function BrandKitPanel() {
             </SheetDescription>
           </div>
           <div className="flex shrink-0 items-center gap-1">
-            {/*
-              Expand/collapse (owner decision 3, "follow the existing
-              editor-canvas panel pattern" — same idiom PropertyPanelSlot
-              uses for the right rail, applied to the sheet's height).
-            */}
-            <TooltipProvider>
-              <Tooltip>
-                <TooltipTrigger
-                  render={
-                    <Button
-                      variant="ghost"
-                      size="icon-sm"
-                      aria-label={isSheetExpanded ? "Collapse brand kit" : "Expand brand kit"}
-                      onClick={toggleSheetExpanded}
-                      data-testid="brand-kit-sheet-toggle"
-                    />
-                  }
-                >
-                  {isSheetExpanded ? <ChevronDownIcon /> : <ChevronUpIcon />}
-                </TooltipTrigger>
-                <TooltipContent side="bottom">
-                  {isSheetExpanded ? "Collapse" : "Expand"}
-                </TooltipContent>
-              </Tooltip>
-            </TooltipProvider>
             {/*
               The ONE remaining path to the immersive /brand workspace from
               inside the editor (owner: the header used to carry a second,
