@@ -45,6 +45,32 @@ export function getDraftFrameSelectionClassName(isActive: boolean): string {
     ? "border-primary ring-2 ring-primary/90 shadow-lg shadow-primary/15"
     : "border-border ring-1 ring-black/5 shadow-sm dark:ring-white/10";
 }
+
+/*
+  The single selection region for a draft. Keeping the label and email body
+  inside this wrapper makes the active outline describe the whole draft,
+  rather than leaving the title in a separate outlined island.
+*/
+export function DraftFrameSelectionRegion({
+  isActive,
+  children,
+}: {
+  isActive: boolean;
+  children: React.ReactNode;
+}) {
+  return (
+    <div
+      className={cn(
+        "relative flex min-h-0 flex-1 flex-col rounded-lg border",
+        getDraftFrameSelectionClassName(isActive),
+      )}
+      data-draft-selected={isActive}
+      data-draft-selection-region
+    >
+      {children}
+    </div>
+  );
+}
 /*
   Min height for a frame whose document has NO root sections — 2× the h-40
   (10rem) baseline the placeholder/loading frames use, so a freshly created
@@ -188,11 +214,7 @@ export function DraftFrameLabel({
 
   return (
     <div
-      className={cn(
-        "shrink-0 pb-2",
-        isActive && "rounded-sm outline-2 outline-primary outline-offset-2",
-      )}
-      data-draft-selected={isActive}
+      className="shrink-0 pb-2"
     >
       <div className="flex h-6 items-center">
         <button

@@ -11,7 +11,7 @@ vi.mock("@/lib/editor-store", () => ({
   useEditorStore: (selector: (state: { canvasId: null }) => unknown) => selector({ canvasId: null }),
 }));
 
-import { DraftFrameLabel } from "./draft-frame-chrome";
+import { DraftFrameLabel, DraftFrameSelectionRegion } from "./draft-frame-chrome";
 import type { DraftListEntry } from "./use-canvas-drafts";
 
 const DRAFT = {
@@ -26,15 +26,32 @@ function renderLabel(isActive: boolean): string {
   return renderToStaticMarkup(<DraftFrameLabel draft={DRAFT} isActive={isActive} />);
 }
 
-describe("draft frame selection chrome", () => {
-  it("gives only the selected draft an explicit outlined state", () => {
-    const selected = renderLabel(true);
-    const unselected = renderLabel(false);
+function renderSelectionRegion(isActive: boolean): string {
+  return renderToStaticMarkup(
+    <DraftFrameSelectionRegion isActive={isActive}>
+      <DraftFrameLabel draft={DRAFT} isActive={isActive} />
+      <div data-testid="draft-body">Email body</div>
+    </DraftFrameSelectionRegion>,
+  );
+}
 
-    expect(selected).toContain('data-draft-selected="true"');
-    expect(selected).toContain("outline-primary");
+describe("draft frame selection chrome", () => {
+  it("uses one selected region for the title and email body", () => {
+    const selected = renderSelectionRegion(true);
+
+    expect(selected.match(/data-draft-selection-region/g)).toHaveLength(1);
+    expect(selected.match(/data-draft-selected="true"/g)).toHaveLength(1);
+    expect(selected).toContain("Launch note");
+    expect(selected).toContain("Email body");
+    expect(selected.match(/border-primary/g)).toHaveLength(1);
+    expect(selected).not.toContain("outline-primary");
+  });
+
+  it("does not outline an inactive draft region", () => {
+    const unselected = renderSelectionRegion(false);
+
     expect(unselected).toContain('data-draft-selected="false"');
-    expect(unselected).not.toContain("outline-primary");
+    expect(unselected).not.toContain("border-primary");
   });
 
   it("does not put subject, preview, or comma-separated audience inputs above a draft", () => {
