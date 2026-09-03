@@ -6,7 +6,6 @@ import { api } from "@convex/_generated/api";
 import { MAX_TEST_SEND_RECIPIENTS } from "@/app/api/send-test-email/contract";
 import { useFlockAuth } from "@/lib/auth/use-flock-auth";
 import { useEditorStore } from "@/lib/editor-store";
-import { useCanvasDrafts } from "./drafts/use-canvas-drafts";
 import {
   deriveSubjectFromDocument,
   readLastUsedRecipient,
@@ -29,8 +28,8 @@ import {
  * subject we derive from the draft) live in the React-free
  * `send-test-email-client` module; this is just the wiring.
  *
- * Subject, preview text, and audience are per-draft. Canvas metadata remains a
- * compatibility fallback for older drafts that predate this migration.
+ * Subject and preview text are canvas-level send settings. The dialog owns the
+ * controls; they are never displayed above individual draft frames.
  */
 
 export type SendTestEmailState =
@@ -78,8 +77,6 @@ export function useSendTestEmail(): SendTestEmailControl {
   const { identity } = useFlockAuth();
   const canvasId = useEditorStore((state) => state.canvasId);
   const sessionId = useEditorStore((state) => state.authorId);
-  const { drafts, activeDocumentId } = useCanvasDrafts();
-  const activeDraft = drafts?.find((draft) => draft._id === activeDocumentId);
 
   /*
     Keep the legacy canvas metadata subscribed as a fallback for drafts created
@@ -89,7 +86,7 @@ export function useSendTestEmail(): SendTestEmailControl {
     api.canvases.getCanvasEmailMeta,
     canvasId !== null ? { canvasId } : "skip",
   );
-  const setDraftEmailMeta = useMutation(api.documents.setDraftEmailMeta);
+  const setCanvasEmailMeta = useMutation(api.canvases.setCanvasEmailMeta);
 
   const [recipients, setRecipients] = useState<string[]>([""]);
   const [subject, setSubject] = useState("");
@@ -122,28 +119,18 @@ export function useSendTestEmail(): SendTestEmailControl {
   }
 
   /*
-    Draft metadata resolves asynchronously too. Seed subject / preview the
-    moment it lands, on the SAME during-render pattern as the recipient above,
-    without clobbering a value the user has already edited.
+    Canvas metadata resolves asynchronously too. Seed subject / preview the
+    moment it lands, without clobbering a value the user has already edited.
   */
-  const effectiveSubject = activeDraft?.subject ?? emailMeta?.subject;
-  const effectivePreviewText = activeDraft?.previewText ?? emailMeta?.previewText;
-  const effectiveAudience = activeDraft?.audience ?? [];
-  const emailMetaKey = JSON.stringify({
-    documentId: activeDocumentId,
-    subject: effectiveSubject,
-    previewText: effectivePreviewText,
-    audience: effectiveAudience,
-  });
-  const [seededMetaKey, setSeededMetaKey] = useState(emailMetaKey);
-  if (seededMetaKey !== emailMetaKey) {
-    setSeededMetaKey(emailMetaKey);
-    if (effectiveSubject !== undefined || effectivePreviewText !== undefined) {
+  const [seededMeta, setSeededMeta] = useState(emailMeta);
+  if (seededMeta !== emailMeta) {
+    setSeededMeta(emailMeta);
+    if (emailMeta !== undefined && emailMeta !== null) {
       if (!hasUserEditedSubject) {
-        setSubject(effectiveSubject ?? deriveSubjectFromDocument(useEditorStore.getState().doc));
+        setSubject(emailMeta.subject ?? deriveSubjectFromDocument(useEditorStore.getState().doc));
       }
       if (!hasUserEditedPreviewText) {
-        setPreviewText(effectivePreviewText ?? "");
+        setPreviewText(emailMeta.previewText ?? "");
       }
     }
   }
@@ -194,9 +181,8 @@ export function useSendTestEmail(): SendTestEmailControl {
 
   /*
     Persistence is on BLUR, not per keystroke: a keystroke-level save would fire
-    a mutation for every letter typed. Blur is also the right grain for a
-    per-draft property — the user has finished stating what the subject IS —
-    and it means an edit is kept even if they close the dialog without sending.
+    a mutation for every letter typed. It keeps dialog edits even if the dialog
+    closes before the user sends a test.
 
     It only writes when the field was actually edited AND the value differs from
     what the canvas already holds, so tabbing through an untouched (draft-
@@ -207,24 +193,24 @@ export function useSendTestEmail(): SendTestEmailControl {
     fire-and-forget — a failure leaves the local value intact and the send
     unaffected, so it is swallowed rather than surfaced.
   */
-  const persistEmailMetaField = (field: "subject" | "previewText", value: string): void => {
-    if (activeDocumentId === null) {
+  function persistEmailMetaField(field: "subject" | "previewText", value: string): void {
+    if (canvasId === null || sessionId === null) {
       return;
     }
-    const storedValue = (field === "subject" ? effectiveSubject : effectivePreviewText) ?? "";
+    const storedValue = (field === "subject" ? emailMeta?.subject : emailMeta?.previewText) ?? "";
     if (value.trim() === storedValue) {
       return;
     }
-    void setDraftEmailMeta({
-      documentId: activeDocumentId,
+    void setCanvasEmailMeta({
+      canvasId,
       [field]: value,
-      ...(sessionId === null ? {} : { sessionId }),
+      sessionId,
     }).catch(() => {
       /*
         Persisting is a nicety; the value still sends. Swallow and move on.
       */
     });
-  };
+  }
 
   const persistSubject = (): void => {
     if (hasUserEditedSubject) {
@@ -242,12 +228,12 @@ export function useSendTestEmail(): SendTestEmailControl {
     setSendState({ status: "idle" });
 
     /*
-    Subject / preview reset to the active draft's persisted values, falling
-    back to legacy canvas metadata and then the draft's first heading.
+    Subject / preview reset to the canvas values, falling back to the active
+    draft's first heading for the subject.
     */
     const document = useEditorStore.getState().doc;
-    setSubject(effectiveSubject ?? deriveSubjectFromDocument(document));
-    setPreviewText(effectivePreviewText ?? "");
+    setSubject(emailMeta?.subject ?? deriveSubjectFromDocument(document));
+    setPreviewText(emailMeta?.previewText ?? "");
     setHasUserEditedSubject(false);
     setHasUserEditedPreviewText(false);
 
@@ -259,11 +245,9 @@ export function useSendTestEmail(): SendTestEmailControl {
       browser definitely exists (a client component still renders on the
       server, where touching localStorage would throw).
     */
-    setRecipients(
-      effectiveAudience.length > 0
-        ? effectiveAudience
-        : [resolveDefaultRecipient({ identity, lastUsedRecipient: readLastUsedRecipient() })],
-    );
+    setRecipients([
+      resolveDefaultRecipient({ identity, lastUsedRecipient: readLastUsedRecipient() }),
+    ]);
   };
 
   const discardInFlightSend = (): void => {

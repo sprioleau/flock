@@ -20,11 +20,15 @@ import { useCanvasDragStore } from "../dnd/drag-drop-store";
 import { EditorCanvas } from "../EditorCanvas";
 import {
   DraftFrameLabel,
+  DRAFT_FRAME_SCALE,
   EDITOR_FRAME_DESKTOP_WIDTH_PX,
+  EDITOR_FRAME_DESKTOP_LAYOUT_WIDTH_PX,
   EDITOR_FRAME_MOBILE_WIDTH_PX,
+  EDITOR_FRAME_MOBILE_LAYOUT_WIDTH_PX,
   EMPTY_FRAME_MIN_HEIGHT_CLASS,
   GenerationGlowBorder,
   GenerationWorkingOverlay,
+  getDraftFrameSelectionClassName,
   getIsDocEmpty,
 } from "./draft-frame-chrome";
 import { DraftFrameToolbar } from "./DraftFrameToolbar";
@@ -220,8 +224,8 @@ function ConnectedEditorDraftFrame({
       <div
         inert={isGenerationTarget || undefined}
         className={cn(
-          "relative flex flex-col overflow-hidden rounded-lg border bg-background ring-1 ring-black/5 dark:ring-white/10",
-          isActive ? "shadow-md" : "shadow-sm",
+          "relative flex flex-col overflow-hidden rounded-lg border bg-background",
+          getDraftFrameSelectionClassName(isActive),
           dragRole === "target" && "ring-2 ring-ring/50",
           dragRole === "rejected" && "opacity-50 saturate-50",
           isDocEmpty && EMPTY_FRAME_MIN_HEIGHT_CLASS,
@@ -242,23 +246,33 @@ function ConnectedEditorDraftFrame({
             </span>
           </div>
         )}
-        {isDocumentReady ? (
-          <EditorStoreProvider value={store}>
-            {/*
-              Frame-scoped presence room: this document's roster, cursors,
-              and pins. For the active frame this nests inside the shell's
-              provider for the SAME room — consumers resolve the nearest
-              one, and the tree shape stays identical across activation
-              flips (no editor remount mid-gesture).
-            */}
-            <PresenceProvider documentId={draft._id}>
-              <EditorCanvas />
-            </PresenceProvider>
-          </EditorStoreProvider>
-        ) : (
-          <FrameEditorLoading />
-        )}
-        {isGenerationTarget && isDocEmpty && <GenerationWorkingOverlay />}
+        <div
+          style={{
+            width:
+              viewport === "mobile"
+                ? EDITOR_FRAME_MOBILE_LAYOUT_WIDTH_PX
+                : EDITOR_FRAME_DESKTOP_LAYOUT_WIDTH_PX,
+            zoom: DRAFT_FRAME_SCALE,
+          }}
+        >
+          {isDocumentReady ? (
+            <EditorStoreProvider value={store}>
+              {/*
+                Frame-scoped presence room: this document's roster, cursors,
+                and pins. For the active frame this nests inside the shell's
+                provider for the SAME room — consumers resolve the nearest
+                one, and the tree shape stays identical across activation
+                flips (no editor remount mid-gesture).
+              */}
+              <PresenceProvider documentId={draft._id}>
+                <EditorCanvas />
+              </PresenceProvider>
+            </EditorStoreProvider>
+          ) : (
+            <FrameEditorLoading />
+          )}
+          {isGenerationTarget && isDocEmpty && <GenerationWorkingOverlay />}
+        </div>
       </div>
     </FrameShell>
   );

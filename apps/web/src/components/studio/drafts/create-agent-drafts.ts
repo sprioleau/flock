@@ -48,7 +48,6 @@ import { computeNextDraftName } from "./draft-naming";
 type ListDocumentsByCanvas = typeof api.documents.listDocumentsByCanvas;
 type CreateDocument = typeof api.documents.createDocument;
 type ApplyOperations = typeof api.documents.applyOperations;
-type SetDraftEmailMeta = typeof api.documents.setDraftEmailMeta;
 
 /*
   The Convex surface this executor uses — spelled out as the THREE calls it
@@ -77,10 +76,6 @@ export interface AgentDraftsConvexClient {
     reference: ApplyOperations,
     args: FunctionArgs<ApplyOperations>,
   ): Promise<FunctionReturnType<ApplyOperations>>;
-  mutation(
-    reference: SetDraftEmailMeta,
-    args: FunctionArgs<SetDraftEmailMeta>,
-  ): Promise<FunctionReturnType<SetDraftEmailMeta>>;
 }
 
 export interface CreateAgentDraftsInput {
@@ -310,21 +305,6 @@ export async function createAgentDrafts({
             failureNotice: `"${name}" was created but couldn't be filled in — open it and try again.`,
           };
         }
-      }
-      if (
-        composed !== undefined &&
-        (composed.emailMeta.subject !== undefined ||
-          composed.emailMeta.previewText !== undefined)
-      ) {
-        /*
-          Send settings belong to the draft that was just created. Audience is
-          deliberately absent: recipients are owner data, never model output.
-        */
-        await convexClient.mutation(api.documents.setDraftEmailMeta, {
-          documentId,
-          sessionId,
-          ...composed.emailMeta,
-        });
       }
       createdDrafts.push(toCreatedDraftSummary({ name, composed }));
     }

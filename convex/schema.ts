@@ -173,9 +173,9 @@ export default defineSchema({
     */
     name: v.string(),
     /*
-      Per-draft send metadata. Optional and additive so rows created while
-      subject/preview lived only on the canvas remain valid. Canvas fields are
-      intentionally retained for backward compatibility during the migration.
+      Legacy per-draft send metadata remains schema-compatible with rows
+      created before send settings returned to the canvas. Application code
+      no longer reads, writes, or exposes these fields.
     */
     subject: v.optional(v.string()),
     previewText: v.optional(v.string()),

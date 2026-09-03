@@ -1,12 +1,11 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useConvex } from "convex/react";
 import { Loader2Icon } from "lucide-react";
 import { ROOT_BLOCK_ID, type EmailDocument } from "@flock/email-sdk";
 import { api } from "@convex/_generated/api";
 import { cn } from "@/lib/utils";
-import { getOrCreateSessionId } from "@/lib/session";
+import { useConvex } from "convex/react";
 import { DraftBrandPill } from "../brand-kit/DraftBrandPill";
 import type { DraftListEntry } from "./use-canvas-drafts";
 
@@ -20,15 +19,32 @@ import type { DraftListEntry } from "./use-canvas-drafts";
 /*
   Live editor frame width (the email's natural desktop layout width).
 */
-export const EDITOR_FRAME_DESKTOP_WIDTH_PX = 680;
+export const DRAFT_FRAME_SCALE = 0.7;
+/*
+  The editing surface keeps its full desktop layout before CSS zoom scales the
+  whole draft down on the shared canvas.
+*/
+export const EDITOR_FRAME_DESKTOP_LAYOUT_WIDTH_PX = 680;
+export const EDITOR_FRAME_DESKTOP_WIDTH_PX = EDITOR_FRAME_DESKTOP_LAYOUT_WIDTH_PX * DRAFT_FRAME_SCALE;
 /*
   Live editor frame width under the mobile viewport toggle.
 */
-export const EDITOR_FRAME_MOBILE_WIDTH_PX = 375;
+export const EDITOR_FRAME_MOBILE_LAYOUT_WIDTH_PX = 375;
+export const EDITOR_FRAME_MOBILE_WIDTH_PX = EDITOR_FRAME_MOBILE_LAYOUT_WIDTH_PX * DRAFT_FRAME_SCALE;
 /*
   Read-only sibling preview frame width (fit-zoom scales the 640px layout down).
 */
-export const PREVIEW_FRAME_WIDTH_PX = 384;
+export const PREVIEW_FRAME_WIDTH_PX = 384 * DRAFT_FRAME_SCALE;
+
+/*
+  The selected frame needs to read at a glance from across the canvas. Keep
+  this shared so editor and preview shells cannot drift into ambiguous states.
+*/
+export function getDraftFrameSelectionClassName(isActive: boolean): string {
+  return isActive
+    ? "border-primary ring-2 ring-primary/90 shadow-lg shadow-primary/15"
+    : "border-border ring-1 ring-black/5 shadow-sm dark:ring-white/10";
+}
 /*
   Min height for a frame whose document has NO root sections — 2× the h-40
   (10rem) baseline the placeholder/loading frames use, so a freshly created
@@ -171,7 +187,13 @@ export function DraftFrameLabel({
   }
 
   return (
-    <div className="shrink-0 pb-2">
+    <div
+      className={cn(
+        "shrink-0 pb-2",
+        isActive && "rounded-sm outline-2 outline-primary outline-offset-2",
+      )}
+      data-draft-selected={isActive}
+    >
       <div className="flex h-6 items-center">
         <button
           type="button"
@@ -197,95 +219,6 @@ export function DraftFrameLabel({
         </button>
         <DraftBrandPill documentId={draft._id} />
       </div>
-      <DraftFrameEmailMeta draft={draft} onActivate={onActivate} />
-    </div>
-  );
-}
-
-function parseAudience(value: string): string[] {
-  return value
-    .split(",")
-    .map((address) => address.trim())
-    .filter((address) => address.length > 0);
-}
-
-function isValidAudience(audience: string[]): boolean {
-  return audience.every((address) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(address));
-}
-
-/*
-  Compact per-draft send metadata. Values save independently on blur so a
-  subject edit never overwrites preview text or the audience list.
-*/
-function DraftFrameEmailMeta({
-  draft,
-  onActivate,
-}: {
-  draft: DraftListEntry;
-  onActivate?: () => void;
-}) {
-  const convexClient = useConvex();
-  const [audienceError, setAudienceError] = useState<string | null>(null);
-
-  function saveField(field: "subject" | "previewText" | "audience", value: string): void {
-    if (field === "audience") {
-      const parsedAudience = parseAudience(value);
-      if (!isValidAudience(parsedAudience)) {
-        setAudienceError("Use comma-separated email addresses.");
-        return;
-      }
-      setAudienceError(null);
-      void convexClient
-        .mutation(api.documents.setDraftEmailMeta, {
-          documentId: draft._id,
-          audience: parsedAudience,
-          sessionId: getOrCreateSessionId(),
-        })
-        .catch((error: unknown) => console.error("setDraftEmailMeta failed", error));
-      return;
-    }
-    void convexClient
-      .mutation(api.documents.setDraftEmailMeta, {
-        documentId: draft._id,
-        [field]: value,
-        sessionId: getOrCreateSessionId(),
-      })
-      .catch((error: unknown) => console.error("setDraftEmailMeta failed", error));
-  }
-
-  return (
-    <div
-      className="grid gap-1.5 text-[11px] text-muted-foreground"
-      onPointerDown={onActivate}
-      data-testid="draft-frame-email-meta"
-    >
-      <input
-        defaultValue={draft.subject ?? ""}
-        onBlur={(event) => saveField("subject", event.currentTarget.value)}
-        placeholder="Subject line"
-        aria-label={`Subject for ${draft.name}`}
-        maxLength={200}
-        className="h-6 rounded border border-border/70 bg-background/80 px-2 outline-none focus-visible:ring-1 focus-visible:ring-ring"
-      />
-      <input
-        defaultValue={draft.previewText ?? ""}
-        onBlur={(event) => saveField("previewText", event.currentTarget.value)}
-        placeholder="Preview text"
-        aria-label={`Preview text for ${draft.name}`}
-        maxLength={200}
-        className="h-6 rounded border border-border/70 bg-background/80 px-2 outline-none focus-visible:ring-1 focus-visible:ring-ring"
-      />
-      <input
-        defaultValue={(draft.audience ?? []).join(", ")}
-        onBlur={(event) => saveField("audience", event.currentTarget.value)}
-        placeholder="Audience emails, comma-separated"
-        aria-label={`Audience for ${draft.name}`}
-        className={cn(
-          "h-6 rounded border border-border/70 bg-background/80 px-2 outline-none focus-visible:ring-1 focus-visible:ring-ring",
-          audienceError !== null && "border-destructive",
-        )}
-      />
-      {audienceError !== null && <span className="text-destructive">{audienceError}</span>}
     </div>
   );
 }

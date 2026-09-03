@@ -282,46 +282,6 @@ describe("createDraft input schema", () => {
     expect(parsed.success).toBe(false);
   });
 
-  it("accepts one bounded subject and preview text recommendation per draft", () => {
-    const parsed = createDraftInputSchema.safeParse({
-      drafts: [
-        {
-          subject: "A practical guide to managed agents",
-          previewText: "How to separate the durable brain from its disposable hands.",
-          sections: [
-            {
-              templateId: "article",
-              params: {
-                headline: "A practical guide to managed agents",
-                body: "How to separate the durable brain from its disposable hands.",
-              },
-            },
-          ],
-        },
-      ],
-    });
-
-    expect(parsed.success).toBe(true);
-  });
-
-  it("rejects empty or overlong draft metadata instead of accepting fabricated filler", () => {
-    expect(
-      createDraftInputSchema.safeParse({
-        drafts: [{ subject: "   ", sections: [{ templateId: "article" }] }],
-      }).success,
-    ).toBe(false);
-    expect(
-      createDraftInputSchema.safeParse({
-        drafts: [
-          {
-            previewText: "x".repeat(201),
-            sections: [{ templateId: "article" }],
-          },
-        ],
-      }).success,
-    ).toBe(false);
-  });
-
   /*
     A content-rich reference page (an events page with a dozen listings, a
     product catalog, a team roster) needs a section per item plus a header
@@ -576,54 +536,6 @@ describe("buildComposedDrafts", () => {
       "addSection",
       "addSection",
     ]);
-  });
-
-  it("carries explicit subject and preview text through composition", () => {
-    const command = planCommand();
-    command.drafts![0] = {
-      ...command.drafts![0]!,
-      subject: "Spring is in the air",
-      previewText: "Fresh arrivals for brighter days.",
-    };
-    const [composed] = buildComposedDrafts({
-      sourceDoc: createStarterDocument(),
-      command,
-      random: createSeededRandom(3),
-    });
-
-    expect(composed!.emailMeta).toEqual({
-      subject: "Spring is in the air",
-      previewText: "Fresh arrivals for brighter days.",
-    });
-  });
-
-  it("derives omitted metadata from copy that actually reached the composed document", () => {
-    const [composed] = buildComposedDrafts({
-      sourceDoc: createEmptyDocument(),
-      shouldCarryOverSourceCopy: false,
-      command: resolveCreateDraftCommand({
-        drafts: [
-          {
-            sections: [
-              {
-                templateId: "article",
-                params: {
-                  headline: "Why durable agents need disposable hands",
-                  body: "The runtime can preserve reasoning while replacing the machine that executes it.",
-                },
-              },
-            ],
-          },
-        ],
-      }),
-      random: createSeededRandom(3),
-    });
-
-    expect(composed!.emailMeta).toEqual({
-      subject: "Why durable agents need disposable hands",
-      previewText:
-        "The runtime can preserve reasoning while replacing the machine that executes it.",
-    });
   });
 
   it("omits the theme op when the source draft has no theme of its own", () => {

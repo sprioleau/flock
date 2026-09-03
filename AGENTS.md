@@ -1,6 +1,6 @@
 # Session handoffs
 
-Before starting continuation work, look in `/Users/temiloluwaprioleau/Desktop/🫴 Handoffs/` for the most recently modified `*-next-agent-prompt_*.md`. Read that prompt first, then read any full handoff document it references end to end. Treat the selected next-agent prompt as the delegated prompt for the session unless the user's current request overrides it.
+Session handoff artifacts are saved in `/Users/temiloluwaprioleau/Desktop/🫴 Handoffs/`. When asked to pick up the work from the previous agent session, look there first. Look for the most recently modified `<subject>-next-agent-prompt_<date>.md`. Read that prompt first, then read any full handoff document it references end to end. Treat the selected next-agent prompt as the delegated prompt for the session unless the user's current request overrides it.
 
 # Verification and delivery
 

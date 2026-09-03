@@ -21,6 +21,7 @@ import {
   EMPTY_FRAME_MIN_HEIGHT_CLASS,
   GenerationGlowBorder,
   GenerationWorkingOverlay,
+  getDraftFrameSelectionClassName,
   DraftFrameLabel,
   getIsDocEmpty,
   PREVIEW_FRAME_WIDTH_PX,
@@ -290,8 +291,8 @@ function SiblingDraftFrame({
             Full scaled content, no inner scroller — consistent with the
             editor frames' height-follows-content behavior.
           */
-          "relative overflow-hidden rounded-lg text-left",
-          "ring-1 ring-black/5 transition-[box-shadow,opacity,filter] dark:ring-white/10",
+          "relative overflow-hidden rounded-lg border text-left transition-[box-shadow,opacity,filter]",
+          getDraftFrameSelectionClassName(false),
           "focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none",
           isDragActive
             ? "cursor-not-allowed opacity-50 saturate-50"
