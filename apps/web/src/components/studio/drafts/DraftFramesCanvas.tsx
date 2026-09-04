@@ -780,7 +780,8 @@ export function DraftFramesCanvas({
 }
 
 /*
-  A sibling frame past the editor cap: label + live read-only preview (or a placeholder).
+  A sibling frame past the editor cap: same-size label + live read-only
+  preview (or a placeholder). Activation changes only its interaction role.
 */
 function SiblingDraftFrame({
   draft,

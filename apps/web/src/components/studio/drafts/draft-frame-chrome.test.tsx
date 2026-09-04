@@ -11,7 +11,12 @@ vi.mock("@/lib/editor-store", () => ({
   useEditorStore: (selector: (state: { canvasId: null }) => unknown) => selector({ canvasId: null }),
 }));
 
-import { DraftFrameLabel, DraftFrameSelectionRegion } from "./draft-frame-chrome";
+import {
+  DraftFrameLabel,
+  DraftFrameSelectionRegion,
+  EDITOR_FRAME_DESKTOP_WIDTH_PX,
+  PREVIEW_FRAME_WIDTH_PX,
+} from "./draft-frame-chrome";
 import type { DraftListEntry } from "./use-canvas-drafts";
 
 const DRAFT = {
@@ -46,6 +51,13 @@ function renderSelectionRegion(isActive: boolean): string {
 }
 
 describe("draft frame selection chrome", () => {
+  it("keeps draft dimensions identical when selection moves between drafts", () => {
+    const selectedDraftWidth = EDITOR_FRAME_DESKTOP_WIDTH_PX;
+    const previouslySelectedDraftWidth = PREVIEW_FRAME_WIDTH_PX;
+
+    expect(selectedDraftWidth).toBe(previouslySelectedDraftWidth);
+  });
+
   it("uses one selected region for the title and email body", () => {
     const selected = renderSelectionRegion(true);
 

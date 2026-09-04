@@ -31,9 +31,11 @@ export const EDITOR_FRAME_DESKTOP_WIDTH_PX = EDITOR_FRAME_DESKTOP_LAYOUT_WIDTH_P
 export const EDITOR_FRAME_MOBILE_LAYOUT_WIDTH_PX = 375;
 export const EDITOR_FRAME_MOBILE_WIDTH_PX = EDITOR_FRAME_MOBILE_LAYOUT_WIDTH_PX;
 /*
-  Read-only sibling preview frame width (fit-zoom scales the 640px layout down).
+  Read-only siblings occupy the same natural desktop frame as live editors.
+  Selection changes the interaction target and outline only; it must never
+  swap a draft into a narrower presentation width.
 */
-export const PREVIEW_FRAME_WIDTH_PX = 384;
+export const PREVIEW_FRAME_WIDTH_PX = EDITOR_FRAME_DESKTOP_WIDTH_PX;
 
 /*
   The selected frame needs to read at a glance from across the canvas. Keep
