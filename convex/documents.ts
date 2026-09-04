@@ -62,6 +62,27 @@ async function computeAppendOrderIndex(
   return siblings.reduce((max, row) => Math.max(max, row.orderIndex), -1) + 1;
 }
 
+/*
+  Group-local order is additive to the canvas-wide orderIndex. Existing
+  ungrouped rows keep their old orderIndex semantics; grouped rows use this
+  second sequence for their position inside a group.
+*/
+async function computeAppendGroupOrderIndex(
+  ctx: MutationCtx,
+  canvasId: Id<"canvases">,
+  groupId: Id<"draftGroups">,
+): Promise<number> {
+  const siblings = await ctx.db
+    .query("documents")
+    .withIndex("by_canvasId", (q) => q.eq("canvasId", canvasId))
+    .collect();
+  return (
+    siblings
+      .filter((row) => row.groupId === groupId)
+      .reduce((max, row) => Math.max(max, row.groupOrderIndex ?? -1), -1) + 1
+  );
+}
+
 export const createDocument = mutation({
   args: {
     sessionId: v.string(),
@@ -101,6 +122,7 @@ export const createDocument = mutation({
       every turn.
     */
     isDemo: v.optional(v.boolean()),
+    groupId: v.optional(v.id("draftGroups")),
   },
   returns: v.object({ documentId: v.id("documents"), canvasId: v.id("canvases") }),
   handler: async (ctx, args) => {
@@ -130,6 +152,17 @@ export const createDocument = mutation({
         throw new Error(`Canvas ${canvasId} does not exist.`);
       }
     }
+    let groupId: Id<"draftGroups"> | undefined;
+    if (args.groupId !== undefined) {
+      const group = await ctx.db.get(args.groupId);
+      if (group === null) {
+        throw new Error(`Draft group ${args.groupId} does not exist.`);
+      }
+      if (group.canvasId !== canvasId) {
+        throw new Error("Draft group and document must belong to the same canvas.");
+      }
+      groupId = args.groupId;
+    }
     /*
       Every new document/draft opens on the designed starter email (Resend-
       welcome-style; see createStarterDocument) — never empty. Two exceptions:
@@ -149,6 +182,9 @@ export const createDocument = mutation({
       sessionId: args.sessionId,
       name: args.name ?? "Draft 1",
       orderIndex: await computeAppendOrderIndex(ctx, canvasId),
+      ...(groupId !== undefined
+        ? { groupId, groupOrderIndex: await computeAppendGroupOrderIndex(ctx, canvasId, groupId) }
+        : {}),
       headVersion: 0,
       /*
         Written only when true, so an ordinary draft's row is byte-identical
@@ -212,6 +248,22 @@ export const duplicateDocument = mutation({
       nextSiblings.length > 0
         ? (source.orderIndex + nextSiblings[0]!.orderIndex) / 2
         : source.orderIndex + 1;
+    const sourceGroupSiblings = siblings
+      .filter((row) => row.groupId === source.groupId)
+      .sort(
+        (a, b) =>
+          (a.groupOrderIndex ?? a.orderIndex) - (b.groupOrderIndex ?? b.orderIndex),
+      );
+    const sourceLocalOrder = source.groupOrderIndex ?? source.orderIndex;
+    const nextGroupSibling = sourceGroupSiblings.find(
+      (row) => row._id !== source._id && (row.groupOrderIndex ?? row.orderIndex) > sourceLocalOrder,
+    );
+    const groupOrderIndex =
+      source.groupId !== undefined
+        ? nextGroupSibling !== undefined
+          ? (sourceLocalOrder + (nextGroupSibling.groupOrderIndex ?? nextGroupSibling.orderIndex)) / 2
+          : sourceLocalOrder + 1
+        : undefined;
     /*
       Figma-fork semantics: the copy starts a fresh, independent version
       sequence (headVersion 0, its own v0 snapshot of the source's HEAD).
@@ -222,6 +274,9 @@ export const duplicateDocument = mutation({
       sessionId: source.sessionId,
       name: args.name ?? `${source.name} (copy)`,
       orderIndex,
+      ...(source.groupId !== undefined
+        ? { groupId: source.groupId, groupOrderIndex }
+        : {}),
       headVersion: 0,
       forkedFromDocumentId: source._id,
       forkedFromVersion: source.headVersion,
@@ -244,6 +299,21 @@ export const duplicateDocument = mutation({
       doc: state.doc as Record<string, unknown>,
       createdAtMs: now,
     });
+    if (source.groupId !== undefined) {
+      const groupSiblings = await ctx.db
+        .query("documents")
+        .withIndex("by_canvasId", (q) => q.eq("canvasId", source.canvasId))
+        .collect();
+      const orderedGroupSiblings = groupSiblings
+        .filter((row) => row.groupId === source.groupId)
+        .sort(
+          (a, b) =>
+            (a.groupOrderIndex ?? a.orderIndex) - (b.groupOrderIndex ?? b.orderIndex),
+        );
+      for (const [index, row] of orderedGroupSiblings.entries()) {
+        await ctx.db.patch(row._id, { groupOrderIndex: index });
+      }
+    }
     await ctx.db.patch(source.canvasId, { updatedAtMs: now });
     return newDocumentId;
   },
@@ -401,6 +471,8 @@ export const promoteDocumentToNewCanvas = mutation({
     await ctx.db.patch(document._id, {
       canvasId: newCanvasId,
       orderIndex: 0,
+      groupId: undefined,
+      groupOrderIndex: undefined,
       updatedAtMs: now,
     });
     await ctx.db.patch(document.canvasId, { updatedAtMs: now });
@@ -549,6 +621,8 @@ const documentPayloadValidator = v.object({
   canvasId: v.id("canvases"),
   name: v.string(),
   orderIndex: v.number(),
+  groupId: v.optional(v.id("draftGroups")),
+  groupOrderIndex: v.optional(v.number()),
   forkedFromDocumentId: v.optional(v.id("documents")),
   forkedFromVersion: v.optional(v.number()),
   sessionId: v.string(),
@@ -576,6 +650,10 @@ async function readDocumentPayload(ctx: QueryCtx, documentId: Id<"documents">) {
     canvasId: document.canvasId,
     name: document.name,
     orderIndex: document.orderIndex,
+    ...(document.groupId !== undefined ? { groupId: document.groupId } : {}),
+    ...(document.groupOrderIndex !== undefined
+      ? { groupOrderIndex: document.groupOrderIndex }
+      : {}),
     ...(document.forkedFromDocumentId !== undefined
       ? { forkedFromDocumentId: document.forkedFromDocumentId }
       : {}),
@@ -843,6 +921,8 @@ const documentListEntryValidator = v.object({
   */
   agentName: v.optional(v.string()),
   orderIndex: v.number(),
+  groupId: v.optional(v.id("draftGroups")),
+  groupOrderIndex: v.optional(v.number()),
   headVersion: v.number(),
   forkedFromDocumentId: v.optional(v.id("documents")),
   forkedFromVersion: v.optional(v.number()),
@@ -856,6 +936,8 @@ interface DocumentListEntrySource {
   name: string;
   agentName?: string;
   orderIndex: number;
+  groupId?: Id<"draftGroups">;
+  groupOrderIndex?: number;
   headVersion: number;
   forkedFromDocumentId?: Id<"documents">;
   forkedFromVersion?: number;
@@ -870,6 +952,8 @@ function toDocumentListEntry(row: DocumentListEntrySource) {
     name: row.name,
     ...(row.agentName !== undefined ? { agentName: row.agentName } : {}),
     orderIndex: row.orderIndex,
+    ...(row.groupId !== undefined ? { groupId: row.groupId } : {}),
+    ...(row.groupOrderIndex !== undefined ? { groupOrderIndex: row.groupOrderIndex } : {}),
     headVersion: row.headVersion,
     ...(row.forkedFromDocumentId !== undefined
       ? { forkedFromDocumentId: row.forkedFromDocumentId }

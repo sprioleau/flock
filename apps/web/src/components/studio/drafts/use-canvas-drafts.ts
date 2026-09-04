@@ -16,12 +16,19 @@ import { useEditorStore } from "@/lib/editor-store";
 export type DraftListEntry = FunctionReturnType<
   typeof api.documents.listDocumentsByCanvas
 >[number];
+export type DraftGroupListEntry = FunctionReturnType<
+  typeof api.draftGroups.list
+>[number];
 
 export interface CanvasDrafts {
   /*
     Ordered by fractional orderIndex (undefined while the subscription warms up).
   */
   drafts: DraftListEntry[] | undefined;
+  /*
+    Persisted vertical group order for the connected canvas.
+  */
+  draftGroups: DraftGroupListEntry[] | undefined;
   /*
     The draft the editor store is CONNECTED to — "last frame clicked" wins.
   */
@@ -40,9 +47,13 @@ export function useCanvasDrafts(): CanvasDrafts {
     api.documents.listDocumentsByCanvas,
     canvasId !== null ? { canvasId } : "skip",
   );
+  const draftGroups = useQuery(
+    api.draftGroups.list,
+    canvasId !== null ? { canvasId } : "skip",
+  );
   const activeIndex =
     drafts === undefined || activeDocumentId === null
       ? -1
       : drafts.findIndex((draft) => draft._id === activeDocumentId);
-  return { drafts, activeDocumentId, activeIndex, canvasId };
+  return { drafts, draftGroups, activeDocumentId, activeIndex, canvasId };
 }

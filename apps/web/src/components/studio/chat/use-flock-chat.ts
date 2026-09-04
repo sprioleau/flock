@@ -1124,8 +1124,8 @@ export function useFlockChat(): FlockChat {
   const kitThemes: NamedTheme[] = readCanvasThemeCandidates(brandKit);
   useEffect(() => {
     controller.setCreateDrafts(async (command) => {
-      const { canvasId, doc } = useEditorStore.getState();
-      if (canvasId === null) {
+      const { canvasId, documentId, doc } = useEditorStore.getState();
+      if (canvasId === null || documentId === null) {
         return {
           ...createEmptyDraftOutcome(),
           failureNotice: "The editor isn't connected to a canvas yet.",
@@ -1134,6 +1134,7 @@ export function useFlockChat(): FlockChat {
       const outcome = await createAgentDrafts({
         convexClient,
         canvasId,
+        sourceDocumentId: documentId,
         sessionId: getOrCreateSessionId(),
         command,
         sourceDoc: doc,

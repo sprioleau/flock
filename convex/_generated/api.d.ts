@@ -23,6 +23,7 @@ import type * as cleanup from "../cleanup.js";
 import type * as comments from "../comments.js";
 import type * as crons from "../crons.js";
 import type * as documents from "../documents.js";
+import type * as draftGroups from "../draftGroups.js";
 import type * as files from "../files.js";
 import type * as ghost from "../ghost.js";
 import type * as healthcheck from "../healthcheck.js";
@@ -62,6 +63,7 @@ declare const fullApi: ApiFromModules<{
   comments: typeof comments;
   crons: typeof crons;
   documents: typeof documents;
+  draftGroups: typeof draftGroups;
   files: typeof files;
   ghost: typeof ghost;
   healthcheck: typeof healthcheck;

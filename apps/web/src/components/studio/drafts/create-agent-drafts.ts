@@ -85,6 +85,11 @@ export interface CreateAgentDraftsInput {
   */
   canvasId: Id<"canvases">;
   /*
+    The currently active draft. When provided, new agent drafts stay in its
+    group so grouped explorations do not spill back into Ungrouped.
+  */
+  sourceDocumentId?: Id<"documents">;
+  /*
     The browser's anonymous session id.
   */
   sessionId: string;
@@ -208,6 +213,7 @@ function toCreatedDraftSummary({
 export async function createAgentDrafts({
   convexClient,
   canvasId,
+  sourceDocumentId,
   sessionId,
   command,
   sourceDoc,
@@ -245,6 +251,9 @@ export async function createAgentDrafts({
       canvasId,
     });
     const existingNames = existingDrafts.map((draft) => draft.name);
+    const sourceGroupId = existingDrafts.find(
+      (draft) => draft._id === sourceDocumentId,
+    )?.groupId;
 
     for (let index = 0; index < requestedCount; index += 1) {
       const composed = composedDrafts[index];
@@ -261,6 +270,7 @@ export async function createAgentDrafts({
         sessionId,
         canvasId,
         name,
+        ...(sourceGroupId === undefined ? {} : { groupId: sourceGroupId }),
         /*
           A composed draft is built from its sections; seeding the starter
           email first would leave someone else's copy under the new one.

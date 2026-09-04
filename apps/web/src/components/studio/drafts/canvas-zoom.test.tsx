@@ -3,8 +3,11 @@ import { describe, expect, it, vi } from "vitest";
 import {
   CanvasZoomControls,
   DEFAULT_CANVAS_ZOOM_PERCENT,
+  calculateFitCanvasViewport,
   calculateFitCanvasLayout,
   clampZoomPercent,
+  getFocalPointPreservingScrollTarget,
+  getGroupFocusScrollTarget,
   getNextZoomPercent,
 } from "./canvas-zoom";
 
@@ -102,6 +105,111 @@ describe("canvas zoom math", () => {
     expect(occupiedWidthPx).toBeLessThanOrEqual(1200);
     expect(1200 - occupiedWidthPx).toBeLessThanOrEqual(naturalWidthPx / 100);
   });
+
+  it("uses the width as the limiting axis for a wide 2D content bounds", () => {
+    const layout = calculateFitCanvasViewport({
+      viewportWidthPx: 1000,
+      viewportHeightPx: 800,
+      contentBounds: { leftPx: -100, topPx: 40, rightPx: 900, bottomPx: 340 },
+      paddingPx: 40,
+    });
+
+    expect(layout.contentWidthPx).toBe(1000);
+    expect(layout.contentHeightPx).toBe(300);
+    expect(layout.zoomPercent).toBe(92);
+  });
+
+  it("uses the height as the limiting axis for a tall 2D content bounds", () => {
+    const layout = calculateFitCanvasViewport({
+      viewportWidthPx: 1000,
+      viewportHeightPx: 800,
+      contentBounds: { leftPx: 20, topPx: -100, rightPx: 320, bottomPx: 900 },
+      paddingPx: 40,
+    });
+
+    expect(layout.zoomPercent).toBe(72);
+  });
+
+  it("keeps all four padding edges equal and clamps impossible bounds to the minimum", () => {
+    const layout = calculateFitCanvasViewport({
+      viewportWidthPx: 30,
+      viewportHeightPx: 30,
+      contentBounds: { leftPx: 0, topPx: 0, rightPx: 1000, bottomPx: 1000 },
+      paddingPx: 40,
+    });
+
+    expect(layout.zoomPercent).toBe(2);
+    expect(layout.leftPaddingPx).toBe(40);
+    expect(layout.rightPaddingPx).toBe(40);
+    expect(layout.topPaddingPx).toBe(40);
+    expect(layout.bottomPaddingPx).toBe(40);
+  });
+
+  it("preserves the focal point while zooming in both axes", () => {
+    expect(
+      getFocalPointPreservingScrollTarget({
+        focalPointPx: { xPx: 200, yPx: 100 },
+        previousZoomPercent: 70,
+        nextZoomPercent: 140,
+        scrollLeftPx: 100,
+        scrollTopPx: 50,
+      }),
+    ).toEqual({ scrollLeftPx: 400, scrollTopPx: 200 });
+  });
+
+  it("centers a group focus target and never returns negative scroll offsets", () => {
+    expect(
+      getGroupFocusScrollTarget({
+        groupBounds: { leftPx: 100, topPx: 300, rightPx: 500, bottomPx: 500 },
+        viewportWidthPx: 400,
+        viewportHeightPx: 300,
+        zoomPercent: 100,
+      }),
+    ).toEqual({ scrollLeftPx: 100, scrollTopPx: 250 });
+
+    expect(
+      getGroupFocusScrollTarget({
+        groupBounds: { leftPx: -100, topPx: -100, rightPx: 20, bottomPx: 20 },
+        viewportWidthPx: 400,
+        viewportHeightPx: 300,
+        zoomPercent: 200,
+      }),
+    ).toEqual({ scrollLeftPx: 0, scrollTopPx: 0 });
+  });
+
+  it("turns non-finite measurements into safe bounded viewport values", () => {
+    expect(
+      calculateFitCanvasViewport({
+        viewportWidthPx: Number.NaN,
+        viewportHeightPx: 800,
+        contentBounds: {
+          leftPx: Number.NaN,
+          topPx: 0,
+          rightPx: Number.POSITIVE_INFINITY,
+          bottomPx: 400,
+        },
+        paddingPx: Number.NaN,
+      }),
+    ).toMatchObject({
+      zoomPercent: 200,
+      contentWidthPx: 0,
+      contentHeightPx: 400,
+      paddingPx: 0,
+    });
+    expect(
+      getGroupFocusScrollTarget({
+        groupBounds: {
+          leftPx: Number.NaN,
+          topPx: Number.NEGATIVE_INFINITY,
+          rightPx: 300,
+          bottomPx: 200,
+        },
+        viewportWidthPx: 500,
+        viewportHeightPx: 400,
+        zoomPercent: 70,
+      }),
+    ).toEqual({ scrollLeftPx: 0, scrollTopPx: 0 });
+  });
 });
 
 describe("canvas zoom controls", () => {
@@ -171,5 +279,20 @@ describe("canvas zoom controls", () => {
 
     expect(onFitToView).toHaveBeenCalledTimes(2);
     expect(preventDefault).toHaveBeenCalledTimes(2);
+  });
+
+  it("exposes an accessible reset-to-70 control and calls its callback", () => {
+    const onResetZoom = vi.fn();
+    const tree = CanvasZoomControls({
+      zoomPercent: 146,
+      onZoomChange: vi.fn(),
+      onFitToView: vi.fn(),
+      onResetZoom,
+    });
+    const reset = findButton(tree, "Reset zoom to 70%");
+
+    expect(reset.props.title).toBe("Reset zoom to 70%");
+    (reset.props.onClick as () => void)();
+    expect(onResetZoom).toHaveBeenCalledTimes(1);
   });
 });

@@ -26,6 +26,16 @@ function renderLabel(isActive: boolean): string {
   return renderToStaticMarkup(<DraftFrameLabel draft={DRAFT} isActive={isActive} />);
 }
 
+function renderLabelWithActions(): string {
+  return renderToStaticMarkup(
+    <DraftFrameLabel
+      draft={DRAFT}
+      isActive
+      actions={<button type="button">Move draft</button>}
+    />,
+  );
+}
+
 function renderSelectionRegion(isActive: boolean): string {
   return renderToStaticMarkup(
     <DraftFrameSelectionRegion isActive={isActive}>
@@ -67,6 +77,14 @@ describe("draft frame selection chrome", () => {
     const markup = renderLabel(true);
 
     expect(markup).toMatch(/^<div class="shrink-0 px-2 py-1">/);
+    expect(markup).not.toMatch(/class="[^"]*(?:border|outline|ring)-primary[^"]*"/);
+  });
+
+  it("keeps draft actions in the same inset title row without adding selection chrome", () => {
+    const markup = renderLabelWithActions();
+
+    expect(markup).toContain("Launch note");
+    expect(markup).toContain("Move draft");
     expect(markup).not.toMatch(/class="[^"]*(?:border|outline|ring)-primary[^"]*"/);
   });
 });

@@ -434,6 +434,7 @@ export function DraftSelector({
         canvasId: activeDraft.canvasId,
         name,
         shouldSeedEmpty: true,
+        ...(activeDraft.groupId === undefined ? {} : { groupId: activeDraft.groupId }),
       });
       let prompt: string;
       if (mode === "ideate") {
@@ -566,6 +567,7 @@ export function DraftSelector({
         sessionId: getOrCreateSessionId(),
         canvasId,
         name: computeNextDraftName({ existingNames: drafts.map((draft) => draft.name) }),
+        ...(activeDraft?.groupId === undefined ? {} : { groupId: activeDraft.groupId }),
       })
       .then(({ documentId }) => {
         onActivateDraft(documentId);

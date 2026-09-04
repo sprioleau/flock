@@ -663,6 +663,22 @@ export const deleteCanvas = mutation({
       return { isOk: true, deletedDraftCount: 0, isComplete: true };
     }
 
+    /*
+      Groups are canvas metadata rather than part of a document cascade. Read
+      one row beyond the deletion ceiling so a pathological canvas refuses
+      safely instead of leaving orphaned groups after its canvas is removed.
+    */
+    const draftGroups = await ctx.db
+      .query("draftGroups")
+      .withIndex("by_canvasId", (q) => q.eq("canvasId", args.canvasId))
+      .take(MAX_ROW_DELETIONS_PER_RUN + 1);
+    if (draftGroups.length > MAX_ROW_DELETIONS_PER_RUN) {
+      throw new Error("Canvas has too many draft groups to delete in one operation.");
+    }
+    for (const group of draftGroups) {
+      await ctx.db.delete(group._id);
+    }
+
     const drafts = await ctx.db
       .query("documents")
       .withIndex("by_canvasId", (q) => q.eq("canvasId", args.canvasId))

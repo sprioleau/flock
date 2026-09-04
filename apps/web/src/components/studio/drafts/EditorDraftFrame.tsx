@@ -75,6 +75,7 @@ export function EditorDraftFrame({
   isActive,
   isGenerationTarget,
   zoomPercent,
+  frameActions,
   onActivate,
   registerFrameRef,
 }: EditorDraftFrameProps) {
@@ -128,6 +129,7 @@ export function EditorDraftFrame({
         isActive={isActive}
         isGenerationTarget={isGenerationTarget}
         zoomPercent={zoomPercent}
+        frameActions={frameActions}
         onActivate={onActivate}
         registerFrameRef={registerFrameRef}
         frameWidthPx={EDITOR_FRAME_DESKTOP_WIDTH_PX}
@@ -142,6 +144,7 @@ export function EditorDraftFrame({
       isActive={isActive}
       isGenerationTarget={isGenerationTarget}
       zoomPercent={zoomPercent}
+      frameActions={frameActions}
       onActivate={onActivate}
       registerFrameRef={registerFrameRef}
       store={store}
@@ -164,6 +167,10 @@ export interface EditorDraftFrameProps {
   */
   zoomPercent: number;
   /*
+    Canvas-level actions rendered alongside the draft title.
+  */
+  frameActions?: React.ReactNode;
+  /*
     Activate this draft (shallow ?doc= switch upstream). No-op when active.
   */
   onActivate: () => void;
@@ -175,6 +182,7 @@ function ConnectedEditorDraftFrame({
   isActive,
   isGenerationTarget,
   zoomPercent,
+  frameActions,
   onActivate,
   registerFrameRef,
   store,
@@ -216,6 +224,7 @@ function ConnectedEditorDraftFrame({
       isActive={isActive}
       isGenerationTarget={isGenerationTarget}
       zoomPercent={zoomPercent}
+      frameActions={frameActions}
       onActivate={onActivate}
       registerFrameRef={registerFrameRef}
       frameWidthPx={
@@ -294,6 +303,7 @@ function FrameShell({
   isActive,
   isGenerationTarget,
   zoomPercent,
+  frameActions,
   onActivate,
   registerFrameRef,
   frameWidthPx,
@@ -321,6 +331,7 @@ function FrameShell({
           draft={draft}
           isActive={isActive}
           onActivate={isActive ? undefined : onActivate}
+          actions={frameActions}
         />
         {/*
           Positioning wrapper so the generation glow can ring the content box

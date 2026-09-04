@@ -163,10 +163,12 @@ export function DraftFrameLabel({
   draft,
   isActive,
   onActivate,
+  actions,
 }: {
   draft: DraftListEntry;
   isActive: boolean;
   onActivate?: () => void;
+  actions?: React.ReactNode;
 }) {
   const convexClient = useConvex();
   const [isRenaming, setIsRenaming] = useState(false);
@@ -237,6 +239,7 @@ export function DraftFrameLabel({
           {draft.name}
         </button>
         <DraftBrandPill documentId={draft._id} />
+        {actions !== undefined ? <div className="ml-auto shrink-0">{actions}</div> : null}
       </div>
     </div>
   );

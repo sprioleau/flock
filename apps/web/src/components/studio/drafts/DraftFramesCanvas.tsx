@@ -4,21 +4,34 @@ import {
   useEffect,
   useRef,
   useState,
+  type KeyboardEvent as ReactKeyboardEvent,
   type MouseEvent as ReactMouseEvent,
   type PointerEvent as ReactPointerEvent,
+  type WheelEvent as ReactWheelEvent,
 } from "react";
-import { useQuery } from "convex/react";
+import { useConvex, useQuery } from "convex/react";
 import {
   BanIcon,
   ChevronLeftIcon,
   ChevronRightIcon,
   Loader2Icon,
+  PlusIcon,
 } from "lucide-react";
 import { type EmailDocument } from "@flock/email-sdk";
 import { api } from "@convex/_generated/api";
 import type { Id } from "@convex/_generated/dataModel";
 import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogClose,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { getActiveEditorStore } from "@/lib/editor-store";
+import { getOrCreateSessionId } from "@/lib/session";
 import { cn } from "@/lib/utils";
 import { useGenerationTargetDocumentId } from "../chat/agent-status";
 import { useCanvasDragStore } from "../dnd/drag-drop-store";
@@ -33,42 +46,38 @@ import {
   PREVIEW_FRAME_WIDTH_PX,
 } from "./draft-frame-chrome";
 import {
-  calculateFitCanvasLayout,
+  calculateFitCanvasViewport,
   CanvasZoomControls,
   DEFAULT_CANVAS_ZOOM_PERCENT,
+  getFocalPointPreservingScrollTarget,
+  getGroupFocusScrollTarget,
   getNextZoomPercent,
 } from "./canvas-zoom";
+import { DraftGroupMoveDraftMenu } from "./DraftGroupMoveDraftMenu";
+import { DraftGroupSection } from "./DraftGroupSection";
+import {
+  UNGROUPED_DRAFT_GROUP_KEY,
+  buildDraftGroupLayout,
+  getReorderedDraftGroupIds,
+} from "./draft-group-layout";
+import { computeNextDraftName } from "./draft-naming";
 import { EditorDraftFrame } from "./EditorDraftFrame";
-import { useCanvasDrafts, type DraftListEntry } from "./use-canvas-drafts";
+import {
+  useCanvasDrafts,
+  type DraftGroupListEntry,
+  type DraftListEntry,
+} from "./use-canvas-drafts";
 
-/**
- * §10.2 frames UX — the canvas drafts rendered SIDE BY SIDE, Figma-frames
- * style: top-aligned frames on a horizontally scrolling surface (no 2D
- * panning), each with a name label above it.
- *
- * Simultaneous multi-frame editing: up to {@link MAX_LIVE_EDITOR_FRAMES}
- * drafts render as FULL LIVE EDITORS (EditorDraftFrame — own store instance,
- * own presence room, dnd, selection, inline editing), the active one always
- * among them. Clicking into any editor frame lands exactly where you clicked
- * (select / edit / drag in that frame's own store, immediately) and
- * activates the frame in parallel — activation only flips styling, never
- * remounts, so the right rail and chat re-target without interrupting the
- * gesture. Drafts beyond the editor cap keep the older tiers:
- *
- * - live READ-ONLY previews (own reactive `getDocumentByKey` subscription,
- *   fit-zoom scaled, activate on click) up to
- *   {@link MAX_LIVE_SIBLING_PREVIEWS};
- * - a lightweight placeholder frame past that, still activating on click.
- *
- * Frame ROLES key off the store's connected documentId (not the URL), so
- * during the brief switch window the outgoing frame stays active-styled.
- *
- * Scale assumption (documented per the redesign spec): canvases hold a
- * handful of drafts at demo scale. The editor cap bounds the expensive tier
- * (each live editor ≈ one snapshot subscription + presence heartbeat +
- * comment/persona queries + mounted block shells; PM text editors stay lazy
- * per block); preview frames cost one subscription + one static render.
- */
+/*
+  Draft groups form vertical rows, while each group's drafts remain
+  horizontal. One canvas scroller owns both axes and one scene-level zoom
+  keeps group chrome, draft chrome, and email content spatially coherent.
+
+  Simultaneous multi-frame editing remains bounded: the active draft and up
+  to two siblings are full live editors; additional siblings become reactive
+  previews and then lightweight placeholders. Activation changes styling and
+  routing without remounting the active editor.
+*/
 
 /*
   Max simultaneous live editor frames (the active draft always holds a slot).
@@ -85,65 +94,298 @@ const MAX_LIVE_SIBLING_PREVIEWS = 8;
   frame chrome zooms with it.
 */
 const CANVAS_FRAME_GAP_PX = 64;
+const CANVAS_PAN_THRESHOLD_PX = 4;
+const CANVAS_KEYBOARD_PAN_PX = 96;
+
+interface CanvasPanGesture {
+  pointerId: number;
+  startClientX: number;
+  startClientY: number;
+  startScrollLeft: number;
+  startScrollTop: number;
+  hasMoved: boolean;
+}
+
+function getIsInteractiveCanvasTarget(target: EventTarget | null): boolean {
+  return (
+    target instanceof Element &&
+    target.closest(
+      "button, a, input, textarea, select, [contenteditable='true'], [role='menuitem'], [data-testid='draft-frame']",
+    ) !== null
+  );
+}
+
+function getIsCanvasPanRegion(target: EventTarget | null): boolean {
+  return target instanceof Element && target.closest("[data-canvas-pan-region]") !== null;
+}
 
 export function DraftFramesCanvas({
   onActivateDraft,
 }: {
   onActivateDraft: (documentId: Id<"documents">) => void;
 }) {
-  const { drafts, activeDocumentId, activeIndex } = useCanvasDrafts();
+  const convexClient = useConvex();
+  const { drafts, draftGroups, activeDocumentId, activeIndex, canvasId } = useCanvasDrafts();
   /*
     The document a live AI generation streams into (drafts menu flows) —
     only THAT frame shows the working state; clears when the turn settles.
   */
   const generationTargetDocumentId = useGenerationTargetDocumentId();
   const frameRefsById = useRef(new Map<string, HTMLDivElement>());
+  const groupRefsByKey = useRef(new Map<string, HTMLElement>());
   const framesScrollerRef = useRef<HTMLDivElement>(null);
+  const canvasSceneRef = useRef<HTMLDivElement>(null);
   const lastScrolledDocumentIdRef = useRef<string | null>(null);
+  const pendingFocusedGroupKeyRef = useRef<string | null>(null);
+  const panGestureRef = useRef<CanvasPanGesture | null>(null);
+  const isSpacePressedRef = useRef(false);
+  const shouldIgnoreNextCanvasClickRef = useRef(false);
   const [zoomPercent, setZoomPercent] = useState(DEFAULT_CANVAS_ZOOM_PERCENT);
+  const [focusedGroupKey, setFocusedGroupKey] = useState<string | null>(null);
+  const [groupPendingDelete, setGroupPendingDelete] = useState<DraftGroupListEntry | null>(null);
+  const [isDeletePending, setIsDeletePending] = useState(false);
+  const [isPanning, setIsPanning] = useState(false);
+  const groupRows = buildDraftGroupLayout({
+    groups: draftGroups ?? [],
+    drafts: drafts ?? [],
+  });
+  const activeDraft =
+    activeDocumentId === null ? undefined : drafts?.find((draft) => draft._id === activeDocumentId);
+  const activeGroupKey = activeDraft?.groupId ?? UNGROUPED_DRAFT_GROUP_KEY;
+  const visibleFocusedGroupKey = focusedGroupKey ?? activeGroupKey;
 
-  function applyCanvasZoom(direction: "in" | "out"): void {
-    const nextZoom = getNextZoomPercent(zoomPercent, direction);
-    if (nextZoom === zoomPercent) {
+  function setCanvasZoomAroundPoint({
+    nextZoomPercent,
+    focalPointPx,
+  }: {
+    nextZoomPercent: number;
+    focalPointPx?: { xPx: number; yPx: number };
+  }): void {
+    if (nextZoomPercent === zoomPercent) {
       return;
     }
     const scroller = framesScrollerRef.current;
-    const horizontalOverflow = scroller === null ? 0 : scroller.scrollWidth - scroller.clientWidth;
-    const verticalOverflow = scroller === null ? 0 : scroller.scrollHeight - scroller.clientHeight;
-    const horizontalScrollRatio =
-      scroller !== null && horizontalOverflow > 0 ? scroller.scrollLeft / horizontalOverflow : 0;
-    const verticalScrollRatio =
-      scroller !== null && verticalOverflow > 0 ? scroller.scrollTop / verticalOverflow : 0;
-    setZoomPercent(nextZoom);
-    if (scroller !== null) {
-      requestAnimationFrame(() => {
-        const nextHorizontalOverflow = scroller.scrollWidth - scroller.clientWidth;
-        const nextVerticalOverflow = scroller.scrollHeight - scroller.clientHeight;
-        scroller.scrollLeft = Math.max(0, horizontalScrollRatio * nextHorizontalOverflow);
-        scroller.scrollTop = Math.max(0, verticalScrollRatio * nextVerticalOverflow);
-      });
+    if (scroller === null) {
+      setZoomPercent(nextZoomPercent);
+      return;
     }
+    const focalPoint = focalPointPx ?? {
+      xPx: scroller.clientWidth / 2,
+      yPx: scroller.clientHeight / 2,
+    };
+    const target = getFocalPointPreservingScrollTarget({
+      focalPointPx: focalPoint,
+      previousZoomPercent: zoomPercent,
+      nextZoomPercent,
+      scrollLeftPx: scroller.scrollLeft,
+      scrollTopPx: scroller.scrollTop,
+    });
+    setZoomPercent(nextZoomPercent);
+    requestAnimationFrame(() => {
+      scroller.scrollLeft = target.scrollLeftPx;
+      scroller.scrollTop = target.scrollTopPx;
+    });
+  }
+
+  function applyCanvasZoom(direction: "in" | "out"): void {
+    setCanvasZoomAroundPoint({ nextZoomPercent: getNextZoomPercent(zoomPercent, direction) });
   }
 
   function fitDraftsToView(): void {
     const scroller = framesScrollerRef.current;
-    const frameElements = Array.from(frameRefsById.current.values());
-    if (scroller === null || frameElements.length === 0) {
+    const scene = canvasSceneRef.current;
+    if (scroller === null || scene === null) {
       return;
     }
     const currentZoomFactor = zoomPercent / 100;
-    const fitLayout = calculateFitCanvasLayout({
+    const sceneRect = scene.getBoundingClientRect();
+    const naturalWidthPx = sceneRect.width / currentZoomFactor;
+    const naturalHeightPx = sceneRect.height / currentZoomFactor;
+    const fitLayout = calculateFitCanvasViewport({
       viewportWidthPx: scroller.clientWidth,
-      draftWidthsPx: frameElements.map(
-        (frameElement) => frameElement.getBoundingClientRect().width / currentZoomFactor,
-      ),
-      gapPx: CANVAS_FRAME_GAP_PX,
+      viewportHeightPx: scroller.clientHeight,
+      contentBounds: {
+        leftPx: 0,
+        topPx: 0,
+        rightPx: naturalWidthPx,
+        bottomPx: naturalHeightPx,
+      },
+      paddingPx: 0,
     });
-    if (fitLayout.zoomPercent <= 0) {
+    setZoomPercent(fitLayout.zoomPercent);
+    requestAnimationFrame(() => {
+      scroller.scrollLeft = 0;
+      scroller.scrollTop = 0;
+    });
+  }
+
+  function resetCanvasZoom(): void {
+    setCanvasZoomAroundPoint({ nextZoomPercent: DEFAULT_CANVAS_ZOOM_PERCENT });
+  }
+
+  function focusDraftGroup(groupKey: string): void {
+    const scroller = framesScrollerRef.current;
+    const groupElement = groupRefsByKey.current.get(groupKey);
+    if (scroller === null || groupElement === undefined) {
+      pendingFocusedGroupKeyRef.current = groupKey;
+      setFocusedGroupKey(groupKey);
       return;
     }
+    pendingFocusedGroupKeyRef.current = null;
+    setFocusedGroupKey(groupKey);
+    const groupBounds = {
+      leftPx: groupElement.offsetLeft,
+      topPx: groupElement.offsetTop,
+      rightPx: groupElement.offsetLeft + groupElement.offsetWidth,
+      bottomPx: groupElement.offsetTop + groupElement.offsetHeight,
+    };
+    const fitLayout = calculateFitCanvasViewport({
+      viewportWidthPx: scroller.clientWidth,
+      viewportHeightPx: scroller.clientHeight,
+      contentBounds: groupBounds,
+      paddingPx: CANVAS_FRAME_GAP_PX,
+    });
     setZoomPercent(fitLayout.zoomPercent);
-    scroller.scrollLeft = 0;
+    requestAnimationFrame(() => {
+      const target = getGroupFocusScrollTarget({
+        groupBounds,
+        viewportWidthPx: scroller.clientWidth,
+        viewportHeightPx: scroller.clientHeight,
+        zoomPercent: fitLayout.zoomPercent,
+      });
+      scroller.scrollLeft = target.scrollLeftPx;
+      scroller.scrollTop = target.scrollTopPx;
+    });
+  }
+
+  useEffect(() => {
+    const pendingGroupKey = pendingFocusedGroupKeyRef.current;
+    if (pendingGroupKey !== null && groupRefsByKey.current.has(pendingGroupKey)) {
+      focusDraftGroup(pendingGroupKey);
+    }
+  }, [draftGroups]);
+
+  function createDraftGroup(): void {
+    if (canvasId === null) {
+      return;
+    }
+    const name = `Group ${(draftGroups?.length ?? 0) + 1}`;
+    void convexClient
+      .mutation(api.draftGroups.create, { canvasId, name })
+      .then((groupId) => {
+        pendingFocusedGroupKeyRef.current = groupId;
+        setFocusedGroupKey(groupId);
+      })
+      .catch((error: unknown) => {
+        console.error("create draft group failed", error);
+        getActiveEditorStore().getState().showNotice("Couldn't create the group.");
+      });
+  }
+
+  function createDraftInGroup(groupKey: string): void {
+    if (canvasId === null || drafts === undefined) {
+      return;
+    }
+    void convexClient
+      .mutation(api.documents.createDocument, {
+        sessionId: getOrCreateSessionId(),
+        canvasId,
+        name: computeNextDraftName({ existingNames: drafts.map((draft) => draft.name) }),
+        ...(groupKey === UNGROUPED_DRAFT_GROUP_KEY
+          ? {}
+          : { groupId: groupKey as Id<"draftGroups"> }),
+      })
+      .then(({ documentId }) => onActivateDraft(documentId))
+      .catch((error: unknown) => {
+        console.error("create grouped draft failed", error);
+        getActiveEditorStore().getState().showNotice("Couldn't create the draft.");
+      });
+  }
+
+  function updateDraftGroup(
+    groupKey: string,
+    value: { name: string; description?: string },
+  ): void {
+    void convexClient
+      .mutation(api.draftGroups.update, {
+        groupId: groupKey as Id<"draftGroups">,
+        name: value.name,
+        description: value.description ?? null,
+      })
+      .catch((error: unknown) => {
+        console.error("update draft group failed", error);
+        getActiveEditorStore().getState().showNotice("Couldn't update the group.");
+      });
+  }
+
+  function moveDraftGroup(groupKey: string, direction: "up" | "down"): void {
+    if (canvasId === null || draftGroups === undefined) {
+      return;
+    }
+    const groupIds = getReorderedDraftGroupIds({
+      groupIds: draftGroups.map((group) => group._id),
+      groupId: groupKey,
+      direction,
+    }) as Id<"draftGroups">[];
+    void convexClient.mutation(api.draftGroups.reorderGroups, { canvasId, groupIds }).catch(
+      (error: unknown) => {
+        console.error("reorder draft groups failed", error);
+        getActiveEditorStore().getState().showNotice("Couldn't reorder the groups.");
+      },
+    );
+  }
+
+  function moveDraftToGroup({ draftId, toGroupId }: { draftId: string; toGroupId: string }): void {
+    void convexClient
+      .mutation(api.draftGroups.moveDraft, {
+        documentId: draftId as Id<"documents">,
+        groupId:
+          toGroupId === UNGROUPED_DRAFT_GROUP_KEY
+            ? null
+            : (toGroupId as Id<"draftGroups">),
+      })
+      .catch((error: unknown) => {
+        console.error("move draft to group failed", error);
+        getActiveEditorStore().getState().showNotice("Couldn't move the draft.");
+      });
+  }
+
+  function confirmDeleteDraftGroup(): void {
+    if (groupPendingDelete === null || isDeletePending) {
+      return;
+    }
+    setIsDeletePending(true);
+    void convexClient
+      .mutation(api.draftGroups.deleteGroup, { groupId: groupPendingDelete._id })
+      .then(() => {
+        setFocusedGroupKey(UNGROUPED_DRAFT_GROUP_KEY);
+        getActiveEditorStore()
+          .getState()
+          .showNotice("Group removed. Its drafts are now in Ungrouped.");
+      })
+      .catch((error: unknown) => {
+        console.error("delete draft group failed", error);
+        getActiveEditorStore().getState().showNotice("Couldn't delete the group.");
+      })
+      .finally(() => {
+        setIsDeletePending(false);
+        setGroupPendingDelete(null);
+      });
+  }
+
+  function handleCanvasWheel(event: ReactWheelEvent<HTMLDivElement>): void {
+    if (!event.ctrlKey && !event.metaKey) {
+      return;
+    }
+    event.preventDefault();
+    const scrollerRect = event.currentTarget.getBoundingClientRect();
+    setCanvasZoomAroundPoint({
+      nextZoomPercent: getNextZoomPercent(zoomPercent, event.deltaY < 0 ? "in" : "out"),
+      focalPointPx: {
+        xPx: event.clientX - scrollerRect.left,
+        yPx: event.clientY - scrollerRect.top,
+      },
+    });
   }
 
   /*
@@ -158,22 +400,126 @@ export function DraftFramesCanvas({
     path: the background pointerdown blurs it before this click lands.
   */
   const backgroundPressPositionRef = useRef<{ x: number; y: number } | null>(null);
-  const handleSurfacePointerDown = (event: ReactPointerEvent<HTMLDivElement>) => {
+  function handleSurfacePointerDown(event: ReactPointerEvent<HTMLDivElement>): void {
+    const isBackground =
+      getIsCanvasPanRegion(event.target) && !getIsInteractiveCanvasTarget(event.target);
     backgroundPressPositionRef.current =
-      event.target === event.currentTarget ? { x: event.clientX, y: event.clientY } : null;
-  };
-  const handleSurfaceClick = (event: ReactMouseEvent<HTMLDivElement>) => {
+      event.button === 0 && isBackground ? { x: event.clientX, y: event.clientY } : null;
+    const shouldStartPan =
+      event.pointerType !== "touch" &&
+      useCanvasDragStore.getState().dragSource === null &&
+      !getIsInteractiveCanvasTarget(event.target) &&
+      (event.button === 1 || (event.button === 0 && (isSpacePressedRef.current || isBackground)));
+    if (!shouldStartPan) {
+      return;
+    }
+    event.currentTarget.focus({ preventScroll: true });
+    event.currentTarget.setPointerCapture(event.pointerId);
+    panGestureRef.current = {
+      pointerId: event.pointerId,
+      startClientX: event.clientX,
+      startClientY: event.clientY,
+      startScrollLeft: event.currentTarget.scrollLeft,
+      startScrollTop: event.currentTarget.scrollTop,
+      hasMoved: false,
+    };
+  }
+
+  function handleSurfacePointerMove(event: ReactPointerEvent<HTMLDivElement>): void {
+    const gesture = panGestureRef.current;
+    if (gesture === null || gesture.pointerId !== event.pointerId) {
+      return;
+    }
+    const deltaX = event.clientX - gesture.startClientX;
+    const deltaY = event.clientY - gesture.startClientY;
+    if (!gesture.hasMoved && Math.hypot(deltaX, deltaY) <= CANVAS_PAN_THRESHOLD_PX) {
+      return;
+    }
+    gesture.hasMoved = true;
+    event.preventDefault();
+    setIsPanning(true);
+    event.currentTarget.scrollLeft = gesture.startScrollLeft - deltaX;
+    event.currentTarget.scrollTop = gesture.startScrollTop - deltaY;
+  }
+
+  function endCanvasPan(event: ReactPointerEvent<HTMLDivElement>): void {
+    const gesture = panGestureRef.current;
+    if (gesture === null || gesture.pointerId !== event.pointerId) {
+      return;
+    }
+    shouldIgnoreNextCanvasClickRef.current = gesture.hasMoved;
+    panGestureRef.current = null;
+    setIsPanning(false);
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
+  }
+
+  function cancelCanvasPan(scroller: HTMLDivElement): void {
+    const gesture = panGestureRef.current;
+    if (gesture !== null && scroller.hasPointerCapture(gesture.pointerId)) {
+      scroller.releasePointerCapture(gesture.pointerId);
+    }
+    panGestureRef.current = null;
+    backgroundPressPositionRef.current = null;
+    shouldIgnoreNextCanvasClickRef.current = false;
+    isSpacePressedRef.current = false;
+    setIsPanning(false);
+  }
+
+  function handleSurfaceClick(event: ReactMouseEvent<HTMLDivElement>): void {
+    if (shouldIgnoreNextCanvasClickRef.current) {
+      shouldIgnoreNextCanvasClickRef.current = false;
+      backgroundPressPositionRef.current = null;
+      return;
+    }
     const pressedAt = backgroundPressPositionRef.current;
     backgroundPressPositionRef.current = null;
     const isBackgroundClick =
-      event.target === event.currentTarget &&
+      getIsCanvasPanRegion(event.target) &&
+      !getIsInteractiveCanvasTarget(event.target) &&
       pressedAt !== null &&
-      Math.hypot(event.clientX - pressedAt.x, event.clientY - pressedAt.y) <= 4;
+      Math.hypot(event.clientX - pressedAt.x, event.clientY - pressedAt.y) <=
+        CANVAS_PAN_THRESHOLD_PX;
     if (!isBackgroundClick || useCanvasDragStore.getState().dragSource !== null) {
       return;
     }
     getActiveEditorStore().getState().selectBlock(null);
-  };
+  }
+
+  function handleCanvasKeyDown(event: ReactKeyboardEvent<HTMLDivElement>): void {
+    if (event.target !== event.currentTarget) {
+      return;
+    }
+    if (event.key === " ") {
+      event.preventDefault();
+      isSpacePressedRef.current = true;
+      return;
+    }
+    if (event.key === "Escape") {
+      cancelCanvasPan(event.currentTarget);
+      return;
+    }
+    const delta = event.shiftKey ? CANVAS_KEYBOARD_PAN_PX * 2 : CANVAS_KEYBOARD_PAN_PX;
+    const scrollTargetByKey: Record<string, { left: number; top: number }> = {
+      ArrowLeft: { left: -delta, top: 0 },
+      ArrowRight: { left: delta, top: 0 },
+      ArrowUp: { left: 0, top: -delta },
+      ArrowDown: { left: 0, top: delta },
+    };
+    const target = scrollTargetByKey[event.key];
+    if (target === undefined) {
+      return;
+    }
+    event.preventDefault();
+    event.currentTarget.scrollBy({ ...target, behavior: "smooth" });
+  }
+
+  function handleCanvasKeyUp(event: ReactKeyboardEvent<HTMLDivElement>): void {
+    if (event.key === " ") {
+      isSpacePressedRef.current = false;
+    }
+  }
 
   /*
     Bring the newly activated frame into view. Depends on `drafts` too: on a
@@ -222,6 +568,60 @@ export function DraftFramesCanvas({
     }
   }
 
+  const moveDestinations = [
+    { groupId: UNGROUPED_DRAFT_GROUP_KEY, name: "Ungrouped" },
+    ...(draftGroups ?? []).map((group) => ({ groupId: group._id, name: group.name })),
+  ];
+
+  function renderDraftFrame(draft: DraftListEntry, groupKey: string) {
+    const isActive = draft._id === activeDocumentId;
+    const isGenerationTarget = draft._id === generationTargetDocumentId;
+    function registerFrameRef(element: HTMLDivElement | null): void {
+      if (element === null) {
+        frameRefsById.current.delete(draft._id);
+      } else {
+        frameRefsById.current.set(draft._id, element);
+      }
+    }
+    const frameActions = (
+      <DraftGroupMoveDraftMenu
+        draftId={draft._id}
+        draftName={draft.name}
+        currentGroupId={groupKey}
+        groups={moveDestinations}
+        onMoveDraft={moveDraftToGroup}
+      />
+    );
+    if (liveEditorIds.has(draft._id)) {
+      return (
+        <div key={draft._id} className="shrink-0" role="listitem">
+          <EditorDraftFrame
+            draft={draft}
+            isActive={isActive}
+            isGenerationTarget={isGenerationTarget}
+            zoomPercent={100}
+            frameActions={frameActions}
+            onActivate={() => onActivateDraft(draft._id)}
+            registerFrameRef={registerFrameRef}
+          />
+        </div>
+      );
+    }
+    return (
+      <div key={draft._id} className="shrink-0" role="listitem">
+        <SiblingDraftFrame
+          draft={draft}
+          shouldMountLivePreview={liveSiblingPreviewIds.has(draft._id)}
+          isGenerationTarget={isGenerationTarget}
+          zoomPercent={100}
+          frameActions={frameActions}
+          onActivate={() => onActivateDraft(draft._id)}
+          registerFrameRef={registerFrameRef}
+        />
+      </div>
+    );
+  }
+
   return (
     <div className="relative flex min-h-0 flex-1 flex-col" data-testid="draft-frames-canvas">
       {/*
@@ -239,47 +639,94 @@ export function DraftFramesCanvas({
       */}
       <div
         ref={framesScrollerRef}
-        className="flex min-h-0 flex-1 items-start gap-16 overflow-auto bg-neutral-200/70 px-16 py-4 dark:bg-black/40"
+        className={cn(
+          "relative min-h-0 flex-1 overflow-auto bg-neutral-200/70 outline-none dark:bg-black/40",
+          isPanning ? "cursor-grabbing select-none" : "cursor-grab",
+        )}
+        tabIndex={0}
+        role="region"
+        aria-label="Draft groups canvas. Drag blank space or use arrow keys to pan."
         data-frames-scroller
+        data-canvas-pan-region
         onPointerDown={handleSurfacePointerDown}
+        onPointerMove={handleSurfacePointerMove}
+        onPointerUp={endCanvasPan}
+        onPointerCancel={endCanvasPan}
         onClick={handleSurfaceClick}
+        onWheel={handleCanvasWheel}
+        onKeyDown={handleCanvasKeyDown}
+        onKeyUp={handleCanvasKeyUp}
+        onBlur={(event) => cancelCanvasPan(event.currentTarget)}
       >
-        {(drafts ?? []).map((draft) => {
-          const isActive = draft._id === activeDocumentId;
-          function registerFrameRef(element: HTMLDivElement | null): void {
-            if (element === null) {
-              frameRefsById.current.delete(draft._id);
-            } else {
-              frameRefsById.current.set(draft._id, element);
-            }
-          }
-          const isGenerationTarget = draft._id === generationTargetDocumentId;
-          if (liveEditorIds.has(draft._id)) {
+        <div
+          ref={canvasSceneRef}
+          className="inline-flex w-max min-w-max flex-col gap-16 p-16"
+          style={{ zoom: zoomPercent / 100 }}
+          data-canvas-scene
+          data-canvas-pan-region
+        >
+          {groupRows.map((row, rowIndex) => {
+            const groupIndex =
+              row.group === null
+                ? -1
+                : (draftGroups ?? []).findIndex((group) => group._id === row.group?._id);
             return (
-              <EditorDraftFrame
-                key={draft._id}
-                draft={draft}
-                isActive={isActive}
-                isGenerationTarget={isGenerationTarget}
-                zoomPercent={zoomPercent}
-                onActivate={() => onActivateDraft(draft._id)}
-                registerFrameRef={registerFrameRef}
-              />
+              <div
+                key={row.key}
+                ref={(element) => {
+                  if (element === null) {
+                    groupRefsByKey.current.delete(row.key);
+                  } else {
+                    groupRefsByKey.current.set(row.key, element);
+                  }
+                }}
+                className="w-max shrink-0"
+                data-canvas-pan-region
+                data-draft-group-row={row.key}
+              >
+                <DraftGroupSection
+                  groupId={row.key}
+                  name={row.group?.name ?? "Ungrouped"}
+                  description={row.group?.description}
+                  draftCount={row.drafts.length}
+                  isFocused={visibleFocusedGroupKey === row.key}
+                  onFocusGroup={focusDraftGroup}
+                  onRenameGroup={row.group === null ? undefined : updateDraftGroup}
+                  onCreateDraft={createDraftInGroup}
+                  onDeleteGroup={
+                    row.group === null
+                      ? undefined
+                      : () => {
+                          setGroupPendingDelete(row.group);
+                        }
+                  }
+                  onMoveGroup={row.group === null ? undefined : moveDraftGroup}
+                  isMoveUpDisabled={groupIndex <= 0}
+                  isMoveDownDisabled={
+                    groupIndex < 0 || groupIndex >= (draftGroups?.length ?? 0) - 1
+                  }
+                  data-canvas-pan-region
+                  data-group-row-index={rowIndex}
+                >
+                  {row.drafts.map((draft) => renderDraftFrame(draft, row.key))}
+                </DraftGroupSection>
+              </div>
             );
-          }
-          return (
-            <SiblingDraftFrame
-              key={draft._id}
-              draft={draft}
-              shouldMountLivePreview={liveSiblingPreviewIds.has(draft._id)}
-              isGenerationTarget={isGenerationTarget}
-              zoomPercent={zoomPercent}
-              onActivate={() => onActivateDraft(draft._id)}
-              registerFrameRef={registerFrameRef}
-            />
-          );
-        })}
+          })}
+        </div>
       </div>
+
+      <Button
+        type="button"
+        variant="secondary"
+        size="sm"
+        className="absolute top-4 left-4 z-30 shadow-lg"
+        onClick={createDraftGroup}
+        disabled={canvasId === null}
+        data-testid="create-draft-group"
+      >
+        <PlusIcon /> New group
+      </Button>
 
       {/*
         Light prev/next affordances at the canvas edges (item 2 of the
@@ -295,7 +742,39 @@ export function DraftFramesCanvas({
         zoomPercent={zoomPercent}
         onZoomChange={applyCanvasZoom}
         onFitToView={fitDraftsToView}
+        onResetZoom={resetCanvasZoom}
       />
+
+      <Dialog
+        open={groupPendingDelete !== null}
+        onOpenChange={(isOpen) => {
+          if (!isOpen && !isDeletePending) {
+            setGroupPendingDelete(null);
+          }
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Delete “{groupPendingDelete?.name}”?</DialogTitle>
+            <DialogDescription>
+              The group will be removed, but its drafts will be kept and moved to Ungrouped.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <DialogClose render={<Button variant="outline" disabled={isDeletePending} />}>
+              Cancel
+            </DialogClose>
+            <Button
+              variant="destructive"
+              disabled={isDeletePending}
+              onClick={confirmDeleteDraftGroup}
+            >
+              {isDeletePending ? <Loader2Icon className="animate-spin" /> : null}
+              Delete group
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
@@ -308,6 +787,7 @@ function SiblingDraftFrame({
   shouldMountLivePreview,
   isGenerationTarget,
   zoomPercent,
+  frameActions,
   onActivate,
   registerFrameRef,
 }: {
@@ -315,6 +795,7 @@ function SiblingDraftFrame({
   shouldMountLivePreview: boolean;
   isGenerationTarget: boolean;
   zoomPercent: number;
+  frameActions?: React.ReactNode;
   onActivate: () => void;
   registerFrameRef: (element: HTMLDivElement | null) => void;
 }) {
@@ -336,7 +817,12 @@ function SiblingDraftFrame({
       data-document-id={draft._id}
       data-generation-target={isGenerationTarget || undefined}
     >
-      <DraftFrameLabel draft={draft} isActive={false} onActivate={onActivate} />
+      <DraftFrameLabel
+        draft={draft}
+        isActive={false}
+        onActivate={onActivate}
+        actions={frameActions}
+      />
       {/*
         Positioning wrapper for the generation glow (switch-away-mid-
         generation: ops keep landing in the target draft even as a sibling,
@@ -344,54 +830,54 @@ function SiblingDraftFrame({
         is read-only here anyway).
       */}
       <div className="relative flex min-h-0 flex-1 flex-col">
-      {isGenerationTarget && <GenerationGlowBorder />}
-      {/*
-        div-with-button-semantics: the preview markup contains links/buttons
-        (inert via pointer-events-none), which must not nest inside a real
-        <button> (invalid interactive-content nesting → React dev warning).
-      */}
-      <div
-        role="button"
-        tabIndex={0}
-        onClick={onActivate}
-        onKeyDown={(event) => {
-          if (event.key === "Enter" || event.key === " ") {
-            event.preventDefault();
-            onActivate();
-          }
-        }}
-        aria-label={`Activate draft ${draft.name}`}
-        className={cn(
-          /*
-            Full scaled content, no inner scroller — consistent with the
-            editor frames' height-follows-content behavior.
-          */
-          "relative overflow-hidden rounded-lg border text-left transition-[box-shadow,opacity,filter]",
-          getDraftFrameSelectionClassName(false),
-          "focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none",
-          isDragActive
-            ? "cursor-not-allowed opacity-50 saturate-50"
-            : "cursor-pointer hover:ring-2 hover:ring-ring/60",
-        )}
-        data-testid="draft-frame-preview"
-        data-drop-rejected={isDragActive || undefined}
-      >
-        {isDragActive && (
-          <div className="absolute inset-0 z-10 flex items-start justify-center pt-10">
-            <span className="inline-flex items-center gap-1.5 rounded-full border bg-background/95 px-2.5 py-1 text-xs text-muted-foreground shadow-sm">
-              <BanIcon className="size-3.5" aria-hidden />
-              Drops go to the active draft
-            </span>
-          </div>
-        )}
-        {shouldMountLivePreview ? (
-          <LiveSiblingPreview documentId={draft._id} isGenerationTarget={isGenerationTarget} />
-        ) : (
-          <div className="flex h-40 items-center justify-center rounded-lg border bg-background text-xs text-muted-foreground">
-            Click to open this draft
-          </div>
-        )}
-      </div>
+        {isGenerationTarget && <GenerationGlowBorder />}
+        {/*
+          div-with-button-semantics: the preview markup contains links/buttons
+          (inert via pointer-events-none), which must not nest inside a real
+          <button> (invalid interactive-content nesting → React dev warning).
+        */}
+        <div
+          role="button"
+          tabIndex={0}
+          onClick={onActivate}
+          onKeyDown={(event) => {
+            if (event.key === "Enter" || event.key === " ") {
+              event.preventDefault();
+              onActivate();
+            }
+          }}
+          aria-label={`Activate draft ${draft.name}`}
+          className={cn(
+            /*
+              Full scaled content, no inner scroller — consistent with the
+              editor frames' height-follows-content behavior.
+            */
+            "relative overflow-hidden rounded-lg border text-left transition-[box-shadow,opacity,filter]",
+            getDraftFrameSelectionClassName(false),
+            "focus-visible:ring-2 focus-visible:ring-ring focus-visible:outline-none",
+            isDragActive
+              ? "cursor-not-allowed opacity-50 saturate-50"
+              : "cursor-pointer hover:ring-2 hover:ring-ring/60",
+          )}
+          data-testid="draft-frame-preview"
+          data-drop-rejected={isDragActive || undefined}
+        >
+          {isDragActive && (
+            <div className="absolute inset-0 z-10 flex items-start justify-center pt-10">
+              <span className="inline-flex items-center gap-1.5 rounded-full border bg-background/95 px-2.5 py-1 text-xs text-muted-foreground shadow-sm">
+                <BanIcon className="size-3.5" aria-hidden />
+                Drops go to the active draft
+              </span>
+            </div>
+          )}
+          {shouldMountLivePreview ? (
+            <LiveSiblingPreview documentId={draft._id} isGenerationTarget={isGenerationTarget} />
+          ) : (
+            <div className="flex h-40 items-center justify-center rounded-lg border bg-background text-xs text-muted-foreground">
+              Click to open this draft
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );

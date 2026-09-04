@@ -160,10 +160,32 @@ export default defineSchema({
     .index("by_ownerId_and_canvasId", ["ownerId", "canvasId"]),
 
   /*
+    Ordered user-created folders for drafts on one canvas. Group rows are
+    canvas-scoped capabilities just like documents; membership is checked by
+    convex/draftGroups.ts before either side is written.
+  */
+  draftGroups: defineTable({
+    canvasId: v.id("canvases"),
+    name: v.string(),
+    description: v.optional(v.string()),
+    orderIndex: v.number(),
+    createdAtMs: v.number(),
+    updatedAtMs: v.number(),
+  })
+    .index("by_canvasId", ["canvasId"])
+    .index("by_canvasId_and_orderIndex", ["canvasId", "orderIndex"]),
+
+  /*
     One row = one draft instance on a canvas, with its own independent version history.
   */
   documents: defineTable({
     canvasId: v.id("canvases"),
+    /*
+      Optional for additive migration: rows created before draft groups are
+      valid and remain in the canvas-level ungrouped list.
+    */
+    groupId: v.optional(v.id("draftGroups")),
+    groupOrderIndex: v.optional(v.number()),
     /*
       Denormalized from the canvas for direct per-session listing/cleanup.
     */
