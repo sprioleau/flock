@@ -2,7 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery } from "convex/react";
-import { ChevronDownIcon, PauseIcon, PlayIcon, PlusIcon } from "lucide-react";
+import { PauseIcon, PlayIcon, PlusIcon } from "lucide-react";
 import { api } from "@convex/_generated/api";
 import { Button } from "@/components/ui/button";
 import {
@@ -82,6 +82,9 @@ export function PersonaPickerDialog({ isOpen, onOpenChange }: PersonaPickerDialo
   const seedBuiltInPersonas = useMutation(api.personas.seedBuiltInPersonas);
   const enabledSlugs = useEnabledPersonaSlugs();
   const [isCreateFormOpen, setIsCreateFormOpen] = useState(false);
+  const [selectedSlug, setSelectedSlug] = useState<string | null>(null);
+  const selectedPersona =
+    personas?.find((persona) => persona.slug === selectedSlug) ?? personas?.[0] ?? null;
 
   /*
     Idempotent built-in seed on first open (insert-if-missing; never overwrites).
@@ -96,46 +99,119 @@ export function PersonaPickerDialog({ isOpen, onOpenChange }: PersonaPickerDialo
 
   return (
     <Dialog open={isOpen} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-xl" data-testid="persona-picker">
+      <DialogContent
+        className="grid max-h-[85vh] min-h-0 grid-rows-[auto_minmax(0,1fr)] gap-0 overflow-hidden p-0 sm:max-w-4xl"
+        data-testid="persona-picker"
+      >
         <DialogHeader>
-          <DialogTitle>Agents</DialogTitle>
-          <DialogDescription>
-            Advisory teammates that review your edits and leave suggestions. Enabled agents join
-            the document&apos;s facepile while you work.
-          </DialogDescription>
+          <div className="px-6 pt-6">
+            <DialogTitle>Agents</DialogTitle>
+            <DialogDescription>
+              Advisory teammates that review your edits and leave suggestions. Enabled agents join
+              the document&apos;s facepile while you work.
+            </DialogDescription>
+          </div>
         </DialogHeader>
-        <PersonasPausedToggle />
-        <div className="flex max-h-[60vh] flex-col gap-2 overflow-y-auto">
-          {personas === undefined || sessionId === null ? (
-            <p className="py-4 text-center text-xs text-muted-foreground">Loading agents…</p>
-          ) : personas.length === 0 ? (
-            <p className="py-4 text-center text-xs text-muted-foreground">No agents yet.</p>
-          ) : (
-            personas.map((persona) => (
-              <PersonaRow
-                key={persona.slug}
-                persona={persona}
-                isEnabled={enabledSlugs.includes(persona.slug)}
+        <div className="grid min-h-0 min-w-0 overflow-hidden border-t sm:grid-cols-[minmax(13rem,0.36fr)_minmax(0,0.64fr)]">
+          <aside className="flex min-h-0 min-w-0 flex-col border-b sm:border-b-0 sm:border-r">
+            <div className="flex items-center justify-between gap-2 border-b px-4 py-3">
+              <p className="text-xs font-medium text-muted-foreground">Your agents</p>
+              <span className="text-[10px] tabular-nums text-muted-foreground">
+                {personas?.length ?? 0}
+              </span>
+            </div>
+            <div className="px-3 pt-3">
+              <PersonasPausedToggle />
+            </div>
+            <div
+              className="min-h-0 flex-1 space-y-1 overflow-y-auto p-3"
+              role="list"
+              aria-label="Agents"
+            >
+              {personas === undefined || sessionId === null ? (
+                <p className="py-4 text-center text-xs text-muted-foreground">Loading agents…</p>
+              ) : personas.length === 0 ? (
+                <p className="py-4 text-center text-xs text-muted-foreground">No agents yet.</p>
+              ) : (
+                personas.map((persona) => (
+                  <PersonaRow
+                    key={persona.slug}
+                    persona={persona}
+                    isEnabled={enabledSlugs.includes(persona.slug)}
+                    isSelected={!isCreateFormOpen && selectedPersona?.slug === persona.slug}
+                    onSelect={() => {
+                      setIsCreateFormOpen(false);
+                      setSelectedSlug(persona.slug);
+                    }}
+                  />
+                ))
+              )}
+            </div>
+            {sessionId !== null && (
+              <div className="border-t p-3">
+                <Button
+                  type="button"
+                  variant={isCreateFormOpen ? "secondary" : "outline"}
+                  size="sm"
+                  className="w-full gap-1.5"
+                  onClick={() => setIsCreateFormOpen((current) => !current)}
+                  data-testid="persona-create-button"
+                >
+                  <PlusIcon />
+                  Create agent
+                </Button>
+              </div>
+            )}
+          </aside>
+          <section className="min-h-0 min-w-0 overflow-y-auto p-4 sm:p-6" data-testid="persona-detail">
+            <div className="mb-4">
+              <p className="text-xs font-medium text-muted-foreground">Agent settings</p>
+              <p className="mt-1 text-sm text-muted-foreground">
+                {isCreateFormOpen
+                  ? "Create a teammate with a focused job and clear review guidelines."
+                  : "Choose an agent to review its behavior, properties, and enablement."}
+              </p>
+            </div>
+            {sessionId === null ? (
+              <p className="py-8 text-center text-xs text-muted-foreground">Loading session…</p>
+            ) : isCreateFormOpen ? (
+              <PersonaCreateForm
                 sessionId={sessionId}
+                onClose={() => {
+                  setIsCreateFormOpen(false);
+                  setSelectedSlug(null);
+                }}
               />
-            ))
-          )}
-          {sessionId !== null &&
-            (isCreateFormOpen ? (
-              <PersonaCreateForm sessionId={sessionId} onClose={() => setIsCreateFormOpen(false)} />
+            ) : selectedPersona === null ? (
+              <p className="rounded-md border border-dashed p-8 text-center text-xs text-muted-foreground">
+                Select an agent to view its settings.
+              </p>
             ) : (
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                className="gap-1.5 self-start"
-                onClick={() => setIsCreateFormOpen(true)}
-                data-testid="persona-create-button"
-              >
-                <PlusIcon />
-                Create agent
-              </Button>
-            ))}
+              <>
+                <div
+                  className="mb-4 flex items-center gap-2.5 border-b pb-4"
+                  data-testid="persona-detail-header"
+                >
+                  <span
+                    className="size-3 shrink-0 rounded-full"
+                    style={{ backgroundColor: selectedPersona.color }}
+                    aria-hidden
+                  />
+                  <h3 className="min-w-0 truncate text-base font-medium">
+                    {selectedPersona.name}
+                  </h3>
+                  <span className="rounded-full border px-1.5 py-px text-[10px] text-muted-foreground">
+                    {selectedPersona.capabilityMode}
+                  </span>
+                </div>
+                <PersonaDefinition
+                  key={selectedPersona.slug}
+                  persona={selectedPersona}
+                  sessionId={sessionId}
+                />
+              </>
+            )}
+          </section>
         </div>
       </DialogContent>
     </Dialog>
@@ -183,7 +259,7 @@ function PersonasPausedToggle() {
   );
 }
 
-interface PersonaPayload {
+export interface PersonaPayload {
   slug: string;
   name: string;
   color: string;
@@ -203,26 +279,47 @@ interface PersonaPayload {
 interface PersonaRowProps {
   persona: PersonaPayload;
   isEnabled: boolean;
-  sessionId: string;
+  isSelected: boolean;
+  onSelect: () => void;
 }
 
-function PersonaRow({ persona, isEnabled, sessionId }: PersonaRowProps) {
-  const [isMarkdownExpanded, setIsMarkdownExpanded] = useState(false);
+export function getPersonaListMetadata(
+  persona: Pick<PersonaPayload, "capabilityMode" | "cooldownSeconds">,
+  description: string | null,
+): string {
+  return description ?? `${persona.capabilityMode} · checks every ${persona.cooldownSeconds}s`;
+}
+
+export function PersonaRow({ persona, isEnabled, isSelected, onSelect }: PersonaRowProps) {
   const parsed = parsePersonaMarkdown(persona.personaMarkdown);
   const isUserCreated = persona.isUserCreated === true;
   const isCustomized = persona.isBuiltIn === false && !isUserCreated;
+  const metadata = getPersonaListMetadata(persona, parsed.description);
 
   return (
-    <div className="rounded-lg border px-3 py-2.5" data-testid={`persona-row-${persona.slug}`}>
-      <div className="flex items-start gap-2.5">
+    <div
+      className={cn(
+        "rounded-lg border transition-colors",
+        isSelected ? "border-primary bg-primary/10" : "hover:bg-muted/50",
+      )}
+      data-testid={`persona-row-${persona.slug}`}
+      role="listitem"
+    >
+      <div className="flex items-center gap-2.5 px-3 py-2.5">
         <span
-          className="mt-1 size-2.5 shrink-0 rounded-full"
+          className="size-2.5 shrink-0 rounded-full"
           style={{ backgroundColor: persona.color }}
           aria-hidden
         />
-        <div className="min-w-0 flex-1">
+        <button
+          type="button"
+          onClick={onSelect}
+          className="min-w-0 flex-1 cursor-pointer text-left"
+          aria-label={`Edit ${persona.name}`}
+          aria-current={isSelected ? "true" : undefined}
+        >
           <div className="flex items-center gap-2">
-            <p className="text-sm font-medium">{persona.name}</p>
+            <p className="min-w-0 truncate text-sm font-medium">{persona.name}</p>
             <span className="rounded-full border px-1.5 py-px text-[10px] text-muted-foreground">
               {persona.capabilityMode}
             </span>
@@ -243,25 +340,12 @@ function PersonaRow({ persona, isEnabled, sessionId }: PersonaRowProps) {
               </span>
             )}
           </div>
-          {parsed.description !== null && (
-            <p className="mt-0.5 text-xs text-muted-foreground">{parsed.description}</p>
-          )}
-        </div>
+          <p className="mt-0.5 truncate text-xs text-muted-foreground" title={metadata}>
+            {metadata}
+          </p>
+        </button>
         <PersonaToggle slug={persona.slug} name={persona.name} isEnabled={isEnabled} />
       </div>
-      <button
-        type="button"
-        onClick={() => setIsMarkdownExpanded((current) => !current)}
-        className="mt-1.5 inline-flex cursor-pointer items-center gap-1 text-[11px] text-muted-foreground hover:text-foreground"
-        aria-expanded={isMarkdownExpanded}
-        data-testid={`persona-markdown-toggle-${persona.slug}`}
-      >
-        <ChevronDownIcon
-          className={cn("size-3 transition-transform", isMarkdownExpanded && "rotate-180")}
-        />
-        {isMarkdownExpanded ? "Hide definition" : "View definition"}
-      </button>
-      {isMarkdownExpanded && <PersonaDefinition persona={persona} sessionId={sessionId} />}
     </div>
   );
 }
@@ -400,13 +484,23 @@ function PersonaDefinitionView({
       is the only faithful rendering.
     */
     return (
-      <pre className="max-h-48 overflow-y-auto rounded-md bg-muted/50 p-2 text-[11px] leading-relaxed whitespace-pre-wrap text-muted-foreground">
+      <pre
+        className="max-h-48 overflow-y-auto rounded-md bg-muted/50 p-2 text-[11px] leading-relaxed whitespace-pre-wrap text-muted-foreground"
+        tabIndex={0}
+        role="region"
+        aria-label={`${persona.name} definition`}
+      >
         {persona.personaMarkdown}
       </pre>
     );
   }
   return (
-    <div className="max-h-48 space-y-2 overflow-y-auto rounded-md bg-muted/50 p-2.5">
+    <div
+      className="max-h-48 space-y-2 overflow-y-auto rounded-md bg-muted/50 p-2.5"
+      tabIndex={0}
+      role="region"
+      aria-label={`${persona.name} definition`}
+    >
       {model.intro.length > 0 && (
         <p className="text-[11px] leading-relaxed whitespace-pre-wrap text-muted-foreground">
           {model.intro}
