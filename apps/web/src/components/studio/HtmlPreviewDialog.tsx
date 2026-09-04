@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { CheckIcon, CodeIcon, CopyIcon, LoaderCircleIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
@@ -37,6 +37,41 @@ const COPY_CONFIRMATION_MS = 2000;
 
 type CopyStatus = "idle" | "copied" | "failed";
 
+export type PreviewViewport = "desktop" | "mobile";
+
+/*
+  The dialog body has two independently sized regions on desktop. Keeping the
+  columns in a small prop-driven component makes the layout contract explicit
+  and keeps it testable without mounting the client-only dialog.
+*/
+export function PreviewDialogColumns({
+  form,
+  preview,
+}: {
+  form: ReactNode;
+  preview: ReactNode;
+}) {
+  return (
+    <div
+      className="grid min-h-0 min-w-0 gap-6 overflow-y-auto sm:grid-cols-[minmax(16rem,0.85fr)_minmax(0,1.15fr)] sm:overflow-hidden"
+      data-testid="html-preview-columns"
+    >
+      <div
+        className="min-h-0 min-w-0 overflow-y-auto pr-1"
+        data-testid="html-preview-form-column"
+      >
+        {form}
+      </div>
+      <div
+        className="flex min-h-[28rem] min-w-0 flex-col sm:min-h-0"
+        data-testid="html-preview-preview-column"
+      >
+        {preview}
+      </div>
+    </div>
+  );
+}
+
 /**
  * The "Email preview" button + dialog: renders the current document through the
  * SDK (via POST /api/render) and shows the result three ways —
@@ -65,6 +100,7 @@ export function HtmlPreviewDialog({ isIconTrigger = false }: { isIconTrigger?: b
   const [isOpen, setIsOpen] = useState(false);
   const [renderState, setRenderState] = useState<RenderState>({ status: "loading" });
   const [activeViewId, setActiveViewId] = useState<PreviewViewId>(DEFAULT_PREVIEW_VIEW_ID);
+  const [previewViewport, setPreviewViewport] = useState<PreviewViewport>("desktop");
   const [copyStatus, setCopyStatus] = useState<CopyStatus>("idle");
   const requestIdRef = useRef(0);
   const copyResetRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -102,6 +138,7 @@ export function HtmlPreviewDialog({ isIconTrigger = false }: { isIconTrigger?: b
     setIsOpen(nextIsOpen);
     if (nextIsOpen) {
       setActiveViewId(DEFAULT_PREVIEW_VIEW_ID);
+      setPreviewViewport("desktop");
       setCopyStatus("idle");
       startRender();
       sendControl.prepareToSend();
@@ -162,7 +199,7 @@ export function HtmlPreviewDialog({ isIconTrigger = false }: { isIconTrigger?: b
           Preview
         </DialogTrigger>
       )}
-      <DialogContent className="grid h-[85vh] grid-rows-[auto_auto_1fr_auto] sm:max-w-4xl">
+      <DialogContent className="grid h-[85vh] w-[min(96vw,72rem)] grid-rows-[auto_minmax(0,1fr)] max-w-none sm:max-w-[72rem]">
         <DialogHeader>
           <DialogTitle>Email preview</DialogTitle>
           <DialogDescription>
@@ -170,57 +207,69 @@ export function HtmlPreviewDialog({ isIconTrigger = false }: { isIconTrigger?: b
           </DialogDescription>
         </DialogHeader>
 
-        <div className="flex items-stretch gap-1 border-b">
-          <div role="tablist" aria-label="Email preview" className="flex items-stretch gap-1">
-            {PREVIEW_VIEWS.map((view) => (
-              <button
-                key={view.id}
-                type="button"
-                role="tab"
-                aria-selected={view.id === activeViewId}
-                aria-controls="html-preview-panel"
-                onClick={() => selectView(view.id)}
-                className={cn(
-                  "cursor-pointer rounded-t-md border-b-2 px-3 py-1.5 text-sm font-medium transition-colors",
-                  view.id === activeViewId
-                    ? "border-primary text-foreground"
-                    : "border-transparent text-muted-foreground hover:text-foreground",
-                )}
-                data-testid={`html-preview-tab-${view.id}`}
-              >
-                {view.label}
-              </button>
-            ))}
-          </div>
-          {activeView.copyLabel !== null && copyText !== null ? (
-            <div className="ml-auto flex items-center pb-1">
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={copyActiveView}
-                className="gap-1.5"
-                data-testid="html-preview-copy"
-              >
-                {copyStatus === "copied" ? (
-                  <CheckIcon className="size-3.5" />
-                ) : (
-                  <CopyIcon className="size-3.5" />
-                )}
-                {copyStatus === "copied"
-                  ? "Copied"
-                  : copyStatus === "failed"
-                    ? "Couldn't copy"
-                    : activeView.copyLabel}
-              </Button>
+        <PreviewDialogColumns
+          form={
+            <div className="pt-1" data-testid="html-preview-send-test">
+              <SendTestEmailForm control={sendControl} />
             </div>
-          ) : null}
-        </div>
+          }
+          preview={
+            <>
+              <div className="flex shrink-0 items-stretch gap-1 overflow-x-auto border-b">
+                <div role="tablist" aria-label="Email preview" className="flex items-stretch gap-1">
+                  {PREVIEW_VIEWS.map((view) => (
+                    <button
+                      key={view.id}
+                      type="button"
+                      role="tab"
+                      aria-selected={view.id === activeViewId}
+                      aria-controls="html-preview-panel"
+                      onClick={() => selectView(view.id)}
+                      className={cn(
+                        "cursor-pointer rounded-t-md border-b-2 px-3 py-1.5 text-sm font-medium transition-colors",
+                        view.id === activeViewId
+                          ? "border-primary text-foreground"
+                          : "border-transparent text-muted-foreground hover:text-foreground",
+                      )}
+                      data-testid={`html-preview-tab-${view.id}`}
+                    >
+                      {view.label}
+                    </button>
+                  ))}
+                </div>
+                {activeView.copyLabel !== null && copyText !== null ? (
+                  <div className="ml-auto flex items-center pb-1">
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      onClick={copyActiveView}
+                      className="gap-1.5"
+                      data-testid="html-preview-copy"
+                    >
+                      {copyStatus === "copied" ? (
+                        <CheckIcon className="size-3.5" />
+                      ) : (
+                        <CopyIcon className="size-3.5" />
+                      )}
+                      {copyStatus === "copied"
+                        ? "Copied"
+                        : copyStatus === "failed"
+                          ? "Couldn't copy"
+                          : activeView.copyLabel}
+                    </Button>
+                  </div>
+                ) : null}
+              </div>
 
-        <PreviewViewPanel renderState={renderState} activeViewId={activeViewId} />
-
-        <div className="border-t pt-4" data-testid="html-preview-send-test">
-          <SendTestEmailForm control={sendControl} />
-        </div>
+              <PreviewViewPanel
+                renderState={renderState}
+                activeViewId={activeViewId}
+                viewport={previewViewport}
+                onViewportChange={setPreviewViewport}
+              />
+            </>
+          }
+        />
       </DialogContent>
     </Dialog>
   );
@@ -241,12 +290,23 @@ export function HtmlPreviewDialog({ isIconTrigger = false }: { isIconTrigger?: b
 export function PreviewViewPanel({
   renderState,
   activeViewId,
+  viewport = "desktop",
+  onViewportChange = () => undefined,
 }: {
   renderState: RenderState;
   activeViewId: PreviewViewId;
+  viewport?: PreviewViewport;
+  onViewportChange?: (viewport: PreviewViewport) => void;
 }) {
+  const isMobileViewport = viewport === "mobile";
+
   return (
-    <div id="html-preview-panel" role="tabpanel" className="min-h-0">
+    <div
+      id="html-preview-panel"
+      role="tabpanel"
+      className="flex min-h-0 flex-1 flex-col"
+      data-testid="html-preview-panel"
+    >
       {renderState.status === "error" ? (
         <p className="text-sm text-destructive" data-testid="html-preview-error">
           {renderState.message}
@@ -256,13 +316,67 @@ export function PreviewViewPanel({
           <LoaderCircleIcon className="size-5 animate-spin" />
         </div>
       ) : activeViewId === "preview" ? (
-        <iframe
-          title="Rendered email preview"
-          sandbox=""
-          srcDoc={renderState.render.html}
-          className="h-full w-full rounded-md border bg-white"
-          data-testid="html-preview-iframe"
-        />
+        <>
+          <div
+            className="flex shrink-0 items-center justify-end gap-1 py-2"
+            role="group"
+            aria-label="Email preview viewport"
+            data-testid="html-preview-viewport-toggle"
+          >
+            <button
+              type="button"
+              aria-label="Desktop email viewport"
+              aria-pressed={!isMobileViewport}
+              onClick={() => onViewportChange("desktop")}
+              className={cn(
+                "cursor-pointer rounded-md border px-2.5 py-1 text-xs font-medium transition-colors",
+                !isMobileViewport
+                  ? "border-primary bg-primary/10 text-foreground"
+                  : "border-transparent text-muted-foreground hover:text-foreground",
+              )}
+              data-testid="html-preview-viewport-desktop"
+            >
+              Desktop
+            </button>
+            <button
+              type="button"
+              aria-label="Mobile email viewport"
+              aria-pressed={isMobileViewport}
+              onClick={() => onViewportChange("mobile")}
+              className={cn(
+                "cursor-pointer rounded-md border px-2.5 py-1 text-xs font-medium transition-colors",
+                isMobileViewport
+                  ? "border-primary bg-primary/10 text-foreground"
+                  : "border-transparent text-muted-foreground hover:text-foreground",
+              )}
+              data-testid="html-preview-viewport-mobile"
+            >
+              Mobile
+            </button>
+          </div>
+          <div
+            className="flex min-h-0 flex-1 justify-center overflow-y-auto rounded-md bg-muted/30 p-3"
+            data-testid="html-preview-rendered-viewport"
+            data-viewport={viewport}
+          >
+            <div
+              className={cn(
+                "min-h-full shrink-0 overflow-hidden rounded-md border bg-white shadow-sm",
+                isMobileViewport ? "w-[390px] max-w-full" : "w-full",
+              )}
+              data-testid="html-preview-rendered-surface"
+            >
+              <iframe
+                title="Rendered email preview"
+                sandbox=""
+                scrolling="yes"
+                srcDoc={renderState.render.html}
+                className="block h-full min-h-[28rem] w-full border-0"
+                data-testid="html-preview-iframe"
+              />
+            </div>
+          </div>
+        </>
       ) : (
         /*
           `overflow-wrap: anywhere` breaks only the lines that cannot fit —
@@ -273,7 +387,7 @@ export function PreviewViewPanel({
           scrolls because a real email's text part runs well past the dialog.
         */
         <pre
-          className="h-full overflow-auto rounded-md border bg-muted p-3 font-mono text-xs leading-relaxed whitespace-pre-wrap text-foreground [overflow-wrap:anywhere]"
+          className="h-full min-h-0 flex-1 overflow-auto rounded-md border bg-muted p-3 font-mono text-xs leading-relaxed whitespace-pre-wrap text-foreground [overflow-wrap:anywhere]"
           data-testid={activeViewId === "html" ? "html-preview-source" : "html-preview-plain-text"}
         >
           {activeViewId === "html" ? renderState.render.prettyHtml : renderState.render.plainText}

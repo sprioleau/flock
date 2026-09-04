@@ -1,6 +1,10 @@
 import { isValidElement, type ReactElement, type ReactNode } from "react";
 import { describe, expect, it } from "vitest";
-import { PreviewViewPanel, type RenderState } from "./HtmlPreviewDialog";
+import {
+  PreviewDialogColumns,
+  PreviewViewPanel,
+  type RenderState,
+} from "./HtmlPreviewDialog";
 import { PREVIEW_VIEWS, selectCopyText } from "./html-preview-client";
 
 /*
@@ -87,16 +91,86 @@ const RENDER = {
 const OK_STATE: RenderState = { status: "ok", render: RENDER };
 
 describe("the preview panel", () => {
+  it("keeps the send form in the left column and the full-height preview in the right", () => {
+    const tree = PreviewDialogColumns({
+      form: <div data-testid="form-marker">Send test form</div>,
+      preview: <div data-testid="preview-marker">Rendered preview</div>,
+    });
+    const formColumn = findByTestId(tree, "html-preview-form-column");
+    const previewColumn = findByTestId(tree, "html-preview-preview-column");
+
+    expect(formColumn?.props.className).toContain("overflow-y-auto");
+    expect(previewColumn?.props.className).toContain("min-h-0");
+    expect(previewColumn?.props.className).toContain("flex");
+    expect(findByTestId(formColumn?.props.children as ReactNode, "form-marker")).toBeDefined();
+    expect(
+      findByTestId(previewColumn?.props.children as ReactNode, "preview-marker"),
+    ).toBeDefined();
+  });
+
   it("shows the rendered email in a sandboxed iframe, from the minified send-HTML", () => {
     const tree = PreviewViewPanel({ renderState: OK_STATE, activeViewId: "preview" });
     const iframe = findByTestId(tree, "html-preview-iframe");
 
     expect(iframe?.props.srcDoc).toBe(RENDER.html);
+    expect(iframe?.props.scrolling).toBe("yes");
     /*
       An empty sandbox is the whole reason arbitrary rendered email is safe to
       put on screen; losing it would not fail any other assertion here.
     */
     expect(iframe?.props.sandbox).toBe("");
+  });
+
+  it("gives the rendered preview a full-height, vertically scrollable viewport", () => {
+    const tree = PreviewViewPanel({ renderState: OK_STATE, activeViewId: "preview" });
+    const viewport = findByTestId(tree, "html-preview-rendered-viewport");
+    const panel = findByTestId(tree, "html-preview-panel");
+    const iframe = findByTestId(tree, "html-preview-iframe");
+
+    expect(panel?.props.className).toContain("flex-1");
+    expect(viewport?.props.className).toContain("flex-1");
+    expect(viewport?.props.className).toContain("overflow-y-auto");
+    expect(iframe?.props.className).toContain("h-full");
+    expect(iframe?.props.className).toContain("min-h-");
+  });
+
+  it("exposes accessible desktop/mobile controls and preserves the selected viewport", () => {
+    let selectedViewport = "desktop";
+    const tree = PreviewViewPanel({
+      renderState: OK_STATE,
+      activeViewId: "preview",
+      viewport: "mobile",
+      onViewportChange: (viewport) => {
+        selectedViewport = viewport;
+      },
+    });
+    const desktop = findByTestId(tree, "html-preview-viewport-desktop");
+    const mobile = findByTestId(tree, "html-preview-viewport-mobile");
+    const renderedViewport = findByTestId(tree, "html-preview-rendered-viewport");
+    const renderedSurface = findByTestId(tree, "html-preview-rendered-surface");
+
+    expect(desktop?.props["aria-pressed"]).toBe(false);
+    expect(mobile?.props["aria-pressed"]).toBe(true);
+    expect(desktop?.props["aria-label"]).toBe("Desktop email viewport");
+    expect(mobile?.props["aria-label"]).toBe("Mobile email viewport");
+    expect(renderedViewport?.props["data-viewport"]).toBe("mobile");
+    expect(renderedSurface?.props.className).toContain("w-[390px]");
+
+    const selectDesktopViewport = desktop?.props.onClick;
+    expect(typeof selectDesktopViewport).toBe("function");
+    if (typeof selectDesktopViewport === "function") {
+      selectDesktopViewport();
+    }
+    expect(selectedViewport).toBe("desktop");
+  });
+
+  it("uses the preview-pane width for the desktop viewport", () => {
+    const tree = PreviewViewPanel({ renderState: OK_STATE, activeViewId: "preview" });
+    const renderedViewport = findByTestId(tree, "html-preview-rendered-viewport");
+    const renderedSurface = findByTestId(tree, "html-preview-rendered-surface");
+
+    expect(renderedViewport?.props["data-viewport"]).toBe("desktop");
+    expect(renderedSurface?.props.className).toContain("w-full");
   });
 
   it("shows the pretty source — not the minified string — on the HTML view", () => {
