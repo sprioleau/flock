@@ -62,4 +62,11 @@ describe("draft frame selection chrome", () => {
     expect(markup).not.toContain("Audience for Launch note");
     expect(markup).not.toContain("Audience emails, comma-separated");
   });
+
+  it("keeps the title inset from the shared selection outline", () => {
+    const markup = renderLabel(true);
+
+    expect(markup).toMatch(/^<div class="shrink-0 px-2 py-1">/);
+    expect(markup).not.toMatch(/class="[^"]*(?:border|outline|ring)-primary[^"]*"/);
+  });
 });

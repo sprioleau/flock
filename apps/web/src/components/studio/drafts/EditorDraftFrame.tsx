@@ -21,7 +21,6 @@ import { EditorCanvas } from "../EditorCanvas";
 import {
   DraftFrameLabel,
   DraftFrameSelectionRegion,
-  DRAFT_FRAME_SCALE,
   EDITOR_FRAME_DESKTOP_WIDTH_PX,
   EDITOR_FRAME_DESKTOP_LAYOUT_WIDTH_PX,
   EDITOR_FRAME_MOBILE_WIDTH_PX,
@@ -75,6 +74,7 @@ export function EditorDraftFrame({
   draft,
   isActive,
   isGenerationTarget,
+  zoomPercent,
   onActivate,
   registerFrameRef,
 }: EditorDraftFrameProps) {
@@ -127,6 +127,7 @@ export function EditorDraftFrame({
         draft={draft}
         isActive={isActive}
         isGenerationTarget={isGenerationTarget}
+        zoomPercent={zoomPercent}
         onActivate={onActivate}
         registerFrameRef={registerFrameRef}
         frameWidthPx={EDITOR_FRAME_DESKTOP_WIDTH_PX}
@@ -140,6 +141,7 @@ export function EditorDraftFrame({
       draft={draft}
       isActive={isActive}
       isGenerationTarget={isGenerationTarget}
+      zoomPercent={zoomPercent}
       onActivate={onActivate}
       registerFrameRef={registerFrameRef}
       store={store}
@@ -158,6 +160,10 @@ export interface EditorDraftFrameProps {
   */
   isGenerationTarget: boolean;
   /*
+    Shared canvas zoom, applied to the complete frame chrome and email.
+  */
+  zoomPercent: number;
+  /*
     Activate this draft (shallow ?doc= switch upstream). No-op when active.
   */
   onActivate: () => void;
@@ -168,6 +174,7 @@ function ConnectedEditorDraftFrame({
   draft,
   isActive,
   isGenerationTarget,
+  zoomPercent,
   onActivate,
   registerFrameRef,
   store,
@@ -208,6 +215,7 @@ function ConnectedEditorDraftFrame({
       draft={draft}
       isActive={isActive}
       isGenerationTarget={isGenerationTarget}
+      zoomPercent={zoomPercent}
       onActivate={onActivate}
       registerFrameRef={registerFrameRef}
       frameWidthPx={
@@ -251,7 +259,6 @@ function ConnectedEditorDraftFrame({
               viewport === "mobile"
                 ? EDITOR_FRAME_MOBILE_LAYOUT_WIDTH_PX
                 : EDITOR_FRAME_DESKTOP_LAYOUT_WIDTH_PX,
-            zoom: DRAFT_FRAME_SCALE,
           }}
         >
           {isDocumentReady ? (
@@ -286,6 +293,7 @@ function FrameShell({
   draft,
   isActive,
   isGenerationTarget,
+  zoomPercent,
   onActivate,
   registerFrameRef,
   frameWidthPx,
@@ -295,7 +303,7 @@ function FrameShell({
     <div
       ref={registerFrameRef}
       className="relative flex shrink-0 flex-col transition-[width] duration-200"
-      style={{ width: frameWidthPx }}
+      style={{ width: frameWidthPx, zoom: zoomPercent / 100 }}
       /*
         Capture phase: activation is reported BEFORE the interaction's own
         handlers run and the event is never consumed — the pointer-down still

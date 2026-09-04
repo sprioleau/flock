@@ -19,22 +19,21 @@ import type { DraftListEntry } from "./use-canvas-drafts";
 /*
   Live editor frame width (the email's natural desktop layout width).
 */
-export const DRAFT_FRAME_SCALE = 0.7;
 /*
-  The editing surface keeps its full desktop layout before CSS zoom scales the
-  whole draft down on the shared canvas.
+  The editing surface keeps its full desktop layout. DraftFramesCanvas applies
+  the shared canvas zoom to the complete frame, including its title and rail.
 */
 export const EDITOR_FRAME_DESKTOP_LAYOUT_WIDTH_PX = 680;
-export const EDITOR_FRAME_DESKTOP_WIDTH_PX = EDITOR_FRAME_DESKTOP_LAYOUT_WIDTH_PX * DRAFT_FRAME_SCALE;
+export const EDITOR_FRAME_DESKTOP_WIDTH_PX = EDITOR_FRAME_DESKTOP_LAYOUT_WIDTH_PX;
 /*
   Live editor frame width under the mobile viewport toggle.
 */
 export const EDITOR_FRAME_MOBILE_LAYOUT_WIDTH_PX = 375;
-export const EDITOR_FRAME_MOBILE_WIDTH_PX = EDITOR_FRAME_MOBILE_LAYOUT_WIDTH_PX * DRAFT_FRAME_SCALE;
+export const EDITOR_FRAME_MOBILE_WIDTH_PX = EDITOR_FRAME_MOBILE_LAYOUT_WIDTH_PX;
 /*
   Read-only sibling preview frame width (fit-zoom scales the 640px layout down).
 */
-export const PREVIEW_FRAME_WIDTH_PX = 384 * DRAFT_FRAME_SCALE;
+export const PREVIEW_FRAME_WIDTH_PX = 384;
 
 /*
   The selected frame needs to read at a glance from across the canvas. Keep
@@ -173,7 +172,7 @@ export function DraftFrameLabel({
   const [isRenaming, setIsRenaming] = useState(false);
   const [nameInput, setNameInput] = useState("");
 
-  const commitRename = (): void => {
+  function commitRename(): void {
     setIsRenaming(false);
     const name = nameInput.trim();
     if (name.length === 0 || name === draft.name) {
@@ -184,11 +183,11 @@ export function DraftFrameLabel({
       .catch((error: unknown) => {
         console.error("renameDocument failed", error);
       });
-  };
+  }
 
   if (isRenaming) {
     return (
-      <div className="flex h-6 shrink-0 items-center pb-1">
+      <div className="flex h-8 shrink-0 items-center px-2 py-1">
         <input
           value={nameInput}
           onChange={(event) => setNameInput(event.target.value)}
@@ -213,9 +212,7 @@ export function DraftFrameLabel({
   }
 
   return (
-    <div
-      className="shrink-0 pb-2"
-    >
+    <div className="shrink-0 px-2 py-1">
       <div className="flex h-6 items-center">
         <button
           type="button"

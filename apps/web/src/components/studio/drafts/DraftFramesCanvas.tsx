@@ -3,11 +3,17 @@
 import {
   useEffect,
   useRef,
+  useState,
   type MouseEvent as ReactMouseEvent,
   type PointerEvent as ReactPointerEvent,
 } from "react";
 import { useQuery } from "convex/react";
-import { BanIcon, ChevronLeftIcon, ChevronRightIcon, Loader2Icon } from "lucide-react";
+import {
+  BanIcon,
+  ChevronLeftIcon,
+  ChevronRightIcon,
+  Loader2Icon,
+} from "lucide-react";
 import { type EmailDocument } from "@flock/email-sdk";
 import { api } from "@convex/_generated/api";
 import type { Id } from "@convex/_generated/dataModel";
@@ -26,6 +32,12 @@ import {
   getIsDocEmpty,
   PREVIEW_FRAME_WIDTH_PX,
 } from "./draft-frame-chrome";
+import {
+  calculateFitCanvasLayout,
+  CanvasZoomControls,
+  DEFAULT_CANVAS_ZOOM_PERCENT,
+  getNextZoomPercent,
+} from "./canvas-zoom";
 import { EditorDraftFrame } from "./EditorDraftFrame";
 import { useCanvasDrafts, type DraftListEntry } from "./use-canvas-drafts";
 
@@ -67,6 +79,13 @@ const MAX_LIVE_EDITOR_FRAMES = 3;
 */
 const MAX_LIVE_SIBLING_PREVIEWS = 8;
 
+/*
+  Canvas zoom is the actual scale applied to the natural email layout. The
+  established 70% presentation remains the initial view while the complete
+  frame chrome zooms with it.
+*/
+const CANVAS_FRAME_GAP_PX = 64;
+
 export function DraftFramesCanvas({
   onActivateDraft,
 }: {
@@ -79,7 +98,53 @@ export function DraftFramesCanvas({
   */
   const generationTargetDocumentId = useGenerationTargetDocumentId();
   const frameRefsById = useRef(new Map<string, HTMLDivElement>());
+  const framesScrollerRef = useRef<HTMLDivElement>(null);
   const lastScrolledDocumentIdRef = useRef<string | null>(null);
+  const [zoomPercent, setZoomPercent] = useState(DEFAULT_CANVAS_ZOOM_PERCENT);
+
+  function applyCanvasZoom(direction: "in" | "out"): void {
+    const nextZoom = getNextZoomPercent(zoomPercent, direction);
+    if (nextZoom === zoomPercent) {
+      return;
+    }
+    const scroller = framesScrollerRef.current;
+    const horizontalOverflow = scroller === null ? 0 : scroller.scrollWidth - scroller.clientWidth;
+    const verticalOverflow = scroller === null ? 0 : scroller.scrollHeight - scroller.clientHeight;
+    const horizontalScrollRatio =
+      scroller !== null && horizontalOverflow > 0 ? scroller.scrollLeft / horizontalOverflow : 0;
+    const verticalScrollRatio =
+      scroller !== null && verticalOverflow > 0 ? scroller.scrollTop / verticalOverflow : 0;
+    setZoomPercent(nextZoom);
+    if (scroller !== null) {
+      requestAnimationFrame(() => {
+        const nextHorizontalOverflow = scroller.scrollWidth - scroller.clientWidth;
+        const nextVerticalOverflow = scroller.scrollHeight - scroller.clientHeight;
+        scroller.scrollLeft = Math.max(0, horizontalScrollRatio * nextHorizontalOverflow);
+        scroller.scrollTop = Math.max(0, verticalScrollRatio * nextVerticalOverflow);
+      });
+    }
+  }
+
+  function fitDraftsToView(): void {
+    const scroller = framesScrollerRef.current;
+    const frameElements = Array.from(frameRefsById.current.values());
+    if (scroller === null || frameElements.length === 0) {
+      return;
+    }
+    const currentZoomFactor = zoomPercent / 100;
+    const fitLayout = calculateFitCanvasLayout({
+      viewportWidthPx: scroller.clientWidth,
+      draftWidthsPx: frameElements.map(
+        (frameElement) => frameElement.getBoundingClientRect().width / currentZoomFactor,
+      ),
+      gapPx: CANVAS_FRAME_GAP_PX,
+    });
+    if (fitLayout.zoomPercent <= 0) {
+      return;
+    }
+    setZoomPercent(fitLayout.zoomPercent);
+    scroller.scrollLeft = 0;
+  }
 
   /*
     Clicking the frames-surface BACKGROUND (the chrome around/between the
@@ -173,20 +238,21 @@ export function DraftFramesCanvas({
         during palette drags (see CanvasDndContext).
       */}
       <div
-        className="flex min-h-0 flex-1 items-start gap-20 overflow-auto bg-neutral-200/70 px-16 py-4 dark:bg-black/40"
+        ref={framesScrollerRef}
+        className="flex min-h-0 flex-1 items-start gap-16 overflow-auto bg-neutral-200/70 px-16 py-4 dark:bg-black/40"
         data-frames-scroller
         onPointerDown={handleSurfacePointerDown}
         onClick={handleSurfaceClick}
       >
         {(drafts ?? []).map((draft) => {
           const isActive = draft._id === activeDocumentId;
-          const registerFrameRef = (element: HTMLDivElement | null): void => {
+          function registerFrameRef(element: HTMLDivElement | null): void {
             if (element === null) {
               frameRefsById.current.delete(draft._id);
             } else {
               frameRefsById.current.set(draft._id, element);
             }
-          };
+          }
           const isGenerationTarget = draft._id === generationTargetDocumentId;
           if (liveEditorIds.has(draft._id)) {
             return (
@@ -195,6 +261,7 @@ export function DraftFramesCanvas({
                 draft={draft}
                 isActive={isActive}
                 isGenerationTarget={isGenerationTarget}
+                zoomPercent={zoomPercent}
                 onActivate={() => onActivateDraft(draft._id)}
                 registerFrameRef={registerFrameRef}
               />
@@ -206,6 +273,7 @@ export function DraftFramesCanvas({
               draft={draft}
               shouldMountLivePreview={liveSiblingPreviewIds.has(draft._id)}
               isGenerationTarget={isGenerationTarget}
+              zoomPercent={zoomPercent}
               onActivate={() => onActivateDraft(draft._id)}
               registerFrameRef={registerFrameRef}
             />
@@ -223,6 +291,11 @@ export function DraftFramesCanvas({
       {nextDraft !== null && (
         <FrameEdgeArrow side="right" onClick={() => onActivateDraft(nextDraft._id)} />
       )}
+      <CanvasZoomControls
+        zoomPercent={zoomPercent}
+        onZoomChange={applyCanvasZoom}
+        onFitToView={fitDraftsToView}
+      />
     </div>
   );
 }
@@ -234,12 +307,14 @@ function SiblingDraftFrame({
   draft,
   shouldMountLivePreview,
   isGenerationTarget,
+  zoomPercent,
   onActivate,
   registerFrameRef,
 }: {
   draft: DraftListEntry;
   shouldMountLivePreview: boolean;
   isGenerationTarget: boolean;
+  zoomPercent: number;
   onActivate: () => void;
   registerFrameRef: (element: HTMLDivElement | null) => void;
 }) {
@@ -255,7 +330,7 @@ function SiblingDraftFrame({
     <div
       ref={registerFrameRef}
       className="flex shrink-0 flex-col"
-      style={{ width: PREVIEW_FRAME_WIDTH_PX }}
+      style={{ width: PREVIEW_FRAME_WIDTH_PX, zoom: zoomPercent / 100 }}
       data-testid="draft-frame"
       data-active="false"
       data-document-id={draft._id}
