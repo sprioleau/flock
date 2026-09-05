@@ -8,6 +8,11 @@ import {
 } from "../sections/content-fit";
 import { getTemplateParamKeys as readTemplateParamKeys } from "../sections/types";
 import type { SectionCategory } from "../sections/types";
+import {
+  buildCustomSection,
+  customSectionSchema,
+  isCustomSectionPlan,
+} from "../sections/custom-section";
 import { ROOT_BLOCK_ID, type RandomFn } from "../schema/ids";
 import type { GlobalStyles } from "../schema/globals";
 import type { EmailDocument } from "../store/document";
@@ -98,7 +103,7 @@ const MAX_CLUE_LENGTH = 300;
 
 const templateIdValues = SECTION_TEMPLATES.map((template) => template.id);
 
-const draftSectionPlanSchema = z
+const catalogSectionPlanSchema = z
   .strictObject({
     templateId: z
       .enum(templateIdValues as [string, ...string[]])
@@ -113,6 +118,18 @@ const draftSectionPlanSchema = z
       ),
   })
   .describe("One section of a new draft: which catalog template, and its copy.");
+
+const customSectionPlanSchema = z
+  .strictObject({
+    custom: customSectionSchema.describe(
+      "A bounded custom layout. Use only when no catalog template preserves the source structure; keep every word faithful to the source.",
+    ),
+  })
+  .describe("A genuinely custom section, translated into safe theme-native blocks.");
+
+const draftSectionPlanSchema = z
+  .union([catalogSectionPlanSchema, customSectionPlanSchema])
+  .describe("One section of a new draft: a catalog template or a bounded custom layout.");
 
 export type DraftSectionPlan = z.infer<typeof draftSectionPlanSchema>;
 
@@ -521,8 +538,11 @@ const DEFAULT_HEADER_TEMPLATE_ID = "header";
 const DEFAULT_BODY_TEMPLATE_ID = "hero";
 const DEFAULT_FOOTER_TEMPLATE_ID = "footer";
 
-function getCategory(templateId: string): SectionCategory | undefined {
-  return getSectionTemplate(templateId)?.category;
+function getCategory(section: DraftSectionPlan): SectionCategory | undefined {
+  if (isCustomSectionPlan(section)) {
+    return "content";
+  }
+  return getSectionTemplate(section.templateId)?.category;
 }
 
 /*
@@ -531,22 +551,22 @@ function getCategory(templateId: string): SectionCategory | undefined {
   rejects them; this is the runtime backstop for host callers).
 */
 export function completeDraftSections(sections: DraftSectionPlan[]): DraftSectionPlan[] {
-  const known = sections.filter((section) => getCategory(section.templateId) !== undefined);
+  const known = sections.filter((section) => getCategory(section) !== undefined);
   /*
     A header anywhere but the front, or a footer anywhere but the back, is a
     planning slip — keep the first header and the last footer only.
   */
   const firstHeaderIndex = known.findIndex(
-    (section) => getCategory(section.templateId) === "header",
+    (section) => getCategory(section) === "header",
   );
   let lastFooterIndex = -1;
   known.forEach((section, index) => {
-    if (getCategory(section.templateId) === "footer") {
+    if (getCategory(section) === "footer") {
       lastFooterIndex = index;
     }
   });
   const withoutStrays = known.filter((section, index) => {
-    const category = getCategory(section.templateId);
+    const category = getCategory(section);
     if (category === "header") {
       return index === firstHeaderIndex;
     }
@@ -555,10 +575,10 @@ export function completeDraftSections(sections: DraftSectionPlan[]): DraftSectio
     }
     return true;
   });
-  const header = withoutStrays.find((section) => getCategory(section.templateId) === "header");
-  const footer = withoutStrays.find((section) => getCategory(section.templateId) === "footer");
+  const header = withoutStrays.find((section) => getCategory(section) === "header");
+  const footer = withoutStrays.find((section) => getCategory(section) === "footer");
   const body = withoutStrays.filter((section) =>
-    BODY_CATEGORIES.includes(getCategory(section.templateId)!),
+    BODY_CATEGORIES.includes(getCategory(section)!),
   );
   return [
     header ?? { templateId: DEFAULT_HEADER_TEMPLATE_ID },
@@ -593,8 +613,11 @@ const TEMPLATE_COUNTERPARTS: Readonly<Record<string, string>> = {
   cta: "article",
 };
 
-const toShapeKey = (sections: DraftSectionPlan[]): string =>
-  sections.map((section) => section.templateId).join(">");
+function toShapeKey(sections: DraftSectionPlan[]): string {
+  return sections
+    .map((section) => (isCustomSectionPlan(section) ? "custom" : section.templateId))
+    .join(">");
+}
 
 /*
   Swap the listed positions to their catalog counterparts; copy is untouched.
@@ -607,6 +630,9 @@ function swapCounterparts({
   shouldSwap: (index: number) => boolean;
 }): DraftSectionPlan[] {
   return sections.map((section, index) => {
+    if (isCustomSectionPlan(section)) {
+      return section;
+    }
     const counterpart = TEMPLATE_COUNTERPARTS[section.templateId];
     if (counterpart === undefined || !shouldSwap(index)) {
       return section;
@@ -818,6 +844,9 @@ function applyContentClues({
   ];
   let nextCopyIndex = 0;
   return sections.map((section) => {
+    if (isCustomSectionPlan(section)) {
+      return section;
+    }
     const paramKeys = getTemplateParamKeys(section.templateId);
     if (paramKeys === null) {
       return section;
@@ -883,6 +912,9 @@ export function resolveSectionsToAvailableContent(
   sections: DraftSectionPlan[],
 ): SectionContentResolution[] {
   return sections.map((section) => {
+    if (isCustomSectionPlan(section)) {
+      return { outcome: "kept", section };
+    }
     const template = getSectionTemplate(section.templateId);
     if (template === undefined) {
       return { outcome: "dropped", plannedTemplateId: section.templateId };
@@ -981,6 +1013,32 @@ export function buildComposedDrafts({
         return;
       }
       const { section } = resolution;
+      if (isCustomSectionPlan(section)) {
+        const parsedSection = customSectionSchema.safeParse(section.custom);
+        if (!parsedSection.success) {
+          composition.droppedSectionCount += 1;
+          return;
+        }
+        for (let attempt = 0; attempt < MAX_BUILD_ATTEMPTS; attempt += 1) {
+          const built = buildCustomSection({ section: parsedSection.data, random });
+          const newIds = [built.section.id, ...built.children.map((block) => block.id)];
+          if (newIds.every((id) => !usedIds.has(id))) {
+            for (const id of newIds) {
+              usedIds.add(id);
+            }
+            ops.push({
+              name: "addSection",
+              section: built.section,
+              index: documentIndex,
+              children: built.children,
+            });
+            documentIndex += 1;
+            composition.plannedSectionCount += 1;
+            return;
+          }
+        }
+        return;
+      }
       const template = getSectionTemplate(section.templateId);
       if (template === undefined) {
         return;
@@ -1025,8 +1083,12 @@ export function buildComposedDrafts({
             A substituted section still has an origin — the plan's copy or the
             source draft's — so the two axes are reported independently.
           */
+          const plannedSection = plannedSections[sectionIndex];
           const bucket = getSectionCopySource({
-            plannedParams: plannedSections[sectionIndex]?.params,
+            plannedParams:
+              plannedSection === undefined || isCustomSectionPlan(plannedSection)
+                ? undefined
+                : plannedSection.params,
             builtParams: section.params,
           });
           composition[bucket] += 1;

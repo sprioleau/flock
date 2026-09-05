@@ -335,8 +335,11 @@ describe("resolveCreateDraftCommand", () => {
 });
 
 describe("completeDraftSections — every draft is a whole email", () => {
-  const categoriesOf = (sections: DraftSectionPlan[]): (string | undefined)[] =>
-    sections.map((section) => getSectionTemplate(section.templateId)?.category);
+  function categoriesOf(sections: DraftSectionPlan[]): (string | undefined)[] {
+    return sections.map((section) =>
+      "custom" in section ? "content" : getSectionTemplate(section.templateId)?.category,
+    );
+  }
 
   it("adds a header when the plan starts with a body section", () => {
     const completed = completeDraftSections([{ templateId: "hero" }, { templateId: "footer" }]);
@@ -368,8 +371,8 @@ describe("completeDraftSections — every draft is a whole email", () => {
       { templateId: "hero", params: { headline: "Kept" } },
     ]);
     expect(categoriesOf(completed)).toEqual(["header", "hero", "footer"]);
-    expect(completed.at(-1)?.params).toEqual({ companyName: "Petal" });
-    expect(completed[1]?.params).toEqual({ headline: "Kept" });
+    expect(completed.at(-1)).toMatchObject({ params: { companyName: "Petal" } });
+    expect(completed[1]).toMatchObject({ params: { headline: "Kept" } });
   });
 
   it("preserves a well-formed plan verbatim", () => {
@@ -466,16 +469,21 @@ describe("diversifyDraftSections", () => {
       { templateId: "footer" },
     ];
     const [first, second, third] = diversifyDraftSections([identical, identical, identical]);
-    expect(first!.map((s) => s.templateId)).toEqual(["header", "hero", "footer"]);
+    function templateIds(sections: DraftSectionPlan[]): string[] {
+      return sections.map((section) =>
+        "custom" in section ? "custom" : section.templateId,
+      );
+    }
+    expect(templateIds(first!)).toEqual(["header", "hero", "footer"]);
     /*
       "a plain hero in one and a split hero in another" — the owner's example.
     */
-    expect(second!.map((s) => s.templateId)).toEqual([
+    expect(templateIds(second!)).toEqual([
       "header-centered",
       "hero-split",
       "footer-social",
     ]);
-    expect(third!.map((s) => s.templateId)).not.toEqual(second!.map((s) => s.templateId));
+    expect(templateIds(third!)).not.toEqual(templateIds(second!));
   });
 
   it("keeps the model's copy while swapping the shape", () => {
@@ -1483,5 +1491,88 @@ describe("a kept section renders no place the caller did not name", () => {
     expect(text).toContain(PAGE_BODY);
     expect(text).toContain("Wes Bos");
     expect(JSON.stringify(result.doc)).toContain("*|UNSUB|*");
+  });
+});
+
+describe("custom draft sections", () => {
+  it("coexists with repeated catalog sections and becomes a deterministic addSection operation", () => {
+    const input = createDraftInputSchema.safeParse({
+      drafts: [
+        {
+          name: "Source layout",
+          sections: [
+            { templateId: "header", params: { brandName: "Field Notes" } },
+            {
+              custom: {
+                columns: [
+                  {
+                    widthPercent: 35,
+                    leaves: [{ kind: "text", role: "heading", text: "One story" }],
+                  },
+                  {
+                    widthPercent: 65,
+                    leaves: [
+                      { kind: "text", role: "paragraph", text: "The source's distinct detail." },
+                      { kind: "link", text: "Read more", href: "https://example.com/story" },
+                    ],
+                  },
+                ],
+              },
+            },
+            { templateId: "article", params: { headline: "Another angle", body: "Another source detail." } },
+            { templateId: "article", params: { headline: "A repeated angle", body: "A repeated source detail." } },
+            { templateId: "footer", params: { companyName: "Field Notes" } },
+          ],
+        },
+      ],
+    });
+    expect(input.success).toBe(true);
+    if (!input.success) throw new Error("custom draft plan should parse");
+
+    const command = resolveCreateDraftCommand(input.data);
+    const [composed] = buildComposedDrafts({
+      sourceDoc: createEmptyDocument(),
+      command,
+      shouldCarryOverSourceCopy: false,
+      random: createSeededRandom(9),
+    });
+    expect(composed).toBeDefined();
+    const addSections = composed!.ops.filter((operation) => operation.name === "addSection");
+    expect(addSections).toHaveLength(5);
+    expect(composed!.composition.droppedSectionCount).toBe(0);
+    expect(addSections[1]).toMatchObject({
+      name: "addSection",
+      children: expect.arrayContaining([
+        expect.objectContaining({ type: "row" }),
+        expect.objectContaining({ type: "link" }),
+      ]),
+    });
+    const applied = applyOperations(createEmptyDocument(), composed!.ops);
+    expect(applied.isOk).toBe(true);
+    if (!applied.isOk) {
+      throw new Error("custom draft operations should preserve document integrity");
+    }
+    expect(Object.values(applied.doc).filter((block) => block.type === "section")).toHaveLength(
+      5,
+    );
+  });
+
+  it("does not treat an invalid custom section as a catalog fallback", () => {
+    const parsed = createDraftInputSchema.safeParse({
+      drafts: [
+        {
+          sections: [
+            { templateId: "header" },
+            {
+              custom: {
+                columns: [{ leaves: [{ kind: "button", label: "Unsafe", href: "http://example.com" }] }],
+              },
+            },
+            { templateId: "footer" },
+          ],
+        },
+      ],
+    });
+    expect(parsed.success).toBe(false);
   });
 });

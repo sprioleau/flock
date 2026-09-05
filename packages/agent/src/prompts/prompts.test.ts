@@ -67,6 +67,18 @@ describe("SYSTEM_STATIC (layer a — cacheable)", () => {
     );
   });
 
+  it("reserves bounded custom draft sections for source structures the catalog loses", () => {
+    expect(SYSTEM_STATIC).toMatch(
+      /no catalog template preserves the source's structure[\s\S]*one to three columns/,
+    );
+    expect(SYSTEM_STATIC).toMatch(
+      /Never send raw HTML, CSS, styles, block JSON, invented image URLs, or fabricated copy/,
+    );
+    expect(buildToolGuidance(emailActionRegistry)).toMatch(
+      /Prefer catalog templates first[\s\S]*Do not use it merely to avoid choosing a catalog template/,
+    );
+  });
+
   it("teaches selection-scoped edits and reserves globals for explicitly document-wide requests", () => {
     expect(SYSTEM_STATIC).toContain("## How far a request reaches");
     /*
