@@ -24,6 +24,7 @@ import { getOrCreateSessionId } from "@/lib/session";
 import { CanvasCard, type CanvasCardEntry } from "./CanvasCard";
 import {
   resolveDashboardAttribution,
+  resolveDashboardListState,
   type DashboardAttribution,
 } from "./dashboard-attribution";
 
@@ -48,9 +49,10 @@ import {
   because they have made nothing. See ./dashboard-attribution.ts.
 */
 export function DashboardShell() {
-  const { credits, identity, isEnabled } = useFlockAuth();
+  const { credits, identity, isEnabled, isSessionPending } = useFlockAuth();
   const attribution = resolveDashboardAttribution({
     isAuthEnabled: isEnabled,
+    isAuthSessionPending: isSessionPending,
     identity,
     credits,
   });
@@ -64,7 +66,11 @@ export function DashboardShell() {
   const [sessionId] = useState(() =>
     typeof window === "undefined" ? "" : getOrCreateSessionId(),
   );
-  const canvases = useQuery(api.canvases.listMyCanvases, { sessionId });
+  const canvases = useQuery(
+    api.canvases.listMyCanvases,
+    attribution === "resolving" ? "skip" : { sessionId },
+  );
+  const dashboardListState = resolveDashboardListState({ attribution, canvases });
 
   const renameCanvas = useMutation(api.canvases.renameCanvas);
   const deleteCanvas = useMutation(api.canvases.deleteCanvas);
@@ -134,7 +140,7 @@ export function DashboardShell() {
   }, [deleteCanvas, deleteTarget, sessionId]);
 
   return (
-    <div className="mx-auto flex min-h-dvh w-full max-w-5xl flex-col gap-8 px-6 py-10">
+    <main className="mx-auto flex min-h-dvh w-full max-w-5xl flex-col gap-8 px-6 py-10">
       <header className="flex flex-wrap items-start justify-between gap-4">
         <div className="flex flex-col gap-1">
           <h1 className="text-2xl font-semibold tracking-tight">Your emails</h1>
@@ -195,22 +201,23 @@ export function DashboardShell() {
         the other reads as a glitch. A non-empty list needs no such wait: rows
         coming back is itself proof the server named an owner.
       */}
-      {canvases === undefined || (canvases.length === 0 && attribution === "resolving") ? (
+      {dashboardListState === "loading" ? (
         <LoadingGrid />
-      ) : canvases.length === 0 ? (
+      ) : dashboardListState === "empty" ? (
         <EmptyState credits={credits} isAuthEnabled={isEnabled} attribution={attribution} />
       ) : (
         <div
           className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3"
           data-testid="canvas-grid"
         >
-          {canvases.map((entry) => (
+          {(canvases ?? []).map((entry) => (
             <CanvasCard
               key={entry.canvasId}
               entry={entry}
               nowMs={nowMs}
               onRename={handleRenameRequested}
               onDelete={handleDeleteRequested}
+              sessionId={sessionId}
             />
           ))}
         </div>
@@ -294,7 +301,7 @@ export function DashboardShell() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
-    </div>
+    </main>
   );
 }
 

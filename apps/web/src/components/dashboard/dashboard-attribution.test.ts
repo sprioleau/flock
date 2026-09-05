@@ -5,7 +5,7 @@ import { register as registerBetterAuth } from "@convex-dev/better-auth/test";
 import { api } from "@convex/_generated/api";
 import schema from "@convex/schema";
 import type { CreditBalance, FlockIdentity } from "@/lib/auth/use-flock-auth";
-import { resolveDashboardAttribution } from "./dashboard-attribution";
+import { resolveDashboardAttribution, resolveDashboardListState } from "./dashboard-attribution";
 
 /*
   WHAT THE DASHBOARD SAYS TO SOMEBODY IT CANNOT NAME.
@@ -60,6 +60,17 @@ const A_REAL_BALANCE: CreditBalance = {
 };
 
 describe("resolveDashboardAttribution", () => {
+  it("keeps the dashboard unresolved while Better Auth restores a current session", () => {
+    expect(
+      resolveDashboardAttribution({
+        isAuthEnabled: true,
+        isAuthSessionPending: true,
+        identity: null,
+        credits: null,
+      }),
+    ).toBe("resolving");
+  });
+
   /*
     The pre-auth deployment, and the reason `isAuthEnabled` is checked FIRST.
     With the flag off `useFlockAuth` skips the balance query entirely, so
@@ -138,6 +149,25 @@ describe("resolveDashboardAttribution", () => {
         credits: null,
       }),
     ).toBe("unattributed");
+  });
+});
+
+describe("resolveDashboardListState", () => {
+  it("keeps the loading state while auth or the canvas query is unresolved", () => {
+    expect(resolveDashboardListState({ attribution: "resolving", canvases: [] })).toBe("loading");
+    expect(resolveDashboardListState({ attribution: "attributed", canvases: undefined })).toBe(
+      "loading",
+    );
+  });
+
+  it("only shows empty after the resolved query returns no canvases", () => {
+    expect(resolveDashboardListState({ attribution: "unattributed", canvases: [] })).toBe("empty");
+  });
+
+  it("shows the populated dashboard for a resolved non-empty result", () => {
+    expect(resolveDashboardListState({ attribution: "attributed", canvases: [{ id: "one" }] })).toBe(
+      "populated",
+    );
   });
 });
 

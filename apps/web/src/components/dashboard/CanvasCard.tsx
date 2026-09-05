@@ -1,9 +1,13 @@
 "use client";
 
+import { api } from "@convex/_generated/api";
 import type { Id } from "@convex/_generated/dataModel";
-import { FileTextIcon, MoreHorizontalIcon, PencilIcon, Trash2Icon } from "lucide-react";
+import { useQuery } from "convex/react";
+import { MoreHorizontalIcon, PencilIcon, Trash2Icon } from "lucide-react";
 import Link from "next/link";
+import { useEffect, useRef, useState } from "react";
 import { Button } from "@/components/ui/button";
+import { ReadOnlyEmailPreview } from "../studio/history/ReadOnlyEmailPreview";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -50,11 +54,13 @@ export function CanvasCard({
   nowMs,
   onRename,
   onDelete,
+  sessionId,
 }: {
   entry: CanvasCardEntry;
   nowMs: number;
   onRename: (entry: CanvasCardEntry) => void;
   onDelete: (entry: CanvasCardEntry) => void;
+  sessionId: string;
 }) {
   const href = buildCanvasHref({
     canvasId: entry.canvasId,
@@ -64,17 +70,17 @@ export function CanvasCard({
     draftCount: entry.draftCount,
     shownCount: entry.draftPreviews.length,
   });
+  const thumbnailDocuments = useQuery(api.canvases.getCanvasThumbnailDocuments, {
+    canvasId: entry.canvasId,
+    sessionId,
+  });
 
   return (
     <div
-      className="group relative flex flex-col rounded-xl border border-border bg-card transition-colors focus-within:border-ring hover:border-ring/60"
+      className="group relative flex h-[26rem] min-w-0 flex-col overflow-hidden rounded-xl border border-border bg-card transition-colors focus-within:border-ring hover:border-ring/60"
       data-testid="canvas-card"
     >
-      <Link
-        href={href}
-        className="flex flex-1 flex-col gap-3 rounded-xl p-4 outline-none"
-        data-testid="canvas-card-link"
-      >
+      <div className="flex min-h-0 flex-1 flex-col gap-3 rounded-xl p-4">
         {/*
           pr-8 keeps a long title from sliding under the actions menu.
         */}
@@ -94,34 +100,30 @@ export function CanvasCard({
         </div>
 
         {/*
-          The drafts inside, named. Not thumbnails — rendering a real preview
-          of an email needs the whole canvas pipeline, and a fake grey
-          rectangle would tell the reader strictly less than the name they
-          chose. Names are what people search by when they come back.
+          Every draft is rendered through the same read-only block views used
+          by Studio. The fixed viewport keeps card geometry stable even when
+          a canvas gains more drafts or longer content.
         */}
-        {entry.draftPreviews.length > 0 ? (
-          <ul className="flex flex-col gap-1" data-testid="canvas-card-drafts">
-            {entry.draftPreviews.map((draft) => (
-              <li
-                key={draft.documentId}
-                className="flex items-center gap-1.5 text-xs text-muted-foreground"
-              >
-                <FileTextIcon className="size-3 shrink-0" aria-hidden="true" />
-                <span className="truncate" title={draft.agentName ?? draft.name}>
-                  {draft.name}
-                </span>
-              </li>
-            ))}
-            {hiddenDraftLabel !== null ? (
-              <li className="pl-4.5 text-xs text-muted-foreground/80">{hiddenDraftLabel}</li>
-            ) : null}
-          </ul>
-        ) : (
-          <p className="text-xs text-muted-foreground">No drafts yet.</p>
-        )}
+        <CanvasThumbnail
+          documents={thumbnailDocuments}
+          draftCount={entry.draftCount}
+        />
+        <p className="sr-only" data-testid="canvas-card-draft-summary">
+          {entry.draftPreviews.map((draft) => draft.name).join(", ")}
+          {hiddenDraftLabel !== null ? ` ${hiddenDraftLabel}` : ""}
+        </p>
+      </div>
+
+      <Link
+        href={href}
+        aria-label={`Open ${entry.title}`}
+        className="absolute inset-0 z-10 rounded-xl outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+        data-testid="canvas-card-link"
+      >
+        <span className="sr-only">Open {entry.title}</span>
       </Link>
 
-      <div className="absolute top-3 right-3">
+      <div className="absolute top-3 right-3 z-20">
         <DropdownMenu>
           <DropdownMenuTrigger
             render={
@@ -152,6 +154,85 @@ export function CanvasCard({
             </DropdownMenuItem>
           </DropdownMenuContent>
         </DropdownMenu>
+      </div>
+    </div>
+  );
+}
+
+type ThumbnailDocuments = ReadonlyArray<{
+  documentId: Id<"documents">;
+  name: string;
+  doc: Parameters<typeof ReadOnlyEmailPreview>[0]["doc"];
+}>;
+
+export function CanvasThumbnail({
+  documents,
+  draftCount,
+}: {
+  documents: ThumbnailDocuments | undefined;
+  draftCount: number;
+}) {
+  return (
+    <div
+      className="flex min-h-0 flex-1 items-start justify-center gap-2 overflow-hidden rounded-lg border border-border/70 bg-muted/20 p-3"
+      aria-hidden="true"
+      aria-busy={documents === undefined}
+      inert
+      data-testid="canvas-card-thumbnail"
+    >
+      {documents === undefined ? (
+        <span className="sr-only">Loading {draftCount} draft previews</span>
+      ) : documents.length === 0 ? (
+        <span className="self-center text-xs text-muted-foreground">No drafts yet.</span>
+      ) : (
+        documents.map((document) => (
+          <div
+            key={document.documentId}
+            className="h-full min-w-0 flex-1 overflow-hidden rounded-sm bg-background shadow-sm"
+            data-draft-id={document.documentId}
+            data-draft-name={document.name}
+          >
+            <ThumbnailEmailPreview doc={document.doc} />
+          </div>
+        ))
+      )}
+    </div>
+  );
+}
+
+function ThumbnailEmailPreview({
+  doc,
+}: {
+  doc: Parameters<typeof ReadOnlyEmailPreview>[0]["doc"];
+}) {
+  const viewportRef = useRef<HTMLDivElement | null>(null);
+  const [scale, setScale] = useState(1);
+
+  useEffect(() => {
+    const viewport = viewportRef.current;
+    if (viewport === null) {
+      return;
+    }
+    function measure(element: HTMLDivElement): void {
+      const preview = element.querySelector<HTMLElement>('[data-testid="history-version-preview"]');
+      if (preview === null || preview.scrollHeight === 0 || element.clientHeight === 0) {
+        return;
+      }
+      setScale(Math.min(1, element.clientHeight / preview.scrollHeight));
+    }
+    measure(viewport);
+    const observer = new ResizeObserver(() => measure(viewport));
+    observer.observe(viewport);
+    return () => observer.disconnect();
+  }, []);
+
+  return (
+    <div ref={viewportRef} className="flex h-full justify-center overflow-hidden">
+      <div
+        className="h-fit w-full origin-top"
+        style={{ transform: `scale(${scale})` }}
+      >
+        <ReadOnlyEmailPreview doc={doc} />
       </div>
     </div>
   );

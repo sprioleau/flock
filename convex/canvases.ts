@@ -8,6 +8,8 @@ import {
   type QueryCtx,
 } from "./_generated/server";
 import { resolveOwnerIdOrNull } from "./authIdentity";
+import { emailDocumentValidator } from "./schema";
+import { loadDocumentState } from "./model/emailDocuments";
 import {
   createEmptyCleanupStats,
   deleteDocumentCascade,
@@ -222,7 +224,7 @@ async function resolveCallerOwnerId(
   reaches this path in normal use is looking at their own dashboard.
 */
 async function assertCanvasOwner(
-  ctx: MutationCtx,
+  ctx: QueryCtx | MutationCtx,
   args: { canvasId: Id<"canvases">; claimedSessionId: string },
 ): Promise<void> {
   const ownerId = await resolveCallerOwnerId(ctx, {
@@ -307,6 +309,12 @@ const canvasListEntryValidator = v.object({
   updatedAtMs: v.number(),
 });
 
+const canvasThumbnailDocumentValidator = v.object({
+  documentId: v.id("documents"),
+  name: v.string(),
+  doc: emailDocumentValidator,
+});
+
 /*
   Every canvas the calling identity owns, most recently touched first.
 
@@ -374,6 +382,43 @@ export const listMyCanvases = query({
     }
 
     return entries.sort((a, b) => b.updatedAtMs - a.updatedAtMs);
+  },
+});
+
+/*
+  Full document payloads for the dashboard's bounded visual overview. This is
+  deliberately separate from listMyCanvases: the list stays lightweight for
+  the grid, while the card can subscribe to every draft in a canvas and render
+  the same read-only blocks a person sees in Studio.
+*/
+export const getCanvasThumbnailDocuments = query({
+  args: {
+    canvasId: v.id("canvases"),
+    sessionId: v.optional(v.string()),
+  },
+  returns: v.array(canvasThumbnailDocumentValidator),
+  handler: async (ctx, args) => {
+    await assertCanvasOwner(ctx, {
+      canvasId: args.canvasId,
+      claimedSessionId: args.sessionId ?? "",
+    });
+    const rows = await ctx.db
+      .query("documents")
+      .withIndex("by_canvasId", (q) => q.eq("canvasId", args.canvasId))
+      .collect();
+
+    const documents = [];
+    for (const row of rows.sort((a, b) => a.orderIndex - b.orderIndex)) {
+      const state = await loadDocumentState(ctx, row._id);
+      if (state !== null) {
+        documents.push({
+          documentId: row._id,
+          name: row.name,
+          doc: state.doc,
+        });
+      }
+    }
+    return documents;
   },
 });
 

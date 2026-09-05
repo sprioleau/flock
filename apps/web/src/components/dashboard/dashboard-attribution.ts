@@ -66,6 +66,7 @@ export type DashboardAttribution =
 
 export function resolveDashboardAttribution(args: {
   isAuthEnabled: boolean;
+  isAuthSessionPending?: boolean;
   identity: FlockIdentity | null | undefined;
   credits: CreditBalance | null | undefined;
 }): DashboardAttribution {
@@ -77,6 +78,9 @@ export function resolveDashboardAttribution(args: {
   */
   if (!args.isAuthEnabled) {
     return "attributed";
+  }
+  if (args.isAuthSessionPending === true) {
+    return "resolving";
   }
   if (args.identity === undefined) {
     return "resolving";
@@ -92,4 +96,22 @@ export function resolveDashboardAttribution(args: {
     return "resolving";
   }
   return args.credits === null ? "unattributed" : "attributed";
+}
+
+export type DashboardListState = "loading" | "empty" | "populated";
+
+/*
+  A list must never be treated as empty until the reactive query has answered.
+  This small decision table is shared by the shell and tests so auth settling,
+  Convex settling, and a genuine empty result cannot be confused with one
+  another during a redirect.
+*/
+export function resolveDashboardListState(args: {
+  attribution: DashboardAttribution;
+  canvases: readonly unknown[] | undefined;
+}): DashboardListState {
+  if (args.attribution === "resolving" || args.canvases === undefined) {
+    return "loading";
+  }
+  return args.canvases.length === 0 ? "empty" : "populated";
 }

@@ -46,6 +46,12 @@ export type CreditBalance = {
 export function useFlockAuth(): {
   isEnabled: boolean;
   /*
+    Better Auth is still restoring or checking the browser session. Cached
+    Convex query results must not be interpreted as the final signed-out
+    state during this window.
+  */
+  isSessionPending: boolean;
+  /*
     Undefined while the identity query is in flight; null when signed out.
   */
   identity: FlockIdentity | null | undefined;
@@ -67,6 +73,7 @@ export function useFlockAuth(): {
   signOut: () => Promise<void>;
 } {
   const isEnabled = isAuthEnabled();
+  const { isPending: isSessionPending } = authClient.useSession();
   const identity = useQuery(api.auth.getCurrentUser, isEnabled ? {} : "skip");
   /*
     The legacy id is still passed as the pre-roll-out fallback key; a verified
@@ -143,6 +150,7 @@ export function useFlockAuth(): {
 
   return {
     isEnabled,
+    isSessionPending: isEnabled && isSessionPending,
     identity: isEnabled ? identity : null,
     isUnclaimed: identity !== undefined && identity !== null && identity.isAnonymous,
     credits,

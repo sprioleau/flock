@@ -183,6 +183,55 @@ describe("the dashboard lists only what you own", () => {
     expect(entry!.entryDocumentId).not.toBeNull();
   });
 
+  it("returns every draft document for the dashboard thumbnail overview", async () => {
+    const t = createBackend();
+    const owner = t.withIdentity({ subject: OWNER_A });
+    const first = await owner.mutation(api.documents.createDocument, {
+      sessionId: LEGACY_SESSION_ID,
+      canvasTitle: "Thumbnail test",
+      name: "First visual",
+    });
+    await owner.mutation(api.documents.createDocument, {
+      sessionId: LEGACY_SESSION_ID,
+      canvasId: first.canvasId,
+      name: "Second visual",
+    });
+
+    const thumbnailDocuments = await owner.query(api.canvases.getCanvasThumbnailDocuments, {
+      canvasId: first.canvasId,
+      sessionId: LEGACY_SESSION_ID,
+    });
+
+    expect(thumbnailDocuments).toHaveLength(2);
+    expect(thumbnailDocuments.map((document) => document.documentId)).toEqual([
+      first.documentId,
+      expect.any(String),
+    ]);
+    expect(thumbnailDocuments.map((document) => document.name)).toEqual([
+      "First visual",
+      "Second visual",
+    ]);
+    expect(thumbnailDocuments.every((document) => Object.keys(document.doc).length > 0)).toBe(true);
+  });
+
+  it("does not expose dashboard thumbnails to a different owner", async () => {
+    const t = createBackend();
+    const owner = t.withIdentity({ subject: OWNER_A });
+    const stranger = t.withIdentity({ subject: OWNER_B });
+    const created = await owner.mutation(api.documents.createDocument, {
+      sessionId: LEGACY_SESSION_ID,
+      canvasTitle: "Private dashboard thumbnail",
+      name: "Owner draft",
+    });
+
+    await expect(
+      stranger.query(api.canvases.getCanvasThumbnailDocuments, {
+        canvasId: created.canvasId,
+        sessionId: LEGACY_SESSION_ID,
+      }),
+    ).rejects.toThrow("isn't in your list");
+  });
+
   it("derives a display name for a canvas nobody ever titled", async () => {
     const t = createBackend();
     const owner = t.withIdentity({ subject: OWNER_A });
