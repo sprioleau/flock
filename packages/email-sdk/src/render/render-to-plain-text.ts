@@ -41,6 +41,17 @@ import { renderToReactEmail } from "./render-to-react-email";
 */
 const CODE_TOKEN_SPACE = / ‍​/gu;
 
+/*
+  React Email's HTML-to-text conversion adds structural line breaks for the
+  nested tables used by email clients. Keep intentional paragraph breaks, but
+  do not let those layout boundaries turn into empty paragraphs in the text
+  alternative. This is shared with the send path so the preview and Resend
+  receive exactly the same text.
+*/
+export function normalizePlainText(text: string): string {
+  return text.replace(/\r\n?/gu, "\n").replace(/\n{3,}/gu, "\n\n");
+}
+
 export interface RenderToPlainTextOptions {
   /**
    * Subject line, forwarded to {@link RenderToReactEmailOptions.subject}.
@@ -72,5 +83,5 @@ export async function renderToPlainText(
     }),
     { plainText: true },
   );
-  return text.replace(CODE_TOKEN_SPACE, " ");
+  return normalizePlainText(text.replace(CODE_TOKEN_SPACE, " "));
 }

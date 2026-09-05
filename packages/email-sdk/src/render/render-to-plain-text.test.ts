@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { createSampleDocument } from "../store/document";
 import { renderToHTML } from "./render-to-html";
-import { renderToPlainText } from "./render-to-plain-text";
+import { normalizePlainText, renderToPlainText } from "./render-to-plain-text";
 import { createMixedFixture } from "./render.fixtures";
 
 /*
@@ -10,6 +10,16 @@ import { createMixedFixture } from "./render.fixtures";
 */
 
 describe("renderToPlainText", () => {
+  it("normalizes layout whitespace without erasing meaningful paragraph or code breaks", () => {
+    expect(normalizePlainText("first\n\nsecond\n\n\nthird")).toBe(
+      "first\n\nsecond\n\nthird",
+    );
+    expect(normalizePlainText("const first = 1;\n\nconst second = 2;")).toBe(
+      "const first = 1;\n\nconst second = 2;",
+    );
+    expect(normalizePlainText("first\r\n\r\n\r\nsecond")).toBe("first\n\nsecond");
+  });
+
   it("returns the email's words with no HTML around them", async () => {
     const text = await renderToPlainText(createSampleDocument());
 

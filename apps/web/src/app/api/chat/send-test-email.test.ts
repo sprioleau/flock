@@ -46,7 +46,7 @@ const CONFIGURED_ENV = {
   The payload + idempotency options captured from the most recent stubbed send.
 */
 function lastSendCall(): {
-  payload: { to: string[]; subject: string; html: string };
+  payload: { to: string[]; subject: string; html: string; text: string };
   options: { idempotencyKey: string };
 } {
   const call = resendSendMock.mock.calls.at(-1);
@@ -54,7 +54,7 @@ function lastSendCall(): {
     throw new Error("expected the module to have called Resend");
   }
   return {
-    payload: call[0] as { to: string[]; subject: string; html: string },
+    payload: call[0] as { to: string[]; subject: string; html: string; text: string },
     options: call[1] as { idempotencyKey: string },
   };
 }
@@ -218,6 +218,23 @@ describe("subject and preview text reach the rendered html", () => {
       React Email's <Preview> emits the preheader text into a hidden div.
     */
     expect(html).toContain("The three things that changed this quarter");
+  });
+});
+
+describe("the text alternative matches the normalized studio preview", () => {
+  it("does not send layout-generated runs of empty lines to Resend", async () => {
+    const logSpy = vi.spyOn(console, "log").mockImplementation(() => {});
+    const outcome = await sendTestEmailWithResend({
+      doc: createStarterDocument(),
+      to: ["owner@example.com"],
+      env: CONFIGURED_ENV,
+    });
+    logSpy.mockRestore();
+
+    expect(outcome).toMatchObject({ isSent: true });
+    const { text } = lastSendCall().payload;
+    expect(text).not.toMatch(/\n{3,}/u);
+    expect(text).toContain("WELCOME TO FLOCK.");
   });
 });
 

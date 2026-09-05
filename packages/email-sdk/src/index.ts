@@ -165,7 +165,7 @@ export { DocumentIntegrityError } from "./render/errors";
 export { renderToReactEmail } from "./render/render-to-react-email";
 export { renderToHTML } from "./render/render-to-html";
 export type { RenderToHTMLOptions } from "./render/render-to-html";
-export { renderToPlainText } from "./render/render-to-plain-text";
+export { normalizePlainText, renderToPlainText } from "./render/render-to-plain-text";
 export { renderToJSON } from "./render/render-to-json";
 export type { RenderedEmailNode } from "./render/render-to-json";
 

@@ -5,8 +5,6 @@ exports[`renderToPlainText > produces something a person could actually read 1`]
 
 You describe, your flock builds — read the docs https://example.com/docs.
 
-
-
 ----------------------------------------
 
 Ready to ride?
@@ -14,13 +12,11 @@ Grab a seat on the right.
 
 Get started https://example.com/start
 
-
 FOR DEVELOPERS
 
 npm install @flock/email-sdk
 
 import { renderToHTML } from "@flock/email-sdk";
-
 
  
 

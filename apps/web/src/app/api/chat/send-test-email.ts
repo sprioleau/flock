@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import {
   renderToReactEmail,
+  normalizePlainText,
   ROOT_BLOCK_ID,
   type BlockId,
   type EmailDocument,
@@ -273,7 +274,7 @@ export async function sendTestEmailWithResend({
     */
     const email = renderToReactEmail(doc, { subject: testSubject, previewText });
     html = await render(email);
-    text = await render(email, { plainText: true });
+    text = normalizePlainText(await render(email, { plainText: true }));
   } catch (error) {
     console.error(
       JSON.stringify({
