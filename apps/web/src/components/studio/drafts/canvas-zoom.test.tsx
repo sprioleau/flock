@@ -130,6 +130,21 @@ describe("canvas zoom math", () => {
     expect(layout.zoomPercent).toBe(72);
   });
 
+  it("balances horizontal padding when height limits a narrow fitted scene", () => {
+    const layout = calculateFitCanvasViewport({
+      viewportWidthPx: 1000,
+      viewportHeightPx: 800,
+      contentBounds: { leftPx: 20, topPx: -100, rightPx: 320, bottomPx: 900 },
+      paddingPx: 40,
+    });
+
+    expect(layout.zoomPercent).toBe(72);
+    expect(layout.leftPaddingPx).toBe(392);
+    expect(layout.rightPaddingPx).toBe(392);
+    expect(layout.topPaddingPx).toBe(40);
+    expect(layout.bottomPaddingPx).toBe(40);
+  });
+
   it("keeps all four padding edges equal and clamps impossible bounds to the minimum", () => {
     const layout = calculateFitCanvasViewport({
       viewportWidthPx: 30,

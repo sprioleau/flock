@@ -1,8 +1,6 @@
 "use client";
 
-import { api } from "@convex/_generated/api";
-import { useMutation, useQuery } from "convex/react";
-import { CompassIcon, GhostIcon, MonitorIcon, MoonIcon, SettingsIcon, SunIcon } from "lucide-react";
+import { CompassIcon, MonitorIcon, MoonIcon, SettingsIcon, SunIcon } from "lucide-react";
 import { useTheme } from "next-themes";
 import { Button } from "@/components/ui/button";
 import {
@@ -25,7 +23,6 @@ import {
   chatProviderIdSchema,
   type ChatProviderId,
 } from "@/lib/chat-provider";
-import { useEditorStore } from "@/lib/editor-store";
 import { restartTour } from "@/lib/tour/tour-progress";
 import { getShortcutDisplay } from "../shortcuts/ShortcutKbd";
 import { updateAppSettings, useAppSettings } from "./app-settings";
@@ -36,29 +33,20 @@ import { updateAppSettings, useAppSettings } from "./app-settings";
   below dialogs/sheets at z-50) opening a compact settings menu.
 
   Settings:
-  - "Show me around": restarts the first-run walkthrough by resetting its
-    localStorage progress (lib/tour/tour-progress.ts). An action, not a
-    toggle — and the permanent way back to a tour that has been skipped.
-  - "Demo mode" toggle, persisted per browser via app-settings.ts. Enabling
-    it reveals the chat panel's "Queue demo messages" button
-    (DemoQueueButton) and the ghost-collaborator control below.
+  - "Show me around": starts or restarts the optional walkthrough by updating
+    its localStorage progress (lib/tour/tour-progress.ts). An action, not a
+    toggle, and the only way the walkthrough is launched.
   - "Time-travel replay" / "Op inspector" toggles (persisted the same way):
     reveal those power-user toolbar buttons — both hidden by default.
   - "Suggest related edits": whether proactive suggestion cards appear. ON by
     default (the feature shipped visible). Purely a visibility switch — the
     op log keeps recording either way, so switching it back on surfaces
     suggestions from edits already made rather than starting from scratch.
-  - "Ghost collaborator" (demo mode only): starts/stops the server-driven
-    simulated collaborator (convex/ghost.ts) that types into a text block —
-    one-person multiplayer. The running state is reactive (getGhostStatus),
-    so the label flips to Stop while the ghost is typing and back when the
-    bounded run ends on its own.
   - "Chat service" (owner override only): which provider answers chat turns.
     See ChatProviderSetting below for why it is absent rather than disabled.
 */
 export function SettingsFab() {
   const {
-    isDemoModeEnabled,
     isTimeTravelReplayEnabled,
     isOpInspectorEnabled,
     isSuggestionsEnabled,
@@ -69,31 +57,12 @@ export function SettingsFab() {
     and ignores a provider request from a caller without one.
   */
   const { isUnlocked: hasOwnerOverride } = useOwnerOverride();
-  const documentId = useEditorStore((state) => state.documentId);
   /*
     App-chrome theme (light / dark / system), persisted by next-themes. Safe
     to read here without a mounted guard: the menu content only renders after
     a click, which is always post-hydration.
   */
   const { theme, setTheme } = useTheme();
-
-  const ghostStatus = useQuery(
-    api.ghost.getGhostStatus,
-    isDemoModeEnabled && documentId !== null ? { documentId } : "skip",
-  );
-  const startGhost = useMutation(api.ghost.startGhost);
-  const stopGhost = useMutation(api.ghost.stopGhost);
-  const isGhostTyping = ghostStatus?.isTyping === true;
-
-  const toggleGhost = (): void => {
-    if (documentId === null) {
-      return;
-    }
-    const action = isGhostTyping ? stopGhost({ documentId }) : startGhost({ documentId });
-    action.catch((error: unknown) => {
-      console.error("[settings] ghost collaborator toggle failed:", error);
-    });
-  };
 
   return (
     /*
@@ -158,10 +127,9 @@ export function SettingsFab() {
             {/*
               An ACTION rather than a toggle, and the only one in this group:
               it resets the localStorage tour progress to the first stop, so
-              the walkthrough starts over immediately. This is the owner's
-              "there should be a way to trigger the onboarding flow from
-              settings", and it doubles as the way QA re-runs the tour
-              without clearing site data. Closes the menu on click (unlike
+              the walkthrough starts immediately. This is the manual entry
+              point for onboarding and the way QA re-runs the tour without
+              clearing site data. Closes the menu on click (unlike
               the toggles below) because the thing it produces appears on the
               canvas behind it.
             */}
@@ -186,19 +154,6 @@ export function SettingsFab() {
                 <span>Suggest related edits</span>
                 <span className="text-xs text-muted-foreground">
                   Offers to apply a change you just made to similar blocks
-                </span>
-              </span>
-            </DropdownMenuCheckboxItem>
-            <DropdownMenuCheckboxItem
-              checked={isDemoModeEnabled}
-              onCheckedChange={(isChecked) => updateAppSettings({ isDemoModeEnabled: isChecked })}
-              closeOnClick={false}
-              data-testid="settings-demo-mode-toggle"
-            >
-              <span className="flex flex-col gap-0.5 py-0.5">
-                <span>Demo mode</span>
-                <span className="text-xs text-muted-foreground">
-                  Adds a demo-message button to the chat
                 </span>
               </span>
             </DropdownMenuCheckboxItem>
@@ -230,23 +185,6 @@ export function SettingsFab() {
                 </span>
               </span>
             </DropdownMenuCheckboxItem>
-            {isDemoModeEnabled && documentId !== null && (
-              <DropdownMenuItem
-                closeOnClick={false}
-                onClick={toggleGhost}
-                data-testid="settings-ghost-toggle"
-              >
-                <GhostIcon className="size-4 shrink-0" />
-                <span className="flex flex-col gap-0.5 py-0.5">
-                  <span>{isGhostTyping ? "Stop ghost collaborator" : "Ghost collaborator"}</span>
-                  <span className="text-xs text-muted-foreground">
-                    {isGhostTyping
-                      ? "Riley is typing — click to stop"
-                      : "A simulated teammate types for ~25s"}
-                  </span>
-                </span>
-              </DropdownMenuItem>
-            )}
           </DropdownMenuGroup>
           <ChatProviderSetting
             isUnlocked={hasOwnerOverride}

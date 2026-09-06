@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { formatBrandSocialContextLine } from "./brand-context";
+import { formatBrandSocialContextLine, formatBrandThemeContextLine } from "./brand-context";
 import { formatBrandEmailDesignContextLine } from "@/lib/brand-email-design";
 import { buildSystemContext } from "./system-context";
 
@@ -19,6 +19,41 @@ describe("formatBrandSocialContextLine", () => {
 
   it("returns null when the kit has no links", () => {
     expect(formatBrandSocialContextLine({ brandName: "CNN", socialLinks: [] })).toBeNull();
+  });
+});
+
+describe("formatBrandThemeContextLine", () => {
+  it("exposes active-kit state and only live saved theme names", () => {
+    expect(
+      formatBrandThemeContextLine({
+        brandName: "Flock",
+        variations: [
+          { name: "Midnight" },
+          { name: "Archived", deletedAtMs: 123 },
+        ],
+      }),
+    ).toContain('live saved email themes are: Midnight');
+    expect(
+      formatBrandThemeContextLine({
+        brandName: "Flock",
+        variations: [{ name: "Midnight" }, { name: "Archived", deletedAtMs: 123 }],
+      }),
+    ).not.toContain("Archived");
+  });
+
+  it("still reports an active kit when it has no live themes", () => {
+    expect(
+      formatBrandThemeContextLine({
+        brandName: "Flock",
+        variations: [{ name: "Archived", deletedAtMs: 123 }],
+      }),
+    ).toContain('active saved brand kit is bound to this canvas: "Flock"');
+    expect(
+      formatBrandThemeContextLine({
+        brandName: "Flock",
+        variations: [{ name: "Archived", deletedAtMs: 123 }],
+      }),
+    ).toContain("live saved email themes are: none");
   });
 });
 

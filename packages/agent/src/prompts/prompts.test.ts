@@ -337,6 +337,54 @@ describe("source-page workflow (readWebPage) — section count scales to content
   });
 });
 
+describe("source-page style choice", () => {
+  it("requires an explicit current-kit versus page-style choice before composition", () => {
+    const registry = buildAgentActionRegistry({
+      readWebPage: async () => ({ isOk: false, reason: "x", message: "x" }),
+      shouldIncludeWidgetActions: true,
+    });
+    const guidance = buildToolGuidance(registry);
+
+    expect(guidance).toContain("STYLE IS A SEPARATE CHOICE");
+    expect(guidance).toContain("Which visual style should the new draft use?");
+    expect(guidance).toContain("Use the current brand kit");
+    expect(guidance).toContain("Use the source page style");
+    expect(guidance).toContain('theme: \"page\"');
+    expect(guidance).toContain("Do not call applyTheme, updateDocumentSettings");
+  });
+
+  it("re-reads the same page exactly once before creating after a later source-style answer", () => {
+    const registry = buildAgentActionRegistry({
+      readWebPage: async () => ({ isOk: false, reason: "x", message: "x" }),
+      shouldIncludeWidgetActions: true,
+    });
+    const guidance = buildToolGuidance(registry);
+    const followUpStart = guidance.indexOf("FOLLOW-UP STYLE ANSWERS ARE A NEW REQUEST");
+    const followUp = guidance.slice(followUpStart);
+    const rereadIndex = followUp.indexOf("call readWebPage exactly once");
+    const createIndex = followUp.indexOf("call createDraft exactly once");
+
+    expect(followUpStart).toBeGreaterThanOrEqual(0);
+    expect(followUp).toContain('answers "Use the source page style" in a later chat turn');
+    expect(followUp).toContain("the exact URL argument used by the earlier readWebPage call");
+    expect(rereadIndex).toBeGreaterThanOrEqual(0);
+    expect(createIndex).toBeGreaterThan(rereadIndex);
+    expect(followUp).toContain('freshly returned sections and `theme: "page"`');
+    expect(followUp).toContain("do not read a second time");
+    expect(followUp).toContain("do not call applyTheme, updateDocumentSettings");
+  });
+
+  it("forbids guessing a palette when native page styling is unavailable", () => {
+    const registry = buildAgentActionRegistry({
+      readWebPage: async () => ({ isOk: false, reason: "x", message: "x" }),
+    });
+    const guidance = buildToolGuidance(registry);
+
+    expect(guidance).toContain("no `theme`");
+    expect(guidance).toContain("do not offer or invent a source-page palette");
+  });
+});
+
 describe("buildDocumentContext (layer c — per-request)", () => {
   it("embeds the outline and a selection placeholder", () => {
     const context = buildDocumentContext({ doc: sampleDoc });

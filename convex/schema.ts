@@ -352,8 +352,8 @@ export default defineSchema({
       An AI edit is attributed to the agent (`authorId` = the chat id) but was
       asked for by a person, and that person is the one entitled to undo it.
       Set only when the two differ; absent on ordinary human edits and on
-      server-side writes with no browser session behind them (the demo ghost),
-      which stay off every human's undo stack.
+      server-side writes with no browser session behind them, which stay off
+      every human's undo stack.
     */
     undoOwnerId: v.optional(v.string()),
     author: operationAuthorValidator,
@@ -383,48 +383,6 @@ export default defineSchema({
     .index("by_documentId_and_batchId", ["documentId", "batchId"])
     .index("by_documentId_and_authorId", ["documentId", "authorId"])
     .index("by_documentId_and_undoOwnerId", ["documentId", "undoOwnerId"]),
-
-  /*
-    Demo-mode ghost collaborator (convex/ghost.ts): at most one row per
-    document while a ghost typing session is live; deleted when the session
-    finishes or is stopped. `generation` (the session's start timestamp)
-    stamps every scheduled tick so stale ticks from a superseded session
-    self-cancel. Rows are transient by design — a chain that dies leaves a
-    row that the STALE_GHOST_SESSION_MS guard treats as not-running and the
-    next startGhost sweeps.
-  */
-  ghostSessions: defineTable({
-    documentId: v.id("documents"),
-    /*
-      The text block the ghost is typing into.
-    */
-    blockId: v.string(),
-    /*
-      Session nonce (start timestamp); ticks with a different one self-cancel.
-    */
-    generation: v.number(),
-    /*
-      The full message the ghost types, character by character.
-    */
-    script: v.string(),
-    /*
-      Script index where the ghost mistypes once (-1 = no typo step).
-    */
-    typoIndex: v.number(),
-    /*
-      The wrong character typed at typoIndex (then backspaced).
-    */
-    typoChar: v.string(),
-    /*
-      Next keystroke-plan step to apply (0 .. script.length [+2 with typo]).
-    */
-    planIndex: v.number(),
-    /*
-      Flattened tail of the block's text at start — the content anchor.
-    */
-    anchorTail: v.string(),
-    startedAtMs: v.number(),
-  }).index("by_documentId", ["documentId"]),
 
   /*
     Multi-agent canvas v0 (docs/proposals/multi-agent-canvas.md §3.1): the

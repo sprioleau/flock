@@ -3,13 +3,24 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { CHAT_PROVIDER_LABELS } from "@/lib/chat-provider";
 
 const updateAppSettingsMock = vi.hoisted(() => vi.fn());
+const useAppSettingsMock = vi.hoisted(() => vi.fn());
+const restartTourMock = vi.hoisted(() => vi.fn());
 vi.mock("./app-settings", () => ({
   updateAppSettings: updateAppSettingsMock,
-  useAppSettings: vi.fn(),
+  useAppSettings: useAppSettingsMock,
   getAppSettings: vi.fn(),
 }));
+vi.mock("@/lib/auth/use-owner-override", () => ({
+  useOwnerOverride: () => ({ isUnlocked: false }),
+}));
+vi.mock("next-themes", () => ({
+  useTheme: () => ({ theme: "system", setTheme: vi.fn() }),
+}));
+vi.mock("@/lib/tour/tour-progress", () => ({
+  restartTour: restartTourMock,
+}));
 
-import { ChatProviderSetting } from "./SettingsFab";
+import { ChatProviderSetting, SettingsFab } from "./SettingsFab";
 
 /*
   The owner-only "which service answers your chat messages" control.
@@ -102,6 +113,60 @@ function visibleText(node: ReactNode): string {
   visit(node);
   return parts.join(" ");
 }
+
+describe("the app settings menu", () => {
+  it("does not expose the retired demo queue or ghost collaborator", () => {
+    useAppSettingsMock.mockReturnValue({
+      isTimeTravelReplayEnabled: false,
+      isOpInspectorEnabled: false,
+      isSuggestionsEnabled: true,
+      chatProviderId: null,
+    });
+
+    const tree = SettingsFab();
+    const testIds = collectElements(tree).map((element) => element.props["data-testid"]);
+    expect(testIds).not.toContain("settings-demo-mode-toggle");
+    expect(testIds).not.toContain("settings-ghost-toggle");
+    expect(visibleText(tree)).not.toContain("Demo mode");
+    expect(visibleText(tree)).not.toContain("Ghost collaborator");
+  });
+
+  it("keeps the real settings controls available", () => {
+    useAppSettingsMock.mockReturnValue({
+      isTimeTravelReplayEnabled: false,
+      isOpInspectorEnabled: false,
+      isSuggestionsEnabled: true,
+      chatProviderId: null,
+    });
+
+    const testIds = collectElements(SettingsFab()).map(
+      (element) => element.props["data-testid"],
+    );
+    expect(testIds).toContain("settings-restart-tour");
+    expect(testIds).toContain("settings-suggestions-toggle");
+    expect(testIds).toContain("settings-replay-toggle");
+    expect(testIds).toContain("settings-inspector-toggle");
+  });
+
+  it("keeps the walkthrough as an accessible manual action", () => {
+    restartTourMock.mockReset();
+    useAppSettingsMock.mockReturnValue({
+      isTimeTravelReplayEnabled: false,
+      isOpInspectorEnabled: false,
+      isSuggestionsEnabled: true,
+      chatProviderId: null,
+    });
+
+    const tree = SettingsFab();
+    const launchItem = collectElements(tree).find(
+      (element) => element.props["data-testid"] === "settings-restart-tour",
+    );
+    expect(launchItem).toBeDefined();
+    expect(visibleText(launchItem)).toContain("Show me around");
+    (launchItem?.props.onClick as (() => void) | undefined)?.();
+    expect(restartTourMock).toHaveBeenCalledOnce();
+  });
+});
 
 describe("the chat-service control, without an owner override", () => {
   it("is absent — not a disabled row, nothing at all", () => {

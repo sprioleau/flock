@@ -26,9 +26,8 @@
   complete. A timer-driven demo drifts the moment the network is slow, and it
   drifts in front of exactly the audience it was built for: the narration would
   claim an agent had posted a recommendation while the request was still in
-  flight. The existing DemoQueueButton reached the same conclusion for chat
-  turns ("each agent turn fully completes before the next prompt sends") — this
-  is the same rule applied to persona turns.
+  flight. That sequencing keeps narration synchronized with the actual
+  persona results instead of racing ahead of the network.
 
   Everything here is a pure function over a plain object so the ordering rules
   are unit-tested directly, rather than through a component this app's

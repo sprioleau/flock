@@ -3,6 +3,8 @@
 import { useEffect, useMemo, useState } from "react";
 import { useMutation, useQuery } from "convex/react";
 import { PauseIcon, PlayIcon, PlusIcon } from "lucide-react";
+import Markdown, { type Components } from "react-markdown";
+import remarkGfm from "remark-gfm";
 import { api } from "@convex/_generated/api";
 import { Button } from "@/components/ui/button";
 import {
@@ -67,6 +69,9 @@ export interface PersonaPickerDialogProps {
   onOpenChange: (isOpen: boolean) => void;
 }
 
+export const PERSONA_DETAIL_SCROLL_REGION_CLASS_NAME =
+  "min-h-0 flex-1 overflow-y-auto px-4 py-4 sm:px-6";
+
 export function PersonaPickerDialog({ isOpen, onOpenChange }: PersonaPickerDialogProps) {
   /*
     Anonymous session id (localStorage). Read only while the dialog is open
@@ -83,6 +88,7 @@ export function PersonaPickerDialog({ isOpen, onOpenChange }: PersonaPickerDialo
   const enabledSlugs = useEnabledPersonaSlugs();
   const [isCreateFormOpen, setIsCreateFormOpen] = useState(false);
   const [selectedSlug, setSelectedSlug] = useState<string | null>(null);
+  const [editingPersonaSlug, setEditingPersonaSlug] = useState<string | null>(null);
   const selectedPersona =
     personas?.find((persona) => persona.slug === selectedSlug) ?? personas?.[0] ?? null;
 
@@ -103,8 +109,8 @@ export function PersonaPickerDialog({ isOpen, onOpenChange }: PersonaPickerDialo
         className="grid max-h-[85vh] min-h-0 grid-rows-[auto_minmax(0,1fr)] gap-0 overflow-hidden p-0 sm:max-w-4xl"
         data-testid="persona-picker"
       >
-        <DialogHeader>
-          <div className="px-6 pt-6">
+        <DialogHeader className="gap-2 px-6 pt-6 pb-5">
+          <div>
             <DialogTitle>Agents</DialogTitle>
             <DialogDescription>
               Advisory teammates that review your edits and leave suggestions. Enabled agents join
@@ -141,6 +147,7 @@ export function PersonaPickerDialog({ isOpen, onOpenChange }: PersonaPickerDialo
                     isSelected={!isCreateFormOpen && selectedPersona?.slug === persona.slug}
                     onSelect={() => {
                       setIsCreateFormOpen(false);
+                      setEditingPersonaSlug(null);
                       setSelectedSlug(persona.slug);
                     }}
                   />
@@ -163,33 +170,17 @@ export function PersonaPickerDialog({ isOpen, onOpenChange }: PersonaPickerDialo
               </div>
             )}
           </aside>
-          <section className="min-h-0 min-w-0 overflow-y-auto p-4 sm:p-6" data-testid="persona-detail">
-            <div className="mb-4">
+          <section className="flex min-h-0 min-w-0 flex-col overflow-hidden" data-testid="persona-detail">
+            <div className="shrink-0 border-b px-4 pt-4 pb-4 sm:px-6" data-testid="persona-detail-summary">
               <p className="text-xs font-medium text-muted-foreground">Agent settings</p>
               <p className="mt-1 text-sm text-muted-foreground">
                 {isCreateFormOpen
                   ? "Create a teammate with a focused job and clear review guidelines."
                   : "Choose an agent to review its behavior, properties, and enablement."}
               </p>
-            </div>
-            {sessionId === null ? (
-              <p className="py-8 text-center text-xs text-muted-foreground">Loading session…</p>
-            ) : isCreateFormOpen ? (
-              <PersonaCreateForm
-                sessionId={sessionId}
-                onClose={() => {
-                  setIsCreateFormOpen(false);
-                  setSelectedSlug(null);
-                }}
-              />
-            ) : selectedPersona === null ? (
-              <p className="rounded-md border border-dashed p-8 text-center text-xs text-muted-foreground">
-                Select an agent to view its settings.
-              </p>
-            ) : (
-              <>
+              {!isCreateFormOpen && selectedPersona !== null && (
                 <div
-                  className="mb-4 flex items-center gap-2.5 border-b pb-4"
+                  className="mt-4 flex items-center gap-2.5"
                   data-testid="persona-detail-header"
                 >
                   <span
@@ -203,14 +194,46 @@ export function PersonaPickerDialog({ isOpen, onOpenChange }: PersonaPickerDialo
                   <span className="rounded-full border px-1.5 py-px text-[10px] text-muted-foreground">
                     {selectedPersona.capabilityMode}
                   </span>
+                  {editingPersonaSlug !== selectedPersona.slug && (
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="xs"
+                      className="ml-auto shrink-0"
+                      onClick={() => setEditingPersonaSlug(selectedPersona.slug)}
+                      data-testid={`persona-edit-${selectedPersona.slug}`}
+                    >
+                      Edit
+                    </Button>
+                  )}
                 </div>
+              )}
+            </div>
+            <div className={PERSONA_DETAIL_SCROLL_REGION_CLASS_NAME} data-testid="persona-detail-scroll">
+              {sessionId === null ? (
+                <p className="py-8 text-center text-xs text-muted-foreground">Loading session…</p>
+              ) : isCreateFormOpen ? (
+                <PersonaCreateForm
+                  sessionId={sessionId}
+                  onClose={() => {
+                    setIsCreateFormOpen(false);
+                    setSelectedSlug(null);
+                  }}
+                />
+              ) : selectedPersona === null ? (
+                <p className="rounded-md border border-dashed p-8 text-center text-xs text-muted-foreground">
+                  Select an agent to view its settings.
+                </p>
+              ) : (
                 <PersonaDefinition
                   key={selectedPersona.slug}
                   persona={selectedPersona}
                   sessionId={sessionId}
+                  isEditing={editingPersonaSlug === selectedPersona.slug}
+                  onClose={() => setEditingPersonaSlug(null)}
                 />
-              </>
-            )}
+              )}
+            </div>
           </section>
         </div>
       </DialogContent>
@@ -353,6 +376,8 @@ export function PersonaRow({ persona, isEnabled, isSelected, onSelect }: Persona
 interface PersonaDefinitionProps {
   persona: PersonaPayload;
   sessionId: string;
+  isEditing: boolean;
+  onClose: () => void;
 }
 
 /*
@@ -362,10 +387,14 @@ interface PersonaDefinitionProps {
   session copy and swaps enablement back to the pristine built-in; created
   personas get Delete instead (there is no built-in to fall back to).
 */
-function PersonaDefinition({ persona, sessionId }: PersonaDefinitionProps) {
+function PersonaDefinition({
+  persona,
+  sessionId,
+  isEditing,
+  onClose,
+}: PersonaDefinitionProps) {
   const resetPersonaToBuiltIn = useMutation(api.personas.resetPersonaToBuiltIn);
   const deletePersona = useMutation(api.personas.deletePersona);
-  const [isEditing, setIsEditing] = useState(false);
   const [isRemoving, setIsRemoving] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
@@ -416,7 +445,7 @@ function PersonaDefinition({ persona, sessionId }: PersonaDefinitionProps) {
         initialModel={formModel}
         isCustomized={isSessionOwned}
         sessionId={sessionId}
-        onClose={() => setIsEditing(false)}
+        onClose={onClose}
       />
     );
   }
@@ -425,18 +454,6 @@ function PersonaDefinition({ persona, sessionId }: PersonaDefinitionProps) {
     <div className="mt-1.5">
       <PersonaDefinitionView persona={persona} model={formModel} />
       <div className="mt-1.5 flex items-center gap-1.5">
-        <Button
-          type="button"
-          variant="outline"
-          size="xs"
-          onClick={() => {
-            setErrorMessage(null);
-            setIsEditing(true);
-          }}
-          data-testid={`persona-edit-${persona.slug}`}
-        >
-          Edit
-        </Button>
         {isSessionOwned && !isUserCreated && (
           <Button
             type="button"
@@ -469,9 +486,40 @@ function PersonaDefinition({ persona, sessionId }: PersonaDefinitionProps) {
 }
 
 /*
+  Persona instructions are authored as Markdown. react-markdown renders the
+  full document structure without enabling raw HTML, so custom/community
+  instructions cannot inject executable markup into the settings dialog.
+*/
+const PERSONA_MARKDOWN_COMPONENTS: Components = {
+  a: ({ children, ...props }) => (
+    <a {...props} target="_blank" rel="noreferrer" className="underline underline-offset-2">
+      {children}
+    </a>
+  ),
+  code: ({ children, ...props }) => (
+    <code {...props} className="rounded bg-background/60 px-0.5">
+      {children}
+    </code>
+  ),
+  p: ({ children }) => <p className="text-[11px] leading-relaxed text-muted-foreground">{children}</p>,
+  ul: ({ children }) => <ul className="ml-4 list-disc space-y-0.5 text-[11px] text-muted-foreground">{children}</ul>,
+  ol: ({ children }) => <ol className="ml-4 list-decimal space-y-0.5 text-[11px] text-muted-foreground">{children}</ol>,
+};
+
+export function PersonaMarkdown({ text }: { text: string }) {
+  return (
+    <div className="space-y-1.5">
+      <Markdown remarkPlugins={[remarkGfm]} components={PERSONA_MARKDOWN_COMPONENTS}>
+        {text}
+      </Markdown>
+    </div>
+  );
+}
+
+/*
   Read mode: the behavior text as labeled prose — never raw markdown.
 */
-function PersonaDefinitionView({
+export function PersonaDefinitionView({
   persona,
   model,
 }: {
@@ -484,34 +532,39 @@ function PersonaDefinitionView({
       is the only faithful rendering.
     */
     return (
-      <pre
-        className="max-h-48 overflow-y-auto rounded-md bg-muted/50 p-2 text-[11px] leading-relaxed whitespace-pre-wrap text-muted-foreground"
+      <div
+        className="rounded-md bg-muted/50 p-2"
         tabIndex={0}
         role="region"
         aria-label={`${persona.name} definition`}
       >
-        {persona.personaMarkdown}
-      </pre>
+        <PersonaMarkdown text={persona.personaMarkdown} />
+      </div>
     );
   }
   return (
     <div
-      className="max-h-48 space-y-2 overflow-y-auto rounded-md bg-muted/50 p-2.5"
+      className="space-y-2 rounded-md bg-muted/50 p-2.5"
       tabIndex={0}
       role="region"
       aria-label={`${persona.name} definition`}
     >
       {model.intro.length > 0 && (
-        <p className="text-[11px] leading-relaxed whitespace-pre-wrap text-muted-foreground">
-          {model.intro}
-        </p>
+        <div>
+          <PersonaMarkdown text={model.intro} />
+        </div>
+      )}
+      {model.description !== null && model.description.length > 0 && (
+        <div>
+          <PersonaMarkdown text={model.description} />
+        </div>
       )}
       {model.sections.map((section) => (
         <div key={section.heading}>
           <p className="text-[11px] font-medium text-foreground/80">{section.heading}</p>
-          <p className="mt-0.5 text-[11px] leading-relaxed whitespace-pre-wrap text-muted-foreground">
-            {section.content}
-          </p>
+          <div className="mt-0.5">
+            <PersonaMarkdown text={section.content} />
+          </div>
         </div>
       ))}
       <p className="text-[10px] text-muted-foreground/70">

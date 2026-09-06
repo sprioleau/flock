@@ -5,12 +5,9 @@ import {
   APP_SETTINGS_STORAGE_KEY,
   DEMO_SESSION_STORAGE_KEY,
   ENABLED_PERSONAS_STORAGE_KEY,
-  TOUR_PROGRESS_STORAGE_KEY,
   buildDemoAppSettingsRaw,
   buildDemoEnabledPersonasRaw,
   buildDemoRestoreSnapshot,
-  buildDemoTourProgressRaw,
-  buildRestoredTourProgressRaw,
   parseDemoSession,
   selectIsDemoDocument,
   type DemoSession,
@@ -18,7 +15,7 @@ import {
 
 /*
   The localStorage shell over demo-preset.ts's pure rules — the house idiom
-  (app-settings.ts, enabled-personas.ts, tour-progress.ts): module state read
+  (app-settings.ts and enabled-personas.ts): module state read
   through useSyncExternalStore with a getServerSnapshot returning the default
   so SSR and first paint agree, a "storage" listener for sibling tabs, and
   every read and write wrapped so a browser that cannot persist still gets a
@@ -26,7 +23,7 @@ import {
 
   ONE THING HERE IS NOT THE HOUSE IDIOM, and it is deliberate: writing the
   preset dispatches a synthetic `storage` event at this window. Those events
-  normally only arrive from OTHER tabs, so the three stores whose keys the
+  normally only arrive from OTHER tabs, so the two stores whose keys the
   preset overwrites would keep serving their cached snapshots for the life of
   this tab — /demo hands over to /studio by client-side navigation, so the
   modules are never re-imported and never re-read. Dispatching the event walks
@@ -120,9 +117,8 @@ function writeRaw({ key, value }: { key: string; value: string | null }): void {
 
 /*
   Make every localStorage-backed store in THIS tab re-read (see the header).
-  `key: null` is the "everything changed" signal all three of them already
-  honour, so one event refreshes app settings, persona enablement and tour
-  progress together.
+  `key: null` is the "everything changed" signal both stores already
+  honour, so one event refreshes app settings and persona enablement together.
 */
 function broadcastStorageRefresh(): void {
   try {
@@ -147,7 +143,6 @@ export function beginDemoSession({ documentId }: { documentId: string }): void {
     current: {
       appSettingsRaw: readRaw(APP_SETTINGS_STORAGE_KEY),
       enabledPersonasRaw: readRaw(ENABLED_PERSONAS_STORAGE_KEY),
-      tourProgressRaw: readRaw(TOUR_PROGRESS_STORAGE_KEY),
     },
     /*
       Re-entering /demo ("Start over") must not snapshot the demo's own
@@ -161,7 +156,6 @@ export function beginDemoSession({ documentId }: { documentId: string }): void {
     value: buildDemoAppSettingsRaw(restore.appSettingsRaw),
   });
   writeRaw({ key: ENABLED_PERSONAS_STORAGE_KEY, value: buildDemoEnabledPersonasRaw() });
-  writeRaw({ key: TOUR_PROGRESS_STORAGE_KEY, value: buildDemoTourProgressRaw() });
   writeRaw({ key: DEMO_SESSION_STORAGE_KEY, value: JSON.stringify(session) });
   cachedSession = session;
   hasReadStorage = true;
@@ -170,7 +164,7 @@ export function beginDemoSession({ documentId }: { documentId: string }): void {
 }
 
 /*
-  Leave the demo: put back exactly the three raw values the visitor had, and
+  Leave the demo: put back exactly the two raw values the visitor had, and
   forget the session. The demo's scratch document is deliberately NOT deleted
   — it is an ordinary session document that the existing 30-day cleanup sweep
   already collects, and nothing about this route should teach that cron a new
@@ -181,17 +175,6 @@ export function endDemoSession(): void {
   if (session !== null) {
     writeRaw({ key: APP_SETTINGS_STORAGE_KEY, value: session.restore.appSettingsRaw });
     writeRaw({ key: ENABLED_PERSONAS_STORAGE_KEY, value: session.restore.enabledPersonasRaw });
-    /*
-      App settings and persona enablement go back verbatim; tour progress is
-      the one value that does not, because a first-time visitor's stashed
-      "never seen" would auto-start the walkthrough on top of the studio they
-      just landed back on. See buildRestoredTourProgressRaw — a real tour
-      state is still restored byte for byte.
-    */
-    writeRaw({
-      key: TOUR_PROGRESS_STORAGE_KEY,
-      value: buildRestoredTourProgressRaw(session.restore.tourProgressRaw),
-    });
   }
   writeRaw({ key: DEMO_SESSION_STORAGE_KEY, value: null });
   cachedSession = null;

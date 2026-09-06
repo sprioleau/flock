@@ -342,6 +342,66 @@ describe("a new draft's theme", () => {
     expect(globals).toEqual(KIT_THEMES[0]!.globals);
   });
 
+  it("applies the explicitly selected page style to every draft in one call", async () => {
+    const t = createBackend();
+    const outcome = await runCreateDraft({
+      t,
+      hasIngestedSource: true,
+      input: {
+        drafts: [
+          {
+            name: "Page take one",
+            sections: [{ templateId: "hero", params: { headline: "One", body: "One body" } }],
+          },
+          {
+            name: "Page take two",
+            sections: [{ templateId: "hero", params: { headline: "Two", body: "Two body" } }],
+          },
+        ],
+        theme: "page",
+      },
+      pageTheme: PAGE_THEME,
+    });
+
+    expect(outcome.createdDocumentIds).toHaveLength(2);
+    for (const documentId of outcome.createdDocumentIds) {
+      expect(await readStoredGlobals({ t, documentId })).toEqual(PAGE_THEME.globals);
+    }
+  });
+
+  it("keeps the source draft on its existing style while applying page style only to new drafts", async () => {
+    const t = createBackend();
+    const canvasId = await seedCanvas(t);
+    const outcome = await createAgentDrafts({
+      convexClient: t,
+      canvasId,
+      sessionId: BROWSER_SESSION_ID,
+      command: resolveCreateDraftCommand({
+        drafts: [
+          {
+            name: "Page take",
+            sections: [{ templateId: "hero", params: { headline: "Page", body: "Page body" } }],
+          },
+        ],
+        theme: "page",
+      }),
+      sourceDoc: buildSourceDoc(),
+      hasIngestedSource: true,
+      authorId: CHAT_ID,
+      pageTheme: PAGE_THEME,
+      kitThemes: KIT_THEMES,
+      sourceGlobals: null,
+    });
+
+    const drafts = await t.query(api.documents.listDocumentsByCanvas, { canvasId });
+    const sourceDraft = drafts.find((draft) => draft.name === "Draft 1");
+    expect(sourceDraft).toBeDefined();
+    expect(await readStoredGlobals({ t, documentId: sourceDraft!._id })).toEqual({});
+    expect(await readStoredGlobals({ t, documentId: outcome.createdDocumentIds[0]! })).toEqual(
+      PAGE_THEME.globals,
+    );
+  });
+
   /*
     A theme name that does not exist must NOT take the draft down with it: the
     model may not retry createDraft (a retry makes a second draft), so a
@@ -372,9 +432,10 @@ describe("a new draft's theme", () => {
   /*
     A page read three turns ago is not this turn's page. The resolver can only
     answer with what the CALLER hands it, so a caller with no page theme makes
-    "page" unanswerable — reported, never substituted with something else.
+    "page" unanswerable. Creation must stop before the first row so a later
+    turn can safely re-read the source and retry without duplicating drafts.
   */
-  it("cannot resolve the page theme when this turn read no page", async () => {
+  it("does not create a draft when this turn read no page for a page-style request", async () => {
     const t = createBackend();
     const outcome = await runCreateDraft({
       t,
@@ -382,9 +443,13 @@ describe("a new draft's theme", () => {
       input: { ...UNDER_FILLED_PORTFOLIO_PLAN, theme: "page" },
       pageTheme: null,
     });
-    const globals = await readStoredGlobals({ t, documentId: outcome.createdDocumentIds[0]! });
-    expect(globals).toEqual({});
-    expect(toCreateDraftToolOutput(outcome).note).toContain("no page was read this turn");
+    expect(outcome.createdDocumentIds).toEqual([]);
+    expect(outcome.createdDrafts).toEqual([]);
+    expect(outcome.shouldRetryAfterFailure).toBe(true);
+    expect(outcome.failureNotice).toContain("this turn did not read a page");
+    expect(toCreateDraftToolOutput(outcome).note).toContain("this turn did not read a page");
+    expect(toCreateDraftToolOutput(outcome).note).toContain("readWebPage again with the same URL");
+    expect(toCreateDraftToolOutput(outcome).note).toContain("retry createDraft once");
   });
 });
 

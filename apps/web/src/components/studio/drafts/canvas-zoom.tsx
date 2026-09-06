@@ -113,14 +113,26 @@ export function calculateFitCanvasViewport({
   const zoomPercent = Number.isFinite(fitZoomPercent)
     ? clampZoomPercent(Math.floor(fitZoomPercent))
     : MIN_CANVAS_ZOOM_PERCENT;
+  const scaledContentWidthPx = contentWidthPx * (zoomPercent / 100);
+  const scaledContentHeightPx = contentHeightPx * (zoomPercent / 100);
+  const leftPaddingPx = Math.max(
+    safePaddingPx,
+    (safeViewportWidthPx - scaledContentWidthPx) / 2,
+  );
+  const rightPaddingPx = leftPaddingPx;
+  const topPaddingPx = Math.max(
+    safePaddingPx,
+    (safeViewportHeightPx - scaledContentHeightPx) / 2,
+  );
+  const bottomPaddingPx = topPaddingPx;
 
   return {
     zoomPercent,
     paddingPx: safePaddingPx,
-    leftPaddingPx: safePaddingPx,
-    rightPaddingPx: safePaddingPx,
-    topPaddingPx: safePaddingPx,
-    bottomPaddingPx: safePaddingPx,
+    leftPaddingPx,
+    rightPaddingPx,
+    topPaddingPx,
+    bottomPaddingPx,
     contentWidthPx,
     contentHeightPx,
   };

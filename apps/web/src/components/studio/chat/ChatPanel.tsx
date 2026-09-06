@@ -6,10 +6,11 @@ import {
   MicIcon,
   MousePointerClickIcon,
   PanelLeftCloseIcon,
-  SendIcon,
+  ArrowUpIcon,
   XIcon,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { IconButtonTooltip } from "@/components/ui/icon-button-tooltip";
 import { Textarea } from "@/components/ui/textarea";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { useEditorStore } from "@/lib/editor-store";
@@ -17,13 +18,13 @@ import { usePersonaAdvisors } from "@/lib/personas/use-persona-advisors";
 import { usePublishBlockSuggestion } from "@/lib/suggestions/suggestion-surface-store";
 import { useSuggestions } from "@/lib/suggestions/use-suggestions";
 import { cn } from "@/lib/utils";
-import { DemoQueueButton } from "../demo/DemoQueueButton";
 import { SettingsFab } from "../demo/SettingsFab";
 import { ActiveDraftIndicator } from "../drafts/ActiveDraftIndicator";
 import { updatePanelPreferences, usePanelPreferences } from "../panel-preferences";
 import { ShortcutKbd } from "../shortcuts/ShortcutKbd";
 import { publishAgentBusyState } from "./agent-status";
 import { ChatMessageList } from "./ChatMessageList";
+import { getPromptDispatchAction } from "./chat-submit";
 import { registerComposerHandoffHandlers } from "./composer-handoff";
 import { QueuedMessageList } from "./QueuedMessageList";
 import { SuggestionCard } from "./SuggestionCard";
@@ -206,7 +207,7 @@ export function ChatPanel() {
     if (trimmedText.length === 0) {
       return;
     }
-    if (isAgentBusy || hasQueuedMessages) {
+    if (getPromptDispatchAction({ isAgentBusy, hasQueuedMessages }) === "queue") {
       queue.enqueueMessage(trimmedText);
     } else {
       sendUserMessage(trimmedText);
@@ -410,20 +411,6 @@ export function ChatPanel() {
         />
 
         {/*
-          Demo mode (settings FAB toggle): one click sends the first of six
-          doc-derived prompts and queues the rest — real chat turns, drained
-          one per completed turn by the queue. Renders null when demo mode
-          is off.
-        */}
-        <DemoQueueButton
-          isAgentBusy={isAgentBusy}
-          hasQueuedMessages={hasQueuedMessages}
-          sendUserMessage={sendUserMessage}
-          enqueueMessage={queue.enqueueMessage}
-          isPanelExpanded={isExpanded}
-        />
-
-        {/*
           Phase 7.3 proactive suggestions: quiet, dismissible cards above
           the composer (controllers owned above — see the hooks note);
           renders null when nothing is suggested.
@@ -479,15 +466,17 @@ export function ChatPanel() {
                     >
                       <MousePointerClickIcon className="size-3" />
                       <span className="capitalize">{selectedBlockType}</span>
-                      <button
-                        type="button"
-                        aria-label="Clear selected block context"
-                        tabIndex={isExpanded ? 0 : -1}
-                        onClick={() => selectBlock(null)}
-                        className="cursor-pointer rounded-sm hover:text-foreground"
-                      >
-                        <XIcon className="size-3" />
-                      </button>
+                      <IconButtonTooltip label="Clear selected block context">
+                        <button
+                          type="button"
+                          aria-label="Clear selected block context"
+                          tabIndex={isExpanded ? 0 : -1}
+                          onClick={() => selectBlock(null)}
+                          className="cursor-pointer rounded-sm hover:text-foreground"
+                        >
+                          <XIcon className="size-3" />
+                        </button>
+                      </IconButtonTooltip>
                     </span>
                   )}
                   {isListening && (
@@ -525,37 +514,35 @@ export function ChatPanel() {
               />
             </div>
             {isSpeechSupported && (
-              <Button
-                variant="ghost"
-                size="icon-lg"
-                aria-label={isListening ? "Stop voice input" : "Start voice input"}
-                aria-pressed={isListening}
-                data-testid="composer-mic-button"
-                tabIndex={isExpanded ? 0 : -1}
-                onClick={() => toggleListening(draftText)}
-                className={cn(isListening && "text-destructive hover:text-destructive")}
-              >
-                <MicIcon className={cn(isListening && "animate-pulse")} />
-              </Button>
+              <IconButtonTooltip label={isListening ? "Stop voice input" : "Start voice input"}>
+                <Button
+                  variant="ghost"
+                  size="icon-lg"
+                  aria-label={isListening ? "Stop voice input" : "Start voice input"}
+                  aria-pressed={isListening}
+                  data-testid="composer-mic-button"
+                  tabIndex={isExpanded ? 0 : -1}
+                  onClick={() => toggleListening(draftText)}
+                  className={cn(isListening && "text-destructive hover:text-destructive")}
+                >
+                  <MicIcon className={cn(isListening && "animate-pulse")} />
+                </Button>
+              </IconButtonTooltip>
             )}
-            <Button
-              disabled={draftText.trim().length === 0}
-              size="icon-lg"
-              aria-label={isAgentBusy || hasQueuedMessages ? "Queue message" : "Send message"}
-              /*
-                The one control on this panel with no stable accessible handle:
-                the label above flips to "Queue message" the moment a turn is in
-                flight, so an end-to-end test querying it by role+name would
-                pass or fail on timing. The textarea beside it keeps
-                aria-label="Chat message" in every state and is queried that
-                way — no testid needed there.
-              */
-              data-testid="chat-composer-send"
-              tabIndex={isExpanded ? 0 : -1}
-              onClick={submitDraft}
+            <IconButtonTooltip
+              label={isAgentBusy || hasQueuedMessages ? "Add message to queue" : "Send message"}
             >
-              <SendIcon />
-            </Button>
+              <Button
+                disabled={draftText.trim().length === 0}
+                size="icon-lg"
+                aria-label={isAgentBusy || hasQueuedMessages ? "Queue message" : "Send message"}
+                tabIndex={isExpanded ? 0 : -1}
+                data-testid="chat-composer-send"
+                onClick={submitDraft}
+              >
+                <ArrowUpIcon />
+              </Button>
+            </IconButtonTooltip>
           </div>
         </div>
       </div>

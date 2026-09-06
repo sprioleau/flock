@@ -29,12 +29,9 @@ import {
   the tab rather than an exception. See panel-preferences.ts,
   demo/app-settings.ts and personas/enabled-personas.ts for the same shape.
 
-  The honest cost, stated rather than papered over: A NEW BROWSER SEES THE TOUR
-  AGAIN. Panel preferences and suggestion dismissals already behave that way,
-  and for a first-run tour it is arguably correct — a different device is a
-  different first run. If it ever needs to be durable across devices, the
-  Convex row becomes cheap the moment any per-user preferences table exists,
-  and nothing here blocks that migration.
+  A new browser starts with the walkthrough hidden. The Settings menu is the
+  only entry point that changes the state to in-progress, so onboarding never
+  blocks or covers a canvas before the user asks for it.
 
   Everything below the store is a PURE function over a plain TourProgress, so
   ordering, resume, skip and restart are unit-tested directly rather than
@@ -47,7 +44,7 @@ const TOUR_PROGRESS_STORAGE_KEY = "flock:tour-progress";
 /*
   Four states, and the two terminal ones are deliberately distinct.
 
-  - "unseen"      never run in this browser. The tour AUTO-STARTS from here.
+  - "unseen"      never run in this browser. Hidden until manually started.
   - "in-progress" started, not finished. Carries where to resume.
   - "dismissed"   the user pressed Skip. Never shows again unless reset.
   - "completed"   the user reached the end (or took an "Open it" exit).
@@ -97,8 +94,8 @@ function isTourStatus(value: unknown): value is TourStatus {
   Read stored JSON into a TourProgress, tolerating anything.
 
   Never throws and never returns a half-parsed object: a corrupt or
-  hand-edited value costs the user a repeated tour, which is a far better
-  failure than a studio that will not mount. A stored resume id that has since
+  hand-edited value falls back to the hidden, never-started state rather than
+  risking a studio that will not mount. A stored resume id that has since
   been retired is dropped here rather than at the read site, so the rest of the
   module can trust the field.
 */
@@ -124,20 +121,14 @@ export function parseTourProgress(raw: string | null): TourProgress {
 /*
   The stop to show right now, or null for "show nothing".
 
-  This is the whole gate. "unseen" resolves to the first stop, which is what
-  makes the tour automatic on a first visit (proposal §6 Q1: automatic, once,
-  skippable at every step, plus a permanent way to re-run it — the settings
-  entry). Both terminal states resolve to null. An "in-progress" row whose
-  resume id did not survive a release falls back to the first stop, because
-  restarting a returning user is recoverable and showing them nothing forever
-  is not.
+  This is the whole gate. Only an explicit "in-progress" state shows a stop;
+  unseen and terminal states resolve to null. An "in-progress" row whose
+  resume id did not survive a release falls back to the first stop, because a
+  user who manually opened the walkthrough should still get a usable tour.
 */
 export function selectActiveTourStopId(progress: TourProgress): TourStopId | null {
-  if (progress.status === "dismissed" || progress.status === "completed") {
+  if (progress.status !== "in-progress") {
     return null;
-  }
-  if (progress.status === "unseen") {
-    return FIRST_TOUR_STOP_ID;
   }
   return progress.resumeStopId ?? FIRST_TOUR_STOP_ID;
 }
@@ -189,10 +180,9 @@ export function completeTourProgress(): TourProgress {
 /*
   What the settings entry writes.
 
-  Deliberately "in-progress" at the first stop rather than "unseen": the
-  distinction matters if the auto-start rule is ever narrowed (say, to first
-  visits only), because a user who explicitly asked to see this again must not
-  be filtered out by a rule about people who have never seen it.
+  Deliberately "in-progress" at the first stop rather than "unseen": unseen is
+  inert, while a user who explicitly asked to see the walkthrough must get the
+  first card immediately.
 */
 export function restartTourProgress(): TourProgress {
   return { status: "in-progress", resumeStopId: FIRST_TOUR_STOP_ID };
@@ -221,7 +211,7 @@ function readProgressFromStorage(): TourProgress {
     return parseTourProgress(window.localStorage.getItem(TOUR_PROGRESS_STORAGE_KEY));
   } catch {
     /*
-      No storage at all (SSR, privacy mode) — a first run every time is fine.
+      No storage at all (SSR, privacy mode) — keep the walkthrough hidden.
     */
     return DEFAULT_TOUR_PROGRESS;
   }

@@ -1,6 +1,7 @@
 import { api } from "@convex/_generated/api";
 import { formatBrandVoiceContextLine } from "@/lib/brand-voice";
 import { formatBrandEmailDesignContextLine } from "@/lib/brand-email-design";
+import { getLiveThemeVariations } from "@/lib/brand-kit";
 import { fetchAuthQuery } from "@/lib/auth/auth-server";
 
 /*
@@ -40,6 +41,24 @@ export function formatBrandSocialContextLine({
 }
 
 /*
+  Tell the agent whether a saved kit exists before it chooses a source-page
+  style. Names are enough to identify saved themes; the actual globals remain
+  browser-owned and are never copied into prompt text.
+*/
+export function formatBrandThemeContextLine({
+  brandName,
+  variations,
+}: {
+  brandName: string;
+  variations: { name: string; deletedAtMs?: number }[];
+}): string {
+  const liveThemeNames = getLiveThemeVariations(variations).map((variation) => variation.name);
+  const savedThemes =
+    liveThemeNames.length === 0 ? "none" : liveThemeNames.join(", ");
+  return `An active saved brand kit is bound to this canvas: "${brandName}". Its live saved email themes are: ${savedThemes}. If a page read this turn also has a usable native theme, ask the user whether new drafts should use this current brand style or the page's native style before creating them.`;
+}
+
+/*
   Load the session's kit and build the context block (null = nothing to add).
 */
 export async function buildBrandContextBlock({
@@ -65,6 +84,10 @@ export async function buildBrandContextBlock({
       Any part can be absent; a kit with only one of them still contributes.
     */
     const lines = [
+      formatBrandThemeContextLine({
+        brandName: brandKit.name,
+        variations: brandKit.variations,
+      }),
       formatBrandSocialContextLine({
         brandName: brandKit.name,
         socialLinks: brandKit.socialLinks ?? [],

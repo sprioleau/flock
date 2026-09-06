@@ -98,10 +98,9 @@ export function DemoBootstrap() {
       .then(({ documentId }) => {
         /*
           Preset BEFORE the navigation: /studio mounts once, and it has to
-          mount with the two agents already enabled and the first-run tour
-          already suppressed — a studio that mounted first and was configured
-          afterwards would show a tour card over the demo and an empty
-          facepile for a beat.
+          mount with the two agents already enabled. A studio that mounted
+          first and was configured afterwards would show an empty facepile
+          for a beat.
         */
         beginDemoSession({ documentId });
         router.replace(`/studio?doc=${documentId}`);

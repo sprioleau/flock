@@ -4,8 +4,6 @@ import {
   buildDemoAppSettingsRaw,
   buildDemoEnabledPersonasRaw,
   buildDemoRestoreSnapshot,
-  buildDemoTourProgressRaw,
-  buildRestoredTourProgressRaw,
   parseDemoSession,
   selectIsDemoDocument,
   type DemoRestoreSnapshot,
@@ -25,17 +23,20 @@ import {
 const EMPTY_SNAPSHOT: DemoRestoreSnapshot = {
   appSettingsRaw: null,
   enabledPersonasRaw: null,
-  tourProgressRaw: null,
 };
 
 describe("the preset", () => {
   it("reveals the lenses the narration points at", () => {
-    const settings: unknown = JSON.parse(buildDemoAppSettingsRaw(null));
+    const settings = JSON.parse(buildDemoAppSettingsRaw(null)) as Record<string, unknown>;
     expect(settings).toMatchObject({
-      isDemoModeEnabled: true,
       isTimeTravelReplayEnabled: true,
       isOpInspectorEnabled: true,
     });
+    /*
+      The public guided experience is independent of the retired settings-cog
+      demo queue. Entering /demo must not resurrect that browser setting.
+    */
+    expect(settings).not.toHaveProperty("isDemoModeEnabled");
   });
 
   it("keeps settings it has no business changing", () => {
@@ -51,41 +52,29 @@ describe("the preset", () => {
 
   it("survives corrupt stored settings rather than refusing to start", () => {
     const settings = JSON.parse(buildDemoAppSettingsRaw("{not json")) as Record<string, unknown>;
-    expect(settings.isDemoModeEnabled).toBe(true);
+    expect(settings.isTimeTravelReplayEnabled).toBe(true);
+    expect(settings.isOpInspectorEnabled).toBe(true);
   });
 
   it("enables exactly the two agents the demo narrates", () => {
     expect(JSON.parse(buildDemoEnabledPersonasRaw())).toEqual([...DEMO_PERSONA_SLUGS]);
   });
 
-  it("suppresses the first-run tour, which would otherwise auto-start over the demo", () => {
-    /*
-      Terminal status, so selectActiveTourStopId resolves to null: no card, and
-      — the part that would actually break the demo — advisory runs are no
-      longer gated off by getIsTourRunning().
-    */
-    expect(JSON.parse(buildDemoTourProgressRaw())).toEqual({
-      status: "dismissed",
-      resumeStopId: null,
-    });
-  });
 });
 
 describe("the restore snapshot", () => {
   it("captures what the visitor had when there is no demo running", () => {
     const current: DemoRestoreSnapshot = {
-      appSettingsRaw: '{"isDemoModeEnabled":false}',
+      appSettingsRaw: '{"isSuggestionsEnabled":false}',
       enabledPersonasRaw: "[]",
-      tourProgressRaw: null,
     };
     expect(buildDemoRestoreSnapshot({ current, activeSession: null })).toEqual(current);
   });
 
   it("re-entering /demo keeps the ORIGINAL snapshot, never the demo's own settings", () => {
     const original: DemoRestoreSnapshot = {
-      appSettingsRaw: '{"isDemoModeEnabled":false}',
+      appSettingsRaw: '{"isSuggestionsEnabled":false}',
       enabledPersonasRaw: "[]",
-      tourProgressRaw: null,
     };
     const activeSession: DemoSession = {
       documentId: "doc_demo_one",
@@ -100,59 +89,8 @@ describe("the restore snapshot", () => {
     const current: DemoRestoreSnapshot = {
       appSettingsRaw: buildDemoAppSettingsRaw(original.appSettingsRaw),
       enabledPersonasRaw: buildDemoEnabledPersonasRaw(),
-      tourProgressRaw: buildDemoTourProgressRaw(),
     };
     expect(buildDemoRestoreSnapshot({ current, activeSession })).toEqual(original);
-  });
-});
-
-describe("the tour progress the exit path puts back", () => {
-  it("does not hand a first-time visitor a second walkthrough", () => {
-    /*
-      A stranger arrives with no stored tour progress, so the stash is null —
-      and null is the state the tour auto-starts from. Restored verbatim, its
-      scrim comes up over the studio the moment they leave /demo. The restored
-      value is terminal instead: no card, no advisor suppression, and the
-      settings entry can still re-run the tour whenever they want it.
-    */
-    expect(buildRestoredTourProgressRaw(null)).toBe(buildDemoTourProgressRaw());
-  });
-
-  it("treats a stash it cannot read as a first-time visitor", () => {
-    /*
-      parseTourProgress() falls back to "unseen" for corrupt, empty and
-      unknown-status values, so all of them would auto-start too.
-    */
-    expect(buildRestoredTourProgressRaw("{not json")).toBe(buildDemoTourProgressRaw());
-    expect(buildRestoredTourProgressRaw("{}")).toBe(buildDemoTourProgressRaw());
-    expect(buildRestoredTourProgressRaw('{"status":"unseen","resumeStopId":null}')).toBe(
-      buildDemoTourProgressRaw(),
-    );
-  });
-
-  it("gives a returning visitor their own tour state back, byte for byte", () => {
-    /*
-      None of these auto-start on their own, so there is nothing to protect the
-      visitor from — and a demo detour must not quietly rewrite where somebody
-      had got to, least of all their resume point.
-    */
-    const midTourRaw = '{"status":"in-progress","resumeStopId":"agents"}';
-    expect(buildRestoredTourProgressRaw(midTourRaw)).toBe(midTourRaw);
-
-    const completedRaw = '{"status":"completed","resumeStopId":null}';
-    expect(buildRestoredTourProgressRaw(completedRaw)).toBe(completedRaw);
-
-    const dismissedRaw = '{"status":"dismissed","resumeStopId":null}';
-    expect(buildRestoredTourProgressRaw(dismissedRaw)).toBe(dismissedRaw);
-  });
-
-  it("keeps a key some later release added to the stored value", () => {
-    /*
-      The whole point of raw-strings-in-raw-strings-out: restoring must not
-      re-serialize a shape this module does not know the whole of.
-    */
-    const futureRaw = '{"status":"completed","resumeStopId":null,"seenAtMs":17}';
-    expect(buildRestoredTourProgressRaw(futureRaw)).toBe(futureRaw);
   });
 });
 

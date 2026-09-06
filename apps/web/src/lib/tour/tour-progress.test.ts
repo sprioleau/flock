@@ -60,13 +60,12 @@ async function loadStoreAfterReload(): Promise<typeof import("./tour-progress")>
 }
 
 describe("who sees a card", () => {
-  it("starts a browser that has never run it, at the first stop", () => {
+  it("does not automatically start in a browser that has never run it", () => {
     /*
-      This is what makes the tour automatic on a first visit — the proposal's
-      recommendation of automatic, once, skippable at every step, backed by the
-      settings entry as the permanent way back.
+      The editor is immediately usable. The Settings entry remains the
+      deliberate way to start the walkthrough.
     */
-    expect(selectActiveTourStopId(DEFAULT_TOUR_PROGRESS)).toBe(FIRST_TOUR_STOP_ID);
+    expect(selectActiveTourStopId(DEFAULT_TOUR_PROGRESS)).toBeNull();
   });
 
   it("shows nothing once it has been skipped or finished", () => {
@@ -94,7 +93,7 @@ describe("who sees a card", () => {
 
 describe("moving through it", () => {
   it("advances one stop at a time", () => {
-    expect(advanceTourProgress(DEFAULT_TOUR_PROGRESS)).toEqual({
+    expect(advanceTourProgress(restartTourProgress())).toEqual({
       status: "in-progress",
       resumeStopId: SECOND_STOP_ID,
     });
@@ -143,7 +142,7 @@ describe("moving through it", () => {
 });
 
 describe("reading stored progress", () => {
-  it("treats a browser with nothing stored as a first run", () => {
+  it("records a browser with nothing stored as unseen but inert", () => {
     expect(parseTourProgress(null)).toEqual(DEFAULT_TOUR_PROGRESS);
   });
 
@@ -154,7 +153,7 @@ describe("reading stored progress", () => {
 
   it("survives junk rather than taking the studio down with it", () => {
     /*
-      A corrupt value costs the user a repeated tour. Throwing here would cost
+      A corrupt value keeps the optional tour hidden. Throwing here would cost
       them the editor, because this parses during the shell's first render.
     */
     for (const raw of ["not json", "null", '"a string"', "[]", "42"]) {
@@ -182,7 +181,7 @@ describe("across a page load", () => {
   it("a skipped tour stays skipped", async () => {
     installFakeBrowser();
     const beforeReload = await loadStoreAfterReload();
-    expect(selectActiveTourStopId(beforeReload.getTourProgress())).toBe(FIRST_TOUR_STOP_ID);
+    expect(selectActiveTourStopId(beforeReload.getTourProgress())).toBeNull();
     beforeReload.dismissTour();
 
     const afterReload = await loadStoreAfterReload();
@@ -192,6 +191,7 @@ describe("across a page load", () => {
   it("an unfinished tour resumes on the stop it was on", async () => {
     installFakeBrowser();
     const beforeReload = await loadStoreAfterReload();
+    beforeReload.restartTour();
     beforeReload.advanceTour();
 
     const afterReload = await loadStoreAfterReload();
@@ -237,7 +237,8 @@ describe("across a page load", () => {
       removeEventListener: (): void => {},
     });
     const store = await loadStoreAfterReload();
-    expect(selectActiveTourStopId(store.getTourProgress())).toBe(FIRST_TOUR_STOP_ID);
+    expect(selectActiveTourStopId(store.getTourProgress())).toBeNull();
+    store.restartTour();
     store.advanceTour();
     expect(selectActiveTourStopId(store.getTourProgress())).toBe(SECOND_STOP_ID);
   });
@@ -252,8 +253,6 @@ describe("what the background systems are told", () => {
     */
     installFakeBrowser();
     const store = await loadStoreAfterReload();
-    expect(store.getIsTourRunning()).toBe(true);
-    store.dismissTour();
     expect(store.getIsTourRunning()).toBe(false);
     store.restartTour();
     expect(store.getIsTourRunning()).toBe(true);

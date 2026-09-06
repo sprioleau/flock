@@ -14,8 +14,8 @@ import { TourCard } from "./StudioTour";
   belongs to the browser pass. What this suite can prove is everything that
   would be a real bug:
 
-  - Skip is on EVERY card, because a tour you cannot leave is a hostage
-    situation and this one fires automatically on a first visit;
+  - Skip is on EVERY card, because even a manually opened tour must be easy
+    to leave;
   - the first card offers no Back, and the last offers Done rather than Next,
     so nobody is invited to walk off either end;
   - "Open it" appears exactly where there is something to open, since that

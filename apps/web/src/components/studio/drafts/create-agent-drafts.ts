@@ -151,11 +151,13 @@ export interface CreateAgentDraftsResult extends CreateDraftOutcome {
   trip that could land on the wrong draft, and no window in which the draft
   exists unthemed. What the model supplies is a NAME.
 
-  A reference that resolves to nothing is NOT a failure of the call: the drafts
-  are still created, inheriting the theme they would have had, and the report
-  says the theme was not found and lists the ones that exist. Failing the whole
-  creation over a mistyped theme name would trade a wrong colour for a missing
-  draft, and the model may not retry createDraft — a retry makes a second one.
+  A SAVED THEME reference that resolves to nothing is NOT a failure of the call:
+  the drafts are still created, inheriting the theme they would have had, and
+  the report says the theme was not found and lists the ones that exist.
+  Failing the whole creation over a mistyped theme name would trade a wrong
+  colour for a missing draft. A missing PAGE theme is different: it means the
+  request-scoped source read is gone, so creation stops before the first row and
+  the model can safely re-read the page before retrying.
 */
 function resolveNewDraftTheme({
   command,
@@ -245,7 +247,16 @@ export async function createAgentDrafts({
     isComposed,
     isSourceCopyCarryOverAllowed: !hasIngestedSource,
     theme,
+    shouldRetryAfterFailure: theme?.isResolved === false && theme.reason === "no-page-theme",
   };
+  if (outcomeBase.shouldRetryAfterFailure) {
+    return {
+      ...outcomeBase,
+      createdDocumentIds,
+      createdDrafts,
+      failureNotice: "The requested source-page style is unavailable because this turn did not read a page.",
+    };
+  }
   try {
     const existingDrafts = await convexClient.query(api.documents.listDocumentsByCanvas, {
       canvasId,

@@ -2,7 +2,10 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
 import {
   DraftGroupHeader,
+  getDraftGroupEditExitAction,
+  getShouldCommitDraftGroupEditOnBlur,
   isDraftGroupActivationKey,
+  isDraftGroupRenameActivationKey,
   normalizeDraftGroupRenameValue,
 } from "./DraftGroupHeader";
 
@@ -17,7 +20,7 @@ describe("DraftGroupHeader", () => {
         isFocused
         onFocusGroup={vi.fn()}
         onRenameGroup={vi.fn()}
-        onCreateDraft={vi.fn()}
+        onCreateGroup={vi.fn()}
         onDeleteGroup={vi.fn()}
         onMoveGroup={vi.fn()}
       />,
@@ -29,11 +32,13 @@ describe("DraftGroupHeader", () => {
     expect(markup).toContain('aria-current="true"');
     expect(markup).toContain("Blog-post variations");
     expect(markup).toContain("2 drafts");
-    expect(markup).toContain('aria-label="Edit Dark theme"');
-    expect(markup).toContain('aria-label="Create draft in Dark theme"');
+    expect(markup).toContain('aria-label="Rename group Dark theme"');
+    expect(markup).toContain('aria-label="Create new group"');
     expect(markup).toContain('aria-label="Delete group Dark theme"');
     expect(markup).toContain('aria-label="Move Dark theme up"');
     expect(markup).toContain('aria-label="Move Dark theme down"');
+    expect(markup).toContain('data-action="rename-group-from-name"');
+    expect(markup).toContain('title="Click to rename Dark theme"');
   });
 
   it("treats Enter and Space as group activation keys but not other keys", () => {
@@ -41,6 +46,27 @@ describe("DraftGroupHeader", () => {
     expect(isDraftGroupActivationKey({ key: " " })).toBe(true);
     expect(isDraftGroupActivationKey({ key: "ArrowRight" })).toBe(false);
     expect(isDraftGroupActivationKey({ key: "Escape" })).toBe(false);
+  });
+
+  it("supports conventional keyboard rename and edit exit keys without stealing navigation", () => {
+    expect(isDraftGroupRenameActivationKey({ key: "F2" })).toBe(true);
+    expect(isDraftGroupRenameActivationKey({ key: "Enter" })).toBe(false);
+    expect(getDraftGroupEditExitAction({ key: "Enter" })).toBe("commit");
+    expect(getDraftGroupEditExitAction({ key: "Escape" })).toBe("cancel");
+    expect(getDraftGroupEditExitAction({ key: "ArrowRight" })).toBeNull();
+  });
+
+  it("commits only when focus leaves the complete group editor", () => {
+    expect(
+      getShouldCommitDraftGroupEditOnBlur({
+        isFocusWithinEditor: false,
+      }),
+    ).toBe(true);
+    expect(
+      getShouldCommitDraftGroupEditOnBlur({
+        isFocusWithinEditor: true,
+      }),
+    ).toBe(false);
   });
 
   it("trims editable values and rejects an empty group name", () => {

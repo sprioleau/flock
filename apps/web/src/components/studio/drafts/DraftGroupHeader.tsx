@@ -1,6 +1,12 @@
 "use client";
 
-import { useState, type ComponentPropsWithoutRef, type FormEvent, type KeyboardEvent } from "react";
+import {
+  useState,
+  type ComponentPropsWithoutRef,
+  type FormEvent,
+  type KeyboardEvent,
+  type MouseEvent,
+} from "react";
 import {
   ArrowDownIcon,
   ArrowUpIcon,
@@ -11,6 +17,7 @@ import {
   XIcon,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { IconButtonTooltip } from "@/components/ui/icon-button-tooltip";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
@@ -31,7 +38,7 @@ export type DraftGroupHeaderProps = Omit<
   isFocused?: boolean;
   onFocusGroup: (groupId: string) => void;
   onRenameGroup?: (groupId: string, value: DraftGroupRenameValue) => void;
-  onCreateDraft?: (groupId: string) => void;
+  onCreateGroup?: () => void;
   onDeleteGroup?: (groupId: string) => void;
   onMoveGroup?: (groupId: string, direction: "up" | "down") => void;
   isMoveUpDisabled?: boolean;
@@ -56,6 +63,30 @@ export function isDraftGroupActivationKey(event: Pick<KeyboardEvent, "key">): bo
   return event.key === "Enter" || event.key === " ";
 }
 
+export function isDraftGroupRenameActivationKey(event: Pick<KeyboardEvent, "key">): boolean {
+  return event.key === "F2";
+}
+
+export function getDraftGroupEditExitAction(
+  event: Pick<KeyboardEvent, "key">,
+): "commit" | "cancel" | null {
+  if (event.key === "Enter") {
+    return "commit";
+  }
+  if (event.key === "Escape") {
+    return "cancel";
+  }
+  return null;
+}
+
+export function getShouldCommitDraftGroupEditOnBlur({
+  isFocusWithinEditor,
+}: {
+  isFocusWithinEditor: boolean;
+}): boolean {
+  return !isFocusWithinEditor;
+}
+
 export function DraftGroupHeader({
   groupId,
   name,
@@ -64,7 +95,7 @@ export function DraftGroupHeader({
   isFocused = false,
   onFocusGroup,
   onRenameGroup,
-  onCreateDraft,
+  onCreateGroup,
   onDeleteGroup,
   onMoveGroup,
   isMoveUpDisabled = false,
@@ -109,10 +140,26 @@ export function DraftGroupHeader({
   }
 
   function handleFocusKeyDown(event: KeyboardEvent<HTMLButtonElement>): void {
+    if (isDraftGroupRenameActivationKey(event) && onRenameGroup !== undefined) {
+      event.preventDefault();
+      beginEditing();
+      return;
+    }
     if (!isDraftGroupActivationKey(event)) {
       return;
     }
     event.preventDefault();
+    onFocusGroup(groupId);
+  }
+
+  function handleGroupHeaderClick(event: MouseEvent<HTMLButtonElement>): void {
+    const isNameTarget =
+      event.target instanceof Element &&
+      event.target.closest("[data-action='rename-group-from-name']") !== null;
+    if (isNameTarget && onRenameGroup !== undefined) {
+      beginEditing();
+      return;
+    }
     onFocusGroup(groupId);
   }
 
@@ -131,14 +178,36 @@ export function DraftGroupHeader({
         <form
           className="flex min-w-0 flex-1 items-center gap-2"
           onSubmit={commitEditing}
+          onBlur={(event) => {
+            const isFocusWithinEditor =
+              event.relatedTarget instanceof Node &&
+              event.currentTarget.contains(event.relatedTarget);
+            if (getShouldCommitDraftGroupEditOnBlur({ isFocusWithinEditor })) {
+              commitEditing();
+            }
+          }}
+          onKeyDown={(event) => {
+            const action = getDraftGroupEditExitAction(event);
+            if (action === null) {
+              return;
+            }
+            event.preventDefault();
+            if (action === "cancel") {
+              cancelEditing();
+            } else {
+              commitEditing();
+            }
+          }}
           data-draft-group-edit-form
         >
           <div className="min-w-0 flex-1 space-y-1">
             <Input
+              id={headerLabelId}
               value={nameInput}
               onChange={(event) => setNameInput(event.target.value)}
               maxLength={80}
               autoFocus
+              onFocus={(event) => event.target.select()}
               aria-label="Group name"
               data-testid="draft-group-name-input"
             />
@@ -153,25 +222,29 @@ export function DraftGroupHeader({
             />
           </div>
           <div className="flex shrink-0 items-center gap-1">
-            <Button
-              type="submit"
-              variant="ghost"
-              size="icon-sm"
-              aria-label={`Save changes to ${name}`}
-              data-testid="draft-group-save"
-            >
-              <CheckIcon />
-            </Button>
-            <Button
-              type="button"
-              variant="ghost"
-              size="icon-sm"
-              onClick={cancelEditing}
-              aria-label={`Cancel editing ${name}`}
-              data-testid="draft-group-cancel"
-            >
-              <XIcon />
-            </Button>
+            <IconButtonTooltip label={`Save changes to ${name}`}>
+              <Button
+                type="submit"
+                variant="ghost"
+                size="icon-sm"
+                aria-label={`Save changes to ${name}`}
+                data-testid="draft-group-save"
+              >
+                <CheckIcon />
+              </Button>
+            </IconButtonTooltip>
+            <IconButtonTooltip label={`Cancel editing ${name}`}>
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon-sm"
+                onClick={cancelEditing}
+                aria-label={`Cancel editing ${name}`}
+                data-testid="draft-group-cancel"
+              >
+                <XIcon />
+              </Button>
+            </IconButtonTooltip>
           </div>
         </form>
       ) : (
@@ -182,7 +255,7 @@ export function DraftGroupHeader({
             "min-w-0 flex-1 rounded-lg px-2 py-1 text-left outline-none transition-colors",
             "hover:bg-muted/70 focus-visible:ring-3 focus-visible:ring-ring/50",
           )}
-          onClick={() => onFocusGroup(groupId)}
+          onClick={handleGroupHeaderClick}
           onKeyDown={handleFocusKeyDown}
           aria-label={`Focus group ${name}`}
           aria-current={isFocused ? "true" : undefined}
@@ -191,7 +264,17 @@ export function DraftGroupHeader({
           data-testid="draft-group-focus-target"
         >
           <span className="flex min-w-0 items-center gap-2">
-            <span className="truncate text-sm font-semibold" data-draft-group-name>
+            <span
+              className={cn(
+                "truncate text-sm font-semibold",
+                onRenameGroup !== undefined && "cursor-text",
+              )}
+              title={
+                onRenameGroup === undefined ? undefined : `Click to rename ${name}`
+              }
+              data-action={onRenameGroup === undefined ? undefined : "rename-group-from-name"}
+              data-draft-group-name
+            >
               {name}
             </span>
             {draftCountLabel ? (
@@ -212,66 +295,76 @@ export function DraftGroupHeader({
         </button>
       )}
       {!isEditing && onRenameGroup ? (
-        <Button
-          type="button"
-          variant="ghost"
-          size="icon-sm"
-          onClick={beginEditing}
-          aria-label={`Edit ${name}`}
-          data-testid="draft-group-edit"
-        >
-          <PencilIcon />
-        </Button>
+        <IconButtonTooltip label="Rename group">
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon-sm"
+            onClick={beginEditing}
+            aria-label={`Rename group ${name}`}
+            data-testid="draft-group-edit"
+          >
+            <PencilIcon />
+          </Button>
+        </IconButtonTooltip>
       ) : null}
       {!isEditing && onMoveGroup ? (
         <>
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon-sm"
-            disabled={isMoveUpDisabled}
-            onClick={() => onMoveGroup(groupId, "up")}
-            aria-label={`Move ${name} up`}
-            data-testid="draft-group-move-up"
-          >
-            <ArrowUpIcon />
-          </Button>
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon-sm"
-            disabled={isMoveDownDisabled}
-            onClick={() => onMoveGroup(groupId, "down")}
-            aria-label={`Move ${name} down`}
-            data-testid="draft-group-move-down"
-          >
-            <ArrowDownIcon />
-          </Button>
+          <IconButtonTooltip label={`Move ${name} up`}>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon-sm"
+              disabled={isMoveUpDisabled}
+              onClick={() => onMoveGroup(groupId, "up")}
+              aria-label={`Move ${name} up`}
+              data-testid="draft-group-move-up"
+            >
+              <ArrowUpIcon />
+            </Button>
+          </IconButtonTooltip>
+          <IconButtonTooltip label={`Move ${name} down`}>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon-sm"
+              disabled={isMoveDownDisabled}
+              onClick={() => onMoveGroup(groupId, "down")}
+              aria-label={`Move ${name} down`}
+              data-testid="draft-group-move-down"
+            >
+              <ArrowDownIcon />
+            </Button>
+          </IconButtonTooltip>
         </>
       ) : null}
-      {!isEditing && onCreateDraft ? (
-        <Button
-          type="button"
-          variant="ghost"
-          size="icon-sm"
-          onClick={() => onCreateDraft(groupId)}
-          aria-label={`Create draft in ${name}`}
-          data-testid="draft-group-create-draft"
-        >
-          <PlusIcon />
-        </Button>
+      {!isEditing && onCreateGroup ? (
+        <IconButtonTooltip label="Create new group">
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon-sm"
+            onClick={onCreateGroup}
+            aria-label="Create new group"
+            data-testid="draft-group-create-group"
+          >
+            <PlusIcon />
+          </Button>
+        </IconButtonTooltip>
       ) : null}
       {!isEditing && onDeleteGroup ? (
-        <Button
-          type="button"
-          variant="ghost"
-          size="icon-sm"
-          onClick={() => onDeleteGroup(groupId)}
-          aria-label={`Delete group ${name}`}
-          data-testid="draft-group-delete"
-        >
-          <Trash2Icon />
-        </Button>
+        <IconButtonTooltip label={`Delete group ${name}`}>
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon-sm"
+            onClick={() => onDeleteGroup(groupId)}
+            aria-label={`Delete group ${name}`}
+            data-testid="draft-group-delete"
+          >
+            <Trash2Icon />
+          </Button>
+        </IconButtonTooltip>
       ) : null}
     </header>
   );

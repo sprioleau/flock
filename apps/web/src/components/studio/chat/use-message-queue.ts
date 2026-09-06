@@ -79,6 +79,16 @@ export interface MessageQueue {
   sendNextQueuedMessage: () => void;
 }
 
+export interface QueuedMessageDispatch {
+  head: QueuedMessage | undefined;
+  rest: QueuedMessage[];
+}
+
+export function getNextQueuedMessage(messages: QueuedMessage[]): QueuedMessageDispatch {
+  const [head, ...rest] = messages;
+  return { head, rest };
+}
+
 export function useMessageQueue({
   documentId,
   getActiveDocumentId,
@@ -121,7 +131,7 @@ export function useMessageQueue({
       */
       return;
     }
-    const [head, ...rest] = getQueueForThisDocument();
+    const { head, rest } = getNextQueuedMessage(getQueueForThisDocument());
     if (head === undefined) {
       return;
     }

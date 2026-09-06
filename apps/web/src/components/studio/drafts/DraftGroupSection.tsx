@@ -19,7 +19,7 @@ export type DraftGroupSectionProps = Omit<
     | "isFocused"
     | "onFocusGroup"
     | "onRenameGroup"
-    | "onCreateDraft"
+    | "onCreateGroup"
     | "onDeleteGroup"
     | "onMoveGroup"
     | "isMoveUpDisabled"
@@ -37,7 +37,7 @@ export function DraftGroupSection({
   isFocused,
   onFocusGroup,
   onRenameGroup,
-  onCreateDraft,
+  onCreateGroup,
   onDeleteGroup,
   onMoveGroup,
   isMoveUpDisabled,
@@ -70,7 +70,7 @@ export function DraftGroupSection({
         isFocused={isFocused}
         onFocusGroup={onFocusGroup}
         onRenameGroup={onRenameGroup}
-        onCreateDraft={onCreateDraft}
+        onCreateGroup={onCreateGroup}
         onDeleteGroup={onDeleteGroup}
         onMoveGroup={onMoveGroup}
         isMoveUpDisabled={isMoveUpDisabled}

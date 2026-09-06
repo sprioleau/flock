@@ -48,13 +48,11 @@ import { deleteBlockSyncDoc } from "./textBlockSync";
     3. storage files referenced by the document's image blocks (before the
        block rows go away, so a partial run never loses the src list)
     4. per-text-block ProseMirror sync docs + all block rows
-    5. the transient ghost-session row, if one was stranded (at most one
-       per document; normally deleted when the ghost run ends)
-    6. persisted persona findings for the document (advisory suggestion
+    5. persisted persona findings for the document (advisory suggestion
        rows; a handful per document at most), then the document's comment
        threads (comments mode; bounded per canvas)
-    7. the document row
-    8. the parent canvas, iff it now holds no documents (canvases own
+    6. the document row
+    7. the parent canvas, iff it now holds no documents (canvases own
        documents; an empty canvas of an unclaimed session is dead weight)
 
   The cascade is shared with the USER-INVOKED draft delete
@@ -448,23 +446,7 @@ export async function deleteDocumentCascade({
   }
 
   /*
-    5. The transient ghost-session row (at most one per document; a stranded
-    row would otherwise dangle forever once its document is gone).
-  */
-  const ghostSessionRows = await ctx.db
-    .query("ghostSessions")
-    .withIndex("by_documentId", (q) => q.eq("documentId", documentId))
-    .collect();
-  for (const row of ghostSessionRows) {
-    if (budget.remaining <= 0) {
-      return { isComplete: false };
-    }
-    await ctx.db.delete(row._id);
-    budget.remaining -= 1;
-  }
-
-  /*
-    6. Persisted persona findings (advisory suggestion rows) — added after
+    5. Persisted persona findings (advisory suggestion rows) — added after
     Phase 6.1: without this step a deleted document would strand its open/
     dismissed/applied finding rows forever.
   */
@@ -481,7 +463,7 @@ export async function deleteDocumentCascade({
   }
 
   /*
-    6b. Comment threads placed on this document (comments mode) — bounded
+    5b. Comment threads placed on this document (comments mode) — bounded
     like findings (a canvas holds at most a couple hundred), and deleted
     BEFORE the document row for the same resumability reason.
   */
@@ -498,7 +480,7 @@ export async function deleteDocumentCascade({
   }
 
   /*
-    7. The document row, LAST — its presence is the resumption marker.
+    6. The document row, LAST — its presence is the resumption marker.
   */
   if (budget.remaining <= 0) {
     return { isComplete: false };
@@ -508,7 +490,7 @@ export async function deleteDocumentCascade({
   budget.remaining -= 1;
 
   /*
-    8. The parent canvas, iff this was its last document — and with it the
+    7. The parent canvas, iff this was its last document — and with it the
     dashboard ownership rows that pointed at it. Those rows are inlined here
     rather than imported from convex/canvases.ts because that module imports
     THIS one (it reuses this cascade for whole-canvas deletion); a dangling

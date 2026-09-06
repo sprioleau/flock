@@ -78,6 +78,11 @@ export interface CreateDraftOutcome {
   */
   failureNotice: string | null;
   /*
+    True only when no draft was created because a page-style request needs a
+    fresh read; the caller may safely retry after that read.
+  */
+  shouldRetryAfterFailure?: boolean;
+  /*
     What the call's `theme` reference resolved to, or null when it named no
     theme (the ordinary path: the new drafts inherit the current one).
 
@@ -210,14 +215,17 @@ function getCopyProvenanceNote(outcome: CreateDraftOutcome): string {
   the caller should route through the error channel.
 */
 export function toCreateDraftToolOutput(outcome: CreateDraftOutcome): CreateDraftReport {
-  const { createdDrafts, requestedCount, failureNotice } = outcome;
+  const { createdDrafts, requestedCount, failureNotice, shouldRetryAfterFailure = false } = outcome;
   const createdCount = createdDrafts.length;
 
   if (createdCount === 0) {
+    const retryInstruction = shouldRetryAfterFailure
+      ? "The agent may call readWebPage again with the same URL, then retry createDraft once; no draft was created, so that retry is safe."
+      : "Tell the user in your own words that nothing was added, and do NOT call createDraft again.";
     return {
       isCreated: false,
       createdDrafts: [],
-      note: `No new draft was created. ${failureNotice ?? "The drafts bar was not reachable."} Tell the user in your own words that nothing was added, and do NOT call createDraft again.`,
+      note: `No new draft was created. ${failureNotice ?? "The drafts bar was not reachable."} ${retryInstruction}`,
     };
   }
 

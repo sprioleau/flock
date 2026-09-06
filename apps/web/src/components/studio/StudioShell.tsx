@@ -279,12 +279,11 @@ export function StudioShell() {
       */}
       <StudioShortcuts />
       {/*
-        First-run walkthrough: a card anchored to each surface's CLOSED
-        toolbar trigger, with an arrow pointing at it. Same reason it sits
-        here rather than in the root layout — its anchors are this shell's
-        toolbar, and inside the gate means no card can point at chrome that
-        has not rendered. Renders null once the tour is skipped or finished
-        (progress lives in localStorage, so anonymous visitors keep it).
+        Optional walkthrough: a card anchored to each surface's CLOSED toolbar
+        trigger, with an arrow pointing at it. Same reason it sits here rather
+        than in the root layout — its anchors are this shell's toolbar, and
+        inside the gate means no card can point at chrome that has not rendered.
+        It renders only after the user launches it from Settings.
       */}
       <StudioTour />
       {/*

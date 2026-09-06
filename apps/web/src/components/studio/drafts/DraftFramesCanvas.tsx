@@ -15,7 +15,6 @@ import {
   ChevronLeftIcon,
   ChevronRightIcon,
   Loader2Icon,
-  PlusIcon,
 } from "lucide-react";
 import { type EmailDocument } from "@flock/email-sdk";
 import { api } from "@convex/_generated/api";
@@ -31,7 +30,6 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { getActiveEditorStore } from "@/lib/editor-store";
-import { getOrCreateSessionId } from "@/lib/session";
 import { cn } from "@/lib/utils";
 import { useGenerationTargetDocumentId } from "../chat/agent-status";
 import { useCanvasDragStore } from "../dnd/drag-drop-store";
@@ -60,7 +58,6 @@ import {
   buildDraftGroupLayout,
   getReorderedDraftGroupIds,
 } from "./draft-group-layout";
-import { computeNextDraftName } from "./draft-naming";
 import { EditorDraftFrame } from "./EditorDraftFrame";
 import {
   useCanvasDrafts,
@@ -272,33 +269,9 @@ export function DraftFramesCanvas({
     const name = `Group ${(draftGroups?.length ?? 0) + 1}`;
     void convexClient
       .mutation(api.draftGroups.create, { canvasId, name })
-      .then((groupId) => {
-        pendingFocusedGroupKeyRef.current = groupId;
-        setFocusedGroupKey(groupId);
-      })
       .catch((error: unknown) => {
         console.error("create draft group failed", error);
         getActiveEditorStore().getState().showNotice("Couldn't create the group.");
-      });
-  }
-
-  function createDraftInGroup(groupKey: string): void {
-    if (canvasId === null || drafts === undefined) {
-      return;
-    }
-    void convexClient
-      .mutation(api.documents.createDocument, {
-        sessionId: getOrCreateSessionId(),
-        canvasId,
-        name: computeNextDraftName({ existingNames: drafts.map((draft) => draft.name) }),
-        ...(groupKey === UNGROUPED_DRAFT_GROUP_KEY
-          ? {}
-          : { groupId: groupKey as Id<"draftGroups"> }),
-      })
-      .then(({ documentId }) => onActivateDraft(documentId))
-      .catch((error: unknown) => {
-        console.error("create grouped draft failed", error);
-        getActiveEditorStore().getState().showNotice("Couldn't create the draft.");
       });
   }
 
@@ -658,75 +631,65 @@ export function DraftFramesCanvas({
         onKeyUp={handleCanvasKeyUp}
         onBlur={(event) => cancelCanvasPan(event.currentTarget)}
       >
-        <div
-          ref={canvasSceneRef}
-          className="inline-flex w-max min-w-max flex-col gap-16 p-16"
-          style={{ zoom: zoomPercent / 100 }}
-          data-canvas-scene
-          data-canvas-pan-region
-        >
-          {groupRows.map((row, rowIndex) => {
-            const groupIndex =
-              row.group === null
-                ? -1
-                : (draftGroups ?? []).findIndex((group) => group._id === row.group?._id);
-            return (
-              <div
-                key={row.key}
-                ref={(element) => {
-                  if (element === null) {
-                    groupRefsByKey.current.delete(row.key);
-                  } else {
-                    groupRefsByKey.current.set(row.key, element);
-                  }
-                }}
-                className="w-max shrink-0"
-                data-canvas-pan-region
-                data-draft-group-row={row.key}
-              >
-                <DraftGroupSection
-                  groupId={row.key}
-                  name={row.group?.name ?? "Ungrouped"}
-                  description={row.group?.description}
-                  draftCount={row.drafts.length}
-                  isFocused={visibleFocusedGroupKey === row.key}
-                  onFocusGroup={focusDraftGroup}
-                  onRenameGroup={row.group === null ? undefined : updateDraftGroup}
-                  onCreateDraft={createDraftInGroup}
-                  onDeleteGroup={
-                    row.group === null
-                      ? undefined
-                      : () => {
-                          setGroupPendingDelete(row.group);
-                        }
-                  }
-                  onMoveGroup={row.group === null ? undefined : moveDraftGroup}
-                  isMoveUpDisabled={groupIndex <= 0}
-                  isMoveDownDisabled={
-                    groupIndex < 0 || groupIndex >= (draftGroups?.length ?? 0) - 1
-                  }
+        <div className="flex w-max min-w-full justify-center">
+          <div
+            ref={canvasSceneRef}
+            className="flex w-max min-w-max flex-col gap-16 p-16"
+            style={{ zoom: zoomPercent / 100 }}
+            data-canvas-scene
+            data-canvas-pan-region
+          >
+            {groupRows.map((row, rowIndex) => {
+              const groupIndex =
+                row.group === null
+                  ? -1
+                  : (draftGroups ?? []).findIndex((group) => group._id === row.group?._id);
+              return (
+                <div
+                  key={row.key}
+                  ref={(element) => {
+                    if (element === null) {
+                      groupRefsByKey.current.delete(row.key);
+                    } else {
+                      groupRefsByKey.current.set(row.key, element);
+                    }
+                  }}
+                  className="w-max shrink-0"
                   data-canvas-pan-region
-                  data-group-row-index={rowIndex}
+                  data-draft-group-row={row.key}
                 >
-                  {row.drafts.map((draft) => renderDraftFrame(draft, row.key))}
-                </DraftGroupSection>
-              </div>
-            );
-          })}
+                  <DraftGroupSection
+                    groupId={row.key}
+                    name={row.group?.name ?? "Ungrouped"}
+                    description={row.group?.description}
+                    draftCount={row.drafts.length}
+                    isFocused={visibleFocusedGroupKey === row.key}
+                    onFocusGroup={focusDraftGroup}
+                    onRenameGroup={row.group === null ? undefined : updateDraftGroup}
+                    onCreateGroup={createDraftGroup}
+                    onDeleteGroup={
+                      row.group === null
+                        ? undefined
+                        : () => {
+                            setGroupPendingDelete(row.group);
+                          }
+                    }
+                    onMoveGroup={row.group === null ? undefined : moveDraftGroup}
+                    isMoveUpDisabled={groupIndex <= 0}
+                    isMoveDownDisabled={
+                      groupIndex < 0 || groupIndex >= (draftGroups?.length ?? 0) - 1
+                    }
+                    data-canvas-pan-region
+                    data-group-row-index={rowIndex}
+                  >
+                    {row.drafts.map((draft) => renderDraftFrame(draft, row.key))}
+                  </DraftGroupSection>
+                </div>
+              );
+            })}
+          </div>
         </div>
       </div>
-
-      <Button
-        type="button"
-        variant="secondary"
-        size="sm"
-        className="absolute top-4 left-4 z-30 shadow-lg"
-        onClick={createDraftGroup}
-        disabled={canvasId === null}
-        data-testid="create-draft-group"
-      >
-        <PlusIcon /> New group
-      </Button>
 
       {/*
         Light prev/next affordances at the canvas edges (item 2 of the
