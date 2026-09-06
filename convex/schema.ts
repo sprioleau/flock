@@ -160,6 +160,44 @@ export default defineSchema({
     .index("by_ownerId_and_canvasId", ["ownerId", "canvasId"]),
 
   /*
+    The durable main-agent conversation for a canvas. There is exactly one
+    row for a canvas, created lazily by chat.persistFinalizedTurn or
+    chat.getOrCreateThread. Access follows the canvas's share-by-link
+    capability; this row intentionally carries no client-supplied owner key,
+    and turns are always scoped through their owning canvas id.
+  */
+  chatThreads: defineTable({
+    canvasId: v.id("canvases"),
+    lastSequence: v.number(),
+    createdAtMs: v.number(),
+    updatedAtMs: v.number(),
+  }).index("by_canvasId", ["canvasId"]),
+
+  /*
+    Finalized user and assistant turns. `turnId` is the stable UI message id;
+    `idempotencyKey` is the retry key for the persistence request. Both are
+    indexed within a thread so an interrupted stream can safely retry its
+    final write without creating a duplicate turn. Content is intentionally
+    plain text: rich UI-message parts remain a client concern until a later
+    schema decision gives them a stable, versioned representation.
+  */
+  chatTurns: defineTable({
+    threadId: v.id("chatThreads"),
+    canvasId: v.id("canvases"),
+    turnId: v.string(),
+    idempotencyKey: v.string(),
+    role: v.union(v.literal("user"), v.literal("assistant")),
+    content: v.string(),
+    status: v.literal("finalized"),
+    sequence: v.number(),
+    createdAtMs: v.number(),
+    finalizedAtMs: v.number(),
+  })
+    .index("by_threadId_and_turnId", ["threadId", "turnId"])
+    .index("by_threadId_and_idempotencyKey", ["threadId", "idempotencyKey"])
+    .index("by_threadId_and_sequence", ["threadId", "sequence"]),
+
+  /*
     Ordered user-created folders for drafts on one canvas. Group rows are
     canvas-scoped capabilities just like documents; membership is checked by
     convex/draftGroups.ts before either side is written.

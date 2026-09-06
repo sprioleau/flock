@@ -2,9 +2,9 @@ import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { DASHBOARD_PATH, isAuthEnabled } from "@/lib/auth/config";
 import { isAuthenticatedSafely } from "@/lib/auth/auth-server";
-import { LoginPlayground } from "@/components/login-playground/LoginPlayground";
 import { LoginPanel } from "./LoginPanel";
 import { InteractiveLineGrid } from "@/components/ui/interactive-line-grid";
+import { Logo } from "@/components/ui/logo";
 
 export const metadata: Metadata = {
   title: "Flock",
@@ -60,9 +60,34 @@ export default async function Home() {
   }
 
   return (
-    <div className="relative min-h-svh overflow-hidden bg-transparent">
+    <div className="absolute h-full w-full overflow-hidden bg-transparent">
       <InteractiveLineGrid />
-      <LoginPlayground loginDock={<LoginPanel />} />
+      <main className="relative z-10 flex h-full w-full flex-1 flex-col items-center justify-center gap-6 p-8">
+        <div className="flex flex-col items-center gap-2">
+          <h1 className="text-4xl font-semibold tracking-tight">
+            <span className="text-primary" aria-label="Flock">
+              <Logo
+                style={{ color: "var(--foreground)" }}
+                variant="full_horizontal"
+                className="mb-4 w-[200px]"
+              />
+            </span>
+          </h1>
+          <p className="max-w-xs text-center text-sm text-muted-foreground">
+            An AI-powered collaborative email editor. You describe, your flock
+            builds.
+          </p>
+        </div>
+
+        <div className="w-full max-w-xs rounded-xl border border-border bg-card/75 p-6 shadow-sm backdrop-blur-md dark:bg-card/60">
+          <LoginPanel />
+        </div>
+
+        <p className="max-w-xs text-center text-xs text-muted-foreground">
+          Have a shared email link? Open it directly — it takes you straight to
+          the draft.
+        </p>
+      </main>
     </div>
   );
 }

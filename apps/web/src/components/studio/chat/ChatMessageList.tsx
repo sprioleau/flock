@@ -60,7 +60,15 @@ function getFriendlyErrorMessage(error: Error): { messageText: string; rawText?:
   };
 }
 
-function ErrorBubble({ error }: { error: Error }) {
+function ErrorBubble({
+  error,
+  onRetry,
+  messageOverride,
+}: {
+  error: Error;
+  onRetry?: () => void;
+  messageOverride?: string;
+}) {
   const { messageText, rawText } = getFriendlyErrorMessage(error);
 
   return (
@@ -70,7 +78,16 @@ function ErrorBubble({ error }: { error: Error }) {
     >
       <TriangleAlertIcon className="mt-0.5 size-3.5 shrink-0" />
       <div className="min-w-0 flex-1">
-        <p className="break-words">{messageText}</p>
+        <p className="break-words">{messageOverride ?? messageText}</p>
+        {onRetry !== undefined && (
+          <button
+            type="button"
+            className="mt-2 rounded-md border px-2 py-1 text-xs font-medium hover:bg-destructive/10"
+            onClick={onRetry}
+          >
+            Retry
+          </button>
+        )}
         {rawText !== undefined && (
           <details className="mt-1 text-destructive/70">
             <summary className="cursor-pointer select-none">Details</summary>
@@ -348,6 +365,9 @@ export interface ChatMessageListProps {
     friendly failure (or are suppressed by a successful retry) once it drops.
   */
   isTurnInProgress: boolean;
+  isRetryAvailable?: boolean;
+  retryNotice?: string;
+  onRetry?: () => void;
   onApprovalResponse: (input: { approvalId: string; isApproved: boolean }) => void;
 }
 
@@ -356,6 +376,9 @@ export function ChatMessageList({
   error,
   isAwaitingResponse,
   isTurnInProgress,
+  isRetryAvailable = false,
+  retryNotice,
+  onRetry,
   onApprovalResponse,
 }: ChatMessageListProps) {
   const scrollContainerRef = useRef<HTMLDivElement>(null);
@@ -452,7 +475,22 @@ export function ChatMessageList({
           isTurnInProgress={isTurnInProgress}
           parts={liveTurnParts}
         />
-        {error !== undefined && <ErrorBubble error={error} />}
+        {error !== undefined && (
+          <ErrorBubble
+            error={error}
+            onRetry={isRetryAvailable ? onRetry : undefined}
+            messageOverride={isRetryAvailable ? undefined : retryNotice}
+          />
+        )}
+        {error === undefined && retryNotice !== undefined && (
+          <ErrorBubble error={new Error(retryNotice)} messageOverride={retryNotice} />
+        )}
+        {error === undefined && isRetryAvailable && (
+          <ErrorBubble
+            error={new Error("The response was interrupted before it finished. Retry to continue this turn.")}
+            onRetry={onRetry}
+          />
+        )}
       </div>
     </div>
   );

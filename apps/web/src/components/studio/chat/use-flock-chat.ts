@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Chat, useChat } from "@ai-sdk/react";
 import {
   DefaultChatTransport,
@@ -75,6 +75,16 @@ import { getAppSettings } from "../demo/app-settings";
 import { scrollBlockIntoView } from "../add-blocks/scroll-block-into-view";
 import { createAgentDrafts } from "../drafts/create-agent-drafts";
 import { takeGenerationRequest } from "./pending-generation-request";
+import {
+  getChatMessageText,
+  getVisibleThreadProvisioningError,
+  isChatLifecycleCurrent,
+  isInterruptedTurnRetrySafe,
+  mergePersistedChatMessages,
+  shouldApplyChatHydration,
+  toPersistedChatMessages,
+  type PersistedChatTurn,
+} from "./durable-chat";
 
 /*
   The Phase 3 chat brain: wires AI SDK v7 `useChat` to the editor store.
@@ -209,6 +219,41 @@ function reportHistoryStep({
 */
 const MAX_AUTO_CONTINUATIONS_PER_TURN = 1;
 
+function hasPendingToolPart(message: FlockChatMessage): boolean {
+  return message.parts.some(
+    (part) =>
+      isStaticToolUIPart(part) &&
+      (part.state === "input-streaming" ||
+        part.state === "input-available" ||
+        part.state === "approval-requested" ||
+        part.state === "approval-responded"),
+  );
+}
+
+export function shouldDeferAssistantPersistence({
+  message,
+  messages,
+  finishReason,
+  isMockEnabled,
+  autoContinuationCount,
+}: {
+  message: FlockChatMessage;
+  messages: FlockChatMessage[];
+  finishReason: string | undefined;
+  isMockEnabled: boolean;
+  autoContinuationCount: number;
+}): boolean {
+  if (hasPendingToolPart(message)) {
+    return true;
+  }
+  return (
+    finishReason === "tool-calls" &&
+    !isMockEnabled &&
+    autoContinuationCount < MAX_AUTO_CONTINUATIONS_PER_TURN &&
+    lastAssistantMessageIsCompleteWithToolCalls({ messages })
+  );
+}
+
 /*
   Structured tool-result payload for a failed client-side op application.
 */
@@ -223,6 +268,76 @@ function serializeApplyFailure(failure: {
   });
 }
 
+const CLIENT_TOOL_EXECUTOR_FAILURE_MESSAGE = "Flock couldn't complete that action. Try again.";
+
+interface ClientToolOutput {
+  tool: keyof FlockChatTools;
+  toolCallId: string;
+  state?: "output-error";
+  output?: unknown;
+  errorText?: string;
+}
+
+export function settleClientToolCall<T>({
+  tool,
+  toolCallId,
+  execute,
+  toOutput,
+  addToolOutput,
+}: {
+  tool: keyof FlockChatTools;
+  toolCallId: string;
+  execute: () => Promise<T> | T;
+  toOutput: (value: T) => unknown;
+  addToolOutput: (output: ClientToolOutput) => void;
+}): void {
+  let isSettled = false;
+  const failureOutput = (): ClientToolOutput => ({
+    state: "output-error",
+    tool,
+    toolCallId,
+    errorText: JSON.stringify({
+      kind: "flock-chat-error",
+      failureKind: "retryable",
+      errors: [
+        {
+          code: "client_executor_failed",
+          message: CLIENT_TOOL_EXECUTOR_FAILURE_MESSAGE,
+        },
+      ],
+    }),
+  });
+  const emit = (output: ClientToolOutput): void => {
+    if (isSettled) {
+      return;
+    }
+    isSettled = true;
+    try {
+      addToolOutput(output);
+    } catch {
+      /*
+        The output channel itself failed after settlement was attempted. A
+        second write could turn one tool call into two terminal results.
+      */
+    }
+  };
+
+  void Promise.resolve()
+    .then(execute)
+    .then(
+      (value) => {
+        try {
+          emit({ tool, toolCallId, output: toOutput(value) });
+        } catch {
+          emit(failureOutput());
+        }
+      },
+      () => {
+        emit(failureOutput());
+      },
+    );
+}
+
 /*
   The Chat instance plus methods over the mutable per-turn bookkeeping its
   callbacks close over. Created ONCE per panel mount (useState initializer) —
@@ -230,10 +345,15 @@ function serializeApplyFailure(failure: {
 */
 interface FlockChatController {
   chat: Chat<FlockChatMessage>;
+  dispose: () => void;
   /*
     Start a user-initiated turn: fresh agent batchId + continuation budget.
   */
-  beginUserTurn: () => void;
+  beginUserTurn: (input: {
+    logicalTurnId: string;
+    userMessageId: string;
+    text: string;
+  }) => void;
   /*
     Dev-only x-flock-mock switch, read by the transport at request time.
   */
@@ -276,6 +396,36 @@ interface FlockChatController {
     alone in some other draft's history.
   */
   getTurnBatchId: () => string;
+  setTurnLifecycle: (lifecycle: ChatTurnLifecycle) => void;
+}
+
+interface ChatTurnLifecycle {
+  onUserTurn: (input: { logicalTurnId: string; userMessageId: string; text: string }) => void;
+  onAssistantTurn: (input: {
+    logicalTurnId: string;
+    userMessageId: string;
+    message: FlockChatMessage;
+  }) => void;
+  onInterrupted: (input: {
+    logicalTurnId: string;
+    userMessageId: string;
+    text: string;
+    isRetrySafe: boolean;
+  }) => void;
+}
+
+interface PersistedTurnInput {
+  canvasId: Id<"canvases">;
+  sessionId: string;
+  turnId: string;
+  idempotencyKey: string;
+  role: "user" | "assistant";
+  content: string;
+}
+
+interface PendingPersistence {
+  input: PersistedTurnInput;
+  threadKey: string;
 }
 
 interface SavedSectionsRuntime {
@@ -286,7 +436,17 @@ interface SavedSectionsRuntime {
   recordUse: (savedSectionId: Id<"savedSections">) => void;
 }
 
-function createFlockChatController(): FlockChatController {
+function createFlockChatController({
+  chatId,
+  lifecycle = {
+    onUserTurn: () => {},
+    onAssistantTurn: () => {},
+    onInterrupted: () => {},
+  },
+}: {
+  chatId: string;
+  lifecycle?: ChatTurnLifecycle;
+}): FlockChatController {
   /*
     toolCallIds already applied / commands already executed (same-id stream
     rewrites and repeated deliveries must not double-apply).
@@ -317,7 +477,15 @@ function createFlockChatController(): FlockChatController {
     batchId: crypto.randomUUID(),
     autoContinuationCount: 0,
     documentId: null as Id<"documents"> | null,
+    activeTurn: null as {
+      logicalTurnId: string;
+      userMessageId: string;
+      text: string;
+    } | null,
   };
+
+  let turnLifecycle = lifecycle;
+  let isDisposed = false;
 
   let heldTurnDocumentId: Id<"documents"> | null = null;
 
@@ -427,7 +595,62 @@ function createFlockChatController(): FlockChatController {
   });
 
   const chat = new Chat<FlockChatMessage>({
+    id: chatId,
     transport,
+
+    onFinish: ({ message, messages, finishReason, isAbort, isDisconnect, isError }) => {
+      if (isDisposed) {
+        return;
+      }
+      const activeTurn = turnState.activeTurn;
+      if (activeTurn === null) {
+        return;
+      }
+      if (isAbort || isDisconnect || isError) {
+        turnLifecycle.onInterrupted({
+          ...activeTurn,
+          isRetrySafe: isInterruptedTurnRetrySafe({
+            messages,
+            userMessageId: activeTurn.userMessageId,
+          }),
+        });
+        return;
+      }
+      /*
+        Tool continuations are separate onFinish callbacks. Their assistant
+        message is not durable until the logical turn has stopped requesting
+        another round and no tool part is still awaiting input or output.
+      */
+      if (
+        message.role !== "assistant" ||
+        shouldDeferAssistantPersistence({
+          message,
+          messages,
+          finishReason,
+          isMockEnabled: turnState.isMockEnabled,
+          autoContinuationCount: turnState.autoContinuationCount,
+        })
+      ) {
+        return;
+      }
+      turnLifecycle.onAssistantTurn({ ...activeTurn, message });
+      turnState.activeTurn = null;
+    },
+    onError: () => {
+      if (isDisposed) {
+        return;
+      }
+      const activeTurn = turnState.activeTurn;
+      if (activeTurn !== null) {
+        turnLifecycle.onInterrupted({
+          ...activeTurn,
+          isRetrySafe: isInterruptedTurnRetrySafe({
+            messages: chat.messages,
+            userMessageId: activeTurn.userMessageId,
+          }),
+        });
+      }
+    },
 
     /*
       Content ops and CLIENT-RESULT editor actions reach here at
@@ -733,12 +956,14 @@ function createFlockChatController(): FlockChatController {
     const executorKind = getClientResultExecutorKind(dispatched.command.type);
     if (executorKind === "createDraft" && dispatched.command.type === "createDraft") {
       const command = dispatched.command;
-      void createDrafts(command).then((outcome) => {
-        void chat.addToolOutput({
-          tool: "createDraft",
-          toolCallId,
-          output: toCreateDraftToolOutput(outcome),
-        });
+      settleClientToolCall({
+        tool: "createDraft",
+        toolCallId,
+        execute: () => createDrafts(command),
+        toOutput: (outcome) => toCreateDraftToolOutput(outcome),
+        addToolOutput: (output) => {
+          void Promise.resolve(chat.addToolOutput(output as never)).catch(() => {});
+        },
       });
       return;
     }
@@ -755,12 +980,14 @@ function createFlockChatController(): FlockChatController {
     */
     if (executorKind === "applyThemeToDraft" && dispatched.command.type === "applyThemeToDraft") {
       const command = dispatched.command;
-      void applyTheme(command).then((outcome) => {
-        void chat.addToolOutput({
-          tool: "applyThemeToDraft",
-          toolCallId,
-          output: toApplyThemeToolOutput(outcome),
-        });
+      settleClientToolCall({
+        tool: "applyThemeToDraft",
+        toolCallId,
+        execute: () => applyTheme(command),
+        toOutput: (outcome) => toApplyThemeToolOutput(outcome),
+        addToolOutput: (output) => {
+          void Promise.resolve(chat.addToolOutput(output as never)).catch(() => {});
+        },
       });
       return;
     }
@@ -993,7 +1220,19 @@ function createFlockChatController(): FlockChatController {
 
   return {
     chat,
-    beginUserTurn: () => {
+    dispose: () => {
+      if (isDisposed) {
+        return;
+      }
+      isDisposed = true;
+      turnState.activeTurn = null;
+      void chat.stop();
+      holdTurnDocument(null);
+    },
+    beginUserTurn: (input) => {
+      if (isDisposed) {
+        return;
+      }
       const { documentId } = useEditorStore.getState();
       turnState.batchId = crypto.randomUUID();
       turnState.autoContinuationCount = 0;
@@ -1003,6 +1242,7 @@ function createFlockChatController(): FlockChatController {
         (see turnState). The previous turn's hold is released here.
       */
       turnState.documentId = documentId;
+      turnState.activeTurn = input;
       holdTurnDocument(documentId);
     },
     setIsMockEnabled: (isMockEnabled) => {
@@ -1018,6 +1258,9 @@ function createFlockChatController(): FlockChatController {
       applyTheme = nextApplyTheme;
     },
     getTurnBatchId: () => turnState.batchId,
+    setTurnLifecycle: (nextLifecycle) => {
+      turnLifecycle = nextLifecycle;
+    },
   };
 }
 
@@ -1045,6 +1288,7 @@ export interface FlockChat {
   messages: FlockChatMessage[];
   status: "submitted" | "streaming" | "ready" | "error";
   error: Error | undefined;
+  isReady: boolean;
   /*
     Send one user text message (starts a fresh agent batch).
   */
@@ -1072,29 +1316,289 @@ export interface FlockChat {
   */
   isMockEnabled: boolean;
   setIsMockEnabled: (isMockEnabled: boolean) => void;
+  retryLastTurn: () => void;
+  isRetryAvailable: boolean;
+  retryNotice: string | undefined;
+  persistenceError: string | undefined;
+  retryPersistence: () => void;
+  threadProvisioningError: string | undefined;
+  retryThreadProvisioning: () => void;
 }
 
 export function useFlockChat(): FlockChat {
-  /*
-    The controller is created once per mount.
-  */
-  const [controller] = useState(() => createFlockChatController());
+  const canvasId = useEditorStore((state) => state.canvasId);
+  const editorSessionId = useEditorStore((state) => state.authorId);
+  const sessionId = editorSessionId;
+  const chatThread = useQuery(
+    api.chat.getThread,
+    canvasId !== null && sessionId !== null ? { canvasId, sessionId } : "skip",
+  );
+  const ensureChatThread = useMutation(api.chat.getOrCreateThread);
+  const persistedTurns = useQuery(
+    api.chat.listTurns,
+    canvasId !== null && sessionId !== null ? { canvasId, sessionId } : "skip",
+  );
+  const [ensuredThread, setEnsuredThread] = useState<{
+    canvasId: Id<"canvases">;
+    threadId: string;
+  } | null>(null);
+  const [threadProvisioningAttempt, setThreadProvisioningAttempt] = useState(0);
+  const [threadProvisioningError, setThreadProvisioningError] = useState<
+    { key: string; message: string } | undefined
+  >(undefined);
+  const provisioningKey = canvasId === null ? null : String(canvasId);
+  useEffect(() => {
+    if (canvasId === null || sessionId === null || chatThread === undefined) {
+      return;
+    }
+    if (chatThread !== null || ensuredThread?.canvasId === canvasId) {
+      return;
+    }
+    void ensureChatThread({ canvasId, sessionId })
+      .then((thread) => {
+        setEnsuredThread({ canvasId, threadId: thread._id });
+      })
+      .catch(() => {
+        if (provisioningKey !== null) {
+          setThreadProvisioningError({
+            key: provisioningKey,
+            message: "This canvas conversation could not be loaded. Retry to continue.",
+          });
+        }
+      });
+  }, [canvasId, chatThread, ensureChatThread, ensuredThread, provisioningKey, sessionId, threadProvisioningAttempt]);
+
+  const resolvedThread =
+    chatThread !== null && chatThread !== undefined && chatThread.canvasId === canvasId
+      ? chatThread
+      : ensuredThread?.canvasId === canvasId
+        ? { _id: ensuredThread.threadId }
+        : null;
+  const threadId = resolvedThread?._id ?? null;
+  const retryTurnRef = useRef<{
+    logicalTurnId: string;
+    userMessageId: string;
+    text: string;
+  } | null>(null);
+  const currentThreadKey = canvasId !== null && threadId !== null ? `${canvasId}:${threadId}` : null;
+  const [retryState, setRetryState] = useState<{
+    key: string;
+    turn: { logicalTurnId: string; userMessageId: string; text: string };
+    isRetrySafe: boolean;
+  } | null>(null);
+  const [persistenceError, setPersistenceError] = useState<
+    { key: string; message: string } | undefined
+  >(undefined);
+  const pendingPersistenceRef = useRef(new Map<string, PendingPersistence>());
+  const persistenceRef = useRef({
+    canvasId,
+    sessionId,
+    threadKey: currentThreadKey,
+    persistFinalizedTurn: null as
+      | ((args: {
+          canvasId: Id<"canvases">;
+          sessionId: string;
+          turnId: string;
+          idempotencyKey: string;
+          role: "user" | "assistant";
+          content: string;
+        }) => Promise<unknown>)
+      | null,
+  });
+  const persistFinalizedTurn = useMutation(api.chat.persistFinalizedTurn);
+  useEffect(() => {
+    persistenceRef.current = {
+      ...persistenceRef.current,
+      canvasId,
+      sessionId,
+      threadKey: currentThreadKey,
+      persistFinalizedTurn,
+    };
+  }, [canvasId, currentThreadKey, persistFinalizedTurn, sessionId]);
+
+  function getPersistenceKey(input: PersistedTurnInput): string {
+    return `${input.canvasId}:${input.idempotencyKey}`;
+  }
+
+  function hasPendingPersistenceForThread(threadKey: string): boolean {
+    return Array.from(pendingPersistenceRef.current.values()).some(
+      (pending) => pending.threadKey === threadKey,
+    );
+  }
+
+  const persistTurn = useCallback(function persistTurn(
+    input: PersistedTurnInput,
+    threadKey: string,
+  ): void {
+    const persist = persistenceRef.current.persistFinalizedTurn;
+    if (persist === null) {
+      return;
+    }
+    const persistenceKey = getPersistenceKey(input);
+    pendingPersistenceRef.current.set(persistenceKey, { input, threadKey });
+    void persist(input)
+      .then(() => {
+        pendingPersistenceRef.current.delete(persistenceKey);
+        setPersistenceError((currentError) =>
+          currentError?.key === threadKey && !hasPendingPersistenceForThread(threadKey)
+            ? undefined
+            : currentError,
+        );
+      })
+      .catch(() => {
+        if (persistenceRef.current.threadKey === threadKey) {
+          setPersistenceError({
+            key: threadKey,
+            message: "This chat turn could not be saved. Retry saving it.",
+          });
+        }
+      });
+  }, []);
+
+  const lifecycle = useMemo<ChatTurnLifecycle>(
+    () => {
+      const origin = {
+        canvasId,
+        sessionId,
+        threadKey: currentThreadKey,
+      };
+      const isCurrentOrigin = (): boolean => {
+        const current = persistenceRef.current;
+        return isChatLifecycleCurrent({
+          originCanvasId: origin.canvasId,
+          originSessionId: origin.sessionId,
+          originThreadKey: origin.threadKey,
+          currentCanvasId: current.canvasId,
+          currentSessionId: current.sessionId,
+          currentThreadKey: current.threadKey,
+        });
+      };
+
+      return {
+        onUserTurn: () => {},
+        onAssistantTurn: ({ logicalTurnId, message }) => {
+          if (!isCurrentOrigin()) {
+            return;
+          }
+          retryTurnRef.current = null;
+          setRetryState((state) =>
+            state?.key === persistenceRef.current.threadKey ? null : state,
+          );
+          const {
+            canvasId: currentCanvasId,
+            sessionId: currentSessionId,
+            threadKey,
+          } = persistenceRef.current;
+          if (
+            currentCanvasId === null ||
+            currentSessionId === null ||
+            threadKey === null
+          ) {
+            return;
+          }
+          const content = getChatMessageText(message);
+          if (content.length === 0) {
+            return;
+          }
+          const input = {
+            canvasId: currentCanvasId,
+            sessionId: currentSessionId,
+            turnId: message.id,
+            idempotencyKey: `assistant:${logicalTurnId}`,
+            role: "assistant",
+            content,
+          } satisfies PersistedTurnInput;
+          persistTurn(input, threadKey);
+        },
+        onInterrupted: (turn) => {
+          if (!isCurrentOrigin()) {
+            return;
+          }
+          retryTurnRef.current = turn;
+          const key = persistenceRef.current.threadKey;
+          if (key !== null) {
+            setRetryState({ key, turn, isRetrySafe: turn.isRetrySafe });
+          }
+        },
+      };
+    },
+    [canvasId, currentThreadKey, persistTurn, sessionId],
+  );
+  const controller = useMemo(
+    () =>
+      threadId === null
+        ? null
+        : createFlockChatController({
+            chatId: threadId,
+          }),
+    [threadId],
+  );
   const [isMockEnabled, setIsMockEnabledState] = useState(false);
 
-  const chat = useChat<FlockChatMessage>({ chat: controller.chat });
+  const chat = useChat<FlockChatMessage>(controller === null ? undefined : { chat: controller.chat });
+  const { setMessages } = chat;
+
+  const [hydratedThreadKey, setHydratedThreadKey] = useState<string | null>(null);
+  const hydratedSnapshotRef = useRef<{
+    threadKey: string;
+    turns: readonly PersistedChatTurn[];
+  } | null>(null);
+  useEffect(() => {
+    if (controller === null || persistedTurns === undefined) {
+      return;
+    }
+    if (currentThreadKey === null) {
+      return;
+    }
+    const isSamePersistedSnapshot =
+      hydratedSnapshotRef.current?.threadKey === currentThreadKey &&
+      hydratedSnapshotRef.current.turns === persistedTurns;
+    if (
+      !shouldApplyChatHydration({
+        currentThreadKey,
+        hydratedThreadKey,
+        persistedTurns,
+        isSamePersistedSnapshot,
+      })
+    ) {
+      return;
+    }
+    hydratedSnapshotRef.current = { threadKey: currentThreadKey, turns: persistedTurns };
+    setMessages((liveMessages) =>
+      mergePersistedChatMessages(toPersistedChatMessages(persistedTurns), liveMessages),
+    );
+    queueMicrotask(() => {
+      setHydratedThreadKey(currentThreadKey);
+    });
+  }, [controller, currentThreadKey, hydratedThreadKey, persistedTurns, setMessages]);
+  useEffect(() => {
+    if (controller !== null) {
+      controller.setTurnLifecycle(lifecycle);
+    }
+  }, [controller, lifecycle]);
+  useEffect(() => {
+    if (controller === null) {
+      return;
+    }
+    return () => {
+      controller.dispose();
+    };
+  }, [controller]);
 
   /*
     Saved-sections runtime for the agent's `saved:<id>` scaffold calls:
     reactive rows (a delete/save reflects immediately) + the fails-soft
     usage recorder, pushed into the controller's closure on every change.
   */
-  const sessionId = useEditorStore((state) => state.authorId);
   const savedSections = useQuery(
     api.savedSections.listForSession,
     sessionId === null ? "skip" : { sessionId },
   );
   const recordSavedSectionUse = useMutation(api.savedSections.recordUse);
   useEffect(() => {
+    if (controller === null) {
+      return;
+    }
     controller.setSavedSectionsRuntime({
       rows: savedSections ?? [],
       recordUse: (savedSectionId) => {
@@ -1123,6 +1627,9 @@ export function useFlockChat(): FlockChat {
   const { brandKit } = useActiveBrandKit();
   const kitThemes: NamedTheme[] = readCanvasThemeCandidates(brandKit);
   useEffect(() => {
+    if (controller === null) {
+      return;
+    }
     controller.setCreateDrafts(async (command) => {
       const { canvasId, documentId, doc } = useEditorStore.getState();
       if (canvasId === null || documentId === null) {
@@ -1173,6 +1680,9 @@ export function useFlockChat(): FlockChat {
     other draft is reached by name, through the canvas's own listing.
   */
   useEffect(() => {
+    if (controller === null) {
+      return;
+    }
     controller.setApplyTheme(async (command) => {
       const { canvasId, documentId, doc } = useEditorStore.getState();
       if (canvasId === null) {
@@ -1196,10 +1706,30 @@ export function useFlockChat(): FlockChat {
 
   const sendUserMessage = (text: string): void => {
     const trimmedText = text.trim();
-    if (trimmedText.length === 0) {
+    if (trimmedText.length === 0 || controller === null || !isReady) {
       return;
     }
-    controller.beginUserTurn();
+    const logicalTurnId = crypto.randomUUID();
+    const userMessageId = `user:${logicalTurnId}`;
+    const turn = { logicalTurnId, userMessageId, text: trimmedText };
+    retryTurnRef.current = null;
+    setRetryState(null);
+    controller.beginUserTurn(turn);
+    const { canvasId: currentCanvasId, sessionId: currentSessionId, persistFinalizedTurn: persist } =
+      persistenceRef.current;
+    if (currentCanvasId !== null && currentSessionId !== null && persist !== null) {
+      const input = {
+        canvasId: currentCanvasId,
+        sessionId: currentSessionId,
+        turnId: userMessageId,
+        idempotencyKey: `user:${logicalTurnId}`,
+        role: "user",
+        content: trimmedText,
+      } satisfies PersistedTurnInput;
+      if (currentThreadKey !== null) {
+        persistTurn(input, currentThreadKey);
+      }
+    }
     chat.clearError();
     /*
       A drafts-menu AI send (pending-generation-request.ts) carries a second,
@@ -1210,10 +1740,11 @@ export function useFlockChat(): FlockChat {
     */
     const generationRequest = takeGenerationRequest();
     if (generationRequest === null) {
-      void chat.sendMessage({ text: trimmedText });
+      void chat.sendMessage({ text: trimmedText, messageId: userMessageId });
       return;
     }
     void chat.sendMessage({
+      messageId: userMessageId,
       parts: [
         { type: "text", text: trimmedText },
         { type: GENERATION_REQUEST_DATA_PART_TYPE, data: generationRequest },
@@ -1228,26 +1759,85 @@ export function useFlockChat(): FlockChat {
     approvalId: string;
     isApproved: boolean;
   }): void => {
+    if (controller === null || !isReady) {
+      return;
+    }
     void chat.addToolApprovalResponse({ id: approvalId, approved: isApproved });
   };
 
   const setIsMockEnabled = (nextIsMockEnabled: boolean): void => {
-    controller.setIsMockEnabled(nextIsMockEnabled);
+    controller?.setIsMockEnabled(nextIsMockEnabled);
     setIsMockEnabledState(nextIsMockEnabled);
   };
 
   const getIsAgentIdle = (): boolean =>
-    controller.chat.status === "ready" && !getHasPendingApproval(controller.chat.messages);
+    controller !== null &&
+    controller.chat.status === "ready" &&
+    !getHasPendingApproval(controller.chat.messages);
+
+  const retryLastTurn = (): void => {
+    const turn = retryTurnRef.current;
+    const isRetrySafe = retryState?.key === currentThreadKey && retryState.isRetrySafe;
+    if (turn === null || controller === null || !isReady || !isRetrySafe) {
+      return;
+    }
+    controller.beginUserTurn(turn);
+    setRetryState(null);
+    chat.clearError();
+    void chat.sendMessage({ text: turn.text, messageId: turn.userMessageId });
+  };
+
+  const retryPersistence = (): void => {
+    const persist = persistenceRef.current.persistFinalizedTurn;
+    const threadKey = persistenceRef.current.threadKey;
+    if (persist === null || threadKey === null) {
+      return;
+    }
+    const pending = Array.from(pendingPersistenceRef.current.values()).filter(
+      (item) => item.threadKey === threadKey,
+    );
+    for (const item of pending) {
+      persistTurn(item.input, threadKey);
+    }
+  };
+
+  const retryThreadProvisioning = useCallback((): void => {
+    setThreadProvisioningError(undefined);
+    setThreadProvisioningAttempt((attempt) => attempt + 1);
+  }, []);
+
+  const isReady =
+    controller !== null &&
+    threadId !== null &&
+    persistedTurns !== undefined &&
+    hydratedThreadKey === currentThreadKey;
 
   return {
-    messages: chat.messages,
-    status: chat.status,
-    error: chat.error,
+    messages: isReady ? chat.messages : [],
+    status: isReady ? chat.status : "ready",
+    error: isReady ? chat.error : undefined,
+    isReady,
     sendUserMessage,
     respondToApproval,
     hasPendingApproval: getHasPendingApproval(chat.messages),
     getIsAgentIdle,
     isMockEnabled,
     setIsMockEnabled,
+    retryLastTurn,
+    isRetryAvailable: isReady && retryState?.key === currentThreadKey && retryState.isRetrySafe,
+    retryNotice:
+      isReady && retryState?.key === currentThreadKey && !retryState.isRetrySafe
+        ? "This response may have already changed your email. Flock won't replay it automatically; send a fresh instruction if you still need a change."
+        : undefined,
+    persistenceError:
+      persistenceError?.key === currentThreadKey ? persistenceError.message : undefined,
+    retryPersistence,
+    threadProvisioningError: getVisibleThreadProvisioningError({
+      error: threadProvisioningError?.message,
+      errorKey: threadProvisioningError?.key,
+      currentCanvasKey: provisioningKey,
+      hasThread: chatThread !== null || ensuredThread?.canvasId === canvasId,
+    }),
+    retryThreadProvisioning,
   };
 }

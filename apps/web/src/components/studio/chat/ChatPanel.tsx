@@ -146,6 +146,14 @@ export function ChatPanel() {
     respondToApproval,
     hasPendingApproval,
     getIsAgentIdle,
+    isReady: isChatReady,
+    retryLastTurn,
+    isRetryAvailable,
+    retryNotice,
+    persistenceError,
+    retryPersistence,
+    threadProvisioningError,
+    retryThreadProvisioning,
   } = useFlockChat();
   const promptHistory = usePromptHistory();
 
@@ -171,7 +179,8 @@ export function ChatPanel() {
     sendChatMessage(text);
   };
 
-  const isAgentBusy = status === "submitted" || status === "streaming" || hasPendingApproval;
+  const isAgentBusy =
+    !isChatReady || status === "submitted" || status === "streaming" || hasPendingApproval;
   const isErrorPaused = status === "error";
   /*
     Broadcast for surfaces outside this panel (drafts menu AI items) —
@@ -189,7 +198,7 @@ export function ChatPanel() {
   const queue = useMessageQueue({
     documentId,
     getActiveDocumentId: () => useEditorStore.getState().documentId,
-    isAgentIdle: status === "ready" && !hasPendingApproval,
+    isAgentIdle: isChatReady && status === "ready" && !hasPendingApproval,
     isErrorPaused,
     getIsAgentIdle,
     sendUserMessage,
@@ -398,7 +407,27 @@ export function ChatPanel() {
 
         <ChatMessageList
           messages={messages}
-          error={error}
+          error={
+            error ??
+            (threadProvisioningError === undefined
+              ? persistenceError === undefined
+                ? undefined
+                : new Error(persistenceError)
+              : new Error(threadProvisioningError))
+          }
+          isRetryAvailable={
+            threadProvisioningError !== undefined ||
+            persistenceError !== undefined ||
+            isRetryAvailable
+          }
+          retryNotice={retryNotice}
+          onRetry={
+            threadProvisioningError !== undefined
+              ? retryThreadProvisioning
+              : persistenceError !== undefined
+                ? retryPersistence
+                : retryLastTurn
+          }
           isAwaitingResponse={status === "submitted"}
           isTurnInProgress={status === "submitted" || status === "streaming"}
           onApprovalResponse={respondToApproval}
@@ -442,6 +471,11 @@ export function ChatPanel() {
           below is still mounted, just clipped inside the 48px rail.
         */}
         <div className="shrink-0 border-t p-3" data-testid="chat-composer">
+          {!isChatReady && (
+            <p className="pb-2 text-xs text-muted-foreground" data-testid="chat-hydrating">
+              Loading this canvas&apos;s conversation…
+            </p>
+          )}
           {speechErrorMessage !== null && (
             <p className="pb-2 text-xs text-destructive" data-testid="composer-speech-error">
               {speechErrorMessage}
@@ -494,6 +528,7 @@ export function ChatPanel() {
               <Textarea
                 ref={composerTextareaRef}
                 value={draftText}
+                disabled={!isChatReady}
                 onChange={(event) => setDraftText(event.target.value)}
                 onKeyDown={handleComposerKeyDown}
                 placeholder={
@@ -533,7 +568,7 @@ export function ChatPanel() {
               label={isAgentBusy || hasQueuedMessages ? "Add message to queue" : "Send message"}
             >
               <Button
-                disabled={draftText.trim().length === 0}
+                disabled={!isChatReady || draftText.trim().length === 0}
                 size="icon-lg"
                 aria-label={isAgentBusy || hasQueuedMessages ? "Queue message" : "Send message"}
                 tabIndex={isExpanded ? 0 : -1}

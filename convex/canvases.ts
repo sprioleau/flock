@@ -1,4 +1,5 @@
 import { ConvexError, v } from "convex/values";
+import { internal } from "./_generated/api";
 import type { Doc, Id } from "./_generated/dataModel";
 import {
   internalMutation,
@@ -8,6 +9,7 @@ import {
   type QueryCtx,
 } from "./_generated/server";
 import { resolveOwnerIdOrNull } from "./authIdentity";
+import { deleteCanvasChat } from "./chat";
 import { emailDocumentValidator } from "./schema";
 import { loadDocumentState } from "./model/emailDocuments";
 import {
@@ -740,6 +742,26 @@ export const deleteCanvas = mutation({
       }
     }
 
+    if (!isComplete) {
+      await ctx.scheduler.runAfter(0, internal.canvases.deleteCanvasContinuation, {
+        canvasId: args.canvasId,
+      });
+    }
+
+    if (isComplete && drafts.length === 0) {
+      const chatResult = await deleteCanvasChat({
+        ctx,
+        canvasId: args.canvasId,
+        budget,
+      });
+      if (!chatResult.isComplete) {
+        await ctx.scheduler.runAfter(0, internal.canvases.deleteCanvasContinuation, {
+          canvasId: args.canvasId,
+        });
+        isComplete = false;
+      }
+    }
+
     if (isComplete) {
       /*
         The cascade deletes the canvas row itself on its last document (step
@@ -758,6 +780,50 @@ export const deleteCanvas = mutation({
       deletedDraftCount: stats.deletedDocuments,
       isComplete,
     };
+  },
+});
+
+/*
+  Resume a whole-canvas delete after its shared row budget was exhausted.
+  The canvas remains as the durable deletion marker until every draft and chat
+  row is gone, so a large draft cannot strand the remaining drafts or history.
+*/
+export const deleteCanvasContinuation = internalMutation({
+  args: { canvasId: v.id("canvases") },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    const canvas = await ctx.db.get(args.canvasId);
+    if (canvas === null) {
+      return null;
+    }
+
+    const drafts = await ctx.db
+      .query("documents")
+      .withIndex("by_canvasId", (q) => q.eq("canvasId", args.canvasId))
+      .collect();
+    const budget = { remaining: MAX_ROW_DELETIONS_PER_RUN };
+    const stats = createEmptyCleanupStats();
+    for (const draft of drafts) {
+      const result = await deleteDocumentCascade({ ctx, document: draft, budget, stats });
+      if (!result.isComplete) {
+        await ctx.scheduler.runAfter(0, internal.canvases.deleteCanvasContinuation, args);
+        return null;
+      }
+    }
+
+    const chatResult = await deleteCanvasChat({ ctx, canvasId: args.canvasId, budget });
+    if (!chatResult.isComplete) {
+      await ctx.scheduler.runAfter(0, internal.canvases.deleteCanvasContinuation, args);
+      return null;
+    }
+
+    const survivingCanvas = await ctx.db.get(args.canvasId);
+    if (survivingCanvas === null) {
+      return null;
+    }
+    await ctx.db.delete(args.canvasId);
+    await deleteCanvasOwnerRows(ctx, { canvasId: args.canvasId });
+    return null;
   },
 });
 

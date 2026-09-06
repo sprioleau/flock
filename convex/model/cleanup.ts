@@ -1,6 +1,7 @@
 import { components } from "../_generated/api";
 import type { Doc, Id } from "../_generated/dataModel";
 import type { MutationCtx } from "../_generated/server";
+import { deleteCanvasChat } from "../chat";
 import { isUrlRegisteredAsset } from "./assets";
 import { collectRowStorageIds } from "./brandKitAssets";
 import { deleteBlockSyncDoc } from "./textBlockSync";
@@ -52,7 +53,8 @@ import { deleteBlockSyncDoc } from "./textBlockSync";
        rows; a handful per document at most), then the document's comment
        threads (comments mode; bounded per canvas)
     6. the document row
-    7. the parent canvas, iff it now holds no documents (canvases own
+    7. the canvas chat turns and thread, iff it now holds no documents
+    8. the parent canvas, iff it now holds no documents (canvases own
        documents; an empty canvas of an unclaimed session is dead weight)
 
   The cascade is shared with the USER-INVOKED draft delete
@@ -358,6 +360,11 @@ export async function deleteDocumentCascade({
   stats: CleanupStats;
 }): Promise<{ isComplete: boolean }> {
   const documentId = document._id;
+  const canvasDocuments = await ctx.db
+    .query("documents")
+    .withIndex("by_canvasId", (q) => q.eq("canvasId", document.canvasId))
+    .collect();
+  const isLastDocument = canvasDocuments.every((row) => row._id === documentId);
 
   /*
     1. Operation rows — the only table that can be large per document; paged.
@@ -480,6 +487,23 @@ export async function deleteDocumentCascade({
   }
 
   /*
+    5c. The one chat thread belongs to the canvas, not to a draft. Delete it
+    only when this is the last draft, and do so BEFORE the document row: the
+    document remains the resumability marker if the chat history exhausts the
+    shared row budget.
+  */
+  if (isLastDocument) {
+    const chatResult = await deleteCanvasChat({
+      ctx,
+      canvasId: document.canvasId,
+      budget,
+    });
+    if (!chatResult.isComplete) {
+      return { isComplete: false };
+    }
+  }
+
+  /*
     6. The document row, LAST — its presence is the resumption marker.
   */
   if (budget.remaining <= 0) {
@@ -496,11 +520,7 @@ export async function deleteDocumentCascade({
     THIS one (it reuses this cascade for whole-canvas deletion); a dangling
     owner row is otherwise immortal, since nothing else ever revisits it.
   */
-  const survivingSibling = await ctx.db
-    .query("documents")
-    .withIndex("by_canvasId", (q) => q.eq("canvasId", document.canvasId))
-    .first();
-  if (survivingSibling === null) {
+  if (isLastDocument) {
     const canvas = await ctx.db.get(document.canvasId);
     if (canvas !== null) {
       const ownerRows = await ctx.db

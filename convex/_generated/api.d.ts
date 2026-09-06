@@ -19,6 +19,7 @@ import type * as authMigration from "../authMigration.js";
 import type * as authTestSends from "../authTestSends.js";
 import type * as brandKits from "../brandKits.js";
 import type * as canvases from "../canvases.js";
+import type * as chat from "../chat.js";
 import type * as cleanup from "../cleanup.js";
 import type * as comments from "../comments.js";
 import type * as crons from "../crons.js";
@@ -58,6 +59,7 @@ declare const fullApi: ApiFromModules<{
   authTestSends: typeof authTestSends;
   brandKits: typeof brandKits;
   canvases: typeof canvases;
+  chat: typeof chat;
   cleanup: typeof cleanup;
   comments: typeof comments;
   crons: typeof crons;
