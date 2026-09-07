@@ -1,6 +1,9 @@
 import { describe, expect, it, vi } from "vitest";
+import { createUIMessageStream, type UIMessageChunk } from "ai";
+import { Chat } from "@ai-sdk/react";
 import type { FlockChatMessage } from "@/lib/chat-contract";
 import {
+  createUserChatMessage,
   getChatMessageText,
   getVisibleThreadProvisioningError,
   isChatLifecycleCurrent,
@@ -17,6 +20,96 @@ function message(
 }
 
 describe("durable canvas chat mapping", () => {
+  it("keeps a stable custom id on a new user message without entering replacement mode", async () => {
+    const requests: FlockChatMessage[][] = [];
+    const transport = {
+      sendMessages: ({ messages }: { messages: FlockChatMessage[] }) => {
+        requests.push(messages);
+        return Promise.resolve(createAssistantStream("received"));
+      },
+      reconnectToStream: async (): Promise<ReadableStream<UIMessageChunk> | null> => null,
+    };
+    const chat = new Chat<FlockChatMessage>({ id: "thread-1", transport });
+    const userMessageId = "user:turn-1";
+
+    await expect(
+      chat.sendMessage(createUserChatMessage({ id: userMessageId, text: "Make a draft" })),
+    ).resolves.toBeUndefined();
+
+    expect(requests[0]?.[0]).toMatchObject({
+      id: userMessageId,
+      role: "user",
+      parts: [{ type: "text", text: "Make a draft" }],
+    });
+    expect(chat.messages.some((message) => message.role === "assistant")).toBe(true);
+  });
+
+  it("preserves generation metadata on the first message and streams repeated turns", async () => {
+    const requests: FlockChatMessage[][] = [];
+    const transport = {
+      sendMessages: ({ messages }: { messages: FlockChatMessage[] }) => {
+        requests.push(messages);
+        return Promise.resolve(createAssistantStream(`reply-${requests.length}`));
+      },
+      reconnectToStream: async (): Promise<ReadableStream<UIMessageChunk> | null> => null,
+    };
+    const chat = new Chat<FlockChatMessage>({ id: "thread-2", transport });
+    const firstId = "user:turn-1";
+    const secondId = "user:turn-2";
+
+    await expect(
+      chat.sendMessage(
+        createUserChatMessage({
+          id: firstId,
+          text: "Create from this source",
+          generationRequest: {
+            kind: "ideate",
+            sourceDocumentId: "doc-source",
+            direction: "Keep the visual language",
+          },
+        }),
+      ),
+    ).resolves.toBeUndefined();
+    await expect(
+      chat.sendMessage(createUserChatMessage({ id: secondId, text: "Now make another version" })),
+    ).resolves.toBeUndefined();
+
+    expect(requests).toHaveLength(2);
+    expect(requests[0]?.[0]).toMatchObject({ id: firstId, role: "user" });
+    expect(requests[0]?.[0]?.parts[1]).toMatchObject({
+      type: "data-generation-request",
+      data: { sourceDocumentId: "doc-source" },
+    });
+    expect(requests[1]?.at(-1)).toMatchObject({ id: secondId, role: "user" });
+    expect(chat.messages.filter((message) => message.role === "assistant")).toHaveLength(2);
+    expect(chat.messages.map((message) => message.id)).toContain(firstId);
+    expect(chat.messages.map((message) => message.id)).toContain(secondId);
+  });
+
+  it("uses replacement mode only when retrying an existing user message", async () => {
+    const requests: FlockChatMessage[][] = [];
+    const transport = {
+      sendMessages: ({ messages }: { messages: FlockChatMessage[] }) => {
+        requests.push(messages);
+        return Promise.resolve(createAssistantStream("retry response"));
+      },
+      reconnectToStream: async (): Promise<ReadableStream<UIMessageChunk> | null> => null,
+    };
+    const chat = new Chat<FlockChatMessage>({ id: "thread-3", transport });
+    const userMessageId = "user:turn-1";
+
+    await chat.sendMessage(createUserChatMessage({ id: userMessageId, text: "Try this" }));
+    await expect(chat.sendMessage({ text: "Try this again", messageId: userMessageId })).resolves
+      .toBeUndefined();
+
+    expect(requests).toHaveLength(2);
+    expect(requests[1]?.filter((message) => message.role === "user")).toHaveLength(1);
+    expect(requests[1]?.find((message) => message.role === "user")).toMatchObject({
+      id: userMessageId,
+      parts: [{ type: "text", text: "Try this again" }],
+    });
+  });
+
   it("hydrates ordered persisted turns as text parts", () => {
     const messages = toPersistedChatMessages([
       { turnId: "assistant-1", role: "assistant", content: "Done", sequence: 2 },
@@ -315,3 +408,14 @@ describe("durable canvas chat mapping", () => {
     ).toBe(false);
   });
 });
+
+function createAssistantStream(text: string): ReadableStream<UIMessageChunk> {
+  return createUIMessageStream<FlockChatMessage>({
+    execute: ({ writer }) => {
+      writer.write({ type: "text-start", id: "text-1" });
+      writer.write({ type: "text-delta", id: "text-1", delta: text });
+      writer.write({ type: "text-end", id: "text-1" });
+      writer.write({ type: "finish", finishReason: "stop" });
+    },
+  });
+}

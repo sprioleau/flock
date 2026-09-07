@@ -1,7 +1,10 @@
 import { convertToModelMessages, type ModelMessage } from "ai";
 import { describe, expect, it } from "vitest";
 import type { FlockChatMessage } from "@/lib/chat-contract";
-import { sanitizeReplayedToolInputs } from "./replayed-tool-inputs";
+import {
+  sanitizeModelToolCallInputs,
+  sanitizeReplayedToolInputs,
+} from "./replayed-tool-inputs";
 
 /*
   Regression for the live turn-level failure (owner repro, 2026-08-13): a
@@ -89,6 +92,23 @@ describe("sanitizeReplayedToolInputs", () => {
       expect(input).toBeInstanceOf(Object);
       expect(Array.isArray(input)).toBe(false);
     }
+  });
+
+  it("repairs a converted assistant call before it reaches the provider", async () => {
+    const history = buildHistory({
+      type: "tool-addSection",
+      toolCallId: "call_1",
+      state: "output-error",
+      rawInput: TRUNCATED_ARGS,
+      errorText: "Invalid input: expected object, received string",
+    });
+    const converted = await convertToModelMessages(history, {
+      ignoreIncompleteToolCalls: true,
+    });
+
+    const sanitized = sanitizeModelToolCallInputs(converted);
+    expect(readToolCallInputs(sanitized)).toEqual([{}]);
+    expect(sanitized).not.toBe(converted);
   });
 
   it("quotes the unparseable text into the error the model reads", () => {

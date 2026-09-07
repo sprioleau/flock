@@ -32,7 +32,6 @@ import { buildInsertSavedSectionPlan } from "@/lib/saved-sections";
 import {
   CHAT_API_PATH,
   editorCommandDataPartSchema,
-  GENERATION_REQUEST_DATA_PART_TYPE,
   MOCK_MODEL_HEADER,
   validateAndClassifyOp,
   type FlockChatMessage,
@@ -81,6 +80,7 @@ import {
   isChatLifecycleCurrent,
   isInterruptedTurnRetrySafe,
   mergePersistedChatMessages,
+  createUserChatMessage,
   shouldApplyChatHydration,
   toPersistedChatMessages,
   type PersistedChatTurn,
@@ -1740,16 +1740,16 @@ export function useFlockChat(): FlockChat {
     */
     const generationRequest = takeGenerationRequest();
     if (generationRequest === null) {
-      void chat.sendMessage({ text: trimmedText, messageId: userMessageId });
+      void chat.sendMessage(createUserChatMessage({ id: userMessageId, text: trimmedText }));
       return;
     }
-    void chat.sendMessage({
-      messageId: userMessageId,
-      parts: [
-        { type: "text", text: trimmedText },
-        { type: GENERATION_REQUEST_DATA_PART_TYPE, data: generationRequest },
-      ],
-    });
+    void chat.sendMessage(
+      createUserChatMessage({
+        id: userMessageId,
+        text: trimmedText,
+        generationRequest,
+      }),
+    );
   };
 
   const respondToApproval = ({

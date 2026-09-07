@@ -87,6 +87,22 @@ export function getShouldCommitDraftGroupEditOnBlur({
   return !isFocusWithinEditor;
 }
 
+export function getDraftGroupClickAction({
+  isNameTarget,
+  isInteractiveControl,
+}: {
+  isNameTarget: boolean;
+  isInteractiveControl: boolean;
+}): "rename" | "focus" | "ignore" {
+  if (isNameTarget) {
+    return "rename";
+  }
+  if (isInteractiveControl) {
+    return "ignore";
+  }
+  return "focus";
+}
+
 export function DraftGroupHeader({
   groupId,
   name,
@@ -139,7 +155,14 @@ export function DraftGroupHeader({
     setIsEditing(false);
   }
 
-  function handleFocusKeyDown(event: KeyboardEvent<HTMLButtonElement>): void {
+  function handleFocusKeyDown(event: KeyboardEvent<HTMLElement>): void {
+    if (
+      event.target instanceof Element &&
+      event.target !== event.currentTarget &&
+      event.target.closest("button, a, input, textarea, select") !== null
+    ) {
+      return;
+    }
     if (isDraftGroupRenameActivationKey(event) && onRenameGroup !== undefined) {
       event.preventDefault();
       beginEditing();
@@ -152,15 +175,23 @@ export function DraftGroupHeader({
     onFocusGroup(groupId);
   }
 
-  function handleGroupHeaderClick(event: MouseEvent<HTMLButtonElement>): void {
+  function handleGroupHeaderClick(event: MouseEvent<HTMLElement>): void {
     const isNameTarget =
       event.target instanceof Element &&
       event.target.closest("[data-action='rename-group-from-name']") !== null;
-    if (isNameTarget && onRenameGroup !== undefined) {
-      beginEditing();
-      return;
+    const isInteractiveControl =
+      event.target instanceof Element &&
+      event.target.closest("button, a, input, textarea, select") !== null;
+    const action = getDraftGroupClickAction({ isNameTarget, isInteractiveControl });
+    if (action === "rename") {
+      if (onRenameGroup !== undefined) {
+        beginEditing();
+      } else {
+        onFocusGroup(groupId);
+      }
+    } else if (action === "focus") {
+      onFocusGroup(groupId);
     }
-    onFocusGroup(groupId);
   }
 
   return (
@@ -172,6 +203,11 @@ export function DraftGroupHeader({
       )}
       data-draft-group-header
       data-draft-group-id={groupId}
+      data-action="focus-group"
+      aria-label={`Focus group ${name}`}
+      tabIndex={0}
+      onClick={handleGroupHeaderClick}
+      onKeyDown={handleFocusKeyDown}
       {...props}
     >
       {isEditing ? (
@@ -255,12 +291,33 @@ export function DraftGroupHeader({
             "min-w-0 flex-1 rounded-lg px-2 py-1 text-left outline-none transition-colors",
             "hover:bg-muted/70 focus-visible:ring-3 focus-visible:ring-ring/50",
           )}
-          onClick={handleGroupHeaderClick}
-          onKeyDown={handleFocusKeyDown}
-          aria-label={`Focus group ${name}`}
+          onClick={(event) => {
+            event.stopPropagation();
+            if (onRenameGroup !== undefined) {
+              beginEditing();
+            } else {
+              onFocusGroup(groupId);
+            }
+          }}
+          onKeyDown={(event) => {
+            if (isDraftGroupActivationKey(event)) {
+              event.stopPropagation();
+              return;
+            }
+            if (isDraftGroupRenameActivationKey(event) && onRenameGroup !== undefined) {
+              event.preventDefault();
+              event.stopPropagation();
+              beginEditing();
+            }
+          }}
+          aria-label={
+            onRenameGroup === undefined ? `Focus group ${name}` : `Rename group ${name}`
+          }
           aria-current={isFocused ? "true" : undefined}
           aria-describedby={description ? headerDescriptionId : undefined}
-          data-action="focus-group"
+          data-action={
+            onRenameGroup === undefined ? "focus-group" : "rename-group-from-name"
+          }
           data-testid="draft-group-focus-target"
         >
           <span className="flex min-w-0 items-center gap-2">
@@ -272,7 +329,6 @@ export function DraftGroupHeader({
               title={
                 onRenameGroup === undefined ? undefined : `Click to rename ${name}`
               }
-              data-action={onRenameGroup === undefined ? undefined : "rename-group-from-name"}
               data-draft-group-name
             >
               {name}

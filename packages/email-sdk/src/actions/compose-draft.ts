@@ -147,7 +147,7 @@ export type DraftSectionPlan = z.infer<typeof draftSectionPlanSchema>;
   Observed on a real turn: a complete five-section plan, every section valid,
   discarded because `shouldInheritTheme: true` sat one level too deep.
 */
-const CREATE_DRAFT_CALL_OPTION_KEYS = ["count", "shouldInheritTheme", "theme"] as const;
+const CREATE_DRAFT_CALL_OPTION_KEYS = ["count", "shouldInheritTheme", "theme", "groupName"] as const;
 
 /*
   Say where a misplaced key belongs, and only then that it is unrecognised.
@@ -234,6 +234,15 @@ export const createDraftInputSchema = z
       .describe(
         `Give the new drafts a DIFFERENT theme, by name: "${PAGE_THEME_REFERENCE}" for the colours and fonts read off the page you fetched this turn, or the name of one of this canvas's saved themes. Omit it to keep the theme the user is already on. Never pass a colour — you name a theme, you do not author one.`,
       ),
+    groupName: z
+      .string()
+      .trim()
+      .min(1)
+      .max(60)
+      .optional()
+      .describe(
+        "Create a new draft group with this name and place every draft from this call in it. Omit this when the drafts should stay with the current draft's group.",
+      ),
   })
   .describe(
     "Creates one or more NEW drafts alongside the current one, each a complete email (header, body, footer). The user's current draft is never touched.",
@@ -271,6 +280,13 @@ export const createDraftCommandSchema = z
       .describe(
         "The theme reference to resolve for the new drafts (absent = inherit). Resolved in the browser, which is the only place the page read this turn and the canvas's live kit both exist.",
       ),
+    groupName: z
+      .string()
+      .trim()
+      .min(1)
+      .max(60)
+      .optional()
+      .describe("The new group that owns every draft created by this command, when requested."),
   })
   .describe("Client command: add new drafts to the drafts bar, composed or empty.");
 
@@ -282,6 +298,7 @@ export type CreateDraftCommand = z.infer<typeof createDraftCommandSchema>;
 export function resolveCreateDraftCommand(input: CreateDraftInput): CreateDraftCommand {
   const shouldInheritTheme = input.shouldInheritTheme ?? true;
   const theme = input.theme === undefined ? {} : { theme: input.theme };
+  const group = input.groupName === undefined ? {} : { groupName: input.groupName };
   if (input.drafts !== undefined && input.drafts.length > 0) {
     return {
       type: "createDraft",
@@ -289,9 +306,10 @@ export function resolveCreateDraftCommand(input: CreateDraftInput): CreateDraftC
       drafts: input.drafts,
       shouldInheritTheme,
       ...theme,
+      ...group,
     };
   }
-  return { type: "createDraft", count: input.count ?? 1, shouldInheritTheme, ...theme };
+  return { type: "createDraft", count: input.count ?? 1, shouldInheritTheme, ...theme, ...group };
 }
 
 /*

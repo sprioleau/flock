@@ -2,6 +2,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
 import {
   DraftGroupHeader,
+  getDraftGroupClickAction,
   getDraftGroupEditExitAction,
   getShouldCommitDraftGroupEditOnBlur,
   isDraftGroupActivationKey,
@@ -54,6 +55,27 @@ describe("DraftGroupHeader", () => {
     expect(getDraftGroupEditExitAction({ key: "Enter" })).toBe("commit");
     expect(getDraftGroupEditExitAction({ key: "Escape" })).toBe("cancel");
     expect(getDraftGroupEditExitAction({ key: "ArrowRight" })).toBeNull();
+  });
+
+  it("routes a group title click to rename while preserving background focus", () => {
+    expect(
+      getDraftGroupClickAction({
+        isNameTarget: true,
+        isInteractiveControl: true,
+      }),
+    ).toBe("rename");
+    expect(
+      getDraftGroupClickAction({
+        isNameTarget: false,
+        isInteractiveControl: false,
+      }),
+    ).toBe("focus");
+    expect(
+      getDraftGroupClickAction({
+        isNameTarget: false,
+        isInteractiveControl: true,
+      }),
+    ).toBe("ignore");
   });
 
   it("commits only when focus leaves the complete group editor", () => {

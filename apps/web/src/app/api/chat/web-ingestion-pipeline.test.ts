@@ -223,6 +223,19 @@ describe('"add a new section based on my new article at <url>"', () => {
 
     expect(operation.index).toBe(doc[ROOT_BLOCK_ID].childrenIds.length);
   });
+
+  it("reads a source before composing a grouped draft without emitting a stream error", async () => {
+    const chunks = await runTurn(
+      `Make an email draft based on ${ARTICLE_URL}. Add it to a new group.`,
+    );
+
+    expect(toolCallSequence(chunks)).toEqual(["readWebPage", "createDraft"]);
+    expect(firstToolInput(chunks, "createDraft")).toMatchObject({
+      groupName: "Source page styles",
+      theme: "page",
+    });
+    expect(JSON.stringify(chunks)).not.toContain("Request contains an invalid argument");
+  });
 });
 
 /*

@@ -453,6 +453,42 @@ describe("a new draft's theme", () => {
   });
 });
 
+describe("a new draft group's target", () => {
+  it("creates the requested group and places every composed draft inside it", async () => {
+    const t = createBackend();
+    const canvasId = await seedCanvas(t);
+    const outcome = await createAgentDrafts({
+      convexClient: t,
+      canvasId,
+      sessionId: BROWSER_SESSION_ID,
+      command: resolveCreateDraftCommand({
+        groupName: "Resend milestone",
+        drafts: [
+          { name: "Milestone", sections: [{ templateId: "hero", params: { headline: "3M users" } }] },
+          { name: "Milestone alt", sections: [{ templateId: "article", params: { headline: "The road ahead" } }] },
+        ],
+      }),
+      sourceDoc: createEmptyDocument(),
+      hasIngestedSource: true,
+      authorId: CHAT_ID,
+      pageTheme: null,
+      kitThemes: [],
+      sourceGlobals: null,
+    });
+
+    const groups = await t.query(api.draftGroups.list, { canvasId });
+    const drafts = await t.query(api.documents.listDocumentsByCanvas, { canvasId });
+    expect(outcome.failureNotice).toBeNull();
+    expect(groups.map((group) => group.name)).toEqual(["Resend milestone"]);
+    expect(drafts.filter((draft) => outcome.createdDocumentIds.includes(draft._id))).toHaveLength(2);
+    expect(
+      drafts
+        .filter((draft) => outcome.createdDocumentIds.includes(draft._id))
+        .every((draft) => draft.groupId === groups[0]?._id),
+    ).toBe(true);
+  });
+});
+
 describe("a draft composed in a turn that ingested a source", () => {
   it("does not inherit the source draft's copy", async () => {
     const t = createBackend();

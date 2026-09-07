@@ -1,4 +1,8 @@
-import type { FlockChatMessage } from "@/lib/chat-contract";
+import {
+  GENERATION_REQUEST_DATA_PART_TYPE,
+  type FlockChatMessage,
+  type GenerationRequestDataPart,
+} from "@/lib/chat-contract";
 import { isStaticToolUIPart } from "ai";
 
 export interface PersistedChatTurn {
@@ -6,6 +10,33 @@ export interface PersistedChatTurn {
   role: "user" | "assistant";
   content: string;
   sequence: number;
+}
+
+/*
+  Build a new user message for AI SDK Chat.sendMessage.
+
+  `sendMessage({ messageId })` is the SDK's replacement/regeneration path: it
+  looks for an already-present user message with that id and throws when this
+  is the first message in a thread. New messages must carry their stable id
+  on the CreateUIMessage itself, while retries deliberately use messageId.
+*/
+export function createUserChatMessage({
+  id,
+  text,
+  generationRequest,
+}: {
+  id: string;
+  text: string;
+  generationRequest?: GenerationRequestDataPart;
+}): FlockChatMessage {
+  const parts: FlockChatMessage["parts"] = [{ type: "text", text }];
+  if (generationRequest !== undefined) {
+    parts.push({
+      type: GENERATION_REQUEST_DATA_PART_TYPE,
+      data: generationRequest,
+    });
+  }
+  return { id, role: "user", parts };
 }
 
 export function shouldApplyChatHydration({

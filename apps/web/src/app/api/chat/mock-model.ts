@@ -18,7 +18,7 @@ import type {
   UndoInput,
   UpdateBlockPropertiesOperation,
 } from "@flock/email-sdk";
-import type { ReadWebPageResult } from "@flock/agent";
+import type { ReadWebPagePayload, ReadWebPageResult } from "@flock/agent";
 import { simulateReadableStream } from "ai";
 import { MockLanguageModelV4 } from "ai/test";
 import {
@@ -187,6 +187,11 @@ function extractMockDraftSubject(lastUserText: string): string | null {
   return match?.[1]?.trim() ?? null;
 }
 
+function extractMockUrl(lastUserText: string): string | null {
+  const match = lastUserText.match(/https?:\/\/[^\s"'<>)]+/i);
+  return match?.[0].replace(/[.,!?;:]+$/, "") ?? null;
+}
+
 function buildMockDraftPlans({
   count,
   lastUserText,
@@ -338,6 +343,24 @@ export function planMockToolCall({
       acknowledgementText: "Redoing the change.",
     };
   }
+  /*
+    A source-backed draft must read its URL before planning the draft. Keep
+    this guard ahead of the generic draft matcher below; otherwise a prompt
+    such as "make an email draft based on https://example.com" skips the
+    source reader entirely in the deterministic path.
+  */
+  const sourceUrl = extractMockUrl(lastUserText);
+  if (
+    sourceUrl !== null &&
+    /\bdrafts?\b/i.test(lastUserText) &&
+    /\b(?:create|make|start|new)\b/i.test(lastUserText)
+  ) {
+    return {
+      toolName: "readWebPage",
+      input: { url: sourceUrl },
+      acknowledgementText: "Reading that page before building the draft.",
+    };
+  }
   const versionMatch = lastUserText.match(
     /\b(?:go (?:back )?to|restore|roll ?back(?: to)?)\b[\s\S]*\bversion\s*#?(\d+)/i,
   );
@@ -378,7 +401,10 @@ export function planMockToolCall({
     }
     return {
       toolName: "createDraft",
-      input: { drafts: buildMockDraftPlans({ count, lastUserText }) },
+      input: {
+        drafts: buildMockDraftPlans({ count, lastUserText }),
+        ...(/\bnew group\b/i.test(lastUserText) ? { groupName: "Source page styles" } : {}),
+      },
       acknowledgementText:
         count === 1
           ? "Putting a new draft together for you."
@@ -520,11 +546,11 @@ export function planMockToolCall({
     reader there is nothing to route, and it goes away as a consequence of the
     architecture rather than as a cleanup somebody had to remember.
   */
-  const urlMatch = lastUserText.match(/https?:\/\/[^\s"'<>)]+/i);
-  if (urlMatch !== null) {
+  const url = extractMockUrl(lastUserText);
+  if (url !== null) {
     return {
       toolName: "readWebPage",
-      input: { url: urlMatch[0] },
+      input: { url },
       acknowledgementText: "Reading that page now.",
     };
   }
@@ -852,9 +878,13 @@ function findIngestionToolResult(prompt: unknown): IngestionToolResult | null {
 function buildIngestionComposeChunks({
   ingestion,
   rootSectionCount,
+  shouldCreateDraft,
+  lastUserText,
 }: {
   ingestion: IngestionToolResult;
   rootSectionCount: number;
+  shouldCreateDraft: boolean;
+  lastUserText: string;
 }) {
   const usage = {
     inputTokens: { total: 10, noCache: 10, cacheRead: undefined, cacheWrite: undefined },
@@ -867,6 +897,38 @@ function buildIngestionComposeChunks({
       { type: "text-delta" as const, id: "text-refusal", delta: refusalMessage },
       { type: "text-end" as const, id: "text-refusal" },
       { type: "finish" as const, finishReason: { unified: "stop" as const, raw: undefined }, usage },
+    ];
+  }
+  if (shouldCreateDraft) {
+    const page = (ingestion.result as { isOk: true; page: ReadWebPagePayload }).page;
+    const sections = (page.sections ?? []).map((section) => ({
+      templateId: section.templateId,
+      params: section.params,
+    }));
+    if (sections.length === 0) {
+      sections.push({
+        templateId: "article",
+        params: {
+          headline: page.title,
+          body: page.description ?? page.blocks[0]?.text ?? page.sourceSummary,
+        },
+      });
+    }
+    const input = {
+      drafts: [{ name: page.title, sections }],
+      theme: "page" as const,
+      ...(/\bnew group\b/i.test(lastUserText) ? { groupName: "Source page styles" } : {}),
+    };
+    const toolCallId = `call_${crypto.randomUUID()}`;
+    const inputJson = JSON.stringify(input);
+    return [
+      { type: "text-start" as const, id: "text-compose-draft" },
+      { type: "text-delta" as const, id: "text-compose-draft", delta: "Building a draft from that page." },
+      { type: "text-end" as const, id: "text-compose-draft" },
+      { type: "tool-input-start" as const, id: toolCallId, toolName: "createDraft" },
+      { type: "tool-input-end" as const, id: toolCallId },
+      { type: "tool-call" as const, toolCallId, toolName: "createDraft", input: inputJson },
+      { type: "finish" as const, finishReason: { unified: "tool-calls" as const, raw: undefined }, usage },
     ];
   }
   /*
@@ -948,6 +1010,8 @@ export function createMockChatModel(input: CreateMockChatModelInput) {
               ...buildIngestionComposeChunks({
                 ingestion,
                 rootSectionCount: input.rootSectionCount ?? 0,
+                shouldCreateDraft: /\bdrafts?\b/i.test(input.lastUserText),
+                lastUserText: input.lastUserText,
               }),
             ],
           }),

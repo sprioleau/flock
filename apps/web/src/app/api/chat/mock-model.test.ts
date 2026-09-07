@@ -112,4 +112,14 @@ describe("planMockToolCall — a URL routes to the one page reader", () => {
     });
     expect(planned.input).toMatchObject({ url: "https://example.com/a/b?c=d" });
   });
+
+  it("reads a source before creating a draft and preserves the requested group intent", () => {
+    const planned = planMockToolCall({
+      lastUserText: "make an email draft based on https://resend.com/blog/3-million-users. Add it to a new group.",
+      selectedBlockId: undefined,
+    });
+
+    expect(planned.toolName).toBe("readWebPage");
+    expect(planned.input).toEqual({ url: "https://resend.com/blog/3-million-users" });
+  });
 });

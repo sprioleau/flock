@@ -48,6 +48,7 @@ import { computeNextDraftName } from "./draft-naming";
 type ListDocumentsByCanvas = typeof api.documents.listDocumentsByCanvas;
 type CreateDocument = typeof api.documents.createDocument;
 type ApplyOperations = typeof api.documents.applyOperations;
+type CreateDraftGroup = typeof api.draftGroups.create;
 
 /*
   The Convex surface this executor uses — spelled out as the THREE calls it
@@ -76,6 +77,10 @@ export interface AgentDraftsConvexClient {
     reference: ApplyOperations,
     args: FunctionArgs<ApplyOperations>,
   ): Promise<FunctionReturnType<ApplyOperations>>;
+  mutation(
+    reference: CreateDraftGroup,
+    args: FunctionArgs<CreateDraftGroup>,
+  ): Promise<FunctionReturnType<CreateDraftGroup>>;
 }
 
 export interface CreateAgentDraftsInput {
@@ -265,6 +270,13 @@ export async function createAgentDrafts({
     const sourceGroupId = existingDrafts.find(
       (draft) => draft._id === sourceDocumentId,
     )?.groupId;
+    const targetGroupId =
+      command.groupName === undefined
+        ? sourceGroupId
+        : await convexClient.mutation(api.draftGroups.create, {
+            canvasId,
+            name: command.groupName,
+          });
 
     for (let index = 0; index < requestedCount; index += 1) {
       const composed = composedDrafts[index];
@@ -281,7 +293,7 @@ export async function createAgentDrafts({
         sessionId,
         canvasId,
         name,
-        ...(sourceGroupId === undefined ? {} : { groupId: sourceGroupId }),
+        ...(targetGroupId === undefined ? {} : { groupId: targetGroupId }),
         /*
           A composed draft is built from its sections; seeding the starter
           email first would leave someone else's copy under the new one.

@@ -275,6 +275,11 @@ describe("createDraft input schema", () => {
     expect(createDraftInputSchema.safeParse({}).success).toBe(true);
   });
 
+  it("accepts a new group name as a call-level option", () => {
+    const parsed = createDraftInputSchema.safeParse({ count: 1, groupName: "Resend milestone" });
+    expect(parsed.success).toBe(true);
+  });
+
   it("rejects templateIds that are not in the section catalog", () => {
     const parsed = createDraftInputSchema.safeParse({
       drafts: [{ sections: [{ templateId: "not-a-template" }] }],
@@ -331,6 +336,15 @@ describe("resolveCreateDraftCommand", () => {
 
   it("honors an explicit opt-out of theme inheritance", () => {
     expect(resolveCreateDraftCommand({ shouldInheritTheme: false }).shouldInheritTheme).toBe(false);
+  });
+
+  it("carries the requested new group name into the client command", () => {
+    expect(resolveCreateDraftCommand({ count: 2, groupName: "Source page styles" })).toEqual({
+      type: "createDraft",
+      count: 2,
+      shouldInheritTheme: true,
+      groupName: "Source page styles",
+    });
   });
 });
 

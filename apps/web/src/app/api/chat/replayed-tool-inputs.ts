@@ -1,4 +1,4 @@
-import { isDynamicToolUIPart, isToolUIPart } from "ai";
+import { isDynamicToolUIPart, isToolUIPart, type ModelMessage } from "ai";
 import type { FlockChatMessage } from "@/lib/chat-contract";
 import { unwrapStringifiedToolInput } from "./model-schema";
 
@@ -150,6 +150,50 @@ export function sanitizeReplayedToolInputs(messages: FlockChatMessage[]): FlockC
       nextMessages = [...messages];
     }
     nextMessages[messageIndex] = { ...message, parts: nextParts };
+  }
+
+  return nextMessages;
+}
+
+/*
+  Keep the provider-facing boundary defensive as well as the UI-history
+  boundary above. The Google adapter writes assistant tool-call input directly
+  to protobuf Struct `functionCall.args`; a string or array there produces the
+  opaque "Request contains an invalid argument" response. This second pass is
+  intentionally small and idempotent: it protects callers that construct
+  ModelMessages outside the UI transport and documents the invariant at the
+  last point before a provider request is made.
+*/
+export function sanitizeModelToolCallInputs(messages: ModelMessage[]): ModelMessage[] {
+  let nextMessages = messages;
+
+  for (const [messageIndex, message] of messages.entries()) {
+    if (message.role !== "assistant" || !Array.isArray(message.content)) {
+      continue;
+    }
+    let nextContent = message.content;
+    for (const [partIndex, part] of message.content.entries()) {
+      if (part.type !== "tool-call") {
+        continue;
+      }
+      const input = (part as { input?: unknown }).input;
+      if (input === undefined || isJsonObject(input)) {
+        continue;
+      }
+      const unwrapped = unwrapStringifiedToolInput(input);
+      const safeInput = isJsonObject(unwrapped) ? unwrapped : {};
+      if (nextContent === message.content) {
+        nextContent = [...message.content];
+      }
+      nextContent[partIndex] = { ...part, input: safeInput } as typeof part;
+    }
+    if (nextContent === message.content) {
+      continue;
+    }
+    if (nextMessages === messages) {
+      nextMessages = [...messages];
+    }
+    nextMessages[messageIndex] = { ...message, content: nextContent };
   }
 
   return nextMessages;

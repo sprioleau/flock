@@ -10,6 +10,8 @@ Always run the relevant test suites and confirm the linter passes. For substanti
 
 Project documentation is currently git-ignored and stored in `/Users/temiloluwaprioleau/dev/flock/docs`. Use that directory for decisions, feature ideas, and other project knowledge that should persist beyond a session, except for next-agent handoffs, which stay in the desktop handoff directory documented above. When the owner asks what to build next, inspect the project docs and resurface relevant unbuilt ideas captured by previous session agents.
 
+The consolidated running ledger is `/Users/temiloluwaprioleau/dev/flock/docs/feature-backlog.md`. For every “what's next?”, “pending work”, or similar planning request, read the ledger and the detailed source proposal(s), resurface the relevant unbuilt ideas, and update the ledger when a feature's status changes. Keep the ledger's statuses evidence-based and preserve source documents as the detailed record.
+
 # Communication
 
 Respond to the owner in a straight-to-the-point manner. Include enough context to support decisions about direction, but omit highly detailed explanations unless the owner explicitly asks for them.

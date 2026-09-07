@@ -31,10 +31,11 @@ import {
 import { buildBrandContextBlock } from "./brand-context";
 import { expandGenerationBriefPart, resolveGenerationBrief } from "./generation-brief";
 import { buildSavedSectionsContext } from "./saved-sections-context";
-import { sanitizeReplayedToolInputs } from "./replayed-tool-inputs";
+import { sanitizeModelToolCallInputs, sanitizeReplayedToolInputs } from "./replayed-tool-inputs";
 import { resolveVerifiedCaller } from "./verified-caller";
 import { buildSystemContext } from "./system-context";
 import { buildChatTools } from "./tools";
+import { wrapModelWithTransientOverloadRetry } from "./transient-overload-retry";
 
 /**
  * The chat pipeline (Phase 3.2) — natural language in, streamed validated
@@ -413,16 +414,18 @@ async function runSinglePassPipeline(input: ChatPipelineInput): Promise<void> {
     hand `convertDataPart` a widened `data: unknown` part. Naming it keeps the
     hook's parameter as this app's own discriminated data-part union.
   */
-  const convertedMessages = await convertToModelMessages<FlockChatMessage>(sanitizedMessages, {
-    tools,
-    ignoreIncompleteToolCalls: true,
-    /*
-      The seam where a minimal human sentence and the targeted generation brief
-      become one user turn. Every other data part keeps being dropped, exactly
-      as it was when no hook was passed at all.
-    */
-    convertDataPart: (part) => expandGenerationBriefPart({ part, brief: generationBrief }),
-  });
+  const convertedMessages = sanitizeModelToolCallInputs(
+    await convertToModelMessages<FlockChatMessage>(sanitizedMessages, {
+      tools,
+      ignoreIncompleteToolCalls: true,
+      /*
+        The seam where a minimal human sentence and the targeted generation brief
+        become one user turn. Every other data part keeps being dropped, exactly
+        as it was when no hook was passed at all.
+      */
+      convertDataPart: (part) => expandGenerationBriefPart({ part, brief: generationBrief }),
+    }),
+  );
 
   /*
     Approval collection (collectToolApprovals) only runs when the FINAL
@@ -436,8 +439,12 @@ async function runSinglePassPipeline(input: ChatPipelineInput): Promise<void> {
     ? convertedMessages
     : [...convertedMessages, { role: "user", content: documentContext }];
 
+  const modelWithTransientOverloadRetry = isUsingMockModel
+    ? model
+    : wrapModelWithTransientOverloadRetry(model);
+
   const result = streamText({
-    model,
+    model: modelWithTransientOverloadRetry,
     system: staticInstructions,
     messages: modelMessages,
     tools,
@@ -454,7 +461,7 @@ async function runSinglePassPipeline(input: ChatPipelineInput): Promise<void> {
       integrations: [createModelTelemetry(telemetryContext)],
     },
     repairToolCall: createToolCallRepairer({
-      model,
+      model: modelWithTransientOverloadRetry,
       schemaOnlyTools,
       staticInstructions,
       telemetryContext,
