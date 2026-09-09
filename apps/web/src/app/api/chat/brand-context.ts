@@ -55,7 +55,7 @@ export function formatBrandThemeContextLine({
   const liveThemeNames = getLiveThemeVariations(variations).map((variation) => variation.name);
   const savedThemes =
     liveThemeNames.length === 0 ? "none" : liveThemeNames.join(", ");
-  return `An active saved brand kit is bound to this canvas: "${brandName}". Its live saved email themes are: ${savedThemes}. If a page read this turn also has a usable native theme, ask the user whether new drafts should use this current brand style or the page's native style before creating them.`;
+  return `An active saved brand kit is bound to this canvas: "${brandName}". Its live saved email themes are: ${savedThemes}. If a page read this turn also has a usable native theme, ask which style to use only when the user's request does not already choose one. Explicit source choices such as "use the blog post's style or design", "use the source page's style or design", "use the website's style or design", or "match the linked page" mean use the page style; explicit current-brand choices such as "use the current brand kit", "use the active brand style or design", "use our brand style/design", or "keep the current brand style" mean use this kit. A URL or "based on" alone is not a style choice.`;
 }
 
 /*

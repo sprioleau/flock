@@ -353,6 +353,40 @@ describe("source-page style choice", () => {
     expect(guidance).toContain("Do not call applyTheme, updateDocumentSettings");
   });
 
+  it("treats explicit source-style language in the request as the choice", () => {
+    const registry = buildAgentActionRegistry({
+      readWebPage: async () => ({ isOk: false, reason: "x", message: "x" }),
+      shouldIncludeWidgetActions: true,
+    });
+    const guidance = buildToolGuidance(registry);
+
+    expect(guidance).toMatch(/explicit source choice.{0,180}(?:source|page|blog|website).{0,100}(?:style|design)/is);
+    expect(guidance).toContain('pass `theme: "page"`');
+    expect(guidance).toContain('pass `theme: "page"` and do not ask a redundant style question');
+  });
+
+  it("treats explicit current-brand language as the choice", () => {
+    const registry = buildAgentActionRegistry({
+      readWebPage: async () => ({ isOk: false, reason: "x", message: "x" }),
+      shouldIncludeWidgetActions: true,
+    });
+    const guidance = buildToolGuidance(registry);
+
+    expect(guidance).toMatch(/explicit current-brand choice.{0,180}(?:current|active).{0,100}brand.{0,100}(?:style|design|kit)/is);
+    expect(guidance).toContain("omit `theme` so the new drafts inherit the current style and do not ask a redundant style question");
+  });
+
+  it("keeps asking when both styles are available but the request is ambiguous", () => {
+    const registry = buildAgentActionRegistry({
+      readWebPage: async () => ({ isOk: false, reason: "x", message: "x" }),
+      shouldIncludeWidgetActions: true,
+    });
+    const guidance = buildToolGuidance(registry);
+
+    expect(guidance).toMatch(/only when neither style is explicitly chosen should you.{0,160}(?:askForClarification|ask the user)/is);
+    expect(guidance).toContain("Which visual style should the new draft use?");
+  });
+
   it("re-reads the same page exactly once before creating after a later source-style answer", () => {
     const registry = buildAgentActionRegistry({
       readWebPage: async () => ({ isOk: false, reason: "x", message: "x" }),

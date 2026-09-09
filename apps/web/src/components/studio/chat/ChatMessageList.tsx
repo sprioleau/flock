@@ -3,6 +3,8 @@
 import { useEffect, useRef, useState } from "react";
 import { isStaticToolUIPart } from "ai";
 import { Loader2Icon, MessagesSquareIcon, TriangleAlertIcon, Undo2Icon } from "lucide-react";
+import Markdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import { parseChatErrorText, type FlockChatMessage } from "@/lib/chat-contract";
 import { useEditorStore } from "@/lib/editor-store";
 import { cn } from "@/lib/utils";
@@ -33,6 +35,24 @@ const RAW_WRAPPED_ERROR_CODES: ReadonlySet<string> = new Set([
   "stream_error",
   "op_validation_failed",
 ]);
+
+const CHAT_MARKDOWN_CLASSNAME = cn(
+  "break-words text-sm",
+  "[&>*:first-child]:mt-0 [&>*:last-child]:mb-0",
+  "[&_p]:my-2 [&_p]:leading-relaxed",
+  "[&_ul]:my-2 [&_ul]:list-disc [&_ul]:pl-5",
+  "[&_ol]:my-2 [&_ol]:list-decimal [&_ol]:pl-5",
+  "[&_li]:my-0.5",
+  "[&_a]:text-primary [&_a]:underline",
+  "[&_strong]:font-semibold [&_em]:italic",
+  "[&_blockquote]:my-2 [&_blockquote]:border-l-2 [&_blockquote]:border-border [&_blockquote]:pl-3",
+  "[&_code]:rounded [&_code]:bg-muted [&_code]:px-1 [&_code]:py-0.5 [&_code]:font-mono [&_code]:text-[0.85em]",
+  "[&_pre]:my-2 [&_pre]:overflow-x-auto [&_pre]:rounded [&_pre]:bg-muted [&_pre]:p-3",
+  "[&_pre_code]:bg-transparent [&_pre_code]:p-0",
+  "[&_table]:my-2 [&_table]:w-full [&_table]:border-collapse [&_table]:text-left",
+  "[&_th]:border [&_th]:border-border [&_th]:px-2 [&_th]:py-1 [&_th]:font-medium",
+  "[&_td]:border [&_td]:border-border [&_td]:px-2 [&_td]:py-1",
+);
 
 /*
   User-facing copy for a terminal turn failure. Structured payloads carry
@@ -299,9 +319,14 @@ function AssistantMessageParts({
             return null;
           }
           return (
-            <p key={key} className="break-words whitespace-pre-wrap text-sm">
-              {part.text}
-            </p>
+            <div
+              key={key}
+              className={cn("rounded-lg bg-muted/30 px-3 py-2", CHAT_MARKDOWN_CLASSNAME)}
+            >
+              <Markdown remarkPlugins={[remarkGfm]}>
+                {part.text}
+              </Markdown>
+            </div>
           );
         }
         /*

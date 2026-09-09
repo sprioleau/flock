@@ -114,14 +114,84 @@ export function mergePersistedChatMessages(
   persistedMessages: readonly FlockChatMessage[],
   liveMessages: readonly FlockChatMessage[],
 ): FlockChatMessage[] {
-  const byId = new Map<string, FlockChatMessage>();
+  /*
+    The live transcript is the only source that contains ephemeral parts such
+    as clarification widgets. Persisted assistant turns intentionally keep
+    text only, so a clarification can be live-only while the turns around it
+    already exist in the persisted snapshot. Merge by the live order wherever
+    the two snapshots share an id, then place missing live messages in the
+    corresponding gap instead of appending them to the transcript's end.
+  */
+  const persistedIndexById = new Map<string, number>();
+  const uniquePersistedMessages: FlockChatMessage[] = [];
   for (const message of persistedMessages) {
-    byId.set(message.id, message);
+    if (persistedIndexById.has(message.id)) {
+      continue;
+    }
+    persistedIndexById.set(message.id, uniquePersistedMessages.length);
+    uniquePersistedMessages.push(message);
   }
+
+  const liveById = new Map<string, FlockChatMessage>();
   for (const message of liveMessages) {
-    byId.set(message.id, message);
+    liveById.set(message.id, message);
   }
-  return [...byId.values()];
+
+  const liveOnlyBySlot = Array.from(
+    { length: uniquePersistedMessages.length + 1 },
+    () => [] as FlockChatMessage[],
+  );
+  const seenLiveOnlyIds = new Set<string>();
+  for (let liveIndex = 0; liveIndex < liveMessages.length; liveIndex += 1) {
+    const message = liveMessages[liveIndex]!;
+    const persistedIndex = persistedIndexById.get(message.id);
+    if (persistedIndex !== undefined || seenLiveOnlyIds.has(message.id)) {
+      continue;
+    }
+
+    let nextPersistedIndex: number | undefined;
+    for (
+      let nextLiveIndex = liveIndex + 1;
+      nextLiveIndex < liveMessages.length;
+      nextLiveIndex += 1
+    ) {
+      const candidateIndex = persistedIndexById.get(liveMessages[nextLiveIndex]!.id);
+      if (candidateIndex !== undefined) {
+        nextPersistedIndex = candidateIndex;
+        break;
+      }
+    }
+    let previousPersistedIndex = -1;
+    for (
+      let previousLiveIndex = liveIndex - 1;
+      previousLiveIndex >= 0;
+      previousLiveIndex -= 1
+    ) {
+      const candidateIndex = persistedIndexById.get(liveMessages[previousLiveIndex]!.id);
+      if (candidateIndex !== undefined) {
+        previousPersistedIndex = candidateIndex;
+        break;
+      }
+    }
+    const slot =
+      nextPersistedIndex === undefined
+        ? uniquePersistedMessages.length
+        : previousPersistedIndex >= 0
+          ? previousPersistedIndex + 1
+          : nextPersistedIndex;
+    liveOnlyBySlot[slot]!.push(message);
+    seenLiveOnlyIds.add(message.id);
+  }
+
+  const merged: FlockChatMessage[] = [];
+  for (let slot = 0; slot <= uniquePersistedMessages.length; slot += 1) {
+    merged.push(...liveOnlyBySlot[slot]!);
+    const persistedMessage = uniquePersistedMessages[slot];
+    if (persistedMessage !== undefined) {
+      merged.push(liveById.get(persistedMessage.id) ?? persistedMessage);
+    }
+  }
+  return merged;
 }
 
 /*

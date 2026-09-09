@@ -140,6 +140,69 @@ describe("durable canvas chat mapping", () => {
     ]);
   });
 
+  it("keeps a live clarification in its original turn when persisted turns omit it", () => {
+    const persisted = [
+      message({ id: "user-1", role: "user", text: "Create a draft from this page." }),
+      message({ id: "user-2", role: "user", text: "Use the source page style." }),
+      message({ id: "assistant-2", role: "assistant", text: "I created the draft." }),
+    ];
+    const live = [
+      persisted[0]!,
+      {
+        id: "assistant-1",
+        role: "assistant",
+        parts: [
+          {
+            type: "tool-askForClarification",
+            toolCallId: "clarification-1",
+            state: "input-available",
+            input: {
+              question: "Which visual style should the new draft use?",
+              options: ["Use the current brand kit", "Use the source page style"],
+            },
+          },
+        ],
+      },
+      persisted[1]!,
+      persisted[2]!,
+    ] as FlockChatMessage[];
+
+    expect(mergePersistedChatMessages(persisted, live).map((item) => item.id)).toEqual([
+      "user-1",
+      "assistant-1",
+      "user-2",
+      "assistant-2",
+    ]);
+  });
+
+  it("does not move a stale clarification after the newest assistant turn", () => {
+    const persisted = [
+      message({ id: "user-1", role: "user", text: "Create a draft." }),
+      message({ id: "assistant-2", role: "assistant", text: "Done." }),
+    ];
+    const clarification = {
+      id: "assistant-1",
+      role: "assistant" as const,
+      parts: [
+        {
+          type: "tool-askForClarification" as const,
+          toolCallId: "clarification-1",
+          state: "input-available" as const,
+          input: {
+            question: "Which style?",
+            options: ["Brand kit", "Source page"],
+          },
+        },
+      ],
+    } as FlockChatMessage;
+    const live = [persisted[0]!, clarification, persisted[1]!] as FlockChatMessage[];
+
+    const merged = mergePersistedChatMessages(persisted, live);
+    expect(merged.findIndex((item) => item.id === clarification.id)).toBeLessThan(
+      merged.findIndex((item) => item.id === "assistant-2"),
+    );
+  });
+
   it("applies one hydration snapshot once, then allows a changed snapshot", () => {
     const persistedTurns = [
       { turnId: "user-1", role: "user" as const, content: "Hello", sequence: 1 },

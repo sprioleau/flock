@@ -55,6 +55,16 @@ describe("formatBrandThemeContextLine", () => {
       }),
     ).toContain("live saved email themes are: none");
   });
+
+  it("reports kit metadata without forcing a style clarification", () => {
+    const line = formatBrandThemeContextLine({
+      brandName: "Flock",
+      variations: [{ name: "Midnight" }],
+    });
+
+    expect(line).toContain('active saved brand kit is bound to this canvas: "Flock"');
+    expect(line).not.toMatch(/ask the user|askForClarification|Which visual style/i);
+  });
 });
 
 describe("buildSystemContext brand line placement", () => {
