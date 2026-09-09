@@ -183,51 +183,241 @@ function harvestColorTokens(cssOrHtml: string): string[] {
   return normalized;
 }
 
+interface CssRule {
+  selector: string;
+  declarations: string;
+  atRuleContext: string[];
+}
+
+interface MarkupSelectors {
+  classNames: Set<string>;
+  idNames: Set<string>;
+  tagNames: Set<string>;
+}
+
+/*
+  The old extractor scanned the entire HTML document. That made colors in
+  scripts, source maps, unused framework rules, and hover/gradient states look
+  like rendered brand signals. Keep a small CSS parser here instead of adding
+  a dependency to the ingestion path: it only needs selectors, declarations,
+  and nested at-rule boundaries.
+*/
+function findClosingBrace(text: string, openingIndex: number): number {
+  let depth = 1;
+  for (let index = openingIndex + 1; index < text.length; index += 1) {
+    if (text[index] === "{") {
+      depth += 1;
+    } else if (text[index] === "}") {
+      depth -= 1;
+      if (depth === 0) {
+        return index;
+      }
+    }
+  }
+  return text.length;
+}
+
+function parseCssRules(cssText: string): CssRule[] {
+  const text = cssText.replace(/\/\*[\s\S]*?\*\//g, "").replace(/<\/?style\b[^>]*>/gi, "");
+  const rules: CssRule[] = [];
+  function visit({ start, end, atRuleContext }: { start: number; end: number; atRuleContext: string[] }): void {
+    let cursor = start;
+    while (cursor < end) {
+      const opening = text.indexOf("{", cursor);
+      if (opening < 0 || opening >= end) {
+        return;
+      }
+      const closing = Math.min(findClosingBrace(text, opening), end - 1);
+      const prelude = text.slice(cursor, opening).trim();
+      const body = text.slice(opening + 1, closing);
+      if (prelude.startsWith("@")) {
+        visit({ start: opening + 1, end: closing, atRuleContext: [...atRuleContext, prelude.toLowerCase()] });
+      } else if (body.includes("{")) {
+        visit({ start: opening + 1, end: closing, atRuleContext });
+      } else if (prelude.length > 0) {
+        rules.push({ selector: prelude, declarations: body, atRuleContext });
+      }
+      cursor = closing + 1;
+    }
+  }
+  visit({ start: 0, end: text.length, atRuleContext: [] });
+  return rules;
+}
+
+function collectMarkupSelectors(html: string): MarkupSelectors {
+  const classNames = new Set<string>();
+  const idNames = new Set<string>();
+  const tagNames = new Set<string>();
+  for (const match of html.matchAll(/<([a-z][a-z0-9-]*)\b([^>]*)>/gi)) {
+    const [, tagName, attributes = ""] = match;
+    tagNames.add(tagName.toLowerCase());
+    const classValue = attributes.match(/\bclass\s*=\s*(["'])(.*?)\1/i)?.[2] ?? "";
+    for (const className of classValue.split(/\s+/).filter(Boolean)) {
+      classNames.add(className);
+    }
+    const idValue = attributes.match(/\bid\s*=\s*(["'])(.*?)\1/i)?.[2];
+    if (idValue !== undefined) {
+      idNames.add(idValue);
+    }
+  }
+  return { classNames, idNames, tagNames };
+}
+
+const STATE_SELECTOR_PATTERN = /:(?:hover|focus|focus-visible|active|visited|target|checked|disabled|enabled|selected)\b/i;
+const SYNTAX_SELECTOR_PATTERN = /(?:\.token\b|\.hljs\b|\.prism\b|\bsyntax(?:-|\b)|\bhighlight(?:-|\b)|\blanguage-[\w-]+)/i;
+const HIDDEN_SELECTOR_PATTERN = /(?:\[hidden\]|\bhidden\b|aria-hidden\s*=\s*["']?true)/i;
+
+function isPotentiallyVisibleSelector({
+  selector,
+  atRuleContext,
+  markup,
+}: {
+  selector: string;
+  atRuleContext: string[];
+  markup: MarkupSelectors;
+}): boolean {
+  const normalized = selector.trim();
+  if (
+    normalized.length === 0 ||
+    STATE_SELECTOR_PATTERN.test(normalized) ||
+    SYNTAX_SELECTOR_PATTERN.test(normalized) ||
+    HIDDEN_SELECTOR_PATTERN.test(normalized) ||
+    atRuleContext.some((context) => /keyframes|property|font-face/i.test(context))
+  ) {
+    return false;
+  }
+  const selectors = normalized.split(",");
+  return selectors.some((candidate) => {
+    const classes = [...candidate.matchAll(/\.([a-z_][\w-]*)/gi)].map((match) => match[1]);
+    const ids = [...candidate.matchAll(/#([a-z_][\w-]*)/gi)].map((match) => match[1]);
+    if (classes.length > 0 || ids.length > 0) {
+      return (
+        classes.some((className) => markup.classNames.has(className)) ||
+        ids.some((idName) => markup.idNames.has(idName))
+      );
+    }
+    const element = candidate.match(/^\s*([a-z][a-z0-9-]*)\b/i)?.[1]?.toLowerCase();
+    return element === undefined || element === "root" || markup.tagNames.has(element);
+  });
+}
+
+const COLOR_PROPERTY_PATTERN = /^(?:accent-color|background(?:-color)?|border(?:-\w+)?|caret-color|color|column-rule(?:-color)?|fill|outline(?:-color)?|stroke|text-decoration-color|text-emphasis-color|text-shadow)$/i;
+
+function extractDeclarations(declarations: string): Array<{ property: string; value: string }> {
+  return [...declarations.matchAll(/((?:--)?[a-z][\w-]*)\s*:\s*([^;}]*)/gi)].map((match) => ({
+    property: match[1].toLowerCase(),
+    value: match[2],
+  }));
+}
+
 interface CustomPropertyColor {
   variableName: string;
   color: string;
   /*
-    How many times `var(--name)` is used across the scanned text.
+    How many times `var(--name)` is used in eligible declarations.
   */
   referenceCount: number;
 }
 
-const MAX_CUSTOM_PROPERTIES = 200;
+interface VisibleColorSignals {
+  colors: string[];
+  customPropertyColors: CustomPropertyColor[];
+}
 
-/*
-  CSS custom properties that hold a color, with their var() reference counts.
-  This is how design-system sites actually express their palette: the brand
-  accent is DECLARED once (`--ui-accent-1: #ffc400`) and referenced dozens of
-  times via var() — invisible to raw color-token frequency. The reference
-  count restores the color's true weight, and the variable name itself
-  ("accent", "brand", …) is a role hint for the model.
-*/
-function harvestCustomPropertyColors(text: string): CustomPropertyColor[] {
-  const definitions =
-    text.match(
-      /--[a-zA-Z0-9_-]+\s*:\s*(?:#[0-9a-f]{3,6}\b|rgba?\([\d\s.,%]{5,40}\)|hsla?\([\d\s.,%deg/]{5,40}\))/gi,
-    ) ?? [];
-  const results: CustomPropertyColor[] = [];
-  const seenNames = new Set<string>();
-  for (const definition of definitions.slice(0, MAX_CUSTOM_PROPERTIES)) {
-    const [rawName, ...valueParts] = definition.split(":");
-    const variableName = rawName.trim();
-    const color = normalizeCssColor(valueParts.join(":"));
-    if (color === null || seenNames.has(variableName)) {
+function extractInlineStyleAttributes(html: string): string[] {
+  return [...html.matchAll(/\bstyle\s*=\s*(["'])(.*?)\1/gi)].map((match) => match[2]);
+}
+
+function extractInlineSvgColors(html: string): string[] {
+  const colors: string[] = [];
+  for (const tag of html.matchAll(/<(?:svg|path|circle|ellipse|rect|line|polyline|polygon)\b[^>]*>/gi)) {
+    for (const attribute of tag[0].matchAll(/\b(?:fill|stroke|color)\s*=\s*(["'])(.*?)\1/gi)) {
+      colors.push(...harvestColorTokens(attribute[2]));
+    }
+  }
+  return colors;
+}
+
+function extractVisibleColorSignals({ html, cssText }: { html: string; cssText: string }): VisibleColorSignals {
+  const markup = collectMarkupSelectors(html);
+  const colors: string[] = [];
+  const definitions = new Map<string, { color: string; referenceCount: number }>();
+  const visibleReferences = new Map<string, number>();
+  const consumeDeclarations = ({
+    declarations,
+    shouldCountReferences,
+    shouldCountColors,
+  }: {
+    declarations: string;
+    shouldCountReferences: boolean;
+    shouldCountColors: boolean;
+  }): void => {
+    for (const { property, value } of extractDeclarations(declarations)) {
+      if (property.startsWith("--")) {
+        const color = normalizeCssColor(value);
+        if (shouldCountReferences && color !== null && !definitions.has(property)) {
+          definitions.set(property, { color, referenceCount: 0 });
+        }
+        continue;
+      }
+      if (!COLOR_PROPERTY_PATTERN.test(property) || /(?:gradient|url\s*\()/i.test(value)) {
+        continue;
+      }
+      const references = [...value.matchAll(/var\(\s*(--[a-z0-9_-]+)/gi)].map((match) => match[1]);
+      if (shouldCountReferences) {
+        for (const variableName of references) {
+          visibleReferences.set(variableName, (visibleReferences.get(variableName) ?? 0) + 1);
+        }
+      }
+      if (!shouldCountColors) {
+        continue;
+      }
+      colors.push(...harvestColorTokens(value));
+    }
+  };
+
+  for (const rule of parseCssRules(cssText)) {
+    const isVisibleRule = isPotentiallyVisibleSelector({
+      selector: rule.selector,
+      atRuleContext: rule.atRuleContext,
+      markup,
+    });
+    const isRootRule = /^\s*:root(?:\b|\s|$)/i.test(rule.selector);
+    if (!isVisibleRule && !isRootRule) {
       continue;
     }
-    seenNames.add(variableName);
-    /*
-      Bounded count of `var(--name)` / `var(--name,` occurrences.
-    */
-    const referencePattern = new RegExp(
-      `var\\(\\s*${variableName.replace(/[.*+?^${}()|[\]\\-]/g, "\\$&")}\\s*[,)]`,
-      "g",
-    );
-    const referenceCount = (text.match(referencePattern) ?? []).length;
-    results.push({ variableName, color, referenceCount });
+    const declarations = extractDeclarations(rule.declarations);
+    if (declarations.some(({ property, value }) => property === "display" && value.trim() === "none")) {
+      continue;
+    }
+    if (declarations.some(({ property, value }) => property === "visibility" && value.trim() === "hidden")) {
+      continue;
+    }
+    if (declarations.some(({ property, value }) => property === "opacity" && value.trim() === "0")) {
+      continue;
+    }
+    consumeDeclarations({
+      declarations: rule.declarations,
+      shouldCountReferences: true,
+      shouldCountColors: isVisibleRule,
+    });
   }
-  return results;
+  for (const styleAttribute of extractInlineStyleAttributes(html)) {
+    consumeDeclarations({ declarations: styleAttribute, shouldCountReferences: true, shouldCountColors: true });
+  }
+  colors.push(...extractInlineSvgColors(html));
+
+  const customPropertyColors = [...definitions.entries()]
+    .map(([variableName, definition]) => ({
+      variableName,
+      color: definition.color,
+      referenceCount:
+        (visibleReferences.get(variableName) ?? 0) > 0
+          ? (visibleReferences.get(variableName) ?? 0) + 1
+          : 0,
+    }))
+    .filter(({ referenceCount }) => referenceCount > 0);
+  return { colors, customPropertyColors };
 }
 
 /*
@@ -237,12 +427,8 @@ export const ACCENT_CHROMA_THRESHOLD = 0.35;
 const MAX_ACCENT_CANDIDATES = 6;
 
 /*
-  Rank colors by a vibrancy-boosted usage score. Two deliberate departures
-  from raw frequency (both learned from real sites):
-  - custom-property var() references count as uses (see above);
-  - score = count × (1 + 2 × chroma): brand accents are low-frequency,
-    high-saturation colors, so a vivid yellow seen 3× outranks a gray
-    seen 40×. Raw frequency buried exactly the colors that matter.
+  Rank colors by a vibrancy-boosted usage score. Custom-property references
+  count as uses, while visible declarations are the only direct color input.
 */
 function rankColors({
   colors,
@@ -434,17 +620,17 @@ export async function harvestBrandSignals({
   const themeColor = themeColorRaw === null ? null : normalizeCssColor(themeColorRaw);
 
   /*
-    Colors are scanned across the WHOLE document plus external CSS — brand
-    colors frequently live outside <style> blocks (inline SVG fills, style
-    attributes, framework-inlined props). <style> blocks are part of html.
+  Colors are scanned from visible CSS declarations, inline SVG presentation
+  attributes, and style attributes. This deliberately excludes script text,
+  source maps, and non-content states from the brand palette.
   */
-  const documentAndCss = [html, ...externalCssTexts].join("\n");
+  const visibleColorSignals = extractVisibleColorSignals({ html, cssText: allCss });
   const { rankedColors, accentCandidates } = rankColors({
     colors: [
       ...(themeColor === null ? [] : [themeColor]),
-      ...harvestColorTokens(documentAndCss),
+      ...visibleColorSignals.colors,
     ],
-    customPropertyColors: harvestCustomPropertyColors(documentAndCss),
+    customPropertyColors: visibleColorSignals.customPropertyColors,
   });
 
   return {

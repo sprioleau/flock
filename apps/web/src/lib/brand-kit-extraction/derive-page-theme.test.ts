@@ -16,6 +16,7 @@ import { describe, expect, it, vi } from "vitest";
 import { DEFAULT_GLOBAL_STYLES } from "@flock/email-sdk";
 import { getContrastRatio, MIN_THEME_CONTRAST_RATIO } from "@/lib/brand-kit";
 import { derivePageTheme } from "./derive-page-theme";
+import { harvestBrandSignals } from "./harvest";
 
 const FIXTURES_DIR = path.join(__dirname, "__tests__", "fixtures");
 
@@ -38,6 +39,68 @@ function contrastOf({ foreground, background }: { foreground: string; background
 }
 
 describe("derivePageTheme — the accent is the page's own brand color", () => {
+  it("ranks visible shell colors above unused, hidden, framework, gradient, and hover-only tokens", async () => {
+    const html = `<!doctype html><html><head><title>Visible</title><style>
+      :root {
+        --brand-accent: #2463eb;
+        --unused-hot: #f6339a;
+        --framework-hot: #00eeff;
+      }
+      body { background: #f7f7f8; color: #171717; }
+      .hero { background: var(--brand-accent); }
+      .framework-toast { color: #00eeff; border-color: #00eeff; }
+      .unused { color: #f6339a; }
+      .hidden { display: none; color: #f6339a; }
+      .button:hover { background: #f6339a; }
+      .wash { background-image: linear-gradient(#f6339a, #00eeff); }
+      .promo-card { background: #ff0088; }
+      .syntax .token.keyword { color: #ff7a00; }
+    </style><script>const sourceMapColor = "#ff00aa";</script></head><body><main class="hero">Visible content</main></body></html>`;
+    const signals = await harvestBrandSignals({
+      html,
+      finalUrl: "https://visible.test/",
+      fetchCss: null,
+    });
+    expect(signals.accentCandidates[0]?.color).toBe("#2463eb");
+    expect(signals.rankedColors.map((candidate) => candidate.color)).not.toContain("#f6339a");
+    expect(signals.rankedColors.map((candidate) => candidate.color)).not.toContain("#00eeff");
+    expect(signals.rankedColors.map((candidate) => candidate.color)).not.toContain("#ff0088");
+
+    const theme = await derivePageTheme({ html, finalUrl: "https://visible.test/", fetchCss: null });
+    expect(theme?.globals.buttonBackgroundColor).toBe("#2463eb");
+  });
+
+  it("keeps an essentially monochrome page neutral when saturated tokens are unused", async () => {
+    const html = `<!doctype html><html><head><title>Neutral</title><style>
+      :root { --unused-hot: #f6339a; --brand-accent: #ff0088; }
+      body { background: #f5f5f5; color: #151515; }
+      .card { border-color: #c9c9c9; }
+    </style></head><body><main class="card">Neutral content</main></body></html>`;
+    const signals = await harvestBrandSignals({
+      html,
+      finalUrl: "https://neutral.test/",
+      fetchCss: null,
+    });
+    expect(signals.accentCandidates).toHaveLength(0);
+    expect(signals.rankedColors.map((candidate) => candidate.color)).not.toContain("#ff0088");
+    expect(await derivePageTheme({ html, finalUrl: "https://neutral.test/", fetchCss: null })).toBeNull();
+  });
+
+  it("keeps a genuinely visible accent eligible", async () => {
+    const html = `<!doctype html><html><head><title>Accent</title><style>
+      body { background: #f7f7f8; color: #171717; }
+      .cta { background: #f6339a; color: #ffffff; }
+    </style></head><body><a class="cta" href="/start">Start</a></body></html>`;
+    const signals = await harvestBrandSignals({
+      html,
+      finalUrl: "https://accent.test/",
+      fetchCss: null,
+    });
+    expect(signals.accentCandidates.map((candidate) => candidate.color)).toContain("#f6339a");
+    const theme = await derivePageTheme({ html, finalUrl: "https://accent.test/", fetchCss: null });
+    expect(theme?.globals.buttonBackgroundColor).toBe("#f6339a");
+  });
+
   it("prefers a color declared as a brand variable over a library color used just as often", async () => {
     /*
       The measured failure mode on a real page: a component library ships its
@@ -52,7 +115,7 @@ describe("derivePageTheme — the accent is the page's own brand color", () => {
       .toast-c{fill:var(--library-color-info)} .toast-d{outline-color:var(--library-color-info)}
       .toast-e{background:var(--library-color-info)} .toast-f{stroke:var(--library-color-info)}
       .cta{background:var(--brand-accent)}
-    </style></head><body><h1>Acme</h1></body></html>`;
+    </style></head><body><div class="cta"><h1>Acme</h1></div></body></html>`;
     /*
       The library colour is deliberately referenced SIX times to the brand's
       one, so it outranks the accent on the harvest's own vibrancy-boosted
@@ -83,7 +146,7 @@ describe("derivePageTheme — the accent is the page's own brand color", () => {
     const html = `<!doctype html><html><head><title>Deep</title>
       <meta name="theme-color" content="#16032c">
       <style>:root{--brand-accent:#ffc400}.cta{color:var(--brand-accent)}</style>
-      </head><body><h1>Deep</h1></body></html>`;
+      </head><body><div class="cta"><h1>Deep</h1></div></body></html>`;
     const theme = await derivePageTheme({ html, finalUrl: "https://deep.test/", fetchCss: null });
     expect(theme?.globals.contentBackgroundColor).toBe("#16032c");
     expect(theme?.globals.buttonBackgroundColor).toBe("#ffc400");
@@ -106,7 +169,7 @@ describe("derivePageTheme — what it refuses to do", () => {
     const html = `<!doctype html><html><head><title>Inline</title>
       <link rel="stylesheet" href="/dead.css">
       <style>:root{--brand-accent:#0f4c81}.cta{color:var(--brand-accent)}</style>
-      </head><body><h1>Inline</h1></body></html>`;
+      </head><body><div class="cta"><h1>Inline</h1></div></body></html>`;
     const fetchCss = vi.fn(async () => null);
     const theme = await derivePageTheme({ html, finalUrl: "https://inline.test/", fetchCss });
     expect(fetchCss).toHaveBeenCalled();
@@ -122,7 +185,7 @@ describe("derivePageTheme — what it refuses to do", () => {
     const html = `<!doctype html><html><head><title>Angry</title>
       <link rel="stylesheet" href="/boom.css">
       <style>:root{--brand-accent:#0f4c81}.cta{color:var(--brand-accent)}</style>
-      </head><body><h1>Angry</h1></body></html>`;
+      </head><body><div class="cta"><h1>Angry</h1></div></body></html>`;
     const fetchCss = vi.fn(async () => {
       throw new Error("socket hang up");
     });
@@ -138,7 +201,7 @@ describe("derivePageTheme — the applyTheme contract", () => {
     <style>:root{--brand-accent:#ffc400;--ui-text:#b0a7ba}
       .cta{background:var(--brand-accent)}.p{color:var(--ui-text)}
       body{font-family:Quando}</style>
-    </head><body><h1>Contract</h1></body></html>`;
+    </head><body><div class="cta"><div class="p"><h1>Contract</h1></div></div></body></html>`;
 
   it("emits a COMPLETE globals payload — applyTheme replaces wholesale", async () => {
     const theme = await derivePageTheme({ html, finalUrl: "https://contract.test/", fetchCss: null });

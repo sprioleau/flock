@@ -36,7 +36,7 @@ const FIXTURE_HTML = `<!doctype html><html><head>
   <meta name="theme-color" content="#0f4c81" />
   <meta property="og:description" content="We build robots that get out of your way." />
   <style>:root { --banana: #e0592a; } .hero { color: var(--banana); background: #0f4c81; } .cta { color: #e0592a; }</style>
-</head><body><h1>Acme</h1><p>We ship one robot at a time and tell you what it costs.</p></body></html>`;
+</head><body><div class="hero"><h1>Acme</h1><p>We ship one robot at a time and tell you what it costs.</p></div><a class="cta" href="/start">Start</a></body></html>`;
 
 const semanticVariation = (name: string) => ({
   name,
@@ -217,7 +217,7 @@ describe("generateBrandKit authored palette + tone of voice", () => {
     fetchPageMock.mockResolvedValue({
       isOk: true,
       finalUrl: FINAL_URL,
-      html: '<!doctype html><html><head><style>.a{color:#e0592a}</style></head><body><div></div></body></html>',
+      html: '<!doctype html><html><head><style>.a{color:#e0592a}</style></head><body><div class="a"></div></body></html>',
     });
     stubProbes([]);
     const result = await generateBrandKit({ url: "acme.test" });
