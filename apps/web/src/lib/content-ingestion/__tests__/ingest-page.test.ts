@@ -537,6 +537,9 @@ describe("ingestPage — the page's own theme", () => {
      <style>:root{--brand-accent:#ffc400;--ui-text:#b0a7ba}
        .cta{background:var(--brand-accent)} .copy{color:var(--ui-text)}
        body{font-family:Quando}</style></head>`,
+  ).replace(
+    "<main>",
+    '<main class="copy"><a class="cta" href="/start">Start</a>',
   );
 
   it("carries the page's colours and fonts into the payload", async () => {

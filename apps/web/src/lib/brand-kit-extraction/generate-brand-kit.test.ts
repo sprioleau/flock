@@ -12,9 +12,11 @@ import type { AssetProbeMethod, AssetProbeResult } from "./fetch-page";
 const generateObjectMock = vi.hoisted(() => vi.fn());
 const fetchPageMock = vi.hoisted(() => vi.fn());
 const probeAssetUrlMock = vi.hoisted(() => vi.fn());
+const renderPageInBrowserMock = vi.hoisted(() => vi.fn());
 
 vi.mock("ai", () => ({ generateObject: generateObjectMock }));
 vi.mock("@ai-sdk/google", () => ({ google: () => ({ modelId: "stub" }) }));
+vi.mock("./browser-render", () => ({ renderPageInBrowser: renderPageInBrowserMock }));
 vi.mock("./fetch-page", () => ({
   fetchPage: fetchPageMock,
   fetchTextResource: vi.fn(async () => null),
@@ -130,7 +132,162 @@ beforeEach(() => {
   vi.clearAllMocks();
   process.env.GOOGLE_GENERATIVE_AI_API_KEY = "test-key";
   fetchPageMock.mockResolvedValue({ isOk: true, html: FIXTURE_HTML, finalUrl: FINAL_URL });
+  renderPageInBrowserMock.mockResolvedValue({
+    isOk: false,
+    message: "Browser rendering is unavailable in this test.",
+  });
   generateObjectMock.mockResolvedValue({ object: MODEL_OUTPUT });
+});
+
+describe("generateBrandKit rendered visual evidence", () => {
+  it("prefers rendered HTML and computed styles and passes its screenshot to Gemini", async () => {
+    const renderedHtml = `<!doctype html><html><head><title>Rendered Acme</title></head><body>
+      <main><h1>Rendered after hydration</h1><p>This copy exists only after JavaScript runs.</p></main>
+    </body></html>`;
+    renderPageInBrowserMock.mockResolvedValue({
+      isOk: true,
+      html: renderedHtml,
+      finalUrl: "https://acme.test/app",
+      screenshot: {
+        mediaType: "image/jpeg",
+        base64: "rendered-screenshot-base64",
+        dataUrl: "data:image/jpeg;base64,rendered-screenshot-base64",
+        width: 1280,
+        height: 900,
+        byteLength: 42,
+      },
+      visualEvidence: {
+        viewport: { width: 1280, height: 900 },
+        document: { width: 1280, height: 1800 },
+        colors: [
+          { value: "rgb(22, 75, 53)", count: 2 },
+          { value: "rgb(38, 179, 107)", count: 1 },
+        ],
+        fonts: [{ family: "Rendered Sans", weight: "700", count: 1 }],
+        elements: [
+          {
+            tag: "h1",
+            text: "Rendered after hydration",
+            x: 64,
+            y: 80,
+            width: 640,
+            height: 72,
+            color: "rgb(38, 179, 107)",
+            backgroundColor: "rgb(22, 75, 53)",
+            fontFamily: "Rendered Sans",
+            fontSize: "56px",
+            fontWeight: "700",
+            borderRadius: "0px",
+          },
+        ],
+        syntheticCss:
+          "main { background-color: #164b35; } h1 { color: #26b36b; font-family: 'Rendered Sans'; }",
+      },
+      requestCount: 7,
+    });
+    stubProbes([]);
+
+    const result = await generateBrandKit({ url: "acme.test" });
+
+    expect(result.isOk).toBe(true);
+    expect(renderPageInBrowserMock).toHaveBeenCalledWith(FINAL_URL);
+    const modelCall = generateObjectMock.mock.calls[0]?.[0];
+    expect(modelCall.prompt).toBeUndefined();
+    expect(modelCall.messages).toEqual([
+      {
+        role: "user",
+        content: [
+          expect.objectContaining({
+            type: "text",
+            text: expect.stringContaining("#26b36b"),
+          }),
+          {
+            type: "file",
+            mediaType: "image/jpeg",
+            data: "rendered-screenshot-base64",
+          },
+        ],
+      },
+    ]);
+    const renderedPrompt = modelCall.messages[0].content[0].text;
+    expect(renderedPrompt).toContain("Font families seen on the site: Rendered Sans");
+    expect(renderedPrompt).toMatch(/Color palette harvested[^]*- #26b36b \(used \d+×/);
+    expect(renderedPrompt).toContain("This copy exists only after JavaScript runs.");
+    expect(renderedPrompt).toContain("Rendered page evidence");
+    if (!result.isOk) return;
+    expect(result.brandKit.sourceUrl).toBe("https://acme.test/app");
+  });
+
+  it("falls back cleanly to the static page when browser startup or navigation fails", async () => {
+    renderPageInBrowserMock.mockResolvedValue({
+      isOk: false,
+      reason: "browser_unavailable",
+      message: "Chromium failed to launch.",
+    });
+    stubProbes([]);
+
+    const result = await generateBrandKit({ url: "acme.test" });
+
+    expect(result.isOk).toBe(true);
+    const modelCall = generateObjectMock.mock.calls[0]?.[0];
+    expect(modelCall.messages).toBeUndefined();
+    expect(modelCall.prompt).toContain("Acme — Robots");
+    expect(modelCall.prompt).not.toContain("Rendered page evidence");
+    if (!result.isOk) return;
+    expect(result.brandKit.sourceUrl).toBe(FINAL_URL);
+  });
+
+  it("retries with computed browser evidence when Gemini misses the multimodal schema", async () => {
+    renderPageInBrowserMock.mockResolvedValue({
+      isOk: true,
+      html: FIXTURE_HTML,
+      finalUrl: FINAL_URL,
+      screenshot: {
+        mediaType: "image/jpeg",
+        base64: "rendered-screenshot-base64",
+        dataUrl: "data:image/jpeg;base64,rendered-screenshot-base64",
+        width: 1280,
+        height: 900,
+        byteLength: 42,
+      },
+      visualEvidence: {
+        viewport: { width: 1280, height: 900 },
+        document: { width: 1280, height: 1200 },
+        colors: [{ value: "rgb(22, 3, 44)", count: 4 }],
+        fonts: [{ family: "Inter", weight: "400", count: 4 }],
+        elements: [],
+        syntheticCss: ":root { --observed-color-1: rgb(22, 3, 44); }",
+      },
+      requestCount: 4,
+    });
+    generateObjectMock
+      .mockRejectedValueOnce(new Error("No object generated"))
+      .mockResolvedValueOnce({ object: MODEL_OUTPUT });
+    stubProbes([]);
+
+    const result = await generateBrandKit({ url: "acme.test" });
+
+    expect(result.isOk).toBe(true);
+    expect(generateObjectMock).toHaveBeenCalledTimes(2);
+    expect(generateObjectMock.mock.calls[0]?.[0].messages).toBeDefined();
+    expect(generateObjectMock.mock.calls[1]?.[0].messages).toBeUndefined();
+    expect(generateObjectMock.mock.calls[1]?.[0].prompt).toContain("Rendered page evidence");
+    expect(generateObjectMock.mock.calls[1]?.[0].prompt).toContain("rgb(22, 3, 44)");
+  });
+
+  it("turns two valid model themes into the three-theme brand-kit contract", async () => {
+    generateObjectMock.mockResolvedValue({
+      object: { ...MODEL_OUTPUT, variations: MODEL_OUTPUT.variations.slice(0, 2) },
+    });
+    stubProbes([]);
+
+    const result = await generateBrandKit({ url: "acme.test" });
+
+    expect(result.isOk).toBe(true);
+    if (!result.isOk) return;
+    expect(result.brandKit.variations).toHaveLength(3);
+    expect(result.brandKit.variations[2]?.name).toBe("Brand Contrast");
+  });
 });
 
 describe("generateBrandKit asset verification", () => {

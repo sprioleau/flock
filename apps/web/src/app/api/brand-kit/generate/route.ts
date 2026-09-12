@@ -1,7 +1,20 @@
 import { z } from "zod";
 import { chargeCreditForRequest } from "@/lib/auth/credits";
 import { generateBrandKit } from "@/lib/brand-kit-extraction/generate-brand-kit";
-import { MAX_URL_LENGTH } from "@/lib/brand-kit-extraction/url-guard";
+import {
+  MAX_URL_LENGTH,
+  normalizeWebsiteUrl,
+  validateUrlSyntax,
+} from "@/lib/brand-kit-extraction/url-guard";
+
+/*
+  Browser rendering needs a full Node.js runtime. Keep this explicit so a
+  future route-level default cannot silently move Chromium onto the Edge
+  runtime. The brand-kit model has a 120-second budget of its own, so the
+  function leaves room for the guarded page fetch and browser capture first.
+*/
+export const runtime = "nodejs";
+export const maxDuration = 180;
 
 /*
   POST /api/brand-kit/generate — Phase 7.4 brand-kit ingestion.
@@ -63,6 +76,20 @@ export async function POST(request: Request) {
   }
 
   /*
+    Reject malformed and obviously private destinations at the HTTP boundary
+    before charging a credit or starting Chromium. The generator repeats this
+    check and adds DNS resolution immediately before each network request.
+  */
+  const normalizedUrl = normalizeWebsiteUrl(parsedBody.data.url);
+  const syntaxResult = validateUrlSyntax(normalizedUrl);
+  if (!syntaxResult.isAllowed) {
+    return failureResponse({
+      status: 400,
+      message: "Please provide a public website address (like your-brand.com).",
+    });
+  }
+
+  /*
     Scraping and summarising a site is real inference — it costs a credit.
     A deployment with no API key can only 503 below, so it is billed as a
     mock run (free) rather than charging for a request that cannot succeed.
@@ -75,7 +102,7 @@ export async function POST(request: Request) {
     return failureResponse({ status: 429, message: charge.message });
   }
 
-  const result = await generateBrandKit({ url: parsedBody.data.url });
+  const result = await generateBrandKit({ url: normalizedUrl });
   if (!result.isOk) {
     return failureResponse({ status: result.statusCode, message: result.message });
   }
