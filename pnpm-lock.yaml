@@ -81,6 +81,9 @@ importers:
       '@sparticuz/chromium-min':
         specifier: 152.0.0
         version: 152.0.0
+      htmlparser2:
+        specifier: 10.1.0
+        version: 10.1.0
       '@tiptap/core':
         specifier: ^3.29.0
         version: 3.29.0(@tiptap/pm@3.29.0)
