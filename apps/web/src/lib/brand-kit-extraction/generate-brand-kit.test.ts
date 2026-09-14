@@ -12,6 +12,7 @@ import type { AssetProbeMethod, AssetProbeResult } from "./fetch-page";
 const generateObjectMock = vi.hoisted(() => vi.fn());
 const fetchPageMock = vi.hoisted(() => vi.fn());
 const probeAssetUrlMock = vi.hoisted(() => vi.fn());
+const fetchBinaryResourceMock = vi.hoisted(() => vi.fn());
 const renderPageInBrowserMock = vi.hoisted(() => vi.fn());
 
 vi.mock("ai", () => ({ generateObject: generateObjectMock }));
@@ -21,6 +22,7 @@ vi.mock("./fetch-page", () => ({
   fetchPage: fetchPageMock,
   fetchTextResource: vi.fn(async () => null),
   probeAssetUrl: probeAssetUrlMock,
+  fetchBinaryResource: fetchBinaryResourceMock,
 }));
 
 import { brandKitModelOutputSchema, brandKitSchema, generateBrandKit } from "./generate-brand-kit";
@@ -137,6 +139,11 @@ beforeEach(() => {
     message: "Browser rendering is unavailable in this test.",
   });
   generateObjectMock.mockResolvedValue({ object: MODEL_OUTPUT });
+  fetchBinaryResourceMock.mockResolvedValue({
+    isOk: false,
+    reason: "http_error",
+    message: "No test image body configured.",
+  });
 });
 
 describe("generateBrandKit rendered visual evidence", () => {
@@ -216,6 +223,73 @@ describe("generateBrandKit rendered visual evidence", () => {
     expect(renderedPrompt).toContain("Rendered page evidence");
     if (!result.isOk) return;
     expect(result.brandKit.sourceUrl).toBe("https://acme.test/app");
+    expect(result.brandKit.sourceScreenshot).toEqual({
+      dataUrl: "data:image/jpeg;base64,rendered-screenshot-base64",
+      mediaType: "image/jpeg",
+      width: 1280,
+      height: 900,
+      byteLength: 42,
+    });
+  });
+
+  it("retains five representative URLs and gives their guarded bytes to the email-design model", async () => {
+    const imageUrls = Array.from(
+      { length: 6 },
+      (_, index) => `https://acme.test/work-${index + 1}.jpg`,
+    );
+    const renderedHtml = `<!doctype html><html><head><title>Visual Acme</title></head><body>
+      <main><h1>Visual work</h1><p>${"A detailed case study with useful brand copy. ".repeat(12)}</p>
+      ${imageUrls
+        .map(
+          (imageUrl, index) =>
+            `<img src="${imageUrl}" alt="Case study ${index + 1}" width="800" height="600">`,
+        )
+        .join("")}</main></body></html>`;
+    renderPageInBrowserMock.mockResolvedValue({
+      isOk: true,
+      html: renderedHtml,
+      finalUrl: FINAL_URL,
+      screenshot: {
+        mediaType: "image/jpeg",
+        base64: "screen-bytes",
+        dataUrl: "data:image/jpeg;base64,screen-bytes",
+        width: 1280,
+        height: 900,
+        byteLength: 12,
+      },
+      visualEvidence: {
+        viewport: { width: 1280, height: 900 },
+        document: { width: 1280, height: 1800 },
+        colors: [{ value: "rgb(15, 76, 129)", count: 2 }],
+        fonts: [{ family: "Arial", weight: "400", count: 2 }],
+        elements: [],
+        syntheticCss: "body { color: #0f4c81; }",
+      },
+      requestCount: 8,
+    });
+    stubProbes(imageUrls);
+    fetchBinaryResourceMock.mockResolvedValue({
+      isOk: true,
+      bytes: new Uint8Array([1, 2, 3]),
+      contentType: "image/jpeg",
+    });
+
+    const result = await generateBrandKit({ url: "acme.test" });
+
+    expect(result.isOk).toBe(true);
+    if (!result.isOk) return;
+    expect(result.brandKit.sourceImages).toHaveLength(5);
+    expect(result.brandKit.sourceImages?.[0]).toMatchObject({
+      url: imageUrls[0],
+      alt: "Case study 1",
+      width: 800,
+      height: 600,
+    });
+    const content = generateObjectMock.mock.calls[0]?.[0].messages[0].content;
+    expect(content.filter((part: { type: string }) => part.type === "file")).toHaveLength(6);
+    expect(content[0].text).toContain("Representative source images");
+    expect(content[0].text).toContain(imageUrls[0]);
+    expect(content[0].text).toContain("ground emailDesign imagery guidance");
   });
 
   it("falls back cleanly to the static page when browser startup or navigation fails", async () => {

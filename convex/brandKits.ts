@@ -164,12 +164,20 @@ const storedSocialLinkValidator = v.object({
   origin: v.optional(v.union(v.literal("scraped"), v.literal("agent"), v.literal("user"))),
 });
 
+const sourceImageValidator = v.object({
+  url: v.string(),
+  alt: v.optional(v.string()),
+  width: v.optional(v.number()),
+  height: v.optional(v.number()),
+});
+
 /*
   Save-args wire shape — mirrors the frontend scrape/save `BrandKit` shape.
 */
 export const brandKitValidator = v.object({
   name: v.string(),
   sourceUrl: v.optional(v.string()),
+  sourceImages: v.optional(v.array(sourceImageValidator)),
   fonts: v.object({ heading: v.string(), body: v.string() }),
   logoUrl: v.optional(v.string()),
   socialImageUrl: v.optional(v.string()),
@@ -202,6 +210,7 @@ const activeBrandKitValidator = v.object({
   kitId: v.id("brandKits"),
   name: v.string(),
   sourceUrl: v.optional(v.string()),
+  sourceImages: v.optional(v.array(sourceImageValidator)),
   fonts: v.object({ heading: v.string(), body: v.string() }),
   logoUrl: v.optional(v.string()),
   socialImageUrl: v.optional(v.string()),
@@ -272,6 +281,7 @@ function projectBrandKitRow(row: Doc<"brandKits">): ActiveBrandKitPayload {
     kitId: row._id,
     name: row.name,
     ...(row.sourceUrl !== undefined ? { sourceUrl: row.sourceUrl } : {}),
+    ...(row.sourceImages !== undefined ? { sourceImages: row.sourceImages } : {}),
     fonts: row.fonts,
     ...(row.logoUrl !== undefined ? { logoUrl: row.logoUrl } : {}),
     ...(row.socialImageUrl !== undefined ? { socialImageUrl: row.socialImageUrl } : {}),
@@ -509,6 +519,7 @@ export const saveBrandKit = mutation({
     await ctx.db.patch(primaryRow._id, {
       name: args.brandKit.name,
       sourceUrl: args.brandKit.sourceUrl,
+      sourceImages: args.brandKit.sourceImages,
       fonts: args.brandKit.fonts,
       variations: args.brandKit.variations,
       /*

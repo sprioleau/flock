@@ -286,6 +286,36 @@ export interface BrandEmailDesignDoc {
 }
 
 /*
+  One representative image harvested from the source page. These are bounded
+  URL references with enough intrinsic metadata for a useful preview; they do
+  not copy third-party image bytes into the brand-kit row.
+*/
+export interface BrandSourceImage {
+  url: string;
+  alt?: string;
+  width?: number;
+  height?: number;
+}
+
+/*
+  The browser-rendered source preview returned by generation. This is
+  TRANSIENT by design: buildSaveBrandKitPayload deliberately excludes it, so
+  a bounded screenshot can render immediately without putting a multi-megabyte
+  base64 value in Convex. The durable provenance is sourceUrl + sourceImages;
+  a later visit can render the source again when a fresh screenshot is needed.
+*/
+export interface BrandSourceScreenshot {
+  dataUrl: string;
+  mediaType: "image/jpeg";
+  width: number;
+  height: number;
+  byteLength: number;
+}
+
+export const MAX_BRAND_SOURCE_IMAGES = 5;
+export const MAX_BRAND_SOURCE_SCREENSHOT_BYTES = 3 * 1024 * 1024;
+
+/*
   A brand kit: source provenance, brand basics, and its theme variations.
 */
 export interface BrandKit {
@@ -293,6 +323,16 @@ export interface BrandKit {
     The scraped site, once the pipeline exists. Absent for mock/manual kits.
   */
   sourceUrl?: string;
+  /*
+    Generation-only rendered preview; intentionally not persisted.
+  */
+  sourceScreenshot?: BrandSourceScreenshot;
+  /*
+    Up to five verified representative source-page images. URL-only evidence
+    is small enough to persist and gives later email generation durable visual
+    provenance without copying third-party assets into storage.
+  */
+  sourceImages?: BrandSourceImage[];
   /*
     Brand name (scraped or user-provided).
   */
@@ -385,6 +425,7 @@ export type SaveBrandKitPayload = Pick<BrandKit, "name" | "fonts" | "variations"
     Pick<
       BrandKit,
       | "sourceUrl"
+      | "sourceImages"
       | "logoUrl"
       | "socialImageUrl"
       | "socialLinks"
@@ -411,6 +452,7 @@ export function buildSaveBrandKitPayload(kit: BrandKit): SaveBrandKitPayload {
   return {
     name: kit.name,
     ...(kit.sourceUrl !== undefined ? { sourceUrl: kit.sourceUrl } : {}),
+    ...(kit.sourceImages !== undefined ? { sourceImages: kit.sourceImages } : {}),
     fonts: kit.fonts,
     ...(kit.logoUrl !== undefined ? { logoUrl: kit.logoUrl } : {}),
     ...(kit.socialImageUrl !== undefined ? { socialImageUrl: kit.socialImageUrl } : {}),
@@ -522,6 +564,12 @@ export function getBrandKitValidationErrors(brandKit: BrandKit): string[] {
   if (brandKit.fonts.body.trim().length === 0) {
     errors.push("The body font stack must not be empty.");
   }
+  errors.push(
+    ...getBrandSourceEvidenceValidationErrors({
+      sourceImages: brandKit.sourceImages,
+      sourceScreenshot: brandKit.sourceScreenshot,
+    }),
+  );
   /*
     COUNTED ON THE LIVE SET, checked on all of them. A soft-deleted variation
     is not a theme this kit has, so it must not fill a slot in the cap and must
@@ -566,6 +614,53 @@ export function getBrandKitValidationErrors(brandKit: BrandKit): string[] {
   }
   errors.push(...getBrandColorsValidationErrors(brandKit.colors));
   errors.push(...getToneOfVoiceValidationErrors(brandKit.toneOfVoice));
+  return errors;
+}
+
+/*
+  Hard bounds for source-page visual evidence. Persisted images are URLs only;
+  the transient screenshot still has a byte cap so generation cannot grow its
+  response without limit.
+*/
+export function getBrandSourceEvidenceValidationErrors({
+  sourceImages,
+  sourceScreenshot,
+}: {
+  sourceImages: BrandSourceImage[] | undefined;
+  sourceScreenshot: BrandSourceScreenshot | undefined;
+}): string[] {
+  const errors: string[] = [];
+  if ((sourceImages?.length ?? 0) > MAX_BRAND_SOURCE_IMAGES) {
+    errors.push(`A brand kit can keep up to ${MAX_BRAND_SOURCE_IMAGES} representative images.`);
+  }
+  const seenUrls = new Set<string>();
+  for (const image of sourceImages ?? []) {
+    let isPublicWebUrl = false;
+    try {
+      const parsed = new URL(image.url);
+      isPublicWebUrl = parsed.protocol === "https:" || parsed.protocol === "http:";
+    } catch {
+      isPublicWebUrl = false;
+    }
+    if (!isPublicWebUrl) {
+      errors.push(`Representative image "${image.url}" must use an http or https URL.`);
+    }
+    if (seenUrls.has(image.url)) {
+      errors.push(`Duplicate representative image URL "${image.url}".`);
+    }
+    seenUrls.add(image.url);
+    if ((image.width ?? 1) <= 0 || (image.height ?? 1) <= 0) {
+      errors.push("Representative image dimensions must be positive when provided.");
+    }
+  }
+  if (
+    sourceScreenshot !== undefined &&
+    sourceScreenshot.byteLength > MAX_BRAND_SOURCE_SCREENSHOT_BYTES
+  ) {
+    errors.push(
+      `The source screenshot can be up to ${MAX_BRAND_SOURCE_SCREENSHOT_BYTES} bytes.`,
+    );
+  }
   return errors;
 }
 

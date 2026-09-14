@@ -156,6 +156,8 @@ describe("buildSaveBrandKitPayload", () => {
     const payload = buildSaveBrandKitPayload(kit);
     expect("logoUrl" in payload).toBe(false);
     expect("sourceUrl" in payload).toBe(false);
+    expect("sourceImages" in payload).toBe(false);
+    expect("sourceScreenshot" in payload).toBe(false);
     expect("colors" in payload).toBe(false);
     expect("toneOfVoice" in payload).toBe(false);
     expect("socialImageUrl" in payload).toBe(false);
@@ -167,6 +169,16 @@ describe("buildSaveBrandKitPayload", () => {
     const kit: BrandKit = {
       name: "Acme",
       sourceUrl: "https://acme.example",
+      sourceScreenshot: {
+        dataUrl: "data:image/jpeg;base64,cHJldmlldw==",
+        mediaType: "image/jpeg",
+        width: 1280,
+        height: 900,
+        byteLength: 7,
+      },
+      sourceImages: [
+        { url: "https://acme.example/work.jpg", alt: "Acme work", width: 800, height: 600 },
+      ],
       fonts: MOCK_BRAND_KIT.fonts,
       logoUrl: "https://acme.example/logo.png",
       colors: [
@@ -177,6 +189,8 @@ describe("buildSaveBrandKitPayload", () => {
     const payload = buildSaveBrandKitPayload(kit);
     expect(payload.name).toBe("Acme");
     expect(payload.sourceUrl).toBe("https://acme.example");
+    expect(payload.sourceImages).toEqual(kit.sourceImages);
+    expect("sourceScreenshot" in payload).toBe(false);
     expect(payload.logoUrl).toBe("https://acme.example/logo.png");
     expect(payload.colors).toEqual(kit.colors);
     expect(payload.fonts).toBe(kit.fonts);

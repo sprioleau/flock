@@ -518,6 +518,20 @@ export default defineSchema({
     */
     sourceUrl: v.optional(v.string()),
     /*
+      Up to five verified representative images retained as URL provenance.
+      Browser screenshot bytes stay transient and never enter Convex.
+    */
+    sourceImages: v.optional(
+      v.array(
+        v.object({
+          url: v.string(),
+          alt: v.optional(v.string()),
+          width: v.optional(v.number()),
+          height: v.optional(v.number()),
+        }),
+      ),
+    ),
+    /*
       ADDITIVE + OPTIONAL. True only while this row is the untouched STARTER
       kit — Flock's own brand, seeded by `startDefaultBrandKit` so a user
       whose site cannot be scraped still has something to edit

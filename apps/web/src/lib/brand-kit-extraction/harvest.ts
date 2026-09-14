@@ -43,6 +43,11 @@ export interface RankedColor {
   variableName: string | null;
 }
 
+export interface RenderedColorSignal {
+  value: string;
+  count: number;
+}
+
 export interface BrandSignals {
   siteName: string | null;
   pageTitle: string | null;
@@ -433,11 +438,22 @@ const MAX_ACCENT_CANDIDATES = 6;
 function rankColors({
   colors,
   customPropertyColors,
+  renderedColors,
 }: {
   colors: string[];
   customPropertyColors: CustomPropertyColor[];
+  renderedColors: RenderedColorSignal[];
 }): { rankedColors: RankedColor[]; accentCandidates: RankedColor[] } {
   const counts = new Map<string, number>();
+  const renderedCounts = new Map<string, number>();
+  for (const signal of renderedColors) {
+    const color = normalizeCssColor(signal.value);
+    if (color === null || !Number.isFinite(signal.count) || signal.count <= 0) {
+      continue;
+    }
+    renderedCounts.set(color, (renderedCounts.get(color) ?? 0) + signal.count);
+    counts.set(color, (counts.get(color) ?? 0) + signal.count);
+  }
   for (const color of colors) {
     counts.set(color, (counts.get(color) ?? 0) + 1);
   }
@@ -455,15 +471,25 @@ function rankColors({
     }
   }
   const scored = [...counts.entries()]
+    .filter(([color]) => renderedCounts.size === 0 || renderedCounts.has(color))
     .filter(([color]) => !isNearWhite(color) && !isNearBlack(color))
     .map(([color, count]) => {
       const chroma = getChroma(color) ?? 0;
+      const renderedCount = renderedCounts.get(color) ?? 0;
       return {
         color,
         count,
         variableName: variableNames.get(color) ?? null,
         chroma,
-        score: count * (1 + 2 * chroma),
+        /*
+          Computed styles are the authority for what a visitor can actually
+          see. The large tier separation keeps an incidental stylesheet token
+          from outranking a visible color merely through repetition, while
+          the usage score still orders colors within each tier.
+        */
+        score:
+          (renderedCount > 0 ? 1_000_000 + renderedCount * 1_000 : 0) +
+          count * (1 + 2 * chroma),
       };
     })
     .sort((a, b) => b.score - a.score);
@@ -592,10 +618,16 @@ export async function harvestBrandSignals({
   html,
   finalUrl,
   fetchCss,
+  renderedColors = [],
 }: {
   html: string;
   finalUrl: string;
   fetchCss: CssFetcher | null;
+  /*
+    When present, computed styles are an allow-list: stylesheet tokens that
+    never appeared on a visible rendered element are not brand candidates.
+  */
+  renderedColors?: RenderedColorSignal[];
 }): Promise<BrandSignals> {
   const inlineCss = extractInlineCss(html);
   const externalCssTexts: string[] = [];
@@ -631,6 +663,7 @@ export async function harvestBrandSignals({
       ...visibleColorSignals.colors,
     ],
     customPropertyColors: visibleColorSignals.customPropertyColors,
+    renderedColors,
   });
 
   return {

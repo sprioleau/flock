@@ -1558,6 +1558,11 @@ function applyContentBudget({
 
   /*
     5. imageCandidates beyond MAX_IMAGE_CANDIDATES; og-image and structured-data always survive.
+
+    Link icons are fallback metadata, not page content. Keep them only after
+    inline and CSS-background images have taken the remaining slots. Otherwise
+    a site's favicon manifest can consume the entire bounded image channel
+    before the first hero or product screenshot appears in document order.
   */
   if (isOverBudget() && imageCandidates.length > MAX_IMAGE_CANDIDATES) {
     const alwaysKept = imageCandidates.filter(
@@ -1566,9 +1571,14 @@ function applyContentBudget({
     const fillable = imageCandidates.filter(
       (candidate) => candidate.origin !== "og-image" && candidate.origin !== "structured-data",
     );
+    const contentCandidates = fillable.filter((candidate) => candidate.origin !== "link-icon");
+    const linkIconCandidates = fillable.filter((candidate) => candidate.origin === "link-icon");
     const keptCandidates = new Set([
       ...alwaysKept,
-      ...fillable.slice(0, Math.max(0, MAX_IMAGE_CANDIDATES - alwaysKept.length)),
+      ...[...contentCandidates, ...linkIconCandidates].slice(
+        0,
+        Math.max(0, MAX_IMAGE_CANDIDATES - alwaysKept.length),
+      ),
     ]);
     imageCandidates = imageCandidates.filter((candidate) => keptCandidates.has(candidate));
     hasDropped = true;

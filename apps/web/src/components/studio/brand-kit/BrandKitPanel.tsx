@@ -64,6 +64,11 @@ import { BrandApplyDialog } from "./BrandApplyDialog";
 import { BrandColorsEditor } from "./BrandColorsEditor";
 import { BrandFontsEditor } from "./BrandFontsEditor";
 import { BrandSocialLinksEditor } from "./BrandSocialLinksEditor";
+import {
+  BrandSourceReferences,
+  type BrandSourceImageReference,
+  type BrandSourceScreenshotReference,
+} from "./BrandSourceReferences";
 import { BrandThemeBuilder } from "./BrandThemeBuilder";
 import { BrandThemeList } from "./BrandThemeList";
 import { BrandThemeOverridesNote } from "./BrandThemeOverridesNote";
@@ -639,7 +644,7 @@ export function BrandKitPanel() {
       <SheetContent
         side="bottom"
         showCloseButton={false}
-        className="inset-x-[10vw] top-[10vw] bottom-0 max-w-none gap-0 rounded-t-2xl rounded-b-none p-0"
+        className="inset-x-[2.5vw] top-[2.5vw] bottom-0 max-w-none gap-0 rounded-t-2xl rounded-b-none p-0"
         data-testid="brand-kit-panel"
       >
         <SheetHeader className="flex-row items-start justify-between gap-3">
@@ -1176,6 +1181,15 @@ function BrandKitSummary({
   */
   const [enlargedAsset, setEnlargedAsset] = useState<{ url: string; label: string } | null>(null);
   const hasAnyAsset = brandKit.logoUrl !== undefined || brandKit.socialImageUrl !== undefined;
+  /*
+    Source references are additive to the kit contract. This intersection
+    keeps the sheet tolerant while older generated Convex types are still in
+    a browser bundle; missing fields simply render no reference section.
+  */
+  const kitWithSourceReferences = brandKit as BrandKit & {
+    sourceScreenshot?: BrandSourceScreenshotReference;
+    sourceImages?: BrandSourceImageReference[];
+  };
 
   return (
     <div className="flex flex-col gap-4 rounded-lg border p-4">
@@ -1237,6 +1251,12 @@ function BrandKitSummary({
           </a>
         )}
       </div>
+      <BrandSourceReferences
+        sourceUrl={brandKit.sourceUrl}
+        sourceScreenshot={kitWithSourceReferences.sourceScreenshot}
+        sourceImages={kitWithSourceReferences.sourceImages}
+        onEnlarge={setEnlargedAsset}
+      />
       <div className="flex flex-col gap-1.5">
         <span className={KIT_GROUP_LABEL_CLASSNAME}>Fonts</span>
         {onFontsCommit === undefined ? (
