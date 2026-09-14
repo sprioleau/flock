@@ -95,4 +95,57 @@ describe("selectRepresentativeSourceImages", () => {
       "https://acme.test/product-5.jpg",
     ]);
   });
+
+  it("excludes third-party integration marks while keeping first-party product artwork", async () => {
+    const html = `<!doctype html><html><body><main>
+      <h1>PostHog product analytics</h1>
+      <p>${PAGE_COPY.repeat(20)}</p>
+      <section aria-label="Product previews">
+        <img src="/static/posthog-3000.png" alt="PostHog 3000 product launch" width="1200" height="800" />
+        <img src="/static/hedgehog-support.png" alt="PostHog hedgehog helping a customer" width="800" height="800" />
+      </section>
+      <section aria-label="Integrations">
+        <h2>Connect all your tools</h2>
+        <a aria-label="Google Ads" href="/integrations/google-ads">
+          <img src="/media/01J8ZYC2E4J4V5G1M3" width="40" height="40" />
+        </a>
+        <a aria-label="Stripe" href="/integrations/stripe">
+          <img src="https://us.posthog.com/static/services/stripe.png" />
+        </a>
+        <a aria-label="GitHub" href="/integrations/github">
+          <img src="/static/services/github.png" />
+        </a>
+      </section>
+    </main></body></html>`;
+
+    const images = await selectRepresentativeSourceImages({
+      html,
+      finalUrl: "https://posthog.com/",
+      verifyImageUrl: async () => true,
+    });
+
+    expect(images.map((image) => image.url)).toEqual([
+      "https://posthog.com/static/posthog-3000.png",
+      "https://posthog.com/static/hedgehog-support.png",
+    ]);
+  });
+
+  it("rejects compact service marks when only the asset path identifies the logo row", async () => {
+    const html = `<!doctype html><html><body><main>
+      <p>${PAGE_COPY.repeat(20)}</p>
+      <img src="/static/product-tour.png" alt="PostHog product tour" width="1200" height="800" />
+      <img src="https://us.posthog.com/static/services/stripe.png" />
+      <img src="https://us.posthog.com/static/services/github.png" />
+    </main></body></html>`;
+
+    const images = await selectRepresentativeSourceImages({
+      html,
+      finalUrl: "https://posthog.com/",
+      verifyImageUrl: async () => true,
+    });
+
+    expect(images.map((image) => image.url)).toEqual([
+      "https://posthog.com/static/product-tour.png",
+    ]);
+  });
 });

@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { useQuery } from "convex/react";
 import {
   MessagesSquareIcon,
   MicIcon,
@@ -10,10 +11,12 @@ import {
   XIcon,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { api } from "@convex/_generated/api";
 import { IconButtonTooltip } from "@/components/ui/icon-button-tooltip";
 import { Textarea } from "@/components/ui/textarea";
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
 import { useEditorStore } from "@/lib/editor-store";
+import { useSessionBrandKit } from "../brand-kit/useActiveBrandKit";
 import { usePersonaAdvisors } from "@/lib/personas/use-persona-advisors";
 import { usePublishBlockSuggestion } from "@/lib/suggestions/suggestion-surface-store";
 import { useSuggestions } from "@/lib/suggestions/use-suggestions";
@@ -32,6 +35,7 @@ import { useMessageQueue } from "./use-message-queue";
 import { usePromptHistory } from "./use-prompt-history";
 import { useSpeechInput } from "./use-speech-input";
 import { useFlockChat } from "./use-flock-chat";
+import { BrandKitChatArtifact } from "./widgets/BrandKitChatArtifact";
 
 const EXPANDED_WIDTH_PX = 360;
 const COLLAPSED_WIDTH_PX = 48;
@@ -64,6 +68,12 @@ export function ChatPanel() {
     updatePanelPreferences({ isChatPanelExpanded: nextIsExpanded });
   }, []);
   const [draftText, setDraftText] = useState("");
+  const sessionId = useEditorStore((state) => state.authorId);
+  const latestBrandKitJob = useQuery(
+    api.brandKitGeneration.getLatest,
+    sessionId !== null ? { sessionId } : "skip",
+  );
+  const { brandKit: sessionBrandKit, hasSavedKit: hasSavedSessionBrandKit } = useSessionBrandKit();
   const composerTextareaRef = useRef<HTMLTextAreaElement | null>(null);
 
   /*
@@ -431,6 +441,19 @@ export function ChatPanel() {
           isAwaitingResponse={status === "submitted"}
           isTurnInProgress={status === "submitted" || status === "streaming"}
           onApprovalResponse={respondToApproval}
+          brandKitArtifact={
+            latestBrandKitJob === undefined || latestBrandKitJob === null ? undefined : (
+              <BrandKitChatArtifact
+                job={latestBrandKitJob}
+                brandKit={
+                  latestBrandKitJob.status === "succeeded" && hasSavedSessionBrandKit
+                    ? sessionBrandKit
+                    : undefined
+                }
+              />
+            )
+          }
+          brandKitArtifactCreatedAtMs={latestBrandKitJob?.createdAtMs}
         />
 
         <QueuedMessageList

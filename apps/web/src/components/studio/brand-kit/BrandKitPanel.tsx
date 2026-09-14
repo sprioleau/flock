@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useMutation, useQuery } from "convex/react";
 import { ConvexError } from "convex/values";
 import {
@@ -15,6 +15,7 @@ import {
 import Link from "next/link";
 import { api } from "@convex/_generated/api";
 import { Button } from "@/components/ui/button";
+import { toast } from "@/components/ui/toast";
 import { ImageLightbox } from "@/components/ui/image-lightbox";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -51,6 +52,7 @@ import { SOCIAL_PLATFORM_LABELS, type SocialPlatform } from "@/lib/social-links"
 import { BRAND_PATH } from "@/lib/auth/config";
 import { useEditorStore } from "@/lib/editor-store";
 import { useUiSurfaceOpenRequest } from "@/lib/ui-surfaces";
+import { updatePanelPreferences } from "../panel-preferences";
 import { generateBrandKitFromUrl } from "./brand-kit-generate-client";
 
 /*
@@ -111,6 +113,11 @@ export function BrandKitPanel() {
     api.brandKits.getCanvasBrandStatus,
     canvasId !== null ? { canvasId } : "skip",
   );
+  const latestGenerationJob = useQuery(
+    api.brandKitGeneration.getLatest,
+    sessionId !== null ? { sessionId } : "skip",
+  );
+  const acknowledgeGeneration = useMutation(api.brandKitGeneration.acknowledge);
   const saveBrandKit = useMutation(api.brandKits.saveBrandKit);
   const clearBrandKit = useMutation(api.brandKits.clearBrandKit);
   const renameBrandKit = useMutation(api.brandKits.renameBrandKit);
@@ -182,7 +189,7 @@ export function BrandKitPanel() {
 
   const generateFromUrl = async (): Promise<void> => {
     const url = websiteUrl.trim();
-    if (url.length === 0 || isGenerating) {
+    if (url.length === 0 || isGenerating || sessionId === null) {
       return;
     }
     setIsGenerating(true);
@@ -193,14 +200,48 @@ export function BrandKitPanel() {
       Shared with the brand-first onboarding gate (brand-kit-generate-client)
       so the two surfaces never drift on the request shape or fallback copy.
     */
-    const result = await generateBrandKitFromUrl(url);
+    const result = await generateBrandKitFromUrl({ url, sessionId });
     if (result.isOk) {
-      setPreviewKit(result.brandKit);
+      setWebsiteUrl("");
+      setIsOpen(false);
+      updatePanelPreferences({ isChatPanelExpanded: true });
     } else {
       setGenerateErrorMessage(result.message);
     }
     setIsGenerating(false);
   };
+
+  useEffect(() => {
+    if (
+      sessionId === null ||
+      latestGenerationJob === undefined ||
+      latestGenerationJob === null ||
+      latestGenerationJob.notificationSeenAtMs !== undefined ||
+      (latestGenerationJob.status !== "succeeded" && latestGenerationJob.status !== "failed")
+    ) {
+      return;
+    }
+    void acknowledgeGeneration({ sessionId, jobId: latestGenerationJob.jobId });
+    if (latestGenerationJob.status === "failed") {
+      toast.error("Brand kit scan failed", {
+        description: latestGenerationJob.errorMessage ?? "Try another website address.",
+      });
+      return;
+    }
+    toast.success("Brand kit ready", {
+      description: "Review it in chat or choose how to apply it to this canvas.",
+      durationMs: 7_000,
+    });
+    if (canvasId !== null && sessionId !== null) {
+      void bindSessionKitToCanvas({ canvasId, sessionId }).then(() => setIsApplyPromptOpen(true));
+    }
+  }, [
+    acknowledgeGeneration,
+    bindSessionKitToCanvas,
+    canvasId,
+    latestGenerationJob,
+    sessionId,
+  ]);
 
   const savePreviewKit = async (): Promise<void> => {
     if (previewKit === null || sessionId === null || isSaving) {
@@ -738,9 +779,13 @@ export function BrandKitPanel() {
                 data-testid="brand-kit-generate-button"
               >
                 {isGenerating ? <Loader2Icon className="animate-spin" /> : <SparklesIcon />}
-                {isGenerating ? "Generating…" : "Generate"}
+                {isGenerating ? "Starting…" : "Build in chat"}
               </Button>
             </form>
+            <p className="text-xs text-muted-foreground">
+              The agent keeps working in the background. You can close this window and follow the
+              scan in chat.
+            </p>
             {generateErrorMessage !== null && (
               <p className="text-sm text-destructive" data-testid="brand-kit-generate-error">
                 {generateErrorMessage}

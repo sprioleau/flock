@@ -11,6 +11,7 @@ import { Label } from "@/components/ui/label";
 import { buildSaveBrandKitPayload, type BrandKit } from "@/lib/brand-kit";
 import { getStarterArchetypes } from "@/lib/brand-kit-archetypes";
 import { useEditorStore } from "@/lib/editor-store";
+import { updatePanelPreferences } from "../panel-preferences";
 import { ThemeSwatch } from "../theme/ThemeSwatch";
 import {
   nextPhaseAfterGenerate,
@@ -84,17 +85,18 @@ export function BrandOnboardingGate() {
 
   const generateFromUrl = async (): Promise<void> => {
     const url = websiteUrl.trim();
-    if (url.length === 0 || isGenerating) {
+    if (url.length === 0 || isGenerating || sessionId === null) {
       return;
     }
     setIsGenerating(true);
     setGenerateErrorMessage(null);
     setPreviewKit(null);
     setSavePreviewErrorMessage(null);
-    const result = await generateBrandKitFromUrl(url);
+    const result = await generateBrandKitFromUrl({ url, sessionId });
     setPhase(nextPhaseAfterGenerate({ isOk: result.isOk }));
     if (result.isOk) {
-      setPreviewKit(result.brandKit);
+      persistBrandOnboardingDismissed(sessionId);
+      updatePanelPreferences({ isChatPanelExpanded: true });
     } else {
       /*
         Owner rule: a scrape failure never traps the user — the message

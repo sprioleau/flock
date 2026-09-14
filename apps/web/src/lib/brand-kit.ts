@@ -350,6 +350,10 @@ export interface BrandKit {
   */
   logoUrl?: string;
   /*
+    The site's explicit favicon, shown as identity evidence in the chat card.
+  */
+  faviconUrl?: string;
+  /*
     Set (server-side) when the logo was confirmed into Convex storage.
   */
   logoConfirmedAtMs?: number;
@@ -427,6 +431,7 @@ export type SaveBrandKitPayload = Pick<BrandKit, "name" | "fonts" | "variations"
       | "sourceUrl"
       | "sourceImages"
       | "logoUrl"
+      | "faviconUrl"
       | "socialImageUrl"
       | "socialLinks"
       | "colors"
@@ -455,6 +460,7 @@ export function buildSaveBrandKitPayload(kit: BrandKit): SaveBrandKitPayload {
     ...(kit.sourceImages !== undefined ? { sourceImages: kit.sourceImages } : {}),
     fonts: kit.fonts,
     ...(kit.logoUrl !== undefined ? { logoUrl: kit.logoUrl } : {}),
+    ...(kit.faviconUrl !== undefined ? { faviconUrl: kit.faviconUrl } : {}),
     ...(kit.socialImageUrl !== undefined ? { socialImageUrl: kit.socialImageUrl } : {}),
     ...(kit.socialLinks !== undefined ? { socialLinks: kit.socialLinks } : {}),
     ...(kit.colors !== undefined ? { colors: kit.colors } : {}),

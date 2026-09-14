@@ -1,5 +1,10 @@
 import { z } from "zod";
+import { ConvexHttpClient } from "convex/browser";
+import { after } from "next/server";
+import { api } from "@convex/_generated/api";
 import { chargeCreditForRequest } from "@/lib/auth/credits";
+import { getToken } from "@/lib/auth/auth-server";
+import { buildSaveBrandKitPayload } from "@/lib/brand-kit";
 import { generateBrandKit } from "@/lib/brand-kit-extraction/generate-brand-kit";
 import {
   MAX_URL_LENGTH,
@@ -19,22 +24,23 @@ export const maxDuration = 180;
 /*
   POST /api/brand-kit/generate — Phase 7.4 brand-kit ingestion.
 
-  Contract (the brand-kit panel codes against exactly this):
-    request:  { url: string }
-    response: { isOk: true, brandKit: BrandKit }
+  Contract (the panel, onboarding, and chat intent use exactly this):
+    request:  { url: string, sessionId: string }
+    response: { isOk: true, jobId: Id<"brandKitGenerationJobs"> }
             | { isOk: false, message: string }   // friendly, user-facing
 
   The body always carries the contract shape; failure statuses are 4xx/5xx
   (400 bad request, 429 cooldown, 422 unreadable site, 5xx generation) so
   callers may branch on either `isOk` or `response.ok`.
 
-  Pipeline: src/lib/brand-kit-extraction/ — guarded fetch → deterministic
-  signal harvest → one Gemini structured call → deterministic contrast
-  enforcement → Zod-validated BrandKit.
+  The response returns after the durable job row is created. Next `after()`
+  runs the guarded extraction, writes progress to that row, saves the kit, and
+  marks completion so the UI survives closing its modal or reloading.
 */
 
 const requestBodySchema = z.object({
   url: z.string().min(1).max(MAX_URL_LENGTH),
+  sessionId: z.string().min(1),
 });
 
 /*
@@ -102,9 +108,63 @@ export async function POST(request: Request) {
     return failureResponse({ status: 429, message: charge.message });
   }
 
-  const result = await generateBrandKit({ url: normalizedUrl });
-  if (!result.isOk) {
-    return failureResponse({ status: result.statusCode, message: result.message });
+  const convexUrl = process.env.NEXT_PUBLIC_CONVEX_URL;
+  if (convexUrl === undefined || convexUrl.length === 0) {
+    return failureResponse({ status: 503, message: "Brand kit generation isn't configured yet." });
   }
-  return Response.json({ isOk: true, brandKit: result.brandKit });
+  const token = await getToken();
+  const convex = new ConvexHttpClient(convexUrl);
+  if (token !== null && token !== undefined) {
+    convex.setAuth(token);
+  }
+  const sessionId = parsedBody.data.sessionId;
+  const jobId = await convex.mutation(api.brandKitGeneration.start, {
+    sessionId,
+    sourceUrl: normalizedUrl,
+  });
+
+  after(async () => {
+    try {
+      const result = await generateBrandKit({
+        url: normalizedUrl,
+        onProgress: async (step) => {
+          await convex.mutation(api.brandKitGeneration.setProgress, { sessionId, jobId, step });
+        },
+      });
+      if (!result.isOk) {
+        await convex.mutation(api.brandKitGeneration.fail, {
+          sessionId,
+          jobId,
+          errorMessage: result.message,
+        });
+        return;
+      }
+      await convex.mutation(api.brandKitGeneration.setProgress, {
+        sessionId,
+        jobId,
+        step: "saving-kit",
+      });
+      await convex.mutation(api.brandKits.saveBrandKit, {
+        sessionId,
+        brandKit: buildSaveBrandKitPayload(result.brandKit),
+      });
+      const savedKit = await convex.query(api.brandKits.getActiveBrandKit, { sessionId });
+      if (savedKit === null) {
+        throw new Error("The generated brand kit was not available after saving.");
+      }
+      await convex.mutation(api.brandKitGeneration.complete, {
+        sessionId,
+        jobId,
+        brandKitId: savedKit.kitId,
+      });
+    } catch (error) {
+      const errorMessage =
+        error instanceof Error ? error.message : "The brand kit could not be generated.";
+      await convex
+        .mutation(api.brandKitGeneration.fail, { sessionId, jobId, errorMessage })
+        .catch(() => undefined);
+    }
+  });
+
+  return Response.json({ isOk: true, jobId }, { status: 202 });
 }

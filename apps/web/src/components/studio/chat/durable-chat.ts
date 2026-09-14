@@ -10,6 +10,7 @@ export interface PersistedChatTurn {
   role: "user" | "assistant";
   content: string;
   sequence: number;
+  createdAtMs?: number;
 }
 
 /*
@@ -36,7 +37,7 @@ export function createUserChatMessage({
       data: generationRequest,
     });
   }
-  return { id, role: "user", parts };
+  return { id, role: "user", metadata: { createdAtMs: Date.now() }, parts };
 }
 
 export function shouldApplyChatHydration({
@@ -99,6 +100,9 @@ export function toPersistedChatMessages(turns: readonly PersistedChatTurn[]): Fl
     .map((turn) => ({
       id: turn.turnId,
       role: turn.role,
+      ...(turn.createdAtMs === undefined
+        ? {}
+        : { metadata: { createdAtMs: turn.createdAtMs } }),
       parts: [{ type: "text", text: turn.content }],
     })) as FlockChatMessage[];
 }

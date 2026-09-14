@@ -569,6 +569,10 @@ export default defineSchema({
     */
     logoUrl: v.optional(v.string()),
     /*
+      Explicit site icon used as brand-evidence UI, not a confirmable document asset.
+    */
+    faviconUrl: v.optional(v.string()),
+    /*
       Set on confirm: the uploaded logo binary (deleted on replace/clear).
     */
     logoStorageId: v.optional(v.id("_storage")),
@@ -748,6 +752,30 @@ export default defineSchema({
     createdAtMs: v.number(),
     updatedAtMs: v.number(),
   }).index("by_sessionId", ["sessionId"]),
+
+  brandKitGenerationJobs: defineTable({
+    sessionId: v.string(),
+    sourceUrl: v.string(),
+    status: v.union(
+      v.literal("queued"),
+      v.literal("running"),
+      v.literal("succeeded"),
+      v.literal("failed"),
+    ),
+    step: v.union(
+      v.literal("queued"),
+      v.literal("reading-site"),
+      v.literal("finding-identity"),
+      v.literal("building-kit"),
+      v.literal("saving-kit"),
+      v.literal("complete"),
+    ),
+    errorMessage: v.optional(v.string()),
+    brandKitId: v.optional(v.id("brandKits")),
+    notificationSeenAtMs: v.optional(v.number()),
+    createdAtMs: v.number(),
+    updatedAtMs: v.number(),
+  }).index("by_sessionId_updatedAtMs", ["sessionId", "updatedAtMs"]),
 
   /*
     Content Studio Stage S: the per-session image library. One row = one

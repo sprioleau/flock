@@ -27,6 +27,41 @@ function isDecorativeCandidate(candidate: ImageCandidate): boolean {
   return isLogoOrIcon || isSmall;
 }
 
+function isThirdPartyMarkCandidate(candidate: ImageCandidate): boolean {
+  const context = [
+    candidate.nearestHeading,
+    candidate.surroundingText,
+    candidate.sourceUrl,
+    ...candidate.hints,
+  ]
+    .filter((value): value is string => value !== undefined)
+    .join(" ")
+    .toLowerCase();
+  const isIntegrationContext =
+    /\b(integrations?|services?|connect(?:s|ed)?|works with|partners?|customers?|trusted by|used by|compatible)\b/i.test(
+      context,
+    );
+  if (!isIntegrationContext) {
+    return false;
+  }
+  const pathname = (() => {
+    try {
+      return new URL(candidate.sourceUrl).pathname.toLowerCase();
+    } catch {
+      return candidate.sourceUrl.toLowerCase();
+    }
+  })();
+  const isVector = pathname.endsWith(".svg");
+  const isCompact =
+    candidate.width === undefined ||
+    candidate.height === undefined ||
+    Math.max(candidate.width, candidate.height) <= 160;
+  const alt = candidate.alt?.trim() ?? "";
+  const isShortLabel = alt.length > 0 && alt.length <= 48 && alt.split(/\s+/).length <= 5;
+  const hasNoDescription = alt.length === 0;
+  return isCompact && (isVector || isShortLabel || hasNoDescription);
+}
+
 function getCandidateScore(candidate: ImageCandidate): number {
   let score = 0;
   if (candidate.origin === "inline" || candidate.origin === "css-background") {
@@ -82,7 +117,10 @@ export async function selectRepresentativeSourceImages({
     return [];
   }
   const rankedCandidates = extraction.scrape.imageCandidates
-    .filter((candidate) => !isDecorativeCandidate(candidate))
+    .filter(
+      (candidate) =>
+        !isDecorativeCandidate(candidate) && !isThirdPartyMarkCandidate(candidate),
+    )
     .sort((left, right) => {
       const scoreDifference = getCandidateScore(right) - getCandidateScore(left);
       return scoreDifference === 0 ? left.documentOrder - right.documentOrder : scoreDifference;

@@ -1,4 +1,4 @@
-import type { BrandKitGenerateResult } from "@/lib/brand-kit";
+import type { Id } from "@convex/_generated/dataModel";
 
 /*
   The ONE client-side call to POST /api/brand-kit/generate (the website
@@ -8,22 +8,32 @@ import type { BrandKitGenerateResult } from "@/lib/brand-kit";
   request shape or the fallback error copy.
 
   Route contract (see app/api/brand-kit/generate/route.ts): the body is
-  ALWAYS `{ isOk: true, brandKit }` or `{ isOk: false, message }`, on every
-  status code, so a caller may read `isOk` without branching on `response.ok`
-  first. This wrapper's own catch only covers what the route cannot mean to
-  answer — the route unreachable, or a reply that isn't JSON at all.
+  ALWAYS `{ isOk: true, jobId }` or `{ isOk: false, message }`, on every
+  status code. The saved kit and progress then arrive reactively from Convex.
+  This wrapper's own catch only covers what the route cannot mean to answer —
+  the route unreachable, or a reply that isn't JSON at all.
 */
 const UNREACHABLE_MESSAGE =
   "Couldn't generate a brand kit from that URL right now. Check the address and try again.";
 
-export async function generateBrandKitFromUrl(url: string): Promise<BrandKitGenerateResult> {
+export type BrandKitGenerationStartResult =
+  | { isOk: true; jobId: Id<"brandKitGenerationJobs"> }
+  | { isOk: false; message: string };
+
+export async function generateBrandKitFromUrl({
+  url,
+  sessionId,
+}: {
+  url: string;
+  sessionId: string;
+}): Promise<BrandKitGenerationStartResult> {
   try {
     const response = await fetch("/api/brand-kit/generate", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ url }),
+      body: JSON.stringify({ url, sessionId }),
     });
-    return (await response.json()) as BrandKitGenerateResult;
+    return (await response.json()) as BrandKitGenerationStartResult;
   } catch {
     return { isOk: false, message: UNREACHABLE_MESSAGE };
   }

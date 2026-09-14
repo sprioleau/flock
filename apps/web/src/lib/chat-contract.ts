@@ -674,7 +674,15 @@ export type FlockChatTools = {
 /*
   The typed UI message flowing over /api/chat in both directions.
 */
-export type FlockChatMessage = UIMessage<never, FlockChatDataParts, FlockChatTools>;
+export interface FlockChatMessageMetadata {
+  createdAtMs: number;
+}
+
+export type FlockChatMessage = UIMessage<
+  FlockChatMessageMetadata,
+  FlockChatDataParts,
+  FlockChatTools
+>;
 
 /*
   Any ONE of this app's data parts, discriminated on `type`. Exactly what

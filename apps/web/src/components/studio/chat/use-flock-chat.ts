@@ -74,6 +74,8 @@ import { getAppSettings } from "../demo/app-settings";
 import { scrollBlockIntoView } from "../add-blocks/scroll-block-into-view";
 import { createAgentDrafts } from "../drafts/create-agent-drafts";
 import { takeGenerationRequest } from "./pending-generation-request";
+import { readBrandKitGenerationIntent } from "./brand-kit-chat-intent";
+import { generateBrandKitFromUrl } from "../brand-kit/brand-kit-generate-client";
 import {
   getChatMessageText,
   getVisibleThreadProvisioningError,
@@ -345,6 +347,7 @@ export function settleClientToolCall<T>({
 */
 interface FlockChatController {
   chat: Chat<FlockChatMessage>;
+  appendLocalMessage: (message: FlockChatMessage) => void;
   dispose: () => void;
   /*
     Start a user-initiated turn: fresh agent batchId + continuation budget.
@@ -1220,6 +1223,9 @@ function createFlockChatController({
 
   return {
     chat,
+    appendLocalMessage: (message) => {
+      chat.messages = [...chat.messages, message];
+    },
     dispose: () => {
       if (isDisposed) {
         return;
@@ -1709,6 +1715,7 @@ export function useFlockChat(): FlockChat {
     if (trimmedText.length === 0 || controller === null || !isReady) {
       return;
     }
+    const brandKitIntent = readBrandKitGenerationIntent(trimmedText);
     const logicalTurnId = crypto.randomUUID();
     const userMessageId = `user:${logicalTurnId}`;
     const turn = { logicalTurnId, userMessageId, text: trimmedText };
@@ -1739,6 +1746,23 @@ export function useFlockChat(): FlockChat {
       typed message is unchanged.
     */
     const generationRequest = takeGenerationRequest();
+    if (brandKitIntent !== null && generationRequest === null && sessionId !== null) {
+      /*
+        An explicit brand-kit request is a product workflow, not an ordinary
+        web-reading prompt. Keep the user's message in this local transcript,
+        then start the same durable route used by the panel and onboarding.
+        The Convex job subscription renders progress and completion below it.
+      */
+      controller.appendLocalMessage(
+        createUserChatMessage({ id: userMessageId, text: trimmedText }),
+      );
+      void generateBrandKitFromUrl({ url: brandKitIntent.sourceUrl, sessionId }).then((result) => {
+        if (!result.isOk) {
+          useEditorStore.getState().showNotice(result.message);
+        }
+      });
+      return;
+    }
     if (generationRequest === null) {
       void chat.sendMessage(createUserChatMessage({ id: userMessageId, text: trimmedText }));
       return;

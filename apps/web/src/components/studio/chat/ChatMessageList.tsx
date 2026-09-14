@@ -394,6 +394,8 @@ export interface ChatMessageListProps {
   retryNotice?: string;
   onRetry?: () => void;
   onApprovalResponse: (input: { approvalId: string; isApproved: boolean }) => void;
+  brandKitArtifact?: React.ReactNode;
+  brandKitArtifactCreatedAtMs?: number;
 }
 
 export function ChatMessageList({
@@ -405,6 +407,8 @@ export function ChatMessageList({
   retryNotice,
   onRetry,
   onApprovalResponse,
+  brandKitArtifact,
+  brandKitArtifactCreatedAtMs,
 }: ChatMessageListProps) {
   const scrollContainerRef = useRef<HTMLDivElement>(null);
 
@@ -422,7 +426,7 @@ export function ChatMessageList({
     */
   }, [messages, error, isAwaitingResponse, isTurnInProgress]);
 
-  if (messages.length === 0 && error === undefined) {
+  if (messages.length === 0 && error === undefined && brandKitArtifact === undefined) {
     return (
       <div className="flex flex-1 flex-col items-center justify-center gap-3 p-6 text-center">
         <MessagesSquareIcon className="size-8 text-muted-foreground/50" />
@@ -457,14 +461,33 @@ export function ChatMessageList({
     indicator a fresh elapsed clock per turn without resetting state.
   */
   const turnKey = messages.findLast((message) => message.role === "user")?.id ?? "turn";
+  const artifactInsertionIndex =
+    brandKitArtifact === undefined
+      ? -1
+      : brandKitArtifactCreatedAtMs === undefined
+        ? 0
+        : messages.findIndex(
+            (message) =>
+              message.metadata?.createdAtMs !== undefined &&
+              message.metadata.createdAtMs > brandKitArtifactCreatedAtMs,
+          );
+
+  function renderBrandKitArtifact(messageIndex: number): React.ReactNode {
+    const shouldRenderAtIndex =
+      brandKitArtifact !== undefined &&
+      (artifactInsertionIndex === messageIndex ||
+        (artifactInsertionIndex === -1 && messageIndex === messages.length));
+    return shouldRenderAtIndex ? brandKitArtifact : null;
+  }
 
   return (
     <div ref={scrollContainerRef} className="flex-1 overflow-y-auto">
       <div className="flex flex-col gap-3 p-3">
-        {messages.map((message, messageIndex) =>
-          message.role === "user" ? (
+        {messages.map((message, messageIndex) => (
+          <div key={message.id} className="contents">
+            {renderBrandKitArtifact(messageIndex)}
+            {message.role === "user" ? (
             <div
-              key={message.id}
               className={cn(
                 "ml-8 self-end whitespace-pre-wrap wrap-anywhere rounded-lg bg-primary px-3 py-2",
                 "text-sm text-primary-foreground",
@@ -477,7 +500,6 @@ export function ChatMessageList({
             </div>
           ) : (
             <AssistantMessageParts
-              key={message.id}
               message={message}
               latestToolPartKeys={latestToolPartKeys}
               isRetryPending={isTurnInProgress && message.id === messages.at(-1)?.id}
@@ -487,8 +509,10 @@ export function ChatMessageList({
               )}
               onApprovalResponse={onApprovalResponse}
             />
-          ),
-        )}
+            )}
+          </div>
+        ))}
+        {renderBrandKitArtifact(messages.length)}
         {/*
           The live "what's happening now" line. It reads the turn's OWN parts
           (the last message, when the agent already opened one) so it can

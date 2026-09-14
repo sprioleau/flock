@@ -23,6 +23,16 @@ function identityFor(bodyAndHead: string) {
   });
 }
 
+describe("favicon identity evidence", () => {
+  it("keeps an explicit favicon separate when a masthead logo exists", () => {
+    const identity = identityFor(
+      '<link rel="icon" href="/favicon.svg" /></head><body><header><img src="/logo.png" alt="Acme logo" /></header></body>',
+    );
+    expect(identity.logoUrl).toBe("https://acme.test/logo.png");
+    expect(identity.faviconUrl).toBe("https://acme.test/favicon.svg");
+  });
+});
+
 describe("buildXProfileUrlFromHandle", () => {
   it("accepts a handle with or without the @", () => {
     expect(buildXProfileUrlFromHandle("@acme")).toBe("https://x.com/acme");

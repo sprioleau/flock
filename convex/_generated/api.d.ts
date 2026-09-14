@@ -17,6 +17,7 @@ import type * as authIdentity from "../authIdentity.js";
 import type * as authMagicLink from "../authMagicLink.js";
 import type * as authMigration from "../authMigration.js";
 import type * as authTestSends from "../authTestSends.js";
+import type * as brandKitGeneration from "../brandKitGeneration.js";
 import type * as brandKits from "../brandKits.js";
 import type * as canvases from "../canvases.js";
 import type * as chat from "../chat.js";
@@ -57,6 +58,7 @@ declare const fullApi: ApiFromModules<{
   authMagicLink: typeof authMagicLink;
   authMigration: typeof authMigration;
   authTestSends: typeof authTestSends;
+  brandKitGeneration: typeof brandKitGeneration;
   brandKits: typeof brandKits;
   canvases: typeof canvases;
   chat: typeof chat;

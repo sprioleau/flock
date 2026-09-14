@@ -155,6 +155,7 @@ describe("buildSaveBrandKitPayload", () => {
     };
     const payload = buildSaveBrandKitPayload(kit);
     expect("logoUrl" in payload).toBe(false);
+    expect("faviconUrl" in payload).toBe(false);
     expect("sourceUrl" in payload).toBe(false);
     expect("sourceImages" in payload).toBe(false);
     expect("sourceScreenshot" in payload).toBe(false);
@@ -181,6 +182,7 @@ describe("buildSaveBrandKitPayload", () => {
       ],
       fonts: MOCK_BRAND_KIT.fonts,
       logoUrl: "https://acme.example/logo.png",
+      faviconUrl: "https://acme.example/favicon.png",
       colors: [
         { id: "color-111111", hex: "#111111", name: "Ink", category: "primary", orderIndex: 0, origin: "agent" },
       ],
@@ -192,6 +194,7 @@ describe("buildSaveBrandKitPayload", () => {
     expect(payload.sourceImages).toEqual(kit.sourceImages);
     expect("sourceScreenshot" in payload).toBe(false);
     expect(payload.logoUrl).toBe("https://acme.example/logo.png");
+    expect(payload.faviconUrl).toBe("https://acme.example/favicon.png");
     expect(payload.colors).toEqual(kit.colors);
     expect(payload.fonts).toBe(kit.fonts);
     expect(payload.variations).toBe(kit.variations);

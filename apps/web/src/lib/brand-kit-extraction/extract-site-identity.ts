@@ -51,6 +51,11 @@ export interface SiteIdentity {
   */
   logoUrl: string | null;
   /*
+    The best explicit link-rel icon, kept separately even when it is also the
+    only usable logo fallback.
+  */
+  faviconUrl: string | null;
+  /*
     og:image social-card URL — kit metadata only, never a harvested asset.
   */
   socialImageUrl: string | null;
@@ -517,11 +522,12 @@ export function extractSiteIdentity({
 }): SiteIdentity {
   const organization = extractJsonLdOrganization(html);
 
+  const faviconUrl = extractIconLogo({ html, baseUrl });
   const logoUrl =
     resolveGuardedUrl({ raw: findMetaContent({ html, key: "og:logo" }), baseUrl }) ??
     resolveGuardedUrl({ raw: organization.logo, baseUrl }) ??
-    extractIconLogo({ html, baseUrl }) ??
-    extractMastheadLogo({ html, baseUrl });
+    extractMastheadLogo({ html, baseUrl }) ??
+    faviconUrl;
 
   const siteName =
     findMetaContent({ html, key: "og:site_name" }) ??
@@ -542,5 +548,5 @@ export function extractSiteIdentity({
     sameAsUrls: organization.sameAsUrls,
   });
 
-  return { siteName, logoUrl, socialImageUrl, socialLinks };
+  return { siteName, logoUrl, faviconUrl, socialImageUrl, socialLinks };
 }
