@@ -375,7 +375,7 @@ export type ListAssetsInput = z.infer<typeof listAssetsInputSchema>;
 /** One library asset, as the model sees it (url is usable as an image src). */
 export interface AssetSummary {
   name: string;
-  kind: "uploaded" | "generated" | "logo" | "social-card";
+  kind: "uploaded" | "generated" | "logo" | "social-card" | "scraped";
   /** Durable serving URL — valid as an image block's `src`. */
   url: string;
   createdAtMs: number;

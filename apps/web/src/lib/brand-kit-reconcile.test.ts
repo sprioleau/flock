@@ -15,12 +15,20 @@ import {
   isHumanOwnedColor,
   planBrandColorsUpdate,
   reconcileBrandColors,
+  reconcileEmailDesignDoc,
+  reconcileImageStyleDoc,
   reconcileSocialLinks,
   reconcileToneOfVoice,
   renumberBrandColors,
   stampUserEditedSocialLinks,
 } from "./brand-kit-reconcile";
-import { MAX_BRAND_COLORS, type BrandColor, type BrandToneOfVoice } from "./brand-kit";
+import {
+  MAX_BRAND_COLORS,
+  type BrandColor,
+  type BrandEmailDesignDoc,
+  type BrandImageStyleDoc,
+  type BrandToneOfVoice,
+} from "./brand-kit";
 
 function color(overrides: Partial<BrandColor> & { hex: string; name: string }): BrandColor {
   return {
@@ -148,6 +156,62 @@ describe("reconcileToneOfVoice", () => {
   it("keeps the stored voice when the scrape found no copy at all", () => {
     const { toneOfVoice } = reconcileToneOfVoice({ existing: scraped, incoming: undefined });
     expect(toneOfVoice).toEqual(scraped);
+  });
+});
+
+describe("reconcileEmailDesignDoc", () => {
+  const scraped: BrandEmailDesignDoc = { markdown: "# New guidance", origin: "agent" };
+  const authored: BrandEmailDesignDoc = {
+    markdown: "# Human guidance",
+    origin: "user",
+    userEditedAtMs: NOW,
+  };
+
+  it("keeps human-authored guidance and reports that it did so", () => {
+    expect(reconcileEmailDesignDoc({ existing: authored, incoming: scraped })).toEqual({
+      emailDesignDoc: authored,
+      keptUserEdit: true,
+    });
+  });
+
+  it("refreshes machine guidance from a later scrape", () => {
+    expect(
+      reconcileEmailDesignDoc({
+        existing: scraped,
+        incoming: { markdown: "# Updated", origin: "scraped" },
+      }),
+    ).toEqual({
+      emailDesignDoc: { markdown: "# Updated", origin: "scraped" },
+      keptUserEdit: false,
+    });
+  });
+});
+
+describe("reconcileImageStyleDoc", () => {
+  const scraped: BrandImageStyleDoc = { markdown: "## New imagery", origin: "agent" };
+  const authored: BrandImageStyleDoc = {
+    markdown: "## Human imagery",
+    origin: "user",
+    userEditedAtMs: NOW,
+  };
+
+  it("keeps human-authored guidance and reports that it did so", () => {
+    expect(reconcileImageStyleDoc({ existing: authored, incoming: scraped })).toEqual({
+      imageStyleDoc: authored,
+      keptUserEdit: true,
+    });
+  });
+
+  it("refreshes machine guidance from a later scrape", () => {
+    expect(
+      reconcileImageStyleDoc({
+        existing: scraped,
+        incoming: { markdown: "## Updated imagery", origin: "scraped" },
+      }),
+    ).toEqual({
+      imageStyleDoc: { markdown: "## Updated imagery", origin: "scraped" },
+      keptUserEdit: false,
+    });
   });
 });
 
@@ -329,6 +393,19 @@ describe("describeBrandKitReconciliation — say what was kept", () => {
         keptUserEditedSocialLinks: 2,
       }),
     ).toBe("Updated from the site — we kept 2 social links you edited.");
+  });
+
+  it("names preserved human-authored guidance documents", () => {
+    expect(
+      describeBrandKitReconciliation({
+        keptUserEditedColors: 0,
+        keptUserToneOfVoice: false,
+        keptUserEmailDesignDoc: true,
+        keptUserImageStyleDoc: true,
+      }),
+    ).toBe(
+      "Updated from the site — we kept your email design guidance and your image style guidance.",
+    );
   });
 
   it("says nothing when there was nothing of the human's to keep", () => {

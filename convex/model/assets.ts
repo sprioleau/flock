@@ -10,13 +10,14 @@ import type { MutationCtx, QueryCtx } from "../_generated/server";
 */
 
 /*
-  Provenance kinds (the library's filter axis). Widens later ("scraped").
+  Provenance kinds (the library's filter axis).
 */
 export const assetKindValidator = v.union(
   v.literal("uploaded"),
   v.literal("generated"),
   v.literal("logo"),
   v.literal("social-card"),
+  v.literal("scraped"),
 );
 
 export type AssetKind = Doc<"assets">["kind"];
@@ -38,6 +39,7 @@ const DEFAULT_NAME_BY_KIND: Record<AssetKind, string> = {
   generated: "Generated image",
   logo: "Logo",
   "social-card": "Social card",
+  scraped: "Scraped image",
 };
 
 /*

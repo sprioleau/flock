@@ -29,6 +29,14 @@ describe("resolveBrandSection", () => {
     expect(DEFAULT_BRAND_SECTION.id).toBe("email-design");
   });
 
+  it("keeps scraped assets and image guidance on durable brand routes", () => {
+    expect(BRAND_SECTIONS.map((section) => section.id)).toEqual(
+      expect.arrayContaining(["assets", "image-style"]),
+    );
+    expect(resolveBrandSection("assets").slug).toBe("assets");
+    expect(resolveBrandSection("image-style").slug).toBe("image-style");
+  });
+
   it("uses matching id and slug so there is one string to reason about", () => {
     for (const section of BRAND_SECTIONS) {
       expect(section.slug).toBe(section.id);

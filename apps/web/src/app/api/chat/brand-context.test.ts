@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { formatBrandSocialContextLine, formatBrandThemeContextLine } from "./brand-context";
 import { formatBrandEmailDesignContextLine } from "@/lib/brand-email-design";
+import { formatBrandImageStyleContextLine } from "@/lib/brand-image-style";
 import { buildSystemContext } from "./system-context";
 
 describe("formatBrandSocialContextLine", () => {
@@ -107,5 +108,20 @@ describe("buildSystemContext brand line placement", () => {
     expect(withLine.staticInstructions).toBe(withoutLine.staticInstructions);
     expect(withLine.staticInstructions).not.toContain("<brand-email-design>");
     expect(withLine.staticInstructions).not.toContain("Single column, generous whitespace.");
+  });
+
+  it("rides image-style guidance on the fresh layer rather than the cached prefix", () => {
+    const imageStyleLine = formatBrandImageStyleContextLine({
+      brandName: "Acme",
+      imageStyleDoc: {
+        markdown: "## Overview\n\nGraphic product imagery with generous negative space.",
+        origin: "agent",
+      },
+    });
+    const withLine = buildSystemContext({ doc, brandContextLine: imageStyleLine });
+
+    expect(withLine.staticInstructions).not.toContain("Graphic product imagery");
+    expect(withLine.documentContext).toContain("Graphic product imagery");
+    expect(withLine.documentContext).toContain("<brand-image-style>");
   });
 });

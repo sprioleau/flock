@@ -1,6 +1,14 @@
 import { describe, expect, it } from "vitest";
 import { getRelativeLuminance } from "./brand-kit-extraction/color-utils";
-import { buildSaveBrandKitPayload, getContrastRatio, MOCK_BRAND_KIT, type BrandKit } from "./brand-kit";
+import {
+  buildSaveBrandKitPayload,
+  getBrandKitValidationErrors,
+  getContrastRatio,
+  getEmailDesignDocValidationErrors,
+  getImageStyleDocValidationErrors,
+  MOCK_BRAND_KIT,
+  type BrandKit,
+} from "./brand-kit";
 
 /**
  * CHARACTERIZATION of the WCAG contrast primitive.
@@ -213,5 +221,75 @@ describe("buildSaveBrandKitPayload", () => {
     expect("revision" in payload).toBe(false);
     expect("isStarterKit" in payload).toBe(false);
     expect("logoConfirmedAtMs" in payload).toBe(false);
+  });
+
+  it("omits a human-owned document so a wholesale save cannot replay provenance", () => {
+    const payload = buildSaveBrandKitPayload({
+      ...MOCK_BRAND_KIT,
+      emailDesignDoc: {
+        markdown: "# Human guidance",
+        origin: "user",
+        userEditedAtMs: 1_700_000_000_000,
+      },
+    });
+    expect("emailDesignDoc" in payload).toBe(false);
+  });
+
+  it("also omits a human-owned image-style document from wholesale saves", () => {
+    const payload = buildSaveBrandKitPayload({
+      ...MOCK_BRAND_KIT,
+      imageStyleDoc: {
+        markdown: "## Human imagery",
+        origin: "user",
+        userEditedAtMs: 1_700_000_000_000,
+      },
+    });
+    expect("imageStyleDoc" in payload).toBe(false);
+  });
+});
+
+describe("email design document validation", () => {
+  it("rejects an empty document", () => {
+    expect(
+      getEmailDesignDocValidationErrors({ markdown: "   ", origin: "agent" }),
+    ).toContain("Email design guidance must not be empty.");
+  });
+
+  it("is part of the whole-kit validation gate", () => {
+    const errors = getBrandKitValidationErrors({
+      ...MOCK_BRAND_KIT,
+      emailDesignDoc: { markdown: "   ", origin: "agent" },
+    });
+    expect(errors).toContain("Email design guidance must not be empty.");
+  });
+
+  it("rejects overlong documents through the whole-kit validation gate", () => {
+    const errors = getBrandKitValidationErrors({
+      ...MOCK_BRAND_KIT,
+      emailDesignDoc: { markdown: "x".repeat(16_001), origin: "agent" },
+    });
+    expect(errors).toContain("Email design guidance can be up to 16000 characters.");
+  });
+});
+
+describe("image style document validation", () => {
+  it("rejects an empty document", () => {
+    expect(
+      getImageStyleDocValidationErrors({ markdown: "   ", origin: "agent" }),
+    ).toContain("Image style guidance must not be empty.");
+  });
+
+  it("rejects an overlong document", () => {
+    expect(
+      getImageStyleDocValidationErrors({ markdown: "x".repeat(12_001), origin: "scraped" }),
+    ).toContain("Image style guidance can be up to 12000 characters.");
+  });
+
+  it("is part of the whole-kit validation gate", () => {
+    const errors = getBrandKitValidationErrors({
+      ...MOCK_BRAND_KIT,
+      imageStyleDoc: { markdown: "   ", origin: "agent" },
+    });
+    expect(errors).toContain("Image style guidance must not be empty.");
   });
 });

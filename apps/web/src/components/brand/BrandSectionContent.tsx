@@ -10,11 +10,21 @@ import { Label } from "@/components/ui/label";
 import { BrandColorsEditor } from "@/components/studio/brand-kit/BrandColorsEditor";
 import { BrandFontsEditor } from "@/components/studio/brand-kit/BrandFontsEditor";
 import { BrandSocialLinksEditor } from "@/components/studio/brand-kit/BrandSocialLinksEditor";
-import { BrandVoiceEditor, type BrandVoiceDraft } from "@/components/studio/brand-kit/BrandVoiceEditor";
+import {
+  BrandVoiceEditor,
+  type BrandVoiceDraft,
+} from "@/components/studio/brand-kit/BrandVoiceEditor";
 import { EmailDesignDocEditor } from "@/components/studio/brand-kit/EmailDesignDocEditor";
-import { MOCK_BRAND_KIT, type BrandColor, type BrandKit, type BrandKitFonts } from "@/lib/brand-kit";
+import { ImageStyleDocEditor } from "@/components/studio/brand-kit/ImageStyleDocEditor";
+import {
+  MOCK_BRAND_KIT,
+  type BrandColor,
+  type BrandKit,
+  type BrandKitFonts,
+} from "@/lib/brand-kit";
 import type { SocialLinkDraft } from "@/lib/brand-social-links";
 import { getOrCreateSessionId } from "@/lib/session";
+import { BrandAssetsView } from "./BrandAssetsView";
 import { resolveBrandSection, type BrandSectionId } from "./brand-sections";
 
 /*
@@ -65,11 +75,15 @@ export function BrandSectionContent({ slug }: { slug: string }) {
     sessionId !== null ? { sessionId } : "skip",
   );
   const hasSavedKit = savedKit !== undefined && savedKit !== null;
-  const brandKit: BrandKit = hasSavedKit ? (savedKit as unknown as BrandKit) : MOCK_BRAND_KIT;
+  const brandKit: BrandKit = hasSavedKit
+    ? (savedKit as unknown as BrandKit)
+    : MOCK_BRAND_KIT;
 
   const updateBrandColors = useMutation(api.brandKits.updateBrandColors);
   const updateBrandFonts = useMutation(api.brandKits.updateBrandFonts);
-  const updateBrandToneOfVoice = useMutation(api.brandKits.updateBrandToneOfVoice);
+  const updateBrandToneOfVoice = useMutation(
+    api.brandKits.updateBrandToneOfVoice,
+  );
   const updateSocialLinks = useMutation(api.brandKits.updateSocialLinks);
   const renameBrandKit = useMutation(api.brandKits.renameBrandKit);
   const clearBrandKit = useMutation(api.brandKits.clearBrandKit);
@@ -94,7 +108,10 @@ export function BrandSectionContent({ slug }: { slug: string }) {
 
   const canEdit = hasSavedKit && sessionId !== null;
 
-  async function runWrite(fallback: string, write: () => Promise<unknown>): Promise<void> {
+  async function runWrite(
+    fallback: string,
+    write: () => Promise<unknown>,
+  ): Promise<void> {
     setErrorMessage(null);
     try {
       await write();
@@ -114,8 +131,8 @@ export function BrandSectionContent({ slug }: { slug: string }) {
       <SectionFrame section={section}>
         <div className="max-w-md rounded-lg border bg-muted/30 p-6">
           <p className="text-sm text-muted-foreground">
-            You don&apos;t have a brand kit yet. Start one to edit its colors, fonts, voice,
-            and email-design guidance here.
+            You don&apos;t have a brand kit yet. Start one to edit its colors,
+            fonts, voice, and email-design guidance here.
           </p>
           <Button
             className="mt-4"
@@ -160,15 +177,24 @@ export function BrandSectionContent({ slug }: { slug: string }) {
             ),
           voice: (draft) =>
             runWrite("Couldn't save the tone of voice. Try again.", () =>
-              updateBrandToneOfVoice({ sessionId: sessionId as string, toneOfVoice: draft }),
+              updateBrandToneOfVoice({
+                sessionId: sessionId as string,
+                toneOfVoice: draft,
+              }),
             ),
           social: (drafts) =>
             runWrite("Couldn't save those links. Try again.", () =>
-              updateSocialLinks({ sessionId: sessionId as string, socialLinks: drafts }),
+              updateSocialLinks({
+                sessionId: sessionId as string,
+                socialLinks: drafts,
+              }),
             ),
           rename: () =>
             runWrite("Couldn't rename the kit. Try again.", () =>
-              renameBrandKit({ sessionId: sessionId as string, name: nameDraft.trim() }),
+              renameBrandKit({
+                sessionId: sessionId as string,
+                name: nameDraft.trim(),
+              }),
             ),
           reset: () =>
             runWrite("Couldn't reset the kit. Try again.", () =>
@@ -191,7 +217,9 @@ function SectionFrame({
     <div className="mx-auto max-w-3xl px-8 py-8">
       <header className="mb-6">
         <h1 className="text-xl font-semibold">{section.label}</h1>
-        <p className="mt-1 text-sm text-muted-foreground">{section.description}</p>
+        <p className="mt-1 text-sm text-muted-foreground">
+          {section.description}
+        </p>
       </header>
       {children}
     </div>
@@ -257,7 +285,9 @@ function renderSection({
           {brandKit.sourceUrl !== undefined && (
             <div className="flex flex-col gap-1">
               <span className="text-sm font-medium">Scraped from</span>
-              <span className="text-sm text-muted-foreground">{brandKit.sourceUrl}</span>
+              <span className="text-sm text-muted-foreground">
+                {brandKit.sourceUrl}
+              </span>
             </div>
           )}
           <div className="border-t pt-6">
@@ -269,7 +299,8 @@ function renderSection({
               Reset to default
             </Button>
             <p className="mt-2 text-xs text-muted-foreground">
-              Clears your saved kit and drops every section back to the Flock starter.
+              Clears your saved kit and drops every section back to the Flock
+              starter.
             </p>
           </div>
         </div>
@@ -283,7 +314,12 @@ function renderSection({
         />
       );
     case "fonts":
-      return <BrandFontsEditor fonts={brandKit.fonts} onCommit={(fonts) => void commit.fonts(fonts)} />;
+      return (
+        <BrandFontsEditor
+          fonts={brandKit.fonts}
+          onCommit={(fonts) => void commit.fonts(fonts)}
+        />
+      );
     case "voice":
       return (
         <BrandVoiceEditor
@@ -304,5 +340,15 @@ function renderSection({
           onCommit={(drafts) => void commit.social(drafts)}
         />
       );
+    case "image-style":
+      return (
+        <ImageStyleDocEditor
+          sessionId={sessionId}
+          imageStyleDoc={brandKit.imageStyleDoc}
+          colors={brandKit.colors ?? []}
+        />
+      );
+    case "assets":
+      return <BrandAssetsView sessionId={sessionId} brandKit={brandKit} />;
   }
 }

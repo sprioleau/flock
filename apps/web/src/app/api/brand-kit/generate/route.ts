@@ -2,10 +2,16 @@ import { z } from "zod";
 import { ConvexHttpClient } from "convex/browser";
 import { after } from "next/server";
 import { api } from "@convex/_generated/api";
+import type { Id } from "@convex/_generated/dataModel";
 import { chargeCreditForRequest } from "@/lib/auth/credits";
 import { getToken } from "@/lib/auth/auth-server";
-import { buildSaveBrandKitPayload } from "@/lib/brand-kit";
+import { buildSaveBrandKitPayload, type BrandKit, type BrandSourceImage } from "@/lib/brand-kit";
 import { generateBrandKit } from "@/lib/brand-kit-extraction/generate-brand-kit";
+import {
+  rehostSourceImages,
+  type RehostedSourceImage,
+} from "@/lib/brand-kit-extraction/rehost-source-images";
+import type { AssetBinary } from "@/lib/brand-kit-extraction/confirm-asset";
 import {
   MAX_URL_LENGTH,
   normalizeWebsiteUrl,
@@ -52,6 +58,77 @@ let lastRequestStartedAtMs = 0;
 
 function failureResponse({ message, status }: { message: string; status: number }): Response {
   return Response.json({ isOk: false, message }, { status });
+}
+
+function sourceImageName({
+  brandName,
+  sourceImage,
+  index,
+}: {
+  brandName: string;
+  sourceImage: BrandSourceImage;
+  index: number;
+}): string {
+  const alt = sourceImage.alt?.replace(/\s+/g, " ").trim() ?? "";
+  return alt.length > 0 ? alt.slice(0, 60) : `${brandName} source image ${index + 1}`;
+}
+
+async function uploadScrapedSourceImage({
+  convex,
+  sessionId,
+  brandName,
+  sourceImage,
+  binary,
+  index,
+}: {
+  convex: ConvexHttpClient;
+  sessionId: string;
+  brandName: string;
+  sourceImage: BrandSourceImage;
+  binary: AssetBinary;
+  index: number;
+}): Promise<string | null> {
+  const postUrl = await convex.mutation(api.files.generateUploadUrl, {});
+  const uploadResponse = await fetch(postUrl, {
+    method: "POST",
+    headers: { "Content-Type": binary.contentType },
+    body: new Blob([binary.bytes.buffer as ArrayBuffer], { type: binary.contentType }),
+  });
+  if (!uploadResponse.ok) {
+    return null;
+  }
+  const { storageId } = (await uploadResponse.json()) as { storageId: Id<"_storage"> };
+  const registered = await convex.mutation(api.assets.register, {
+    sessionId,
+    storageId,
+    kind: "scraped",
+    name: sourceImageName({ brandName, sourceImage, index }),
+    ...(sourceImage.alt === undefined ? {} : { alt: sourceImage.alt }),
+    sourceUrl: sourceImage.url,
+  });
+  return registered.url;
+}
+
+function withDurableSourceImages({
+  brandKit,
+  rehosted,
+}: {
+  brandKit: BrandKit;
+  rehosted: RehostedSourceImage[];
+}): BrandKit {
+  if (brandKit.sourceImages === undefined) {
+    return brandKit;
+  }
+  const sourceImages = rehosted.map(({ sourceImage, url }) => ({ ...sourceImage, url }));
+  return {
+    ...brandKit,
+    /*
+      Once a source image enters the saved kit it must be the durable storage
+      URL. Failed siblings disappear from the active kit but do not fail the
+      scrape; the rehosting helper has already enforced the shared byte caps.
+    */
+    sourceImages,
+  };
 }
 
 export async function POST(request: Request) {
@@ -144,9 +221,30 @@ export async function POST(request: Request) {
         jobId,
         step: "saving-kit",
       });
+      const sourceImages = result.brandKit.sourceImages ?? [];
+      let sourceImageIndex = 0;
+      const rehostedSourceImages = await rehostSourceImages({
+        sourceImages,
+        rehost: async ({ sourceImage, binary }) => {
+          const index = sourceImageIndex;
+          sourceImageIndex += 1;
+          return await uploadScrapedSourceImage({
+            convex,
+            sessionId,
+            brandName: result.brandKit.name,
+            sourceImage,
+            binary,
+            index,
+          });
+        },
+      });
+      const durableBrandKit = withDurableSourceImages({
+        brandKit: result.brandKit,
+        rehosted: rehostedSourceImages,
+      });
       await convex.mutation(api.brandKits.saveBrandKit, {
         sessionId,
-        brandKit: buildSaveBrandKitPayload(result.brandKit),
+        brandKit: buildSaveBrandKitPayload(durableBrandKit),
       });
       const savedKit = await convex.query(api.brandKits.getActiveBrandKit, { sessionId });
       if (savedKit === null) {

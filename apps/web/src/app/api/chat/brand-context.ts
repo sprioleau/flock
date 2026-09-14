@@ -1,6 +1,7 @@
 import { api } from "@convex/_generated/api";
 import { formatBrandVoiceContextLine } from "@/lib/brand-voice";
 import { formatBrandEmailDesignContextLine } from "@/lib/brand-email-design";
+import { formatBrandImageStyleContextLine } from "@/lib/brand-image-style";
 import { getLiveThemeVariations } from "@/lib/brand-kit";
 import { fetchAuthQuery } from "@/lib/auth/auth-server";
 
@@ -99,6 +100,10 @@ export async function buildBrandContextBlock({
       formatBrandEmailDesignContextLine({
         brandName: brandKit.name,
         emailDesignDoc: brandKit.emailDesignDoc,
+      }),
+      formatBrandImageStyleContextLine({
+        brandName: brandKit.name,
+        imageStyleDoc: brandKit.imageStyleDoc,
       }),
     ].filter((line): line is string => line !== null);
     return lines.length === 0 ? null : lines.join("\n\n");

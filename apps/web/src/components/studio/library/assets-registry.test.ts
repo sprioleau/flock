@@ -71,6 +71,26 @@ describe("seedAssetName", () => {
 });
 
 describe("assets.register", () => {
+  it("registers scraped source images with their page provenance", async () => {
+    const t = createBackend();
+    const storageId = await storePngFile(t, [4, 5, 6]);
+    const { assetId } = await t.mutation(api.assets.register, {
+      sessionId: SESSION_ID,
+      storageId,
+      kind: "scraped",
+      name: "Product story",
+      alt: "Product story",
+      sourceUrl: "https://example.com/assets/product-story.png",
+    });
+    const row = await t.run(async (ctx) => ctx.db.get(assetId));
+    expect(row).toMatchObject({
+      kind: "scraped",
+      name: "Product story",
+      alt: "Product story",
+      sourceUrl: "https://example.com/assets/product-story.png",
+    });
+  });
+
   it("registers an upload: resolves the URL and denormalizes file metadata", async () => {
     const t = createBackend();
     const storageId = await storePngFile(t, [1, 2, 3, 4, 5]);

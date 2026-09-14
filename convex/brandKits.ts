@@ -15,10 +15,12 @@ import {
   getBrandKitValidationErrors,
   getConfirmedBrandAssetUrl,
   getEmailDesignDocValidationErrors,
+  getImageStyleDocValidationErrors,
   getLiveThemeVariations,
   getToneOfVoiceValidationErrors,
   MAX_BRAND_KIT_VARIATIONS,
   type BrandEmailDesignDoc,
+  type BrandImageStyleDoc,
   type BrandKit,
   type BrandToneOfVoice,
 } from "../apps/web/src/lib/brand-kit";
@@ -38,6 +40,7 @@ import {
   planBrandColorsUpdate,
   reconcileBrandColors,
   reconcileEmailDesignDoc,
+  reconcileImageStyleDoc,
   reconcileSocialLinks,
   reconcileToneOfVoice,
   stampUserEditedSocialLinks,
@@ -137,14 +140,40 @@ const toneOfVoiceValidator = v.object({
 
 /*
   email-design.md (§3). Prose the model reads only via brand-email-design.ts.
-  READ shape and scrape-input shape share this validator; `"user"` is minted
-  server-side by updateBrandEmailDesignDoc, and reconcile keeps a user doc
-  through a re-scrape.
+  Read rows may carry user provenance, while the wholesale scrape input below
+  intentionally uses a narrower validator. `"user"` is minted server-side by
+  updateBrandEmailDesignDoc, and reconcile keeps a user doc through a re-scrape.
 */
 const emailDesignDocValidator = v.object({
   markdown: v.string(),
   origin: v.union(v.literal("scraped"), v.literal("agent"), v.literal("user")),
   userEditedAtMs: v.optional(v.number()),
+});
+
+/*
+  The wholesale save is used by the scraper and may only carry machine
+  provenance. Human ownership is minted by updateBrandEmailDesignDoc after a
+  caller has explicitly used the editing mutation; accepting "user" here
+  would let any save caller forge the re-scrape lock.
+*/
+const machineEmailDesignDocValidator = v.object({
+  markdown: v.string(),
+  origin: v.union(v.literal("scraped"), v.literal("agent")),
+});
+
+const imageStyleDocValidator = v.object({
+  markdown: v.string(),
+  origin: v.union(v.literal("scraped"), v.literal("agent"), v.literal("user")),
+  userEditedAtMs: v.optional(v.number()),
+});
+
+/*
+  Wholesale scrape saves may only carry machine provenance. Human ownership is
+  minted by updateBrandImageStyleDoc.
+*/
+const machineImageStyleDocValidator = v.object({
+  markdown: v.string(),
+  origin: v.union(v.literal("scraped"), v.literal("agent")),
 });
 
 /*
@@ -185,7 +214,8 @@ export const brandKitValidator = v.object({
   socialLinks: v.optional(v.array(v.object({ platform: v.string(), url: v.string() }))),
   colors: v.optional(v.array(brandColorValidator)),
   toneOfVoice: v.optional(toneOfVoiceValidator),
-  emailDesignDoc: v.optional(emailDesignDocValidator),
+  emailDesignDoc: v.optional(machineEmailDesignDocValidator),
+  imageStyleDoc: v.optional(machineImageStyleDocValidator),
   variations: v.array(
     v.object({
       id: v.string(),
@@ -220,6 +250,7 @@ const activeBrandKitValidator = v.object({
   colors: v.optional(v.array(brandColorValidator)),
   toneOfVoice: v.optional(toneOfVoiceValidator),
   emailDesignDoc: v.optional(emailDesignDocValidator),
+  imageStyleDoc: v.optional(imageStyleDocValidator),
   revision: v.number(),
   logoConfirmedAtMs: v.optional(v.number()),
   socialImageConfirmedAtMs: v.optional(v.number()),
@@ -266,6 +297,8 @@ const saveBrandKitResultValidator = v.object({
   keptUserEditedColors: v.number(),
   keptUserToneOfVoice: v.boolean(),
   keptUserEditedSocialLinks: v.number(),
+  keptUserEmailDesignDoc: v.boolean(),
+  keptUserImageStyleDoc: v.boolean(),
 });
 
 type BrandKitInput = Infer<typeof brandKitValidator>;
@@ -292,6 +325,7 @@ function projectBrandKitRow(row: Doc<"brandKits">): ActiveBrandKitPayload {
     ...(row.colors !== undefined ? { colors: row.colors } : {}),
     ...(row.toneOfVoice !== undefined ? { toneOfVoice: row.toneOfVoice } : {}),
     ...(row.emailDesignDoc !== undefined ? { emailDesignDoc: row.emailDesignDoc } : {}),
+    ...(row.imageStyleDoc !== undefined ? { imageStyleDoc: row.imageStyleDoc } : {}),
     revision: getEffectiveRevision(row),
     ...(row.logoConfirmedAtMs !== undefined ? { logoConfirmedAtMs: row.logoConfirmedAtMs } : {}),
     ...(row.socialImageConfirmedAtMs !== undefined
@@ -477,7 +511,13 @@ export const saveBrandKit = mutation({
         createdAtMs: now,
         updatedAtMs: now,
       });
-      return { keptUserEditedColors: 0, keptUserToneOfVoice: false, keptUserEditedSocialLinks: 0 };
+      return {
+        keptUserEditedColors: 0,
+        keptUserToneOfVoice: false,
+        keptUserEditedSocialLinks: 0,
+        keptUserEmailDesignDoc: false,
+        keptUserImageStyleDoc: false,
+      };
     }
     /*
       Defensive: the invariant is one row per session — fold any dupes away
@@ -508,6 +548,10 @@ export const saveBrandKit = mutation({
     const reconciledEmailDesignDoc = reconcileEmailDesignDoc({
       existing: primaryRow.emailDesignDoc,
       incoming: args.brandKit.emailDesignDoc,
+    });
+    const reconciledImageStyleDoc = reconcileImageStyleDoc({
+      existing: primaryRow.imageStyleDoc,
+      incoming: args.brandKit.imageStyleDoc,
     });
     const { patch, storageIdsToDelete } = planBrandKitSavePatch({
       existing: primaryRow,
@@ -546,6 +590,7 @@ export const saveBrandKit = mutation({
         refreshed from the incoming payload.
       */
       emailDesignDoc: reconciledEmailDesignDoc.emailDesignDoc,
+      imageStyleDoc: reconciledImageStyleDoc.imageStyleDoc,
       /*
         A scrape REPLACES the starter kit outright — that is the frictionless
         overwrite §14.5c promises. The starter's colors and tone carry
@@ -563,6 +608,8 @@ export const saveBrandKit = mutation({
       keptUserEditedColors: reconciledColors.keptUserEditedCount,
       keptUserToneOfVoice: reconciledTone.keptUserEdit,
       keptUserEditedSocialLinks: reconciledSocialLinks.keptUserEditedCount,
+      keptUserEmailDesignDoc: reconciledEmailDesignDoc.keptUserEdit,
+      keptUserImageStyleDoc: reconciledImageStyleDoc.keptUserEdit,
     };
   },
 });
@@ -718,7 +765,7 @@ export const updateBrandFonts = mutation({
       ...toBrandKitContract(row),
       fonts: args.fonts,
       variations: getLiveThemeVariations(variations),
-    });
+    } as BrandKitInput);
     await ctx.db.patch(row._id, {
       fonts: args.fonts,
       variations,
@@ -802,7 +849,7 @@ export const addBrandThemeVariation = mutation({
     assertBrandKitIsValid({
       ...toBrandKitContract(row),
       variations: getLiveThemeVariations(variations),
-    });
+    } as BrandKitInput);
     await ctx.db.patch(row._id, { variations, updatedAtMs: Date.now() });
     return { variationId: args.variation.id };
   },
@@ -879,7 +926,7 @@ export const updateBrandThemeVariation = mutation({
     assertBrandKitIsValid({
       ...toBrandKitContract(row),
       variations: getLiveThemeVariations(variations),
-    });
+    } as BrandKitInput);
     const hasSameName = existing.name === name;
     const hasSameGlobals = areGlobalsEqual({ a: existing.globals, b: args.globals });
     if (hasSameName && hasSameGlobals) {
@@ -971,7 +1018,7 @@ export const setBrandThemeVariationDeleted = mutation({
     assertBrandKitIsValid({
       ...toBrandKitContract(row),
       variations: getLiveThemeVariations(plan.variations),
-    });
+    } as BrandKitInput);
     await ctx.db.patch(row._id, { variations: plan.variations, updatedAtMs: Date.now() });
     return null;
   },
@@ -1060,6 +1107,39 @@ export const updateBrandEmailDesignDoc = mutation({
       throw new ConvexError(errors.join(" "));
     }
     await ctx.db.patch(row._id, { emailDesignDoc, updatedAtMs: Date.now() });
+    return null;
+  },
+});
+
+/*
+  Save the session's image-style.md (brand-memory): a user edit stamps
+  origin "user", so a later scrape keeps this visual direction. `null`
+  clears it. The document is bounded and validated before the row is patched.
+  Like emailDesignDoc, this is metadata and does not bump the render revision.
+*/
+export const updateBrandImageStyleDoc = mutation({
+  args: {
+    sessionId: v.string(),
+    markdown: v.union(v.null(), v.string()),
+  },
+  returns: v.null(),
+  handler: async (ctx, args) => {
+    const ownerId = await resolveOwnerId(ctx, { claimedSessionId: args.sessionId });
+    const row = await requireOwnerBrandKitRow(ctx, ownerId);
+    if (args.markdown === null) {
+      await ctx.db.patch(row._id, { imageStyleDoc: undefined, updatedAtMs: Date.now() });
+      return null;
+    }
+    const imageStyleDoc: BrandImageStyleDoc = {
+      markdown: args.markdown,
+      origin: "user",
+      userEditedAtMs: Date.now(),
+    };
+    const errors = getImageStyleDocValidationErrors(imageStyleDoc);
+    if (errors.length > 0) {
+      throw new ConvexError(errors.join(" "));
+    }
+    await ctx.db.patch(row._id, { imageStyleDoc, updatedAtMs: Date.now() });
     return null;
   },
 });

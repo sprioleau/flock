@@ -2,6 +2,7 @@ import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from "vites
 
 const chargeCreditForRequestMock = vi.hoisted(() => vi.fn());
 const generateBrandKitMock = vi.hoisted(() => vi.fn());
+const rehostSourceImagesMock = vi.hoisted(() => vi.fn());
 const afterMock = vi.hoisted(() => vi.fn());
 const getTokenMock = vi.hoisted(() => vi.fn());
 const convexMutationMock = vi.hoisted(() => vi.fn());
@@ -12,6 +13,9 @@ vi.mock("@/lib/auth/credits", () => ({
 }));
 vi.mock("@/lib/brand-kit-extraction/generate-brand-kit", () => ({
   generateBrandKit: generateBrandKitMock,
+}));
+vi.mock("@/lib/brand-kit-extraction/rehost-source-images", () => ({
+  rehostSourceImages: rehostSourceImagesMock,
 }));
 vi.mock("next/server", () => ({ after: afterMock }));
 vi.mock("@/lib/auth/auth-server", () => ({ getToken: getTokenMock }));
@@ -49,6 +53,8 @@ beforeEach(() => {
     remaining: 4,
   });
   generateBrandKitMock.mockReset();
+  rehostSourceImagesMock.mockReset();
+  rehostSourceImagesMock.mockResolvedValue([]);
   afterMock.mockReset();
   getTokenMock.mockReset();
   getTokenMock.mockResolvedValue(null);
@@ -70,7 +76,11 @@ describe("POST /api/brand-kit/generate — Vercel function contract", () => {
   });
 
   it("charges once, creates a durable job, and schedules generation after responding", async () => {
-    const brandKit = { name: "Acme", sourceUrl: "https://acme.test/" };
+    const brandKit = {
+      name: "Acme",
+      sourceUrl: "https://acme.test/",
+      emailDesignDoc: { markdown: "# Acme email design", origin: "agent" as const },
+    };
     generateBrandKitMock.mockResolvedValue({ isOk: true, brandKit });
 
     const request = makeRequest({ url: "acme.test", sessionId: "session-1" });
@@ -90,6 +100,13 @@ describe("POST /api/brand-kit/generate — Vercel function contract", () => {
       url: "https://acme.test",
       onProgress: expect.any(Function),
     });
+    expect(convexMutationMock).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        sessionId: "session-1",
+        brandKit: expect.objectContaining({ emailDesignDoc: brandKit.emailDesignDoc }),
+      }),
+    );
     expect(convexQueryMock).toHaveBeenCalled();
   });
 
@@ -112,6 +129,107 @@ describe("POST /api/brand-kit/generate — Vercel function contract", () => {
         errorMessage: "We couldn't read enough of that website.",
       }),
     );
+  });
+
+  it("persists only durable rehosted source images before completing the job", async () => {
+    const sourceImages = [
+      { url: "https://acme.test/hero.png", alt: "Acme product" },
+      { url: "https://acme.test/broken.png", alt: "Broken source" },
+    ];
+    generateBrandKitMock.mockResolvedValue({
+      isOk: true,
+      brandKit: {
+        name: "Acme",
+        sourceUrl: "https://acme.test/",
+        sourceImages,
+      },
+    });
+    rehostSourceImagesMock.mockResolvedValue([
+      {
+        sourceImage: sourceImages[0],
+        url: "https://convex.test/storage/hero.png",
+      },
+    ]);
+
+    const response = await POST(makeRequest({ url: "acme.test", sessionId: "session-1" }));
+    expect(response.status).toBe(202);
+    await afterMock.mock.calls[0]?.[0]();
+
+    expect(rehostSourceImagesMock).toHaveBeenCalledWith({
+      sourceImages,
+      rehost: expect.any(Function),
+    });
+    const saveCall = convexMutationMock.mock.calls.find(
+      (call) => call[1]?.brandKit !== undefined,
+    );
+    expect(saveCall?.[1].brandKit.sourceImages).toEqual([
+      {
+        url: "https://convex.test/storage/hero.png",
+        alt: "Acme product",
+      },
+    ]);
+  });
+
+  it("uploads and registers a guarded source image as a scraped library asset", async () => {
+    const sourceImage = {
+      url: "https://acme.test/hero.png",
+      alt: "Acme product",
+    };
+    generateBrandKitMock.mockResolvedValue({
+      isOk: true,
+      brandKit: {
+        name: "Acme",
+        sourceUrl: "https://acme.test/",
+        sourceImages: [sourceImage],
+      },
+    });
+    convexMutationMock.mockImplementation(async (_reference, args) => {
+      if (Object.keys(args).length === 0) {
+        return "https://upload.convex.test";
+      }
+      if (args.kind === "scraped") {
+        return { url: "https://convex.test/storage/hero.png" };
+      }
+      return "job-1";
+    });
+    const fetchMock = vi.fn().mockResolvedValue(
+      new Response(JSON.stringify({ storageId: "storage-1" }), {
+        status: 200,
+        headers: { "Content-Type": "application/json" },
+      }),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    rehostSourceImagesMock.mockImplementation(async ({ sourceImages, rehost }) => {
+      const url = await rehost({
+        sourceImage: sourceImages[0],
+        binary: { bytes: new Uint8Array([1, 2, 3]), contentType: "image/png" },
+      });
+      return [{ sourceImage: sourceImages[0], url }];
+    });
+
+    try {
+      const response = await POST(makeRequest({ url: "acme.test", sessionId: "session-1" }));
+      expect(response.status).toBe(202);
+      await afterMock.mock.calls[0]?.[0]();
+
+      expect(fetchMock).toHaveBeenCalledWith(
+        "https://upload.convex.test",
+        expect.objectContaining({ method: "POST" }),
+      );
+      expect(convexMutationMock).toHaveBeenCalledWith(
+        expect.anything(),
+        expect.objectContaining({
+          sessionId: "session-1",
+          storageId: "storage-1",
+          kind: "scraped",
+          name: "Acme product",
+          alt: "Acme product",
+          sourceUrl: sourceImage.url,
+        }),
+      );
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 
   it.each(["http://127.0.0.1/admin", "javascript:alert(1)", "not a website"])(

@@ -20,6 +20,7 @@ import {
   - human-path generation   → kind "generated"  (prompt + model alt)
   - agent-path generation   → kind "generated"  (server-side, chat tool)
   - brand-kit confirm-asset → kind "logo" / "social-card" (sourceUrl = scrape origin)
+  - brand-kit source images → kind "scraped" (sourceUrl = scrape origin)
 
   Owner decision (BINDING): every successful AI generation registers
   unconditionally at upload — the registry IS the "what I made yesterday"
@@ -110,7 +111,7 @@ export const register = mutation({
     */
     alt: v.optional(v.string()),
     /*
-      kind:"logo"/"social-card" — the scrape origin.
+      kind:"logo"/"social-card"/"scraped" — the scrape origin.
     */
     sourceUrl: v.optional(v.string()),
   },

@@ -721,6 +721,17 @@ export default defineSchema({
       }),
     ),
     /*
+      image-style.md: durable visual direction for selecting and generating
+      imagery. Optional for rows created before this artifact existed.
+    */
+    imageStyleDoc: v.optional(
+      v.object({
+        markdown: v.string(),
+        origin: v.union(v.literal("scraped"), v.literal("agent"), v.literal("user")),
+        userEditedAtMs: v.optional(v.number()),
+      }),
+    ),
+    /*
       ThemeVariation[]: complete `Required<GlobalStyles>` payloads (see guard note above).
     */
     variations: v.array(
@@ -815,6 +826,7 @@ export default defineSchema({
       v.literal("generated"),
       v.literal("logo"),
       v.literal("social-card"),
+      v.literal("scraped"),
     ),
     /*
       Human-editable display name; seeded per kind (filename / prompt stem / kit name).

@@ -75,6 +75,7 @@ const KIND_LABELS: Record<AssetKind, string> = {
   generated: "Generated",
   logo: "Logo",
   "social-card": "Social card",
+  scraped: "Scraped",
 };
 
 const FILTER_CHIPS: readonly { value: KindFilter; label: string }[] = [
@@ -83,6 +84,7 @@ const FILTER_CHIPS: readonly { value: KindFilter; label: string }[] = [
   { value: "generated", label: "Generated" },
   { value: "logo", label: "Logos" },
   { value: "social-card", label: "Social cards" },
+  { value: "scraped", label: "Scraped" },
 ];
 
 /*

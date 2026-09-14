@@ -29,6 +29,7 @@ import {
   type BrandColorCategory,
   type BrandDataOrigin,
   type BrandEmailDesignDoc,
+  type BrandImageStyleDoc,
   type BrandToneOfVoice,
 } from "./brand-kit";
 import { SOCIAL_PLATFORM_ORDER } from "./social-links";
@@ -214,6 +215,38 @@ export function reconcileEmailDesignDoc({
 }
 
 /*
+  True when a human authored or edited image-style.md.
+*/
+export function isHumanOwnedImageStyleDoc(doc: BrandImageStyleDoc): boolean {
+  return doc.origin === "user" || doc.userEditedAtMs !== undefined;
+}
+
+export interface ImageStyleDocReconciliation {
+  imageStyleDoc: BrandImageStyleDoc | undefined;
+  /*
+    True when the human's document was kept and the scrape's was discarded.
+  */
+  keptUserEdit: boolean;
+}
+
+/*
+  image-style.md is reconciled as one document, so a human's visual direction
+  survives a later scrape without trying to merge two prose documents.
+*/
+export function reconcileImageStyleDoc({
+  existing,
+  incoming,
+}: {
+  existing: BrandImageStyleDoc | undefined;
+  incoming: BrandImageStyleDoc | undefined;
+}): ImageStyleDocReconciliation {
+  if (existing !== undefined && isHumanOwnedImageStyleDoc(existing)) {
+    return { imageStyleDoc: existing, keptUserEdit: true };
+  }
+  return { imageStyleDoc: incoming ?? existing, keptUserEdit: false };
+}
+
+/*
   A social profile link as it is STORED on the kit row.
 
   `platform` is a bare string, not `SocialPlatform`, because the row's schema
@@ -372,10 +405,14 @@ export function describeBrandKitReconciliation({
     means what 0 means: a save that kept no links of the human's.
   */
   keptUserEditedSocialLinks = 0,
+  keptUserEmailDesignDoc = false,
+  keptUserImageStyleDoc = false,
 }: {
   keptUserEditedColors: number;
   keptUserToneOfVoice: boolean;
   keptUserEditedSocialLinks?: number;
+  keptUserEmailDesignDoc?: boolean;
+  keptUserImageStyleDoc?: boolean;
 }): string | null {
   const kept: string[] = [];
   if (keptUserEditedColors > 0) {
@@ -390,6 +427,12 @@ export function describeBrandKitReconciliation({
         ? "1 social link you edited"
         : `${keptUserEditedSocialLinks} social links you edited`,
     );
+  }
+  if (keptUserEmailDesignDoc) {
+    kept.push("your email design guidance");
+  }
+  if (keptUserImageStyleDoc) {
+    kept.push("your image style guidance");
   }
   if (kept.length === 0) {
     return null;

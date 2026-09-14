@@ -37,6 +37,7 @@ function buildKitInput({
   colors,
   toneOfVoice,
   socialLinks,
+  imageStyleDoc,
   spacingBump = 0,
 }: {
   colors?: BrandColor[];
@@ -47,6 +48,7 @@ function buildKitInput({
     to the ones sitting in production today.
   */
   socialLinks?: { platform: string; url: string }[];
+  imageStyleDoc?: { markdown: string; origin: "scraped" | "agent" };
   spacingBump?: number;
 } = {}) {
   return {
@@ -55,6 +57,7 @@ function buildKitInput({
     ...(colors === undefined ? {} : { colors }),
     ...(toneOfVoice === undefined ? {} : { toneOfVoice }),
     ...(socialLinks === undefined ? {} : { socialLinks }),
+    ...(imageStyleDoc === undefined ? {} : { imageStyleDoc }),
     variations: [
       {
         id: "classic-light",
@@ -421,6 +424,54 @@ describe("re-scrape reconciliation (§8) — human edits survive", () => {
     });
     expect((await readKit(t)).toneOfVoice!.descriptors).toEqual(["fresh"]);
     expect(result.keptUserToneOfVoice).toBe(false);
+  });
+
+  it("persists image-style guidance, stamps human edits, and preserves them on rescrape", async () => {
+    const t = createBackend();
+    await saveKit(
+      t,
+      buildKitInput({
+        imageStyleDoc: { markdown: "## Scraped imagery", origin: "agent" },
+      }),
+    );
+
+    await t.mutation(api.brandKits.updateBrandImageStyleDoc, {
+      sessionId: SESSION_ID,
+      markdown: "## Human imagery",
+    });
+
+    const afterEdit = await readKit(t);
+    expect(afterEdit.imageStyleDoc).toMatchObject({
+      markdown: "## Human imagery",
+      origin: "user",
+    });
+    expect(afterEdit.imageStyleDoc?.userEditedAtMs).toBeGreaterThan(0);
+
+    const result = await saveKit(
+      t,
+      buildKitInput({
+        spacingBump: 4,
+        imageStyleDoc: { markdown: "## New scraped imagery", origin: "scraped" },
+      }),
+    );
+
+    expect((await readKit(t)).imageStyleDoc).toMatchObject({
+      markdown: "## Human imagery",
+      origin: "user",
+    });
+    expect(result.keptUserImageStyleDoc).toBe(true);
+  });
+
+  it("rejects blank image-style guidance from the dedicated edit mutation", async () => {
+    const t = createBackend();
+    await saveKit(t, buildKitInput());
+
+    await expect(
+      t.mutation(api.brandKits.updateBrandImageStyleDoc, {
+        sessionId: SESSION_ID,
+        markdown: "   ",
+      }),
+    ).rejects.toThrow("Image style guidance must not be empty.");
   });
 });
 

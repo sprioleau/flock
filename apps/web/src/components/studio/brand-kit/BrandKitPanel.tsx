@@ -263,6 +263,8 @@ export function BrandKitPanel() {
           keptUserEditedColors: result.keptUserEditedColors,
           keptUserToneOfVoice: result.keptUserToneOfVoice,
           keptUserEditedSocialLinks: result.keptUserEditedSocialLinks,
+          keptUserEmailDesignDoc: result.keptUserEmailDesignDoc,
+          keptUserImageStyleDoc: result.keptUserImageStyleDoc,
         }),
       );
       /*

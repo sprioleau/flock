@@ -1,4 +1,5 @@
 import { DEFAULT_GLOBAL_STYLES, type GlobalStyles } from "@flock/email-sdk";
+import { MAX_IMAGE_STYLE_DOC_LENGTH } from "./brand-kit-extraction/assemble-image-style-doc";
 import { getRelativeLuminance, parseHexColor } from "./brand-kit-extraction/color-utils";
 import type { BrandSocialLink } from "./social-links";
 
@@ -286,9 +287,37 @@ export interface BrandEmailDesignDoc {
 }
 
 /*
-  One representative image harvested from the source page. These are bounded
-  URL references with enough intrinsic metadata for a useful preview; they do
-  not copy third-party image bytes into the brand-kit row.
+  The only document shape accepted by a wholesale scrape save. User
+  provenance and its timestamp are intentionally absent from this type.
+*/
+export type BrandMachineEmailDesignDoc = {
+  markdown: string;
+  origin: Exclude<BrandDataOrigin, "user">;
+};
+
+/*
+  image-style.md — standing visual direction for image selection and
+  generation. It follows the same scrape/user ownership lifecycle as the
+  email design document.
+*/
+export interface BrandImageStyleDoc {
+  markdown: string;
+  origin: BrandDataOrigin;
+  userEditedAtMs?: number;
+}
+
+/*
+  The only document shape accepted by a wholesale scrape save.
+*/
+export type BrandMachineImageStyleDoc = {
+  markdown: string;
+  origin: Exclude<BrandDataOrigin, "user">;
+};
+
+/*
+  One representative image harvested from the source page. The URL begins as
+  bounded scrape evidence and becomes a durable Asset Library URL before the
+  kit is saved; intrinsic metadata supports useful previews and selection.
 */
 export interface BrandSourceImage {
   url: string;
@@ -328,9 +357,9 @@ export interface BrandKit {
   */
   sourceScreenshot?: BrandSourceScreenshot;
   /*
-    Up to five verified representative source-page images. URL-only evidence
-    is small enough to persist and gives later email generation durable visual
-    provenance without copying third-party assets into storage.
+    Up to five verified representative source-page images. Generated previews
+    initially carry guarded external URLs; the background save rehosts each
+    successful image and persists only its durable Asset Library URL here.
   */
   sourceImages?: BrandSourceImage[];
   /*
@@ -400,6 +429,10 @@ export interface BrandKit {
   */
   emailDesignDoc?: BrandEmailDesignDoc;
   /*
+    image-style.md standing visual direction for later email imagery.
+  */
+  imageStyleDoc?: BrandImageStyleDoc;
+  /*
     3–4 agent-generated color variations; the theme dropdown's content.
   */
   variations: ThemeVariation[];
@@ -436,9 +469,11 @@ export type SaveBrandKitPayload = Pick<BrandKit, "name" | "fonts" | "variations"
       | "socialLinks"
       | "colors"
       | "toneOfVoice"
-      | "emailDesignDoc"
     >
-  >;
+  > & {
+    emailDesignDoc?: BrandMachineEmailDesignDoc;
+    imageStyleDoc?: BrandMachineImageStyleDoc;
+  };
 
 /*
   Shape a `BrandKit` into `saveBrandKit`'s argument (brand-kit-user-control):
@@ -454,6 +489,18 @@ export type SaveBrandKitPayload = Pick<BrandKit, "name" | "fonts" | "variations"
   drifting on which fields that guard covers.
 */
 export function buildSaveBrandKitPayload(kit: BrandKit): SaveBrandKitPayload {
+  const machineEmailDesignDoc: BrandMachineEmailDesignDoc | undefined =
+    kit.emailDesignDoc !== undefined &&
+    kit.emailDesignDoc.origin !== "user" &&
+    kit.emailDesignDoc.userEditedAtMs === undefined
+      ? { markdown: kit.emailDesignDoc.markdown, origin: kit.emailDesignDoc.origin }
+      : undefined;
+  const machineImageStyleDoc: BrandMachineImageStyleDoc | undefined =
+    kit.imageStyleDoc !== undefined &&
+    kit.imageStyleDoc.origin !== "user" &&
+    kit.imageStyleDoc.userEditedAtMs === undefined
+      ? { markdown: kit.imageStyleDoc.markdown, origin: kit.imageStyleDoc.origin }
+      : undefined;
   return {
     name: kit.name,
     ...(kit.sourceUrl !== undefined ? { sourceUrl: kit.sourceUrl } : {}),
@@ -465,7 +512,14 @@ export function buildSaveBrandKitPayload(kit: BrandKit): SaveBrandKitPayload {
     ...(kit.socialLinks !== undefined ? { socialLinks: kit.socialLinks } : {}),
     ...(kit.colors !== undefined ? { colors: kit.colors } : {}),
     ...(kit.toneOfVoice !== undefined ? { toneOfVoice: kit.toneOfVoice } : {}),
-    ...(kit.emailDesignDoc !== undefined ? { emailDesignDoc: kit.emailDesignDoc } : {}),
+    /*
+      User-owned prose is written only through updateBrandEmailDesignDoc. An
+      ordinary whole-kit save omits it so an editor save cannot forge or
+      replay the human provenance marker; the server-side reconciliation keeps
+      the existing human document in place.
+    */
+    ...(machineEmailDesignDoc !== undefined ? { emailDesignDoc: machineEmailDesignDoc } : {}),
+    ...(machineImageStyleDoc !== undefined ? { imageStyleDoc: machineImageStyleDoc } : {}),
     variations: kit.variations,
   };
 }
@@ -620,6 +674,8 @@ export function getBrandKitValidationErrors(brandKit: BrandKit): string[] {
   }
   errors.push(...getBrandColorsValidationErrors(brandKit.colors));
   errors.push(...getToneOfVoiceValidationErrors(brandKit.toneOfVoice));
+  errors.push(...getEmailDesignDocValidationErrors(brandKit.emailDesignDoc));
+  errors.push(...getImageStyleDocValidationErrors(brandKit.imageStyleDoc));
   return errors;
 }
 
@@ -800,8 +856,29 @@ export function getEmailDesignDocValidationErrors(
   if (doc === undefined) {
     return [];
   }
+  if (doc.markdown.trim().length === 0) {
+    return ["Email design guidance must not be empty."];
+  }
   if (doc.markdown.length > MAX_EMAIL_DESIGN_DOC_LENGTH) {
     return [`Email design guidance can be up to ${MAX_EMAIL_DESIGN_DOC_LENGTH} characters.`];
+  }
+  return [];
+}
+
+/*
+  Hard (blocking) problems with an image-style.md payload.
+*/
+export function getImageStyleDocValidationErrors(
+  doc: BrandImageStyleDoc | undefined,
+): string[] {
+  if (doc === undefined) {
+    return [];
+  }
+  if (doc.markdown.trim().length === 0) {
+    return ["Image style guidance must not be empty."];
+  }
+  if (doc.markdown.length > MAX_IMAGE_STYLE_DOC_LENGTH) {
+    return [`Image style guidance can be up to ${MAX_IMAGE_STYLE_DOC_LENGTH} characters.`];
   }
   return [];
 }

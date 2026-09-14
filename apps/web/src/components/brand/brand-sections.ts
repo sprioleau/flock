@@ -6,10 +6,9 @@
   apps/web's node environment (there is no DOM here; see AGENTS.md). The page
   and its layout both resolve a URL segment through {@link resolveBrandSection}.
 
-  Only sections that actually work this slice are listed. The owner's decision
-  was to HIDE what is not built yet (Assets, Image Style, Unsubscribe,
-  Settings) rather than show disabled tabs, so adding one later is a matter of
-  appending here — no placeholder to remove.
+  Only sections that actually work are listed. Assets and Image Style are
+  durable brand artifacts; unfinished account-management sections remain
+  hidden rather than appearing as disabled tabs.
 
   "Email Design" leads because it is the headline of this work — the CEILING
   (email-design.md) over the structured kit's FLOOR.
@@ -21,7 +20,9 @@ export type BrandSectionId =
   | "colors"
   | "fonts"
   | "voice"
-  | "links";
+  | "links"
+  | "image-style"
+  | "assets";
 
 export interface BrandSection {
   id: BrandSectionId;
@@ -45,7 +46,8 @@ export const BRAND_SECTIONS: readonly BrandSection[] = [
     id: "email-design",
     slug: "email-design",
     label: "Email Design",
-    description: "Standing guidance the agent follows when it builds your emails.",
+    description:
+      "Standing guidance the agent follows when it builds your emails.",
   },
   {
     id: "identity",
@@ -77,6 +79,18 @@ export const BRAND_SECTIONS: readonly BrandSection[] = [
     label: "Links",
     description: "Social profiles surfaced in email footers.",
   },
+  {
+    id: "image-style",
+    slug: "image-style",
+    label: "Image Style",
+    description: "Visual direction for imagery the agent chooses or creates.",
+  },
+  {
+    id: "assets",
+    slug: "assets",
+    label: "Assets",
+    description: "Logos and images captured for this brand.",
+  },
 ] as const;
 
 /*
@@ -94,5 +108,8 @@ export function resolveBrandSection(slug: string | undefined): BrandSection {
   if (slug === undefined) {
     return DEFAULT_BRAND_SECTION;
   }
-  return BRAND_SECTIONS.find((section) => section.slug === slug) ?? DEFAULT_BRAND_SECTION;
+  return (
+    BRAND_SECTIONS.find((section) => section.slug === slug) ??
+    DEFAULT_BRAND_SECTION
+  );
 }

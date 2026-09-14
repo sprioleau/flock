@@ -65,4 +65,5 @@ export const ASSET_KIND_LABELS: Readonly<Record<AssetSummary["kind"], string>> =
   generated: "AI generated",
   logo: "Logo",
   "social-card": "Social card",
+  scraped: "Scraped from brand site",
 };
