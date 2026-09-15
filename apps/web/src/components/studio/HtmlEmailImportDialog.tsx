@@ -1,12 +1,17 @@
 "use client";
 
 import { useRef, useState, type ChangeEvent } from "react";
+import { useConvex } from "convex/react";
 import { AlertTriangleIcon, FileUpIcon, UploadIcon } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { api } from "@convex/_generated/api";
 import {
   MAX_HTML_IMPORT_BYTES,
   type HtmlEmailImportResult,
 } from "@/lib/html-email-import";
 import { Button } from "@/components/ui/button";
+import { useEditorStore } from "@/lib/editor-store";
+import { getOrCreateSessionId } from "@/lib/session";
 import {
   Dialog,
   DialogClose,
@@ -21,7 +26,8 @@ import { ReadOnlyEmailPreview } from "./history/ReadOnlyEmailPreview";
 
 interface HtmlImportPreviewContentProps {
   result: HtmlEmailImportResult;
-  isConfirmed: boolean;
+  isSaving: boolean;
+  errorMessage: string | null;
   onConfirm: () => void;
 }
 
@@ -32,7 +38,8 @@ interface HtmlImportPreviewContentProps {
 */
 export function HtmlImportPreviewContent({
   result,
-  isConfirmed,
+  isSaving,
+  errorMessage,
   onConfirm,
 }: HtmlImportPreviewContentProps) {
   return (
@@ -84,10 +91,11 @@ export function HtmlImportPreviewContent({
           </pre>
         </details>
         <div className="rounded-md border border-amber-300/70 bg-amber-50/60 p-3 text-xs text-amber-950 dark:bg-amber-950/20 dark:text-amber-100">
-          Confirming records your review only. No draft or asset is created in this preview-only phase.
+          Imported remote images keep their safe source URLs. Flock does not silently copy them into your asset library.
         </div>
-        <Button type="button" className="w-full" onClick={onConfirm} disabled={isConfirmed}>
-          {isConfirmed ? "Import preview confirmed" : "Confirm import preview"}
+        {errorMessage !== null && <p className="text-sm text-destructive">{errorMessage}</p>}
+        <Button type="button" className="w-full" onClick={onConfirm} disabled={isSaving}>
+          {isSaving ? "Importing…" : "Import as new draft"}
         </Button>
       </aside>
     </div>
@@ -102,12 +110,16 @@ export function isHtmlImportFile(file: Pick<File, "name" | "type" | "size">): bo
 }
 
 export function HtmlEmailImportDialog() {
+  const convexClient = useConvex();
+  const router = useRouter();
+  const canvasId = useEditorStore((state) => state.canvasId);
+  const documentId = useEditorStore((state) => state.documentId);
   const [isOpen, setIsOpen] = useState(false);
   const [sourceHtml, setSourceHtml] = useState("");
   const [result, setResult] = useState<HtmlEmailImportResult | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [isPreviewPending, setIsPreviewPending] = useState(false);
-  const [isConfirmed, setIsConfirmed] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
   const previewRequestIdRef = useRef(0);
 
   function reset(): void {
@@ -115,7 +127,7 @@ export function HtmlEmailImportDialog() {
     setResult(null);
     setErrorMessage(null);
     setIsPreviewPending(false);
-    setIsConfirmed(false);
+    setIsSaving(false);
     previewRequestIdRef.current += 1;
   }
 
@@ -140,7 +152,7 @@ export function HtmlEmailImportDialog() {
     try {
       setSourceHtml(await file.text());
       setResult(null);
-      setIsConfirmed(false);
+      setIsSaving(false);
     } catch {
       setErrorMessage("That HTML file could not be read.");
     }
@@ -153,7 +165,7 @@ export function HtmlEmailImportDialog() {
     }
     setIsPreviewPending(true);
     setErrorMessage(null);
-    setIsConfirmed(false);
+    setIsSaving(false);
     const requestId = previewRequestIdRef.current + 1;
     previewRequestIdRef.current = requestId;
     void fetch("/api/html-import/preview", {
@@ -185,6 +197,31 @@ export function HtmlEmailImportDialog() {
       });
   }
 
+  async function confirmImport(): Promise<void> {
+    if (result === null || canvasId === null || documentId === null || isSaving) {
+      setErrorMessage("The current canvas is not ready for an import yet.");
+      return;
+    }
+    setIsSaving(true);
+    setErrorMessage(null);
+    try {
+      const created = await convexClient.mutation(api.documents.createImportedDocument, {
+        sessionId: getOrCreateSessionId(),
+        canvasId,
+        sourceDocumentId: documentId,
+        doc: result.document,
+        sanitizedHtml: result.sanitizedHtml,
+        warnings: result.report.warnings,
+        unsupportedFeatures: result.report.unsupportedFeatures,
+      });
+      setIsOpen(false);
+      router.push(`/studio?doc=${created.documentId}`);
+    } catch (error: unknown) {
+      setErrorMessage(error instanceof Error ? error.message : "The imported draft could not be saved.");
+      setIsSaving(false);
+    }
+  }
+
   return (
     <Dialog open={isOpen} onOpenChange={handleOpenChange}>
       <DialogTrigger
@@ -197,7 +234,7 @@ export function HtmlEmailImportDialog() {
         <DialogHeader>
           <DialogTitle>Import HTML email</DialogTitle>
           <DialogDescription>
-            Paste HTML or upload a .html file to inspect a best-effort editable conversion. Nothing is saved until a future persistence step.
+            Paste HTML or upload a .html file to inspect a best-effort editable conversion. A new editable draft is saved only after you confirm the preview.
           </DialogDescription>
         </DialogHeader>
         {result === null ? (
@@ -240,8 +277,9 @@ export function HtmlEmailImportDialog() {
         ) : (
           <HtmlImportPreviewContent
             result={result}
-            isConfirmed={isConfirmed}
-            onConfirm={() => setIsConfirmed(true)}
+            isSaving={isSaving}
+            errorMessage={errorMessage}
+            onConfirm={() => void confirmImport()}
           />
         )}
         <DialogFooter>

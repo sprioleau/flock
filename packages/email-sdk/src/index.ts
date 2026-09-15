@@ -507,6 +507,7 @@ export type {
   ComposedDraft,
   ComposedDraftComposition,
   BuildComposedDraftsInput,
+  BrandCompositionTreatment,
 } from "./actions/compose-draft";
 
 // --- Actions: theme & draft REFERENCES — naming a theme instead of carrying one -----------------

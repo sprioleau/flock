@@ -13,9 +13,11 @@ import {
   customSectionSchema,
   isCustomSectionPlan,
 } from "../sections/custom-section";
-import { ROOT_BLOCK_ID, type RandomFn } from "../schema/ids";
+import { generateBlockId, ROOT_BLOCK_ID, type RandomFn } from "../schema/ids";
+import type { Block } from "../schema/blocks";
 import type { GlobalStyles } from "../schema/globals";
 import type { EmailDocument } from "../store/document";
+import type { SectionBuildResult } from "../sections/types";
 
 /*
   The create-draft composition primitive.
@@ -769,6 +771,17 @@ export interface ComposedDraft {
   composition: ComposedDraftComposition;
 }
 
+/*
+  A bounded, renderer-native interpretation of the canvas's brand documents.
+  These switches intentionally select only primitives already represented by
+  the email schema; scraped prose never becomes CSS or executable layout code.
+*/
+export interface BrandCompositionTreatment {
+  shouldOutlineButtons: boolean;
+  shouldFrameImages: boolean;
+  shouldSeparateSections: boolean;
+}
+
 export interface BuildComposedDraftsInput {
   /*
     The draft the user is currently on — the theme and content source.
@@ -819,6 +832,11 @@ export interface BuildComposedDraftsInput {
     looking at.
   */
   themeGlobals?: GlobalStyles;
+  /*
+    Optional structural treatment derived by the host from the canvas-bound
+    brand package. Absent preserves the existing composition byte-for-byte.
+  */
+  brandTreatment?: BrandCompositionTreatment;
   /*
     Randomness source for the new blocks' ids — injectable for tests.
   */
@@ -968,6 +986,83 @@ export function resolveSectionsToAvailableContent(
 const MAX_BUILD_ATTEMPTS = 5;
 
 /*
+  Apply a brand package through typed email primitives. A separator is added
+  only to body/social-proof sections: headers and footers already establish
+  their own edges, and several footer templates contain a divider themselves.
+*/
+function applyBrandCompositionTreatment({
+  built,
+  category,
+  treatment,
+  globals,
+  random,
+}: {
+  built: SectionBuildResult;
+  category?: SectionCategory;
+  treatment: BrandCompositionTreatment | undefined;
+  globals: GlobalStyles | undefined;
+  random: RandomFn;
+}): SectionBuildResult {
+  if (treatment === undefined) {
+    return built;
+  }
+  const accentColor =
+    globals?.buttonBackgroundColor ?? globals?.linkTextColor ?? globals?.heading1TextColor ?? "#111827";
+  const surfaceColor = globals?.contentBackgroundColor ?? "#ffffff";
+  const ruleColor = globals?.dividerColor ?? globals?.paragraphTextColor ?? accentColor;
+  const children: Block[] = built.children.map((block) => {
+    if (treatment.shouldOutlineButtons && block.type === "button") {
+      return {
+        ...block,
+        properties: {
+          ...block.properties,
+          backgroundColor: surfaceColor,
+          textColor: accentColor,
+          borderSize: 1,
+          borderStyle: "solid",
+          borderColor: accentColor,
+        },
+      };
+    }
+    if (treatment.shouldFrameImages && block.type === "image") {
+      return {
+        ...block,
+        properties: {
+          ...block.properties,
+          backgroundColor: surfaceColor,
+          borderWidth: 1,
+          borderStyle: "solid",
+          borderColor: ruleColor,
+        },
+      };
+    }
+    return block;
+  });
+  const shouldAppendDivider =
+    treatment.shouldSeparateSections && (category === "content" || category === "social-proof");
+  if (!shouldAppendDivider) {
+    return { ...built, children };
+  }
+  const dividerId = generateBlockId("divider", random);
+  return {
+    section: {
+      ...built.section,
+      childrenIds: [...built.section.childrenIds, dividerId],
+    },
+    children: [
+      ...children,
+      {
+        id: dividerId,
+        type: "divider",
+        parentId: built.section.id,
+        childrenIds: [],
+        properties: { color: ruleColor, thickness: 1, paddingTop: 8 },
+      },
+    ],
+  };
+}
+
+/*
   Turn a resolved createDraft command into the ops that build each draft.
   Returns an empty list for the empty-starter form (no `drafts` plan) — the
   host then falls back to its plain new-draft path, unchanged.
@@ -977,6 +1072,7 @@ export function buildComposedDrafts({
   command,
   shouldCarryOverSourceCopy = true,
   themeGlobals,
+  brandTreatment,
   random = Math.random,
 }: BuildComposedDraftsInput): ComposedDraft[] {
   if (command.drafts === undefined || command.drafts.length === 0) {
@@ -1038,7 +1134,12 @@ export function buildComposedDrafts({
           return;
         }
         for (let attempt = 0; attempt < MAX_BUILD_ATTEMPTS; attempt += 1) {
-          const built = buildCustomSection({ section: parsedSection.data, random });
+          const built = applyBrandCompositionTreatment({
+            built: buildCustomSection({ section: parsedSection.data, random }),
+            treatment: brandTreatment,
+            globals: newDraftGlobals,
+            random,
+          });
           const newIds = [built.section.id, ...built.children.map((block) => block.id)];
           if (newIds.every((id) => !usedIds.has(id))) {
             for (const id of newIds) {
@@ -1080,7 +1181,13 @@ export function buildComposedDrafts({
       }
       const params = parsedParams.data;
       for (let attempt = 0; attempt < MAX_BUILD_ATTEMPTS; attempt += 1) {
-        const built = template.build({ params, random });
+        const built = applyBrandCompositionTreatment({
+          built: template.build({ params, random }),
+          category: template.category,
+          treatment: brandTreatment,
+          globals: newDraftGlobals,
+          random,
+        });
         const newIds = [built.section.id, ...built.children.map((block) => block.id)];
         if (newIds.every((id) => !usedIds.has(id))) {
           for (const id of newIds) {

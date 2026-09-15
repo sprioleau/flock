@@ -4,6 +4,7 @@ import {
   createEmptyDocument,
   createSampleDocument,
   createStarterDocument,
+  emailDocumentSchema,
   withRemoveBlockCascadeDefault,
   type Operation,
 } from "@flock/email-sdk";
@@ -214,6 +215,128 @@ export const createDocument = mutation({
       createdAtMs: now,
     });
     return { documentId, canvasId };
+  },
+});
+
+const MAX_IMPORTED_SOURCE_BYTES = 512 * 1024;
+const MAX_IMPORT_WARNINGS = 100;
+const MAX_IMPORT_UNSUPPORTED_FEATURES = 50;
+const MAX_IMPORT_REPORT_ENTRY_LENGTH = 1_000;
+
+async function checksumImportedSource(source: string): Promise<string> {
+  const bytes = new TextEncoder().encode(source);
+  const digest = await crypto.subtle.digest("SHA-256", bytes);
+  return Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, "0")).join("");
+}
+
+function allocateImportedDraftName(existingNames: string[]): string {
+  const names = new Set(existingNames);
+  if (!names.has("Imported HTML")) {
+    return "Imported HTML";
+  }
+  let suffix = 2;
+  while (names.has(`Imported HTML ${suffix}`)) {
+    suffix += 1;
+  }
+  return `Imported HTML ${suffix}`;
+}
+
+/*
+  Atomically materialize a previously previewed import as a new draft. The
+  document schema is re-validated here because public Convex mutations cannot
+  trust the browser's copy of the preview response.
+*/
+export const createImportedDocument = mutation({
+  args: {
+    sessionId: v.string(),
+    canvasId: v.id("canvases"),
+    sourceDocumentId: v.optional(v.id("documents")),
+    doc: emailDocumentValidator,
+    sanitizedHtml: v.string(),
+    warnings: v.array(v.object({ code: v.string(), detail: v.string() })),
+    unsupportedFeatures: v.array(v.string()),
+  },
+  returns: v.object({ documentId: v.id("documents") }),
+  handler: async (ctx, args) => {
+    const parsed = emailDocumentSchema.safeParse(args.doc);
+    if (!parsed.success) {
+      throw new Error("The imported email document is invalid.");
+    }
+    const sanitizedBytes = new TextEncoder().encode(args.sanitizedHtml);
+    if (sanitizedBytes.byteLength > MAX_IMPORTED_SOURCE_BYTES) {
+      throw new Error("The sanitized HTML is larger than 512 KB.");
+    }
+    if (args.warnings.length > MAX_IMPORT_WARNINGS) {
+      throw new Error("The HTML import report has too many warnings.");
+    }
+    if (args.unsupportedFeatures.length > MAX_IMPORT_UNSUPPORTED_FEATURES) {
+      throw new Error("The HTML import report has too many unsupported features.");
+    }
+    const reportEntries = [
+      ...args.warnings.flatMap((warning) => [warning.code, warning.detail]),
+      ...args.unsupportedFeatures,
+    ];
+    if (reportEntries.some((entry) => entry.length > MAX_IMPORT_REPORT_ENTRY_LENGTH)) {
+      throw new Error("An HTML import report entry is too long.");
+    }
+    const canvas = await ctx.db.get(args.canvasId);
+    if (canvas === null) {
+      throw new Error("The destination canvas does not exist.");
+    }
+    let groupId: Id<"draftGroups"> | undefined;
+    if (args.sourceDocumentId !== undefined) {
+      const sourceDocument = await ctx.db.get(args.sourceDocumentId);
+      if (sourceDocument === null || sourceDocument.canvasId !== args.canvasId) {
+        throw new Error("The source draft does not belong to the destination canvas.");
+      }
+      groupId = sourceDocument.groupId;
+    }
+    const siblings = await ctx.db
+      .query("documents")
+      .withIndex("by_canvasId", (q) => q.eq("canvasId", args.canvasId))
+      .collect();
+    const now = Date.now();
+    const documentId = await ctx.db.insert("documents", {
+      canvasId: args.canvasId,
+      sessionId: args.sessionId,
+      name: allocateImportedDraftName(siblings.map((row) => row.name)),
+      orderIndex: await computeAppendOrderIndex(ctx, args.canvasId),
+      ...(groupId === undefined
+        ? {}
+        : {
+            groupId,
+            groupOrderIndex: await computeAppendGroupOrderIndex(ctx, args.canvasId, groupId),
+          }),
+      headVersion: 0,
+      htmlImport: {
+        importerVersion: "1",
+        sourceChecksum: await checksumImportedSource(args.sanitizedHtml),
+        sanitizedHtml: args.sanitizedHtml,
+        warnings: args.warnings,
+        unsupportedFeatures: [...new Set(args.unsupportedFeatures)],
+        createdAtMs: now,
+      },
+      createdAtMs: now,
+      updatedAtMs: now,
+    });
+    for (const block of Object.values(parsed.data)) {
+      await ctx.db.insert("blocks", {
+        documentId,
+        blockId: block.id,
+        type: block.type,
+        parentId: block.parentId,
+        childrenIds: block.childrenIds as string[],
+        properties: block.properties as Record<string, unknown>,
+      });
+    }
+    await ctx.db.insert("snapshots", {
+      documentId,
+      version: 0,
+      doc: parsed.data as Record<string, unknown>,
+      createdAtMs: now,
+    });
+    await ctx.db.patch(args.canvasId, { updatedAtMs: now });
+    return { documentId };
   },
 });
 
@@ -630,6 +753,16 @@ const documentPayloadValidator = v.object({
     Absent on every ordinary draft — see the schema comment on `isDemo`.
   */
   isDemo: v.optional(v.boolean()),
+  htmlImport: v.optional(
+    v.object({
+      importerVersion: v.literal("1"),
+      sourceChecksum: v.string(),
+      sanitizedHtml: v.string(),
+      warnings: v.array(v.object({ code: v.string(), detail: v.string() })),
+      unsupportedFeatures: v.array(v.string()),
+      createdAtMs: v.number(),
+    }),
+  ),
   createdAtMs: v.number(),
   updatedAtMs: v.number(),
 });
@@ -666,6 +799,7 @@ async function readDocumentPayload(ctx: QueryCtx, documentId: Id<"documents">) {
       that route needs no lookup of its own: it already fetches this payload.
     */
     ...(document.isDemo === true ? { isDemo: true } : {}),
+    ...(document.htmlImport === undefined ? {} : { htmlImport: document.htmlImport }),
     createdAtMs: document.createdAtMs,
     updatedAtMs: document.updatedAtMs,
   };

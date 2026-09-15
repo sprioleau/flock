@@ -337,6 +337,25 @@ export default defineSchema({
       for that cron to delete something (demo-mode.md §I).
     */
     isDemo: v.optional(v.boolean()),
+    /*
+      Present only on drafts created from the bounded HTML importer. The
+      sanitized source is provenance, never executable editor content.
+    */
+    htmlImport: v.optional(
+      v.object({
+        importerVersion: v.literal("1"),
+        sourceChecksum: v.string(),
+        sanitizedHtml: v.string(),
+        warnings: v.array(
+          v.object({
+            code: v.string(),
+            detail: v.string(),
+          }),
+        ),
+        unsupportedFeatures: v.array(v.string()),
+        createdAtMs: v.number(),
+      }),
+    ),
     createdAtMs: v.number(),
     updatedAtMs: v.number(),
   })

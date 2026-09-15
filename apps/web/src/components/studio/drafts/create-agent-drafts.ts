@@ -2,6 +2,7 @@ import {
   buildComposedDrafts,
   resolveThemeReference,
   type ComposedDraft,
+  type BrandCompositionTreatment,
   type CreateDraftCommand,
   type EmailDocument,
   type GlobalStyles,
@@ -139,6 +140,10 @@ export interface CreateAgentDraftsInput {
     did not name a page/theme and did not explicitly request an unstyled draft.
   */
   defaultBrandThemeGlobals?: GlobalStyles | null;
+  /*
+    Renderer-native layout treatment derived from the bound brand documents.
+  */
+  brandCompositionTreatment?: BrandCompositionTreatment | null;
 }
 
 export interface CreateAgentDraftsResult extends CreateDraftOutcome {
@@ -235,6 +240,7 @@ export async function createAgentDrafts({
   kitThemes,
   sourceGlobals,
   defaultBrandThemeGlobals = null,
+  brandCompositionTreatment = null,
 }: CreateAgentDraftsInput): Promise<CreateAgentDraftsResult> {
   /*
     THE FIX FOR THE REPORTED DEFECT, in one argument. The composer's carry-over
@@ -254,6 +260,7 @@ export async function createAgentDrafts({
     command,
     shouldCarryOverSourceCopy: !hasIngestedSource,
     ...(effectiveThemeGlobals === undefined ? {} : { themeGlobals: effectiveThemeGlobals }),
+    ...(brandCompositionTreatment === null ? {} : { brandTreatment: brandCompositionTreatment }),
   });
   const isComposed = composedDrafts.length > 0;
   const requestedCount = isComposed ? composedDrafts.length : command.count;

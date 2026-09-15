@@ -74,6 +74,7 @@ import { requestUiSurfaceOpen } from "@/lib/ui-surfaces";
 import { getAppSettings } from "../demo/app-settings";
 import { scrollBlockIntoView } from "../add-blocks/scroll-block-into-view";
 import { createAgentDrafts } from "../drafts/create-agent-drafts";
+import { deriveBrandCompositionTreatment } from "../drafts/brand-composition-treatment";
 import { takeGenerationRequest } from "./pending-generation-request";
 import { readBrandKitGenerationIntent } from "./brand-kit-chat-intent";
 import { generateBrandKitFromUrl } from "../brand-kit/brand-kit-generate-client";
@@ -1664,6 +1665,9 @@ export function useFlockChat(): FlockChat {
         sourceGlobals: readDraftGlobals(doc),
         defaultBrandThemeGlobals: hasSavedKit
           ? readDefaultBrandThemeGlobals({ brandKit, sourceGlobals: readDraftGlobals(doc) })
+          : null,
+        brandCompositionTreatment: hasSavedKit
+          ? deriveBrandCompositionTreatment(brandKit)
           : null,
         /*
           Read HERE, at composition time, not at send time: the ingestion tool

@@ -44,13 +44,14 @@ describe("HtmlImportPreviewContent", () => {
     let hasConfirmed = false;
     const tree = HtmlImportPreviewContent({
       result,
-      isConfirmed: false,
+      isSaving: false,
+      errorMessage: null,
       onConfirm: () => {
         hasConfirmed = true;
       },
     });
     const source = findByTestId(tree, "html-import-sanitized-source");
-    const confirm = collectElements(tree).find((element) => element.props.children === "Confirm import preview");
+    const confirm = collectElements(tree).find((element) => element.props.children === "Import as new draft");
 
     expect(findByTestId(tree, "html-import-converted-email")).toBeDefined();
     expect(source).toBeDefined();

@@ -3,6 +3,7 @@ import { applyOperations } from "../operations/apply";
 import { SECTION_TEMPLATES, getSectionTemplate } from "../sections/catalog";
 import { ROOT_BLOCK_ID } from "../schema/ids";
 import type { GlobalStyles } from "../schema/globals";
+import type { Block } from "../schema/blocks";
 import {
   createEmptyDocument,
   createStarterDocument,
@@ -1588,5 +1589,87 @@ describe("custom draft sections", () => {
       ],
     });
     expect(parsed.success).toBe(false);
+  });
+});
+
+describe("brand composition treatment", () => {
+  it("turns saved design guidance into typed button, image, and section primitives", () => {
+    const command = resolveCreateDraftCommand({
+      count: 1,
+      shouldInheritTheme: true,
+      drafts: [
+        {
+          sections: [
+            {
+              templateId: "hero",
+              params: {
+                headline: "A precise launch",
+                body: "Built from the canvas-bound brand package.",
+                imageAlt: "Product interface",
+                ctaLabel: "Explore",
+                ctaHref: "https://example.com/explore",
+              },
+            },
+            {
+              templateId: "article",
+              params: {
+                headline: "The details",
+                body: "A structured body section.",
+                imageAlt: "Supporting detail",
+              },
+            },
+          ],
+        },
+      ],
+    });
+    const [composed] = buildComposedDrafts({
+      sourceDoc: createEmptyDocument(),
+      command,
+      themeGlobals: {
+        contentBackgroundColor: "#fffdf8",
+        buttonBackgroundColor: "#b42318",
+        dividerColor: "#7a271a",
+      },
+      brandTreatment: {
+        shouldOutlineButtons: true,
+        shouldFrameImages: true,
+        shouldSeparateSections: true,
+      },
+      random: createSeededRandom(23),
+    });
+    expect(composed).toBeDefined();
+    const blocks = composed!.ops
+      .filter((operation) => operation.name === "addSection")
+      .flatMap((operation) => operation.children)
+      .filter((block): block is Block => block !== undefined);
+    expect(blocks.filter((block) => block.type === "button")).toEqual([
+      expect.objectContaining({
+        properties: expect.objectContaining({
+          backgroundColor: "#fffdf8",
+          textColor: "#b42318",
+          borderSize: 1,
+          borderColor: "#b42318",
+        }),
+      }),
+    ]);
+    expect(blocks.filter((block) => block.type === "image")).toHaveLength(2);
+    expect(blocks.filter((block) => block.type === "image")).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          properties: expect.objectContaining({
+            backgroundColor: "#fffdf8",
+            borderWidth: 1,
+            borderColor: "#7a271a",
+          }),
+        }),
+      ]),
+    );
+    expect(blocks.filter((block) => block.type === "divider")).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ properties: expect.objectContaining({ color: "#7a271a" }) }),
+      ]),
+    );
+    const result = applyOperations(createEmptyDocument(), composed!.ops);
+    expect(result.isOk).toBe(true);
   });
 });
