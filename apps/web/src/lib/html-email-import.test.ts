@@ -25,6 +25,11 @@ describe("importHtmlEmail", () => {
     expect(result.sanitizedHtml).toContain("https://cdn.example.com/hero.png");
     expect(result.report.unsupportedFeatures).toContain("style");
     expect(result.report.warnings.some((warning) => warning.code === "active-content-removed")).toBe(true);
+    expect(
+      result.report.warnings.filter(
+        (warning) => warning.detail === "<script> was removed from the import.",
+      ),
+    ).toHaveLength(1);
     expect(result.report.warnings.some((warning) => warning.code === "unsafe-url-removed")).toBe(true);
   });
 

@@ -242,6 +242,7 @@ async function runCreateDraft({
   pageTheme = null,
   kitThemes = KIT_THEMES,
   sourceGlobals = null,
+  defaultBrandThemeGlobals = null,
 }: {
   t: Backend;
   hasIngestedSource: boolean;
@@ -249,6 +250,7 @@ async function runCreateDraft({
   pageTheme?: PageTheme | null;
   kitThemes?: NamedTheme[];
   sourceGlobals?: GlobalStyles | null;
+  defaultBrandThemeGlobals?: GlobalStyles | null;
 }) {
   const convexClient: AgentDraftsConvexClient = t;
   const canvasId = await seedCanvas(t);
@@ -263,6 +265,7 @@ async function runCreateDraft({
     pageTheme,
     kitThemes,
     sourceGlobals,
+    defaultBrandThemeGlobals,
   });
   return outcome;
 }
@@ -304,6 +307,34 @@ async function readStoredGlobals({
   the same reason the copy tests above read its words.
 */
 describe("a new draft's theme", () => {
+  it("uses the bound brand variation for an ordinary new email instead of stale source globals", async () => {
+    const t = createBackend();
+    const brandGlobals = KIT_THEMES[0]!.globals;
+    const outcome = await runCreateDraft({
+      t,
+      hasIngestedSource: false,
+      sourceGlobals: { emailBackgroundColor: "#fefefe" },
+      defaultBrandThemeGlobals: brandGlobals,
+    });
+
+    expect(outcome.failureNotice).toBeNull();
+    expect(await readStoredGlobals({ t, documentId: outcome.createdDocumentIds[0]! })).toEqual(
+      brandGlobals,
+    );
+  });
+
+  it("keeps an explicit unstyled request free of the bound brand variation", async () => {
+    const t = createBackend();
+    const outcome = await runCreateDraft({
+      t,
+      hasIngestedSource: false,
+      input: { ...UNDER_FILLED_PORTFOLIO_PLAN, shouldInheritTheme: false },
+      defaultBrandThemeGlobals: KIT_THEMES[0]!.globals,
+    });
+
+    expect(await readStoredGlobals({ t, documentId: outcome.createdDocumentIds[0]! })).toEqual({});
+  });
+
   it("is born wearing the theme the call named, off a source draft that has none", async () => {
     const t = createBackend();
     const outcome = await runCreateDraft({
@@ -311,6 +342,7 @@ describe("a new draft's theme", () => {
       hasIngestedSource: true,
       input: { ...UNDER_FILLED_PORTFOLIO_PLAN, theme: "page" },
       pageTheme: PAGE_THEME,
+      defaultBrandThemeGlobals: KIT_THEMES[0]!.globals,
     });
 
     expect(outcome.failureNotice).toBeNull();

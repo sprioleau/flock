@@ -72,6 +72,7 @@ function preloadImage(url: string): Promise<void> {
 export interface GenerateImageFlowInput {
   blockId: BlockId;
   prompt: string;
+  documentId?: string | null;
   convexClient: ConvexReactClient;
 }
 
@@ -81,6 +82,7 @@ export interface GenerateImageFlowInput {
 export async function runGenerateImageFlow({
   blockId,
   prompt,
+  documentId = null,
   convexClient,
 }: GenerateImageFlowInput): Promise<void> {
   const previewStore = useImagePreviewStore.getState();
@@ -91,7 +93,7 @@ export async function runGenerateImageFlow({
     const response = await fetch(GENERATE_IMAGE_API_PATH, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ prompt }),
+      body: JSON.stringify({ prompt, ...(documentId === null ? {} : { documentId }) }),
     });
     const json = (await response.json()) as
       | GenerateImageResponseBody
@@ -221,5 +223,10 @@ export async function retryGenerateImageFlow({
     await uploadAndCommitGeneratedImage({ blockId, generated: preview.generated, convexClient });
     return;
   }
-  await runGenerateImageFlow({ blockId, prompt: preview.prompt, convexClient });
+  await runGenerateImageFlow({
+    blockId,
+    prompt: preview.prompt,
+    documentId: useEditorStore.getState().documentId,
+    convexClient,
+  });
 }

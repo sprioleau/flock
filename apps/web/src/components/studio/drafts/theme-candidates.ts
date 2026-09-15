@@ -1,5 +1,5 @@
-import type { NamedTheme, PageTheme } from "@flock/email-sdk";
-import { getLiveThemeVariations, type BrandKit } from "@/lib/brand-kit";
+import type { GlobalStyles, NamedTheme, PageTheme } from "@flock/email-sdk";
+import { areGlobalsEqual, getLiveThemeVariations, type BrandKit } from "@/lib/brand-kit";
 import type { FlockChatMessage } from "@/lib/chat-contract";
 
 /*
@@ -102,4 +102,25 @@ export function readCanvasThemeCandidates(brandKit: BrandKit): NamedTheme[] {
     name: variation.name,
     globals: variation.globals,
   }));
+}
+
+/*
+  Pick the variation a newly composed draft should wear when the request does
+  not name a page or another saved theme. A draft's exact current globals win
+  when they still match a live variation; otherwise the kit's first live
+  variation is the deterministic canvas default.
+*/
+export function readDefaultBrandThemeGlobals({
+  brandKit,
+  sourceGlobals,
+}: {
+  brandKit: BrandKit;
+  sourceGlobals: GlobalStyles | null;
+}): GlobalStyles | null {
+  const themes = readCanvasThemeCandidates(brandKit);
+  const matching =
+    sourceGlobals === null
+      ? undefined
+      : themes.find((theme) => areGlobalsEqual({ a: theme.globals, b: sourceGlobals }));
+  return matching?.globals ?? themes[0]?.globals ?? null;
 }

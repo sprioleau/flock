@@ -134,6 +134,11 @@ export interface CreateAgentDraftsInput {
     The source draft's own globals, for a `theme: "current"` reference.
   */
   sourceGlobals: GlobalStyles | null;
+  /*
+    The bound canvas kit's selected variation. It is used only when the model
+    did not name a page/theme and did not explicitly request an unstyled draft.
+  */
+  defaultBrandThemeGlobals?: GlobalStyles | null;
 }
 
 export interface CreateAgentDraftsResult extends CreateDraftOutcome {
@@ -229,6 +234,7 @@ export async function createAgentDrafts({
   pageTheme,
   kitThemes,
   sourceGlobals,
+  defaultBrandThemeGlobals = null,
 }: CreateAgentDraftsInput): Promise<CreateAgentDraftsResult> {
   /*
     THE FIX FOR THE REPORTED DEFECT, in one argument. The composer's carry-over
@@ -237,11 +243,17 @@ export async function createAgentDrafts({
     one from my portfolio site". The turn already knows which of those it is.
   */
   const theme = resolveNewDraftTheme({ command, pageTheme, kitThemes, sourceGlobals });
+  const effectiveThemeGlobals =
+    theme?.isResolved === true
+      ? theme.globals
+      : command.theme === undefined && command.shouldInheritTheme
+        ? (defaultBrandThemeGlobals ?? undefined)
+        : undefined;
   const composedDrafts = buildComposedDrafts({
     sourceDoc,
     command,
     shouldCarryOverSourceCopy: !hasIngestedSource,
-    ...(theme !== null && theme.isResolved ? { themeGlobals: theme.globals } : {}),
+    ...(effectiveThemeGlobals === undefined ? {} : { themeGlobals: effectiveThemeGlobals }),
   });
   const isComposed = composedDrafts.length > 0;
   const requestedCount = isComposed ? composedDrafts.length : command.count;
@@ -336,6 +348,27 @@ export async function createAgentDrafts({
             createdDocumentIds,
             createdDrafts,
             failureNotice: `"${name}" was created but couldn't be filled in — open it and try again.`,
+          };
+        }
+      }
+      if (composed === undefined && effectiveThemeGlobals !== undefined) {
+        const result = await convexClient.mutation(api.documents.applyOperations, {
+          documentId,
+          ops: [{ name: "applyTheme", globals: effectiveThemeGlobals }],
+          context: {
+            authorId,
+            undoOwnerId: sessionId,
+            author: "agent",
+            caller: "tool",
+            batchId: crypto.randomUUID(),
+          },
+        });
+        if (!result.isOk) {
+          return {
+            ...outcomeBase,
+            createdDocumentIds,
+            createdDrafts,
+            failureNotice: `"${name}" was created but couldn't use the saved brand theme — open it and try again.`,
           };
         }
       }

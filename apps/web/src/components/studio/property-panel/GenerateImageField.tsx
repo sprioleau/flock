@@ -9,6 +9,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { retryGenerateImageFlow, runGenerateImageFlow } from "@/lib/generate-image-flow";
 import { useImagePreviewStore } from "@/lib/image-preview-store";
+import { useEditorStore } from "@/lib/editor-store";
 
 /*
   "Generate with AI" for the image panel: prompt in, image on the canvas.
@@ -23,6 +24,7 @@ import { useImagePreviewStore } from "@/lib/image-preview-store";
 
 export function GenerateImageField({ blockId }: { blockId: BlockId }) {
   const convexClient = useConvex();
+  const documentId = useEditorStore((state) => state.documentId);
   const [prompt, setPrompt] = useState("");
   const preview = useImagePreviewStore((state) => state.previewsByBlockId[blockId]);
 
@@ -57,7 +59,9 @@ export function GenerateImageField({ blockId }: { blockId: BlockId }) {
         size="sm"
         className="w-full"
         disabled={isBusy || trimmedPrompt.length === 0}
-        onClick={() => void runGenerateImageFlow({ blockId, prompt: trimmedPrompt, convexClient })}
+        onClick={() =>
+          void runGenerateImageFlow({ blockId, prompt: trimmedPrompt, documentId, convexClient })
+        }
       >
         {isBusy ? <Loader2 className="animate-spin" /> : <Sparkles />}
         {isGenerating ? "Generating…" : isUploading ? "Saving…" : "Generate image"}

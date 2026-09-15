@@ -66,6 +66,7 @@ import {
 } from "../drafts/apply-theme-report";
 import {
   readCanvasThemeCandidates,
+  readDefaultBrandThemeGlobals,
   readTurnPageTheme,
 } from "../drafts/theme-candidates";
 import { getOrCreateSessionId } from "@/lib/session";
@@ -1630,7 +1631,7 @@ export function useFlockChat(): FlockChat {
     reload — the same subscription the theme menu renders from, so the agent
     and the dropdown can never disagree about what this canvas has.
   */
-  const { brandKit } = useActiveBrandKit();
+  const { brandKit, hasSavedKit } = useActiveBrandKit();
   const kitThemes: NamedTheme[] = readCanvasThemeCandidates(brandKit);
   useEffect(() => {
     if (controller === null) {
@@ -1661,6 +1662,9 @@ export function useFlockChat(): FlockChat {
         pageTheme: readTurnPageTheme({ messages: controller.chat.messages }),
         kitThemes,
         sourceGlobals: readDraftGlobals(doc),
+        defaultBrandThemeGlobals: hasSavedKit
+          ? readDefaultBrandThemeGlobals({ brandKit, sourceGlobals: readDraftGlobals(doc) })
+          : null,
         /*
           Read HERE, at composition time, not at send time: the ingestion tool
           result and this createDraft call arrive in the same assistant
@@ -1677,7 +1681,7 @@ export function useFlockChat(): FlockChat {
       }
       return outcome;
     });
-  }, [controller, convexClient, kitThemes]);
+  }, [controller, convexClient, kitThemes, brandKit, hasSavedKit]);
 
   /*
     The applyThemeToDraft executor. "Current" here means the draft the user is

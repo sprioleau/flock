@@ -2,7 +2,11 @@ import { describe, expect, it } from "vitest";
 import { resolveGlobalStyles } from "@flock/email-sdk";
 import type { BrandKit } from "@/lib/brand-kit";
 import type { FlockChatMessage } from "@/lib/chat-contract";
-import { readCanvasThemeCandidates, readTurnPageTheme } from "./theme-candidates";
+import {
+  readCanvasThemeCandidates,
+  readDefaultBrandThemeGlobals,
+  readTurnPageTheme,
+} from "./theme-candidates";
 
 /*
   WHAT A THEME REFERENCE MAY RESOLVE TO — the two lists, and what is kept OUT
@@ -209,5 +213,25 @@ describe("readCanvasThemeCandidates", () => {
         kit([{ ...MIDNIGHT, deletedAtMs: 1 }, { ...SAND, deletedAtMs: 2 }] as BrandKit["variations"]),
       ),
     ).toEqual([]);
+  });
+
+  it("keeps a matching live variation as the canvas default", () => {
+    const brandKit = kit([MIDNIGHT, SAND] as BrandKit["variations"]);
+    expect(
+      readDefaultBrandThemeGlobals({
+        brandKit,
+        sourceGlobals: { paragraphTextColor: undefined, emailBackgroundColor: "#f5efe6" },
+      }),
+    ).toEqual(SAND.globals);
+  });
+
+  it("falls back to the first live variation when the source draft is stale", () => {
+    const brandKit = kit([MIDNIGHT, SAND] as BrandKit["variations"]);
+    expect(
+      readDefaultBrandThemeGlobals({
+        brandKit,
+        sourceGlobals: { emailBackgroundColor: "#abcdef" },
+      }),
+    ).toEqual(MIDNIGHT.globals);
   });
 });

@@ -17,6 +17,8 @@ import {
   type ImageAspectRatio,
 } from "./constants";
 import { createMockImagePng } from "./mock-image";
+import { buildBrandedImagePrompt } from "@/lib/brand-image-prompt";
+import type { BrandGenerationContext } from "@/lib/brand-generation-context";
 
 /*
   AI image generation for image blocks — the server-only core shared by the
@@ -134,6 +136,7 @@ function toFriendlyGenerationFailureMessage(error: unknown): {
 
 export interface GenerateEmailImageInput {
   prompt: string;
+  brandGenerationContext?: BrandGenerationContext | null;
   aspectRatio?: ImageAspectRatio;
   /*
     Force the deterministic mock (route: x-flock-mock header).
@@ -150,10 +153,12 @@ export interface GenerateEmailImageInput {
 */
 export async function generateEmailImage({
   prompt,
+  brandGenerationContext = null,
   aspectRatio,
   isMockForced = false,
   env = process.env,
 }: GenerateEmailImageInput): Promise<GenerateEmailImageOutcome> {
+  const brandedPrompt = buildBrandedImagePrompt({ prompt, context: brandGenerationContext });
   const startMs = performance.now();
   const hasGoogleApiKey = Boolean(env.GOOGLE_GENERATIVE_AI_API_KEY);
   const isUsingMock =
@@ -177,14 +182,14 @@ export async function generateEmailImage({
       /*
         The prompt LENGTH, never the prompt — prompts are user content.
       */
-      promptChars: prompt.length,
+      promptChars: brandedPrompt.length,
       ...(aspectRatio === undefined ? {} : { aspectRatio }),
       ...details,
     });
   };
 
   if (isUsingMock) {
-    const mockImage = createMockImagePng({ prompt, ...(aspectRatio === undefined ? {} : { aspectRatio }) });
+    const mockImage = createMockImagePng({ prompt: brandedPrompt, ...(aspectRatio === undefined ? {} : { aspectRatio }) });
     logRequest({ isOk: true, outputBytes: Math.round(mockImage.base64.length * 0.75) });
     return {
       isGenerated: true,
@@ -199,7 +204,7 @@ export async function generateEmailImage({
   try {
     const { image } = await generateImage({
       model: google.image(GEMINI_IMAGE_MODEL_ID),
-      prompt,
+      prompt: brandedPrompt,
       ...(aspectRatio === undefined ? {} : { aspectRatio }),
       maxRetries: IMAGE_GENERATION_MAX_RETRIES,
     });
@@ -360,6 +365,7 @@ export interface GenerateAndStoreImageInput {
   sessionId: string | null;
   aspectRatio?: ImageAspectRatio;
   isMockForced?: boolean;
+  brandGenerationContext?: BrandGenerationContext | null;
 }
 
 /*
@@ -370,11 +376,13 @@ export async function generateAndStoreImage({
   sessionId,
   aspectRatio,
   isMockForced,
+  brandGenerationContext = null,
 }: GenerateAndStoreImageInput): Promise<GenerateAndStoreImageOutcome> {
   const generation = await generateEmailImage({
     prompt,
     ...(aspectRatio === undefined ? {} : { aspectRatio }),
     ...(isMockForced === undefined ? {} : { isMockForced }),
+    brandGenerationContext,
   });
   if (!generation.isGenerated) {
     return { isOk: false, message: generation.message };

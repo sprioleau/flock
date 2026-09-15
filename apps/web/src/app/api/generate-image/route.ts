@@ -6,6 +6,8 @@ import {
   type GenerateImageResponseBody,
 } from "./contract";
 import { generateEmailImage } from "./generation";
+import { resolveBrandContext } from "@/app/api/chat/brand-context";
+import { getSessionIdFromCookieHeader } from "@/lib/session-cookie";
 
 /*
   POST /api/generate-image — the HUMAN path's generation endpoint (the agent
@@ -43,7 +45,7 @@ export async function POST(request: Request) {
       message: parsedBody.error.issues.map((issue) => issue.message).join("; "),
     });
   }
-  const { prompt, aspectRatio } = parsedBody.data;
+  const { prompt, aspectRatio, documentId } = parsedBody.data;
 
   const isMockForced = request.headers.get(MOCK_MODEL_HEADER) === "1";
   /*
@@ -65,6 +67,12 @@ export async function POST(request: Request) {
 
   const outcome = await generateEmailImage({
     prompt,
+    brandGenerationContext: (
+      await resolveBrandContext({
+        sessionId: getSessionIdFromCookieHeader(request.headers.get("cookie")),
+        documentId,
+      })
+    )?.generation ?? null,
     ...(aspectRatio === undefined ? {} : { aspectRatio }),
     isMockForced,
   });

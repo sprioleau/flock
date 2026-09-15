@@ -34,6 +34,7 @@ import { ASSET_KIND_LABELS, listSessionAssets } from "./list-assets";
 import { toModelInputSchema } from "./model-schema";
 import { chatActionRegistry } from "./registry";
 import { sendTestEmailWithResend } from "./send-test-email";
+import type { BrandGenerationContext } from "@/lib/brand-generation-context";
 
 /*
   Registry → AI SDK toolset (Phase 3.2/3.3, agent registry since Phase 3
@@ -100,6 +101,7 @@ export interface BuildChatToolsInput {
     run must cost no quota AND must never fabricate research results.
   */
   isUsingMockModel: boolean;
+  brandGenerationContext?: BrandGenerationContext | null;
 }
 
 export interface BuiltChatTools {
@@ -363,6 +365,7 @@ export function buildChatTools({
   doc,
   sessionId,
   isUsingMockModel,
+  brandGenerationContext = null,
 }: BuildChatToolsInput): BuiltChatTools {
   const tools: ToolSet = {};
   const schemaOnlyTools: ToolSet = {};
@@ -511,7 +514,11 @@ export function buildChatTools({
                 `Block "${command.blockId}" is not an image block in the current document — call generateImage with the id of an existing image block.`,
               );
             }
-            const outcome = await generateAndStoreImage({ prompt: command.prompt, sessionId });
+            const outcome = await generateAndStoreImage({
+              prompt: command.prompt,
+              sessionId,
+              brandGenerationContext,
+            });
             if (!outcome.isOk) {
               throw new Error(
                 `The image for ${command.blockId} wasn't generated: ${outcome.message}`,

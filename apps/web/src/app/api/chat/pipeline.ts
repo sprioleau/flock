@@ -28,7 +28,7 @@ import {
   PIPELINE_VARIANT,
   type PipelineVariant,
 } from "./constants";
-import { buildBrandContextBlock } from "./brand-context";
+import { resolveBrandContext } from "./brand-context";
 import { expandGenerationBriefPart, resolveGenerationBrief } from "./generation-brief";
 import { buildSavedSectionsContext } from "./saved-sections-context";
 import { sanitizeModelToolCallInputs, sanitizeReplayedToolInputs } from "./replayed-tool-inputs";
@@ -69,6 +69,7 @@ export interface ChatPipelineInput {
     generation under this session's asset library (Content Studio Stage S).
   */
   sessionId: string | null;
+  documentId?: string;
   /*
     Correlation id for this turn, minted by the route. Every observability
     record this turn produces — the main call, each repair round, each
@@ -303,6 +304,7 @@ async function runSinglePassPipeline(input: ChatPipelineInput): Promise<void> {
     selectedBlockId,
     threadId,
     sessionId,
+    documentId,
     traceId,
     writer,
   } = input;
@@ -336,9 +338,9 @@ async function runSinglePassPipeline(input: ChatPipelineInput): Promise<void> {
     it is one more Convex read against the same deployment, and the tools are
     not built until every member of this batch has landed anyway.
   */
-  const [brandContextLine, savedSectionsContext, generationBrief, verifiedCaller] =
+  const [resolvedBrandContext, savedSectionsContext, generationBrief, verifiedCaller] =
     await Promise.all([
-      buildBrandContextBlock({ sessionId }),
+      resolveBrandContext({ sessionId, documentId }),
       buildSavedSectionsContext({ sessionId }),
       resolveGenerationBrief({ messages: sanitizedMessages, targetDoc: doc }),
       resolveVerifiedCaller(),
@@ -377,11 +379,12 @@ async function runSinglePassPipeline(input: ChatPipelineInput): Promise<void> {
     doc,
     sessionId,
     isUsingMockModel,
+    brandGenerationContext: resolvedBrandContext?.generation ?? null,
   });
   const { staticInstructions, documentContext } = buildSystemContext({
     doc,
     selectedBlockId,
-    brandContextLine,
+    brandContextLine: resolvedBrandContext?.block ?? null,
     savedSectionsContext,
   });
 

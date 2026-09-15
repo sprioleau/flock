@@ -165,6 +165,9 @@ function createIdFactory(): IdFactory {
 }
 
 function warn(report: MutableReport, code: HtmlImportWarningCode, detail: string): void {
+  if (report.warnings.some((warning) => warning.code === code && warning.detail === detail)) {
+    return;
+  }
   report.warnings.push({ code, detail });
 }
 
@@ -537,6 +540,15 @@ export function importHtmlEmail({ html, baseUrl }: { html: string; baseUrl?: str
       blockCount: Object.keys(context.document).length,
     },
   };
+}
+
+/*
+  Public preview API name. Keep importHtmlEmail as the compatibility name for
+  the Phase 1 parser callers while the product surface describes this step as
+  parsing an HTML email import.
+*/
+export function parseHtmlEmailImport({ html, baseUrl }: { html: string; baseUrl?: string }): HtmlEmailImportResult {
+  return importHtmlEmail({ html, baseUrl });
 }
 
 /* eslint-enable max-params */

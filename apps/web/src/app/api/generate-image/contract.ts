@@ -12,6 +12,7 @@ export const GENERATE_IMAGE_API_PATH = "/api/generate-image";
 export const generateImageRequestBodySchema = z.strictObject({
   prompt: z.string().min(1).max(GENERATE_IMAGE_MAX_PROMPT_LENGTH),
   aspectRatio: z.enum(IMAGE_ASPECT_RATIOS).optional(),
+  documentId: z.string().min(1).max(128).optional(),
 });
 
 export type GenerateImageRequestBody = z.infer<typeof generateImageRequestBodySchema>;

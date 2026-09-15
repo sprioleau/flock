@@ -16,6 +16,7 @@ import { PresenceFacepile } from "./presence/PresenceFacepile";
 import { ReplayPanel } from "./replay/ReplayPanel";
 import { ShortcutKbd } from "./shortcuts/ShortcutKbd";
 import { ThemeMenu } from "./theme/ThemeMenu";
+import { HtmlEmailImportDialog } from "./HtmlEmailImportDialog";
 
 /*
   Slim canvas toolbar: the `leading` slot (the drafts selector, mounted by
@@ -83,6 +84,7 @@ export function StudioToolbar({
           beside it (Content Studio Stage S, owner placement decision).
         */}
         <LibraryPanel />
+        <HtmlEmailImportDialog />
       </div>
 
       <div className="flex min-w-0 items-center gap-1.5">

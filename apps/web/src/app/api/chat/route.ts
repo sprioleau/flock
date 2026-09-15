@@ -189,6 +189,7 @@ export async function POST(request: Request) {
         selectedBlockId,
         threadId,
         sessionId,
+        documentId,
         traceId,
         writer,
       }),
@@ -204,4 +205,3 @@ export async function POST(request: Request) {
     headers: { [MODEL_RESPONSE_HEADER]: modelId },
   });
 }
-
