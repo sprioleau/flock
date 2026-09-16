@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 import { Container, Section } from "react-email";
 import type { SectionBlock } from "../../schema/blocks";
-import type { ResolvedSectionStyles } from "../styles";
+import { backgroundImageStyle, type ResolvedSectionStyles } from "../styles";
 import { blockPaddingStyle, type BlockAnnotation } from "./shared";
 
 export interface SectionBlockViewProps {
@@ -31,6 +31,7 @@ export function SectionBlockView({ resolvedStyles, children, annotation = {} }: 
           width: "100%",
           maxWidth: `${resolvedStyles.contentWidth}px`,
           backgroundColor: resolvedStyles.innerBackgroundColor,
+          ...backgroundImageStyle(resolvedStyles),
           ...blockPaddingStyle(resolvedStyles),
         }}
       >

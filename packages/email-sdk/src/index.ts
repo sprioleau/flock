@@ -94,9 +94,18 @@ export {
   CODE_BLOCK_LANGUAGES,
   CODE_BLOCK_THEMES,
   BORDER_STYLES,
+  BACKGROUND_IMAGE_URL_MAX_LENGTH,
+  BACKGROUND_POSITIONS,
+  BACKGROUND_REPEATS,
+  BACKGROUND_SIZES,
+  backgroundImageUrlSchema,
   borderStyleSchema,
+  isSafeBackgroundImageUrl,
 } from "./schema/blocks";
 export type {
+  BackgroundPosition,
+  BackgroundRepeat,
+  BackgroundSize,
   Block,
   BorderStyle,
   RootBlock,

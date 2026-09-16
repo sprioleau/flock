@@ -39,6 +39,21 @@ describe("RowBlockView", () => {
     expect(html).toMatch(/<td[^>]*background-color:#f4f4f5/);
   });
 
+  it("paints a background image with CSS sizing options on the wrapping cell", async () => {
+    const html = await renderRow({
+      backgroundColor: "#111827",
+      backgroundImageUrl: "https://cdn.example.com/hero.jpg",
+      backgroundSize: "cover",
+      backgroundPosition: "center center",
+      backgroundRepeat: "no-repeat",
+    });
+    expect(html).toMatch(/<td[^>]*background-color:#111827/);
+    expect(html).toContain("background-image:url(&quot;https://cdn.example.com/hero.jpg&quot;)");
+    expect(html).toContain("background-size:cover");
+    expect(html).toContain("background-position:center center");
+    expect(html).toContain("background-repeat:no-repeat");
+  });
+
   it("emits the wrapper for a background alone, with zero padding", async () => {
     const html = await renderRow({ backgroundColor: "#f4f4f5" });
     expect(html).toMatch(/<td[^>]*padding-top:0px/);

@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 import { Row } from "react-email";
 import type { RowBlock } from "../../schema/blocks";
-import type { ResolvedRowStyles } from "../styles";
+import { backgroundImageStyle, type ResolvedRowStyles } from "../styles";
 import { blockPaddingStyle, type BlockAnnotation } from "./shared";
 
 export interface RowBlockViewProps {
@@ -33,9 +33,10 @@ export interface RowBlockViewProps {
 export function RowBlockView({ resolvedStyles, children, annotation = {} }: RowBlockViewProps) {
   const { paddingTop, paddingBottom, paddingLeft, paddingRight, backgroundColor } = resolvedStyles;
   const hasPadding = paddingTop > 0 || paddingBottom > 0 || paddingLeft > 0 || paddingRight > 0;
+  const hasBackgroundImage = resolvedStyles.backgroundImageUrl !== undefined;
   const row = <Row>{children}</Row>;
 
-  if (!hasPadding && backgroundColor === undefined) {
+  if (!hasPadding && backgroundColor === undefined && !hasBackgroundImage) {
     /*
       No wrapper cell: the bare <Row> IS the outermost element, so it wears
       the stamp.
@@ -58,6 +59,7 @@ export function RowBlockView({ resolvedStyles, children, annotation = {} }: RowB
             style={{
               ...blockPaddingStyle(resolvedStyles),
               ...(backgroundColor === undefined ? {} : { backgroundColor }),
+              ...backgroundImageStyle(resolvedStyles),
             }}
           >
             {row}

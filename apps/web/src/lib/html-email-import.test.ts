@@ -44,6 +44,113 @@ describe("importHtmlEmail", () => {
     expect(result.report.warnings.some((warning) => warning.code === "tracking-pixel-removed")).toBe(true);
   });
 
+  it("preserves safe background images and straightforward background colors on layout blocks", () => {
+    const result = importHtmlEmail({
+      html: `<body><table style="background-image:url('https://cdn.example.com/section.jpg');background-size:cover;background-position:center;background-repeat:no-repeat;background-color:#f8f5ef">
+        <tr style="background:url(https://cdn.example.com/row.jpg);background-color:#0b6b4f"><td background="https://cdn.example.com/column.jpg" bgcolor="#ffffff" style="background-repeat:repeat-x"><p>Seasonal offer</p></td></tr>
+      </table></body>`,
+    });
+
+    const section = Object.values(result.document).find((block) => block.type === "section") as {
+      properties: Record<string, unknown>;
+    };
+    const row = Object.values(result.document).find((block) => block.type === "row") as {
+      properties: Record<string, unknown>;
+    };
+    const column = Object.values(result.document).find((block) => block.type === "column") as {
+      properties: Record<string, unknown>;
+    };
+
+    expect(section.properties).toMatchObject({
+      backgroundImageUrl: "https://cdn.example.com/section.jpg",
+      backgroundSize: "cover",
+      backgroundPosition: "center",
+      backgroundRepeat: "no-repeat",
+      innerBackgroundColor: "#f8f5ef",
+    });
+    expect(row.properties).toMatchObject({
+      backgroundImageUrl: "https://cdn.example.com/row.jpg",
+      backgroundColor: "#0b6b4f",
+    });
+    expect(column.properties).toMatchObject({
+      backgroundImageUrl: "https://cdn.example.com/column.jpg",
+      backgroundColor: "#ffffff",
+      backgroundRepeat: "repeat-x",
+    });
+  });
+
+  it("recovers a background-bearing cell and linked image inside email wrapper tables", () => {
+    const result = importHtmlEmail({
+      html: `<body><div role="article"><table><tbody><tr><td><table><tbody><tr><td style="background-image:url('https://cdn.example.com/hero.jpg');background-size:cover;background-position:center top;background-repeat:no-repeat;background-color:#221100"><table><tbody><tr><td><a href="https://example.com"><img src="https://cdn.example.com/logo.png" width="106" height="106" alt="Logo"></a><p>Hero copy</p></td></tr></tbody></table></td></tr></tbody></table></td></tr></tbody></table></div></body>`,
+    });
+
+    const blocks = Object.values(result.document);
+    expect(blocks.some((block) =>
+      ["section", "row", "column"].includes(block.type) &&
+      "backgroundImageUrl" in block.properties &&
+      block.properties.backgroundImageUrl === "https://cdn.example.com/hero.jpg" &&
+      block.properties.backgroundPosition === "top center"
+    )).toBe(true);
+    expect(blocks.some((block) =>
+      block.type === "image" &&
+      block.properties.src === "https://cdn.example.com/logo.png" &&
+      block.properties.href === "https://example.com/"
+    )).toBe(true);
+
+    const backgroundColumn = blocks.find((block) =>
+      block.type === "column" &&
+      "backgroundImageUrl" in block.properties &&
+      block.properties.backgroundImageUrl === "https://cdn.example.com/hero.jpg"
+    ) as { childrenIds: string[] } | undefined;
+    expect(backgroundColumn).toBeDefined();
+    expect(backgroundColumn?.childrenIds.some((childId) =>
+      result.document[childId]?.type === "image"
+    )).toBe(true);
+    expect(backgroundColumn?.childrenIds.some((childId) =>
+      result.document[childId]?.type === "text"
+    )).toBe(true);
+  });
+
+  it("rejects unsafe, malformed, merged, gradient, and multilayer backgrounds with warnings", () => {
+    const result = importHtmlEmail({
+      html: `<body><table style="background-image:url(javascript:bad),url(https://cdn.example.com/second.jpg)"><tr><td style="background-image:linear-gradient(red,blue)"><p>Safe copy</p></td></tr></table>
+        <div style="background-image:url({{hero_url}})">More copy</div><div background="file:///tmp/hero.jpg">Other copy</div></body>`,
+      baseUrl: "https://example.com/newsletter",
+    });
+
+    const layoutBlocks = Object.values(result.document).filter((block) =>
+      block.type === "section" || block.type === "row" || block.type === "column",
+    );
+    expect(layoutBlocks.some((block) => "backgroundImageUrl" in block.properties)).toBe(false);
+    expect(result.report.warnings.some((warning) => warning.code === "unsafe-url-removed")).toBe(true);
+    expect(result.report.warnings.some((warning) => warning.code === "unsupported-feature")).toBe(true);
+  });
+
+  it("turns a linked image into one image block and keeps the image when the href is unsafe", () => {
+    const result = importHtmlEmail({
+      html: `<body><a href="https://example.com/product"><img src="https://cdn.example.com/product.png" width="640" height="320" alt="Product"></a>
+        <a href="javascript:bad"><img src="https://cdn.example.com/safe.png" width="300" height="150" alt="Safe"></a></body>`,
+    });
+
+    const images = Object.values(result.document).filter((block) => block.type === "image") as Array<{
+      properties: Record<string, unknown>;
+    }>;
+    expect(images).toHaveLength(2);
+    expect(images[0].properties).toMatchObject({
+      src: "https://cdn.example.com/product.png",
+      href: "https://example.com/product",
+      width: 640,
+      alt: "Product",
+    });
+    expect(images[1].properties).toMatchObject({
+      src: "https://cdn.example.com/safe.png",
+      width: 300,
+      alt: "Safe",
+    });
+    expect(images[1].properties.href).toBeUndefined();
+    expect(result.report.warnings.some((warning) => warning.code === "unsafe-url-removed")).toBe(true);
+  });
+
   it("keeps relative URLs out of the editable document unless a source URL is provided", () => {
     const withoutBase = importHtmlEmail({ html: `<body><img src="/hero.png"><a href="/read">Read</a></body>` });
     expect(Object.values(withoutBase.document).some((block) => block.type === "image" || block.type === "link")).toBe(false);

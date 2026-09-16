@@ -1,4 +1,8 @@
+import type { CSSProperties } from "react";
 import type {
+  BackgroundPosition,
+  BackgroundRepeat,
+  BackgroundSize,
   Block,
   BorderStyle,
   ButtonBlock,
@@ -13,6 +17,7 @@ import type {
   SpacerBlock,
   TextBlock,
 } from "../schema/blocks";
+import { isSafeBackgroundImageUrl } from "../schema/blocks";
 import {
   DEFAULT_GLOBAL_STYLES,
   type GlobalStyles,
@@ -58,6 +63,37 @@ export interface ResolvedPadding {
   paddingRight: number;
 }
 
+interface ResolvedBackgroundImageStyles {
+  backgroundImageUrl: string | undefined;
+  backgroundSize: BackgroundSize | undefined;
+  backgroundPosition: BackgroundPosition | undefined;
+  backgroundRepeat: BackgroundRepeat | undefined;
+}
+
+/*
+  Convert the typed background-image fields to an inline CSS declaration. The
+  runtime guard is intentional: callers can construct TypeScript values
+  without parsing them through Zod, and an unsafe value must never reach CSS.
+*/
+export function backgroundImageStyle({
+  backgroundImageUrl,
+  backgroundSize,
+  backgroundPosition,
+  backgroundRepeat,
+}: ResolvedBackgroundImageStyles): CSSProperties {
+  if (backgroundImageUrl === undefined || !isSafeBackgroundImageUrl(backgroundImageUrl)) {
+    return {};
+  }
+
+  const escapedUrl = backgroundImageUrl.replaceAll("\\", "\\\\").replaceAll('"', '\\"');
+  return {
+    backgroundImage: `url("${escapedUrl}")`,
+    ...(backgroundSize === undefined ? {} : { backgroundSize }),
+    ...(backgroundPosition === undefined ? {} : { backgroundPosition }),
+    ...(backgroundRepeat === undefined ? {} : { backgroundRepeat }),
+  };
+}
+
 /*
   Canvas-level values the root traversal needs.
 */
@@ -81,6 +117,10 @@ export interface ResolvedSectionStyles extends ResolvedPadding {
     Width of the centered content area, from globals.contentWidth.
   */
   contentWidth: number;
+  backgroundImageUrl: string | undefined;
+  backgroundSize: BackgroundSize | undefined;
+  backgroundPosition: BackgroundPosition | undefined;
+  backgroundRepeat: BackgroundRepeat | undefined;
 }
 
 export interface ResolvedRowStyles extends ResolvedPadding {
@@ -88,6 +128,10 @@ export interface ResolvedRowStyles extends ResolvedPadding {
     Undefined means transparent (the section background shows through).
   */
   backgroundColor: string | undefined;
+  backgroundImageUrl: string | undefined;
+  backgroundSize: BackgroundSize | undefined;
+  backgroundPosition: BackgroundPosition | undefined;
+  backgroundRepeat: BackgroundRepeat | undefined;
 }
 
 export interface ResolvedColumnStyles extends ResolvedPadding {
@@ -100,6 +144,10 @@ export interface ResolvedColumnStyles extends ResolvedPadding {
     Undefined means transparent (the section background shows through).
   */
   backgroundColor: string | undefined;
+  backgroundImageUrl: string | undefined;
+  backgroundSize: BackgroundSize | undefined;
+  backgroundPosition: BackgroundPosition | undefined;
+  backgroundRepeat: BackgroundRepeat | undefined;
 }
 
 /*
@@ -267,6 +315,10 @@ function resolveSectionStyles(
     innerBackgroundColor: properties.innerBackgroundColor ?? globals.contentBackgroundColor,
     outerBackgroundColor: properties.outerBackgroundColor ?? globals.emailBackgroundColor,
     contentWidth: globals.contentWidth,
+    backgroundImageUrl: properties.backgroundImageUrl,
+    backgroundSize: properties.backgroundSize,
+    backgroundPosition: properties.backgroundPosition,
+    backgroundRepeat: properties.backgroundRepeat,
     ...resolvePadding(properties, {
       paddingTop: globals.baseSpacing,
       paddingBottom: 0,
@@ -280,6 +332,10 @@ function resolveRowStyles(block: RowBlock): ResolvedRowStyles {
   const { properties } = block;
   return {
     backgroundColor: properties.backgroundColor,
+    backgroundImageUrl: properties.backgroundImageUrl,
+    backgroundSize: properties.backgroundSize,
+    backgroundPosition: properties.backgroundPosition,
+    backgroundRepeat: properties.backgroundRepeat,
     ...resolvePadding(properties, {
       paddingTop: 0,
       paddingBottom: 0,
@@ -295,6 +351,10 @@ function resolveColumnStyles(block: ColumnBlock): ResolvedColumnStyles {
     widthPercent: properties.widthPercent,
     verticalAlign: properties.verticalAlign ?? "top",
     backgroundColor: properties.backgroundColor,
+    backgroundImageUrl: properties.backgroundImageUrl,
+    backgroundSize: properties.backgroundSize,
+    backgroundPosition: properties.backgroundPosition,
+    backgroundRepeat: properties.backgroundRepeat,
     ...resolvePadding(properties, {
       paddingTop: 0,
       paddingBottom: 0,

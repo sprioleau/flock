@@ -52,6 +52,82 @@ const blockPaddingFields = (noun: string) => ({
   paddingRight: padding("right", `of this ${noun}`),
 });
 
+/*
+  Background images are deliberately a small, email-safe CSS surface. The
+  importer can preserve the common photographic hero treatment without
+  accepting arbitrary CSS, data URLs, or values that could escape an inline
+  style declaration.
+*/
+export const BACKGROUND_IMAGE_URL_MAX_LENGTH = 2048;
+
+export function isSafeBackgroundImageUrl(value: string): boolean {
+  if (
+    value.length === 0 ||
+    value.length > BACKGROUND_IMAGE_URL_MAX_LENGTH ||
+    /[\u0000-\u001f\u007f"'\\]/.test(value)
+  ) {
+    return false;
+  }
+
+  try {
+    const url = new URL(value);
+    return url.protocol === "http:" || url.protocol === "https:";
+  } catch {
+    return false;
+  }
+}
+
+export const backgroundImageUrlSchema = z
+  .string()
+  .min(1)
+  .max(BACKGROUND_IMAGE_URL_MAX_LENGTH)
+  .refine(isSafeBackgroundImageUrl, "Background image URL must be an absolute HTTP(S) URL.")
+  .describe(
+    "Absolute HTTP(S) URL of the background image. Data URLs, non-web protocols, and URLs longer than 2048 characters are rejected.",
+  );
+
+export const BACKGROUND_SIZES = ["auto", "cover", "contain"] as const;
+export type BackgroundSize = (typeof BACKGROUND_SIZES)[number];
+export const backgroundSizeSchema = z
+  .enum(BACKGROUND_SIZES)
+  .describe('Background image sizing: "auto", "cover", or "contain".');
+
+export const BACKGROUND_POSITIONS = [
+  "center",
+  "top",
+  "right",
+  "bottom",
+  "left",
+  "top left",
+  "top center",
+  "top right",
+  "center left",
+  "center center",
+  "center right",
+  "bottom left",
+  "bottom center",
+  "bottom right",
+] as const;
+export type BackgroundPosition = (typeof BACKGROUND_POSITIONS)[number];
+export const backgroundPositionSchema = z
+  .enum(BACKGROUND_POSITIONS)
+  .describe("Background image position using a bounded set of email-safe keyword pairs.");
+
+export const BACKGROUND_REPEATS = ["no-repeat", "repeat", "repeat-x", "repeat-y"] as const;
+export type BackgroundRepeat = (typeof BACKGROUND_REPEATS)[number];
+export const backgroundRepeatSchema = z
+  .enum(BACKGROUND_REPEATS)
+  .describe('Background image repetition: "no-repeat", "repeat", "repeat-x", or "repeat-y".');
+
+function backgroundImageFields() {
+  return {
+    backgroundImageUrl: backgroundImageUrlSchema.optional(),
+    backgroundSize: backgroundSizeSchema.optional(),
+    backgroundPosition: backgroundPositionSchema.optional(),
+    backgroundRepeat: backgroundRepeatSchema.optional(),
+  };
+}
+
 const emptyChildrenIds = (noun: string) =>
   z
     .array(z.never())
@@ -141,6 +217,7 @@ export const sectionBlockSchema = z
           .describe(
             "Background color behind this section, outside the content area. Omit to inherit globals.emailBackgroundColor.",
           ),
+        ...backgroundImageFields(),
         ...blockPaddingFields("section"),
       })
       .describe("Section-level style overrides. Only set fields that differ from the globals."),
@@ -171,6 +248,7 @@ export const rowBlockSchema = z
           .describe(
             "Background color filling this row's full width, padding included — the band behind a side-by-side group. Omit for transparent (the section background shows through).",
           ),
+        ...backgroundImageFields(),
         ...blockPaddingFields("row"),
       })
       .describe("Row-level style overrides."),
@@ -215,6 +293,7 @@ export const columnBlockSchema = z
           .min(1)
           .optional()
           .describe("Background color of this column. Omit for transparent (the section background shows through)."),
+        ...backgroundImageFields(),
         ...blockPaddingFields("column"),
       })
       .describe("Column-level style overrides."),

@@ -1,7 +1,7 @@
 import type { ReactNode } from "react";
 import { Column } from "react-email";
 import type { ColumnBlock } from "../../schema/blocks";
-import type { ResolvedColumnStyles } from "../styles";
+import { backgroundImageStyle, type ResolvedColumnStyles } from "../styles";
 import { blockPaddingStyle, type BlockAnnotation } from "./shared";
 
 export interface ColumnBlockViewProps {
@@ -31,6 +31,7 @@ export function ColumnBlockView({ resolvedStyles, children, annotation = {} }: C
         ...(resolvedStyles.backgroundColor !== undefined
           ? { backgroundColor: resolvedStyles.backgroundColor }
           : {}),
+        ...backgroundImageStyle(resolvedStyles),
         ...blockPaddingStyle(resolvedStyles),
       }}
     >

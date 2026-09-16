@@ -114,6 +114,40 @@ describe("sectionBlockSchema", () => {
     expect(sectionBlockSchema.safeParse(validSection).success).toBe(true);
   });
 
+  it("accepts a safe background image with bounded display options", () => {
+    const section = {
+      ...validSection,
+      properties: {
+        backgroundImageUrl: "https://cdn.example.com/hero.jpg",
+        backgroundSize: "cover",
+        backgroundPosition: "center center",
+        backgroundRepeat: "no-repeat",
+      },
+    };
+    expect(sectionBlockSchema.safeParse(section).success).toBe(true);
+  });
+
+  it("rejects unsafe or unbounded background image values", () => {
+    expect(
+      sectionBlockSchema.safeParse({
+        ...validSection,
+        properties: { backgroundImageUrl: "data:image/png;base64,abc" },
+      }).success,
+    ).toBe(false);
+    expect(
+      sectionBlockSchema.safeParse({
+        ...validSection,
+        properties: { backgroundImageUrl: "javascript:alert(1)" },
+      }).success,
+    ).toBe(false);
+    expect(
+      sectionBlockSchema.safeParse({
+        ...validSection,
+        properties: { backgroundPosition: "25% 50%" },
+      }).success,
+    ).toBe(false);
+  });
+
   it('rejects a parentId other than "root"', () => {
     expect(sectionBlockSchema.safeParse({ ...validSection, parentId: "sec_x9y8" }).success).toBe(false);
   });
@@ -167,6 +201,14 @@ describe("rowBlockSchema", () => {
     expect(rowBlockSchema.safeParse(row).success).toBe(true);
   });
 
+  it("accepts a background image and bounded repeat option", () => {
+    const row = {
+      ...validRow,
+      properties: { backgroundImageUrl: "http://cdn.example.com/row.png", backgroundRepeat: "repeat-x" },
+    };
+    expect(rowBlockSchema.safeParse(row).success).toBe(true);
+  });
+
   it("rejects an empty background color", () => {
     const row = { ...validRow, properties: { backgroundColor: "" } };
     expect(rowBlockSchema.safeParse(row).success).toBe(false);
@@ -206,6 +248,33 @@ describe("columnBlockSchema", () => {
   it("rejects row or column children ids", () => {
     expect(columnBlockSchema.safeParse({ ...validColumn, childrenIds: ["row_a1b2"] }).success).toBe(false);
     expect(columnBlockSchema.safeParse({ ...validColumn, childrenIds: ["col_a1b2"] }).success).toBe(false);
+  });
+
+  it("accepts a background image with bounded size and position", () => {
+    const column = {
+      ...validColumn,
+      properties: {
+        backgroundImageUrl: "https://cdn.example.com/column.png",
+        backgroundSize: "contain",
+        backgroundPosition: "bottom right",
+      },
+    };
+    expect(columnBlockSchema.safeParse(column).success).toBe(true);
+  });
+
+  it("rejects unsupported background enum values", () => {
+    expect(
+      columnBlockSchema.safeParse({
+        ...validColumn,
+        properties: { backgroundSize: "100% 100%" },
+      }).success,
+    ).toBe(false);
+    expect(
+      columnBlockSchema.safeParse({
+        ...validColumn,
+        properties: { backgroundRepeat: "round" },
+      }).success,
+    ).toBe(false);
   });
 });
 

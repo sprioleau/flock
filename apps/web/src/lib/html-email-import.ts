@@ -99,6 +99,7 @@ type BlockType = "section" | "row" | "column" | "text" | "button" | "image" | "d
 export type HtmlImportWarningCode =
   | "active-content-removed"
   | "unsupported-feature"
+  | "background-image-removed"
   | "unsafe-url-removed"
   | "relative-url-removed"
   | "tracking-pixel-removed"
@@ -198,6 +199,129 @@ function sanitizeStyle(rawStyle: string, allowedProperties: Set<string>): string
     declarations.push(`${property}:${value}`);
   }
   return declarations.join(";");
+}
+
+function styleDeclarations(rawStyle: string): StyleMap {
+  const declarations: StyleMap = {};
+  for (const declaration of rawStyle.split(";")) {
+    const separator = declaration.indexOf(":");
+    if (separator < 1) continue;
+    const property = declaration.slice(0, separator).trim().toLowerCase();
+    const value = declaration.slice(separator + 1).trim();
+    if (property.length > 0 && value.length > 0) declarations[property] = value;
+  }
+  return declarations;
+}
+
+function safeColor(value: string | undefined): string | undefined {
+  if (value === undefined) return undefined;
+  const normalized = value.trim();
+  if (
+    normalized.length === 0 ||
+    normalized.length > 100 ||
+    /[{}<>"']|url\s*\(|expression\s*\(|@import|;|:/i.test(normalized)
+  ) {
+    return undefined;
+  }
+  return /^[#a-z\d(),.%\s+-]+$/i.test(normalized) ? normalized : undefined;
+}
+
+function backgroundWarning(context: ConversionContext, detail: string): void {
+  warn(context.report, "background-image-removed", detail);
+}
+
+function extractCssUrl(rawValue: string, isExact: boolean): string | null {
+  const value = rawValue.trim();
+  const match = /url\(\s*(?:"([^"]*)"|'([^']*)'|([^\s)]*))\s*\)/i.exec(value);
+  if (match === null) return null;
+  if (isExact && match[0].trim() !== value) return null;
+  if ((value.match(/url\s*\(/gi) ?? []).length !== 1) return null;
+  if (/[,]|gradient\s*\(/i.test(value)) return null;
+  return match[1] ?? match[2] ?? match[3] ?? null;
+}
+
+function safeBackgroundUrl(rawValue: string | undefined, context: ConversionContext, isCssValue = false): string | null {
+  if (rawValue === undefined) return null;
+  const value = rawValue.trim();
+  if (value.length === 0 || /[{}]|\*\||\|\*/.test(value)) {
+    backgroundWarning(context, "A merge-tag background image was omitted.");
+    return null;
+  }
+  const urlValue = isCssValue ? extractCssUrl(value, false) : value;
+  if (urlValue === null || /[,]|gradient\s*\(|url\s*\(/i.test(isCssValue ? value.replace(/url\([^)]*\)/i, "") : value)) {
+    context.report.unsupportedFeatures.add("background-image");
+    backgroundWarning(context, "A gradient or multilayer background image was omitted.");
+    warn(context.report, "unsupported-feature", "A gradient or multilayer background image was omitted.");
+    return null;
+  }
+  if (urlValue.length > 2048 || /[\u0000-\u001f\u007f"'\\]/.test(urlValue)) {
+    backgroundWarning(context, "An oversized or malformed background image URL was omitted.");
+    warn(context.report, "unsafe-url-removed", "A malformed URL was omitted.");
+    return null;
+  }
+  const resolved = safeUrl(urlValue, context);
+  if (resolved === null) backgroundWarning(context, "An unsafe background image was omitted.");
+  return resolved;
+}
+
+function safeBackgroundSize(value: string | undefined): string | undefined {
+  if (value === undefined) return undefined;
+  const normalized = value.trim().toLowerCase();
+  return /^(cover|contain|auto)$/.test(normalized) ? normalized : undefined;
+}
+
+function safeBackgroundPosition(value: string | undefined): string | undefined {
+  if (value === undefined) return undefined;
+  const normalized = value.trim().toLowerCase();
+  const aliases: Record<string, string> = {
+    "center top": "top center",
+    "left top": "top left",
+    "right top": "top right",
+    "left center": "center left",
+    "right center": "center right",
+    "left bottom": "bottom left",
+    "center bottom": "bottom center",
+    "right bottom": "bottom right",
+  };
+  const canonical = aliases[normalized] ?? normalized;
+  return /^(center|top|right|bottom|left|top left|top center|top right|center left|center center|center right|bottom left|bottom center|bottom right)$/.test(canonical)
+    ? canonical
+    : undefined;
+}
+
+function safeBackgroundRepeat(value: string | undefined): string | undefined {
+  if (value === undefined) return undefined;
+  const normalized = value.trim().toLowerCase();
+  return /^(repeat|repeat-x|repeat-y|no-repeat)$/.test(normalized) ? normalized : undefined;
+}
+
+function readBackgroundProperties(element: Element, context: ConversionContext): Record<string, unknown> {
+  const declarations = styleDeclarations(element.attribs.style ?? "");
+  const rawImage = declarations["background-image"] ?? declarations.background ?? element.attribs.background;
+  const backgroundImageUrl = safeBackgroundUrl(rawImage, context, declarations["background-image"] !== undefined || declarations.background !== undefined);
+  const backgroundSize = safeBackgroundSize(declarations["background-size"]);
+  const backgroundPosition = safeBackgroundPosition(declarations["background-position"]);
+  const backgroundRepeat = safeBackgroundRepeat(declarations["background-repeat"]);
+  if (declarations["background-size"] !== undefined && backgroundSize === undefined) {
+    backgroundWarning(context, "An unsupported background size was omitted.");
+  }
+  if (declarations["background-position"] !== undefined && backgroundPosition === undefined) {
+    backgroundWarning(context, "An unsupported background position was omitted.");
+  }
+  if (declarations["background-repeat"] !== undefined && backgroundRepeat === undefined) {
+    backgroundWarning(context, "An unsupported background repeat value was omitted.");
+  }
+  if (backgroundImageUrl === null) return {};
+  return {
+    backgroundImageUrl,
+    ...(backgroundSize === undefined ? {} : { backgroundSize }),
+    ...(backgroundPosition === undefined ? {} : { backgroundPosition }),
+    ...(backgroundRepeat === undefined ? {} : { backgroundRepeat }),
+  };
+}
+
+function readBackgroundColor(element: Element): string | undefined {
+  return safeColor(styleDeclarations(element.attribs.style ?? "")["background-color"] ?? element.attribs.bgcolor);
 }
 
 function readStyles(element: Element, allowedProperties = SAFE_STYLE_PROPERTIES): StyleMap {
@@ -322,10 +446,25 @@ function textBlockFromElement(element: Element, context: ConversionContext, leve
         ? { textAlign: styles["text-align"] }
         : {}),
       ...(styles.color !== undefined ? { textColor: styles.color } : {}),
-      ...(styles["background-color"] !== undefined ? { backgroundColor: styles["background-color"] } : {}),
+      ...(readBackgroundColor(element) === undefined ? {} : { backgroundColor: readBackgroundColor(element) }),
     },
   } as never;
   return blockId;
+}
+
+function hasStructuralDescendant(element: Element): boolean {
+  return element.children.some((child) => {
+    if (child.type !== "tag") return false;
+    const name = child.name.toLowerCase();
+    return name === "table" || name === "img" || name === "hr" || hasStructuralDescendant(child);
+  });
+}
+
+function imageDescendants(element: Element): Element[] {
+  return element.children.flatMap((child) => {
+    if (child.type !== "tag") return [];
+    return child.name.toLowerCase() === "img" ? [child] : imageDescendants(child);
+  });
 }
 
 function appendChild(parentId: string, childId: string, context: ConversionContext): void {
@@ -353,7 +492,11 @@ function addLeaf(element: Element, parentId: string, context: ConversionContext)
       type: "image",
       parentId,
       childrenIds: [],
-      properties: { src, alt: element.attribs.alt ?? "", ...(width === undefined ? {} : { width }) },
+      properties: {
+        src,
+        alt: element.attribs.alt ?? "",
+        ...(width === undefined ? {} : { width }),
+      },
     } as never;
     return imageId;
   }
@@ -363,6 +506,33 @@ function addLeaf(element: Element, parentId: string, context: ConversionContext)
     return dividerId;
   }
   if (name === "a") {
+    const linkedImages = imageDescendants(element);
+    if (linkedImages.length === 1 && textContent(element.children).length === 0) {
+      const linkedImage = linkedImages[0];
+      const width = safeDimension(linkedImage.attribs.width) ?? safeDimension(readStyles(linkedImage).width);
+      const height = safeDimension(linkedImage.attribs.height);
+      if ((width !== undefined && width <= 2) || (height !== undefined && height <= 2)) {
+        warn(context.report, "tracking-pixel-removed", "A one- or two-pixel image was treated as a tracking pixel and removed.");
+        return null;
+      }
+      const src = safeUrl(linkedImage.attribs.src, context);
+      if (src === null) return null;
+      const href = safeUrl(element.attribs.href, context);
+      const imageId = context.ids.next("image");
+      context.document[imageId] = {
+        id: imageId,
+        type: "image",
+        parentId,
+        childrenIds: [],
+        properties: {
+          src,
+          alt: linkedImage.attribs.alt ?? "",
+          ...(width === undefined ? {} : { width }),
+          ...(href === null ? {} : { href }),
+        },
+      } as never;
+      return imageId;
+    }
     const href = safeUrl(element.attribs.href, context);
     const label = textContent(element.children);
     if (href === null || label.length === 0) return null;
@@ -378,7 +548,10 @@ function addLeaf(element: Element, parentId: string, context: ConversionContext)
   if (headingMatch !== null) {
     return textBlockFromElement(element, context, Math.min(3, Number(headingMatch[1])) as 1 | 2 | 3);
   }
-  if (["p", "li", "div", "span", "td", "th"].includes(name)) return textBlockFromElement(element, context);
+  if (["p", "li", "div", "span", "td", "th"].includes(name)) {
+    if (hasStructuralDescendant(element)) return null;
+    return textBlockFromElement(element, context);
+  }
   if (UNSUPPORTED_LAYOUT_TAGS.has(name)) {
     context.report.unsupportedFeatures.add(name);
     warn(context.report, "unsupported-feature", `<${name}> was flattened into supported content.`);
@@ -387,7 +560,12 @@ function addLeaf(element: Element, parentId: string, context: ConversionContext)
   return null;
 }
 
-function convertSimpleChildren(nodes: ChildNode[], parentId: string, context: ConversionContext): void {
+function convertSimpleChildren(
+  nodes: ChildNode[],
+  parentId: string,
+  context: ConversionContext,
+  shouldFlattenNestedTables = false,
+): void {
   for (const node of nodes) {
     if (node.type !== "tag") continue;
     const name = node.name.toLowerCase();
@@ -396,33 +574,142 @@ function convertSimpleChildren(nodes: ChildNode[], parentId: string, context: Co
       warn(context.report, "active-content-removed", `<${name}> was removed from the import.`);
       continue;
     }
+    if (name === "table") {
+      if (shouldFlattenNestedTables) {
+        convertSimpleChildren(node.children, parentId, context, true);
+        continue;
+      }
+      const nestedSectionId = convertTable(node, context);
+      if (nestedSectionId !== null) {
+        (context.document.root as { childrenIds: string[] }).childrenIds.push(nestedSectionId);
+      }
+      continue;
+    }
     const blockId = addLeaf(node, parentId, context);
     if (blockId !== null) {
       appendChild(parentId, blockId, context);
       continue;
     }
-    if (!["img", "hr", "a", "p", "li", "div", "span", "td", "th", "h1", "h2", "h3", "h4", "h5", "h6"].includes(name)) {
-      convertSimpleChildren(node.children, parentId, context);
+    if (!["img", "hr"].includes(name)) {
+      convertSimpleChildren(node.children, parentId, context, shouldFlattenNestedTables);
     }
   }
 }
 
-function convertTable(element: Element, context: ConversionContext): string {
+function deleteBlockSubtree(blockId: string, context: ConversionContext): void {
+  const block = context.document[blockId] as { childrenIds?: string[] } | undefined;
+  for (const childId of block?.childrenIds ?? []) {
+    deleteBlockSubtree(childId, context);
+  }
+  delete context.document[blockId];
+}
+
+function hasLeafDescendant(blockId: string, context: ConversionContext): boolean {
+  const block = context.document[blockId] as { type?: string; childrenIds?: string[] } | undefined;
+  if (block === undefined) return false;
+  if (!["section", "row", "column"].includes(block.type ?? "")) return true;
+  return (block.childrenIds ?? []).some((childId) => hasLeafDescendant(childId, context));
+}
+
+function backgroundPropertiesInSubtree(
+  blockId: string,
+  context: ConversionContext,
+): Record<string, unknown> | null {
+  const block = context.document[blockId] as {
+    properties?: Record<string, unknown>;
+    childrenIds?: string[];
+  } | undefined;
+  if (block === undefined) return null;
+  const properties = block.properties ?? {};
+  if (typeof properties.backgroundImageUrl === "string") {
+    return {
+      backgroundImageUrl: properties.backgroundImageUrl,
+      ...(properties.backgroundSize === undefined ? {} : { backgroundSize: properties.backgroundSize }),
+      ...(properties.backgroundPosition === undefined ? {} : { backgroundPosition: properties.backgroundPosition }),
+      ...(properties.backgroundRepeat === undefined ? {} : { backgroundRepeat: properties.backgroundRepeat }),
+      ...(properties.backgroundColor === undefined
+        ? properties.innerBackgroundColor === undefined
+          ? {}
+          : { innerBackgroundColor: properties.innerBackgroundColor }
+        : { innerBackgroundColor: properties.backgroundColor }),
+    };
+  }
+  for (const childId of block.childrenIds ?? []) {
+    const nested = backgroundPropertiesInSubtree(childId, context);
+    if (nested !== null) return nested;
+  }
+  return null;
+}
+
+function convertTable(element: Element, context: ConversionContext): string | null {
+  const root = context.document.root as { childrenIds: string[] };
+  const nestedSectionStart = root.childrenIds.length;
   const sectionId = context.ids.next("section");
-  context.document[sectionId] = { id: sectionId, type: "section", parentId: "root", childrenIds: [], properties: {} } as never;
+  const sectionBackgroundColor = readBackgroundColor(element);
+  context.document[sectionId] = {
+    id: sectionId,
+    type: "section",
+    parentId: "root",
+    childrenIds: [],
+    properties: {
+      ...readBackgroundProperties(element, context),
+      ...(sectionBackgroundColor === undefined ? {} : { innerBackgroundColor: sectionBackgroundColor }),
+    },
+  } as never;
   const rows = element.children.filter((child): child is Element => child.type === "tag" && child.name.toLowerCase() === "tr");
   const nestedRows = rows.length > 0 ? rows : element.children.flatMap((child) => child.type === "tag" ? child.children.filter((nested): nested is Element => nested.type === "tag" && nested.name.toLowerCase() === "tr") : []);
   for (const rowElement of nestedRows) {
     const rowId = context.ids.next("row");
-    context.document[rowId] = { id: rowId, type: "row", parentId: sectionId, childrenIds: [], properties: {} } as never;
+    const rowBackgroundColor = readBackgroundColor(rowElement);
+    context.document[rowId] = {
+      id: rowId,
+      type: "row",
+      parentId: sectionId,
+      childrenIds: [],
+      properties: {
+        ...readBackgroundProperties(rowElement, context),
+        ...(rowBackgroundColor === undefined ? {} : { backgroundColor: rowBackgroundColor }),
+      },
+    } as never;
     appendChild(sectionId, rowId, context);
     const cells = rowElement.children.filter((child): child is Element => child.type === "tag" && ["td", "th"].includes(child.name.toLowerCase()));
     for (const cell of cells) {
       const columnId = context.ids.next("column");
-      context.document[columnId] = { id: columnId, type: "column", parentId: rowId, childrenIds: [], properties: { widthPercent: 100 / Math.max(cells.length, 1) } } as never;
+      const columnBackgroundColor = readBackgroundColor(cell);
+      const columnBackgroundProperties = readBackgroundProperties(cell, context);
+      context.document[columnId] = {
+        id: columnId,
+        type: "column",
+        parentId: rowId,
+        childrenIds: [],
+        properties: {
+          widthPercent: 100 / Math.max(cells.length, 1),
+          ...columnBackgroundProperties,
+          ...(columnBackgroundColor === undefined ? {} : { backgroundColor: columnBackgroundColor }),
+        },
+      } as never;
       appendChild(rowId, columnId, context);
-      convertSimpleChildren(cell.children, columnId, context);
+      convertSimpleChildren(
+        cell.children,
+        columnId,
+        context,
+        typeof columnBackgroundProperties.backgroundImageUrl === "string",
+      );
     }
+  }
+  if (!hasLeafDescendant(sectionId, context)) {
+    const backgroundProperties = backgroundPropertiesInSubtree(sectionId, context);
+    const firstNestedSectionId = root.childrenIds[nestedSectionStart];
+    if (backgroundProperties !== null && firstNestedSectionId !== undefined) {
+      const nestedSection = context.document[firstNestedSectionId] as {
+        properties: Record<string, unknown>;
+      } | undefined;
+      if (nestedSection !== undefined && nestedSection.properties.backgroundImageUrl === undefined) {
+        nestedSection.properties = { ...nestedSection.properties, ...backgroundProperties };
+      }
+    }
+    deleteBlockSubtree(sectionId, context);
+    return null;
   }
   return sectionId;
 }
@@ -457,8 +744,27 @@ function serializeNode(node: ChildNode, context: ConversionContext): string {
     attributes.push(`alt="${escapeAttribute(node.attribs.alt ?? "")}"`);
   }
   if (node.attribs.style !== undefined) {
-    const style = sanitizeStyle(node.attribs.style, SAFE_STYLE_PROPERTIES);
-    if (style.length > 0) attributes.push(`style="${escapeAttribute(style)}"`);
+    const styleParts = sanitizeStyle(node.attribs.style, SAFE_STYLE_PROPERTIES)
+      .split(";")
+      .filter(Boolean);
+    const declarations = styleDeclarations(node.attribs.style);
+    const backgroundImageUrl = safeBackgroundUrl(
+      declarations["background-image"] ?? declarations.background,
+      context,
+      declarations["background-image"] !== undefined || declarations.background !== undefined,
+    );
+    if (backgroundImageUrl !== null) styleParts.push(`background-image:url(${backgroundImageUrl})`);
+    const backgroundSize = safeBackgroundSize(declarations["background-size"]);
+    const backgroundPosition = safeBackgroundPosition(declarations["background-position"]);
+    const backgroundRepeat = safeBackgroundRepeat(declarations["background-repeat"]);
+    if (backgroundSize !== undefined) styleParts.push(`background-size:${backgroundSize}`);
+    if (backgroundPosition !== undefined) styleParts.push(`background-position:${backgroundPosition}`);
+    if (backgroundRepeat !== undefined) styleParts.push(`background-repeat:${backgroundRepeat}`);
+    if (styleParts.length > 0) attributes.push(`style="${escapeAttribute(styleParts.join(";"))}"`);
+  }
+  if (node.attribs.background !== undefined) {
+    const backgroundImageUrl = safeBackgroundUrl(node.attribs.background, context);
+    if (backgroundImageUrl !== null) attributes.push(`background="${escapeAttribute(backgroundImageUrl)}"`);
   }
   if (node.attribs.width !== undefined && safeDimension(node.attribs.width) !== undefined) attributes.push(`width="${safeDimension(node.attribs.width)}"`);
   if (name === "br" || name === "hr" || name === "img") return `<${name}${attributes.length > 0 ? ` ${attributes.join(" ")}` : ""}>`;
@@ -507,11 +813,29 @@ export function importHtmlEmail({ html, baseUrl }: { html: string; baseUrl?: str
     }
     if (name === "table") {
       const sectionId = convertTable(node, context);
-      (context.document.root as { childrenIds: string[] }).childrenIds.push(sectionId);
+      if (sectionId !== null) {
+        (context.document.root as { childrenIds: string[] }).childrenIds.push(sectionId);
+      }
       continue;
     }
     const sectionId = context.ids.next("section");
-    context.document[sectionId] = { id: sectionId, type: "section", parentId: "root", childrenIds: [], properties: {} } as never;
+    const sectionBackgroundColor = readBackgroundColor(node);
+    context.document[sectionId] = {
+      id: sectionId,
+      type: "section",
+      parentId: "root",
+      childrenIds: [],
+      properties: {
+        ...readBackgroundProperties(node, context),
+        ...(node.attribs.background === undefined
+          ? {}
+          : (() => {
+              const backgroundImageUrl = safeBackgroundUrl(node.attribs.background, context);
+              return backgroundImageUrl === null ? {} : { backgroundImageUrl };
+            })()),
+        ...(sectionBackgroundColor === undefined ? {} : { innerBackgroundColor: sectionBackgroundColor }),
+      },
+    } as never;
     convertSimpleChildren([node], sectionId, context);
     if ((context.document[sectionId] as { childrenIds: string[] }).childrenIds.length > 0) {
       (context.document.root as { childrenIds: string[] }).childrenIds.push(sectionId);

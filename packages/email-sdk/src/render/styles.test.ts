@@ -10,7 +10,12 @@ import type {
   SectionBlock,
   TextBlock,
 } from "../schema/blocks";
-import { resolveBlockStyles, resolveGlobalStyles, resolveRootBlockStyles } from "./styles";
+import {
+  backgroundImageStyle,
+  resolveBlockStyles,
+  resolveGlobalStyles,
+  resolveRootBlockStyles,
+} from "./styles";
 import { createTextDoc } from "../schema/text";
 
 const rootBlock = (globals?: GlobalStyles): RootBlock => ({
@@ -144,6 +149,42 @@ describe("resolveBlockStyles precedence (defaults → globals → block override
     );
     expect(resolved.innerBackgroundColor).toBe("#ffffff");
     expect(resolved.outerBackgroundColor).toBe("#222222");
+  });
+
+  it("sections, rows, and columns resolve background image options", () => {
+    const section = resolveBlockStyles(
+      undefined,
+      sectionBlock({
+        backgroundImageUrl: "https://cdn.example.com/section.jpg",
+        backgroundSize: "cover",
+        backgroundPosition: "center center",
+        backgroundRepeat: "no-repeat",
+      }),
+    );
+    expect(section).toMatchObject({
+      backgroundImageUrl: "https://cdn.example.com/section.jpg",
+      backgroundSize: "cover",
+      backgroundPosition: "center center",
+      backgroundRepeat: "no-repeat",
+    });
+
+    const row = resolveBlockStyles(
+      undefined,
+      rowBlock({ backgroundImageUrl: "https://cdn.example.com/row.jpg", backgroundRepeat: "repeat-x" }),
+    );
+    expect(row).toMatchObject({
+      backgroundImageUrl: "https://cdn.example.com/row.jpg",
+      backgroundRepeat: "repeat-x",
+    });
+
+    const column = resolveBlockStyles(
+      undefined,
+      columnBlock({ backgroundImageUrl: "https://cdn.example.com/column.jpg", backgroundSize: "contain" }),
+    );
+    expect(column).toMatchObject({
+      backgroundImageUrl: "https://cdn.example.com/column.jpg",
+      backgroundSize: "contain",
+    });
   });
 
   it("sections: padding defaults derive from baseSpacing, and carry contentWidth", () => {
@@ -288,6 +329,10 @@ describe("resolveBlockStyles precedence (defaults → globals → block override
   it("rows: padding defaults to 0 on all four sides", () => {
     expect(resolveBlockStyles(undefined, rowBlock())).toEqual({
       backgroundColor: undefined,
+      backgroundImageUrl: undefined,
+      backgroundSize: undefined,
+      backgroundPosition: undefined,
+      backgroundRepeat: undefined,
       paddingTop: 0,
       paddingBottom: 0,
       paddingLeft: 0,
@@ -303,6 +348,26 @@ describe("resolveBlockStyles precedence (defaults → globals → block override
     expect(
       resolveBlockStyles(undefined, rowBlock({ backgroundColor: "#f4f4f5" })).backgroundColor,
     ).toBe("#f4f4f5");
+  });
+
+  it("falls back to no background image when image options are omitted", () => {
+    expect(resolveBlockStyles(undefined, sectionBlock())).toMatchObject({
+      backgroundImageUrl: undefined,
+      backgroundSize: undefined,
+      backgroundPosition: undefined,
+      backgroundRepeat: undefined,
+    });
+  });
+
+  it("does not emit CSS for an unsafe background image supplied outside schema parsing", () => {
+    expect(
+      backgroundImageStyle({
+        backgroundImageUrl: "javascript:alert(1)",
+        backgroundSize: "cover",
+        backgroundPosition: "center",
+        backgroundRepeat: "no-repeat",
+      }),
+    ).toEqual({});
   });
 
   it("root: canvas values resolve through the same chain", () => {

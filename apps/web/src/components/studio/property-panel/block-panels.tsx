@@ -34,6 +34,7 @@ import { GenerateImageField } from "./GenerateImageField";
 import { ImageSourceField } from "./ImageSourceField";
 import { PaddingFields } from "./PaddingFields";
 import { TextareaField } from "./TextareaField";
+import { BackgroundImageFields, type BackgroundImageProperties } from "./BackgroundImageFields";
 import { getBlockPropertyHelp, type DescribableBlockType } from "./schema-help";
 import { useCommitBlockProperties, useResolvedGlobals } from "./usePanelDispatch";
 
@@ -346,6 +347,11 @@ export function SectionPanel({ block }: { block: SectionBlock }) {
         helpText={helpFor("outerBackgroundColor")}
         onCommit={(value) => commit({ outerBackgroundColor: value })}
       />
+      <BackgroundImageFields
+        properties={properties as typeof properties & BackgroundImageProperties}
+        helpFor={helpFor}
+        onCommit={commit}
+      />
       <PaddingFields blockType="section" properties={properties} resolvedPadding={resolved} onCommitPadding={commit} />
       {/*
         Item 26: fill this section's social row from the brand kit (renders
@@ -382,6 +388,11 @@ export function RowPanel({ block }: { block: RowBlock }) {
         isClearable
         helpText={helpFor("backgroundColor")}
         onCommit={(value) => commit({ backgroundColor: value })}
+      />
+      <BackgroundImageFields
+        properties={properties as typeof properties & BackgroundImageProperties}
+        helpFor={helpFor}
+        onCommit={commit}
       />
       <PaddingFields blockType="row" properties={properties} resolvedPadding={resolved} onCommitPadding={commit} />
     </div>
@@ -440,6 +451,11 @@ export function ColumnPanel({ block }: { block: ColumnBlock }) {
         isClearable
         helpText={helpFor("backgroundColor")}
         onCommit={(value) => commit({ backgroundColor: value })}
+      />
+      <BackgroundImageFields
+        properties={properties as typeof properties & BackgroundImageProperties}
+        helpFor={helpFor}
+        onCommit={commit}
       />
       <PaddingFields blockType="column" properties={properties} resolvedPadding={resolved} onCommitPadding={commit} />
     </div>
