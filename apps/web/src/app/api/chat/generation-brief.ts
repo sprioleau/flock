@@ -90,7 +90,7 @@ const MAX_LISTED_IMAGES = 8;
   compose, restated here because a brief with NO target at all is the
   condition that produced the reported one-or-two-section emails.
 */
-const FALLBACK_SECTION_TARGET = 5;
+const FALLBACK_SECTION_TARGET = 7;
 
 /*
   ---------------------------------------------------------------------------
@@ -331,7 +331,7 @@ function buildSectionTargetLine({
   sourceSectionCount: number;
 }): string {
   if (sourceSectionCount <= 0) {
-    return `HOW BIG IT SHOULD BE. Build a complete email — about ${FALLBACK_SECTION_TARGET} sections: a header, something that leads, two or three body sections, and a footer. One or two sections is not an email.`;
+    return `HOW BIG IT SHOULD BE. Build a complete email — about ${FALLBACK_SECTION_TARGET} sections: a header, something that leads, multiple body sections, and a footer. One or two sections is not an email. If based on a scraped webpage, then base the number of sections on the page's own scraped content. It should feel like a complete email, faithfully based on the source, not a fragment.`;
   }
   const target =
     `HOW BIG IT SHOULD BE. "${sourceDraftName}" has ${sourceSectionCount} ` +
