@@ -310,6 +310,7 @@ const PARALLEL_SECTION_CALLS_NOTE = [
   "Emit one tool call per section, in reading order, top to bottom — and put them ALL in this one response rather than emitting a single call and waiting.",
   "Nothing is held back by doing this: the calls still stream out one after another, and each section appears on the canvas the moment its own call completes, so the person watches the email assemble either way.",
   "You get very few rounds. A response carrying one section produces a one-section email, which is the single outcome that counts as a failure here.",
+  "Ensure every email includes a header section, optionally a hero section to highlight the main offer/highlight, multiple body sections and a footer section. The footer section is required and should include the brand logo, optionally social links (if known/available in brand kit) and an unsubscribe link.",
 ].join(" ");
 
 /*
