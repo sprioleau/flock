@@ -13,6 +13,7 @@ import {
   LinkIcon,
   PencilLineIcon,
   PlusIcon,
+  RotateCcwIcon,
   SparklesIcon,
   Trash2Icon,
   WandSparklesIcon,
@@ -69,6 +70,14 @@ import { useCanvasDrafts, type DraftListEntry } from "./use-canvas-drafts";
   The two agent-composed draft actions in the menu.
 */
 type GenerationMode = "ideate" | "designVariation";
+
+export type DraftRemovalAction = "delete" | "rollback";
+
+export function getDraftRemovalAction(
+  draft: Pick<DraftListEntry, "htmlImport">,
+): DraftRemovalAction {
+  return draft.htmlImport?.sourceDocumentId === undefined ? "delete" : "rollback";
+}
 
 /*
   Per-mode wording for the shared direction dialog. Only the words differ —
@@ -215,6 +224,13 @@ export function DraftSelector({
     Delete and promote both need a sibling: a canvas always keeps ≥ 1 draft.
   */
   const hasSiblingDrafts = drafts.length > 1;
+  const importedSourceDocumentId = activeDraft?.htmlImport?.sourceDocumentId ?? null;
+  const importedSourceDraft =
+    importedSourceDocumentId === null
+      ? null
+      : drafts.find((draft) => draft._id === importedSourceDocumentId) ?? null;
+  const isActiveDraftImported =
+    activeDraft !== null && getDraftRemovalAction(activeDraft) === "rollback";
 
   const beginRename = (): void => {
     if (activeDraft === null) {
@@ -358,6 +374,49 @@ export function DraftSelector({
       .catch((error: unknown) => {
         console.error("deleteDocument failed", error);
         useEditorStore.getState().showNotice("Couldn't delete the draft (connection error).");
+      })
+      .finally(() => {
+        setIsDeletePending(false);
+        setIsDeleteDialogOpen(false);
+      });
+  };
+
+  /*
+    Rollback is deliberately separate from generic deletion: only the
+    provenance-bound imported draft can invoke it, and the source frame is
+    activated before the server removes the imported sibling.
+  */
+  const confirmRollbackActiveDraft = (): void => {
+    if (activeDraft === null || isDeletePending || importedSourceDocumentId === null) {
+      return;
+    }
+    if (importedSourceDraft === null) {
+      setIsDeleteDialogOpen(false);
+      useEditorStore
+        .getState()
+        .showNotice("The source draft for this import is unavailable, so it was not rolled back.");
+      return;
+    }
+    setIsDeletePending(true);
+    onActivateDraft(importedSourceDraft._id);
+    convexClient
+      .mutation(api.documents.rollbackImportedDocument, {
+        documentId: activeDraft._id,
+        canvasId: activeDraft.canvasId,
+        sourceDocumentId: importedSourceDocumentId,
+      })
+      .then((result) => {
+        useEditorStore
+          .getState()
+          .showNotice(
+            result.status === "already_rolled_back"
+              ? "That imported draft was already rolled back."
+              : `Import rolled back — returned to “${importedSourceDraft.name}”.`,
+          );
+      })
+      .catch((error: unknown) => {
+        console.error("rollbackImportedDocument failed", error);
+        useEditorStore.getState().showNotice("Couldn't roll back the imported draft.");
       })
       .finally(() => {
         setIsDeletePending(false);
@@ -712,7 +771,8 @@ export function DraftSelector({
                   }}
                   data-testid="draft-menu-delete"
                 >
-                  <Trash2Icon /> Delete draft
+                  {isActiveDraftImported ? <RotateCcwIcon /> : <Trash2Icon />}
+                  {isActiveDraftImported ? "Roll back import" : "Delete draft"}
                 </DropdownMenuItem>
               </MaybeDisabledTooltip>
             </TooltipProvider>
@@ -863,10 +923,11 @@ export function DraftSelector({
       <Dialog open={isDeleteDialogOpen} onOpenChange={setIsDeleteDialogOpen}>
         <DialogContent className="max-w-sm" data-testid="draft-delete-dialog">
           <DialogHeader>
-            <DialogTitle>Delete this draft?</DialogTitle>
+            <DialogTitle>{isActiveDraftImported ? "Roll back this import?" : "Delete this draft?"}</DialogTitle>
             <DialogDescription>
-              “{activeDraft?.name ?? "This draft"}” and its entire edit history will be
-              permanently deleted. This can’t be undone.
+              {isActiveDraftImported && importedSourceDraft !== null
+                ? `“${activeDraft?.name ?? "This imported draft"}” will be removed and you’ll return to “${importedSourceDraft.name}”, the source draft.`
+                : `“${activeDraft?.name ?? "This draft"}” and its entire edit history will be permanently deleted. This can’t be undone.`}
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
@@ -875,10 +936,10 @@ export function DraftSelector({
               variant="destructive"
               size="sm"
               disabled={isDeletePending}
-              onClick={confirmDeleteActiveDraft}
+              onClick={isActiveDraftImported ? confirmRollbackActiveDraft : confirmDeleteActiveDraft}
               data-testid="draft-delete-confirm"
             >
-              Delete draft
+              {isActiveDraftImported ? "Roll back import" : "Delete draft"}
             </Button>
           </DialogFooter>
         </DialogContent>

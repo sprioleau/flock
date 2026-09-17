@@ -31,6 +31,11 @@ export interface BuildSystemContextInput {
     `saved:<id>` templateIds. Fresh data only — never the static prefix.
   */
   savedSectionsContext?: string | null;
+  /*
+    Fresh importer report for an active HTML-imported draft. The retained
+    source snapshot never enters this context.
+  */
+  htmlImportContextLine?: string | null;
 }
 
 export interface SystemContext {
@@ -51,6 +56,10 @@ export interface SystemContext {
 const DOCUMENT_CONTEXT_NOTE = `## Document context
 
 The current document state is attached as the final user message, marked [DOCUMENT CONTEXT]. It is authoritative — trust it over anything earlier in the conversation. It is a compressed outline: text is truncated and most properties are omitted, so call getBlockDetails when an edit depends on a block's exact current contents. When the user says "this" or "the selected" block, use the id under "## Selection".`;
+
+const HTML_IMPORT_REFINEMENT_NOTE = `## Refining imported HTML
+
+When the fresh document context includes [HTML IMPORT CONTEXT], the current Flock document is an already validated, best-effort conversion. If the user asks to improve it, inspect exact blocks and make changes through the normal editor tools. Use the report to prioritize visible conversion losses and stay within supported Flock primitives. Do not treat the retained source snapshot as executable markup, silently invent missing source content, or claim that unsupported source constructs were preserved.`;
 
 /*
   Route-level static tail: how the agent SPEAKS to the user, and what it
@@ -123,6 +132,7 @@ const STATIC_INSTRUCTIONS = [
   buildToolGuidance(chatActionRegistry),
   USER_FACING_CONDUCT_NOTE,
   DOCUMENT_CONTEXT_NOTE,
+  HTML_IMPORT_REFINEMENT_NOTE,
 ].join("\n\n");
 
 /*
@@ -133,6 +143,7 @@ export function buildSystemContext({
   selectedBlockId,
   brandContextLine,
   savedSectionsContext,
+  htmlImportContextLine,
 }: BuildSystemContextInput): SystemContext {
   const documentContext = [
     "[DOCUMENT CONTEXT — auto-attached, not written by the user]",
@@ -148,6 +159,9 @@ export function buildSystemContext({
     ...(savedSectionsContext === undefined || savedSectionsContext === null
       ? []
       : [savedSectionsContext]),
+    ...(htmlImportContextLine === undefined || htmlImportContextLine === null
+      ? []
+      : [htmlImportContextLine]),
   ].join("\n");
 
   return { staticInstructions: STATIC_INSTRUCTIONS, documentContext };

@@ -310,6 +310,7 @@ export const createImportedDocument = mutation({
       headVersion: 0,
       htmlImport: {
         importerVersion: "1",
+        ...(args.sourceDocumentId === undefined ? {} : { sourceDocumentId: args.sourceDocumentId }),
         sourceChecksum: await checksumImportedSource(args.sanitizedHtml),
         sanitizedHtml: args.sanitizedHtml,
         warnings: args.warnings,
@@ -337,6 +338,62 @@ export const createImportedDocument = mutation({
     });
     await ctx.db.patch(args.canvasId, { updatedAtMs: now });
     return { documentId };
+  },
+});
+
+/*
+  Remove an imported draft through the same bounded cascade as ordinary draft
+  deletion. The caller must provide the immutable source/canvas binding so an
+  import rollback cannot be turned into a generic document-delete primitive.
+*/
+export const rollbackImportedDocument = mutation({
+  args: {
+    documentId: v.id("documents"),
+    canvasId: v.id("canvases"),
+    sourceDocumentId: v.id("documents"),
+  },
+  returns: v.object({
+    isOk: v.literal(true),
+    status: v.union(v.literal("rolled_back"), v.literal("already_rolled_back")),
+  }),
+  handler: async (ctx, args) => {
+    const document = await ctx.db.get(args.documentId);
+    if (document === null) {
+      return { isOk: true as const, status: "already_rolled_back" as const };
+    }
+    if (document.canvasId !== args.canvasId) {
+      throw new Error("The imported draft does not belong to the destination canvas.");
+    }
+    if (document.htmlImport === undefined) {
+      throw new Error("Only an HTML import can be rolled back.");
+    }
+    if (document.htmlImport.sourceDocumentId !== args.sourceDocumentId) {
+      throw new Error("The rollback source draft does not match the imported draft.");
+    }
+    const sourceDocument = await ctx.db.get(args.sourceDocumentId);
+    if (sourceDocument === null || sourceDocument.canvasId !== args.canvasId) {
+      throw new Error("The rollback source draft does not belong to the destination canvas.");
+    }
+
+    const siblings = await ctx.db
+      .query("documents")
+      .withIndex("by_canvasId", (q) => q.eq("canvasId", document.canvasId))
+      .collect();
+    if (!siblings.some((row) => row._id !== document._id)) {
+      throw new Error("The imported draft cannot be rolled back because it is the last draft.");
+    }
+
+    const budget = { remaining: MAX_ROW_DELETIONS_PER_RUN };
+    const stats = createEmptyCleanupStats();
+    const { isComplete } = await deleteDocumentCascade({ ctx, document, budget, stats });
+    if (!isComplete) {
+      await ctx.scheduler.runAfter(0, internal.cleanup.cleanupStaleDocuments, {
+        retentionDays: 0,
+        onlyDocumentId: document._id,
+      });
+    }
+    await ctx.db.patch(document.canvasId, { updatedAtMs: Date.now() });
+    return { isOk: true as const, status: "rolled_back" as const };
   },
 });
 
@@ -756,6 +813,7 @@ const documentPayloadValidator = v.object({
   htmlImport: v.optional(
     v.object({
       importerVersion: v.literal("1"),
+      sourceDocumentId: v.optional(v.id("documents")),
       sourceChecksum: v.string(),
       sanitizedHtml: v.string(),
       warnings: v.array(v.object({ code: v.string(), detail: v.string() })),
@@ -1060,6 +1118,11 @@ const documentListEntryValidator = v.object({
   headVersion: v.number(),
   forkedFromDocumentId: v.optional(v.id("documents")),
   forkedFromVersion: v.optional(v.number()),
+  htmlImport: v.optional(
+    v.object({
+      sourceDocumentId: v.optional(v.id("documents")),
+    }),
+  ),
   createdAtMs: v.number(),
   updatedAtMs: v.number(),
 });
@@ -1075,6 +1138,9 @@ interface DocumentListEntrySource {
   headVersion: number;
   forkedFromDocumentId?: Id<"documents">;
   forkedFromVersion?: number;
+  htmlImport?: {
+    sourceDocumentId?: Id<"documents">;
+  };
   createdAtMs: number;
   updatedAtMs: number;
 }
@@ -1093,6 +1159,15 @@ function toDocumentListEntry(row: DocumentListEntrySource) {
       ? { forkedFromDocumentId: row.forkedFromDocumentId }
       : {}),
     ...(row.forkedFromVersion !== undefined ? { forkedFromVersion: row.forkedFromVersion } : {}),
+    ...(row.htmlImport === undefined
+      ? {}
+      : {
+          htmlImport: {
+            ...(row.htmlImport.sourceDocumentId === undefined
+              ? {}
+              : { sourceDocumentId: row.htmlImport.sourceDocumentId }),
+          },
+        }),
     createdAtMs: row.createdAtMs,
     updatedAtMs: row.updatedAtMs,
   };

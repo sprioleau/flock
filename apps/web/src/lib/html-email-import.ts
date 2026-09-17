@@ -85,14 +85,54 @@ const SAFE_STYLE_PROPERTIES = new Set([
   "color",
   "font-family",
   "font-size",
+  "font-weight",
+  "line-height",
+  "margin",
+  "margin-bottom",
+  "margin-left",
+  "margin-right",
+  "margin-top",
+  "padding",
   "padding-bottom",
   "padding-left",
   "padding-right",
   "padding-top",
   "text-align",
+  "text-transform",
 ]);
 
 const SAFE_TEXT_STYLE_PROPERTIES = new Set(["color", "font-family", "font-size"]);
+
+const SAFE_CSS_PROPERTIES = new Set([
+  ...SAFE_STYLE_PROPERTIES,
+  "background",
+  "background-image",
+  "background-position",
+  "background-repeat",
+  "background-size",
+]);
+
+const INHERITED_CSS_PROPERTIES = new Set([
+  "color",
+  "font-family",
+  "font-size",
+  "font-weight",
+  "line-height",
+  "text-align",
+  "text-transform",
+]);
+
+const MAX_STYLESHEET_RULES = 256;
+const MAX_STYLESHEET_DECLARATIONS = 2048;
+const UNREPRESENTED_CSS_PROPERTIES = new Set([
+  "line-height",
+  "margin",
+  "margin-bottom",
+  "margin-left",
+  "margin-right",
+  "margin-top",
+  "text-transform",
+]);
 
 type BlockType = "section" | "row" | "column" | "text" | "button" | "image" | "divider" | "link";
 
@@ -142,6 +182,13 @@ interface StyleMap {
   [property: string]: string;
 }
 
+interface StyleRule {
+  selector: string;
+  declarations: StyleMap;
+  specificity: number;
+  order: number;
+}
+
 interface IdFactory {
   next(type: BlockType): string;
 }
@@ -151,6 +198,7 @@ interface ConversionContext {
   ids: IdFactory;
   report: MutableReport;
   baseUrl: string | null;
+  computedStyles: WeakMap<Element, StyleMap>;
 }
 
 function createIdFactory(): IdFactory {
@@ -213,6 +261,231 @@ function styleDeclarations(rawStyle: string): StyleMap {
   return declarations;
 }
 
+function cssTextContent(nodes: ChildNode[]): string {
+  return nodes
+    .map((node) => {
+      if (node.type === "text") return node.data;
+      if (node.type === "tag" || node.type === "style") return cssTextContent(node.children);
+      return "";
+    })
+    .join("");
+}
+
+function safeFontFamily(value: string): string | undefined {
+  const normalized = value.trim();
+  if (
+    normalized.length === 0 ||
+    normalized.length > 200 ||
+    /[{}<>;:]|url\s*\(|expression\s*\(|@import/i.test(normalized) ||
+    !/^[a-z\d\s,'"._-]+$/i.test(normalized)
+  ) {
+    return undefined;
+  }
+  return normalized;
+}
+
+function safeCssLength(value: string): string | undefined {
+  const normalized = value.trim().toLowerCase();
+  if (!/^\d+(?:\.\d+)?px$/.test(normalized)) return undefined;
+  const parsed = Number.parseFloat(normalized);
+  return Number.isFinite(parsed) && parsed >= 0 && parsed <= 1600 ? normalized : undefined;
+}
+
+function safeCssValue(property: string, value: string): string | undefined {
+  const normalized = value.trim();
+  if (normalized.length === 0 || normalized.length > 512 || /[{}<>]|expression\s*\(|@import/i.test(normalized)) return undefined;
+  if (property === "color" || property === "background-color") return safeColor(normalized);
+  if (property === "font-family") return safeFontFamily(normalized);
+  if (property === "font-size") {
+    return /^\d+px$/i.test(normalized) && safeCssLength(normalized) !== undefined
+      ? normalized.toLowerCase()
+      : undefined;
+  }
+  if (property === "font-weight") return /^(normal|bold|bolder|lighter|[1-9]00)$/i.test(normalized) ? normalized.toLowerCase() : undefined;
+  if (property === "line-height") return /^(?:\d+(?:\.\d+)?|\d+(?:\.\d+)?px)$/i.test(normalized) ? normalized : undefined;
+  if (property === "text-transform") return /^(none|uppercase|lowercase|capitalize)$/i.test(normalized) ? normalized.toLowerCase() : undefined;
+  if (property === "text-align") return /^(left|center|right)$/i.test(normalized) ? normalized.toLowerCase() : undefined;
+  if (property.startsWith("padding") || property.startsWith("margin")) {
+    if (property === "padding" || property === "margin") {
+      const values = normalized.split(/\s+/);
+      return values.length >= 1 && values.length <= 4 && values.every((item) => safeCssLength(item) !== undefined)
+        ? values.join(" ")
+        : undefined;
+    }
+    return safeCssLength(normalized);
+  }
+  if (property === "background-size") return safeBackgroundSize(normalized);
+  if (property === "background-position") return safeBackgroundPosition(normalized);
+  if (property === "background-repeat") return safeBackgroundRepeat(normalized);
+  if (property === "background" || property === "background-image") {
+    if (/gradient\s*\(|,|url\s*\([^)]*url\s*\(/i.test(normalized)) return undefined;
+    return normalized;
+  }
+  return undefined;
+}
+
+function sanitizedCssDeclarations(rawStyle: string, report: MutableReport): StyleMap {
+  const declarations: StyleMap = {};
+  for (const [property, value] of Object.entries(styleDeclarations(rawStyle))) {
+    if (!SAFE_CSS_PROPERTIES.has(property)) {
+      report.unsupportedFeatures.add("stylesheet");
+      warn(report, "unsupported-feature", `The stylesheet property ${property} was omitted.`);
+      continue;
+    }
+    const safeValue = safeCssValue(property, value);
+    if (safeValue === undefined) {
+      report.unsupportedFeatures.add("stylesheet");
+      warn(report, "unsupported-feature", `An unsafe or unsupported value for ${property} was omitted.`);
+      continue;
+    }
+    if (UNREPRESENTED_CSS_PROPERTIES.has(property)) {
+      report.unsupportedFeatures.add("stylesheet");
+      warn(report, "unsupported-feature", `The stylesheet property ${property} was omitted because the editor cannot represent it.`);
+      continue;
+    }
+    declarations[property] = safeValue;
+  }
+  return declarations;
+}
+
+function safeInlineDeclarations(rawStyle: string, report: MutableReport): StyleMap {
+  const declarations: StyleMap = {};
+  for (const [property, value] of Object.entries(styleDeclarations(rawStyle))) {
+    if (!SAFE_CSS_PROPERTIES.has(property)) continue;
+    const safeValue = safeCssValue(property, value);
+    if (safeValue === undefined) continue;
+    if (UNREPRESENTED_CSS_PROPERTIES.has(property)) {
+      report.unsupportedFeatures.add("stylesheet");
+      warn(report, "unsupported-feature", `The inline style property ${property} was omitted because the editor cannot represent it.`);
+      continue;
+    }
+    declarations[property] = safeValue;
+  }
+  return declarations;
+}
+
+function selectorSpecificity(selector: string): number | null {
+  if (!/^(?:[a-z][a-z\d_-]*)?(?:#[a-z\d_-]+)?(?:\.[a-z\d_-]+)*$/i.test(selector)) return null;
+  return (selector.match(/#/g)?.length ?? 0) * 100 + (selector.match(/\./g)?.length ?? 0) * 10 + (/^[a-z]/i.test(selector) ? 1 : 0);
+}
+
+function selectorMatches(selector: string, element: Element): boolean {
+  const tagMatch = /^([a-z][a-z\d_-]*)/i.exec(selector);
+  if (tagMatch !== null && tagMatch[1].toLowerCase() !== element.name.toLowerCase()) return false;
+  const idMatch = /#([a-z\d_-]+)/i.exec(selector);
+  if (idMatch !== null && idMatch[1] !== (element.attribs.id ?? "")) return false;
+  const expectedClasses = [...selector.matchAll(/\.([a-z\d_-]+)/gi)].map((match) => match[1]);
+  const classes = new Set((element.attribs.class ?? "").split(/\s+/).filter(Boolean));
+  return expectedClasses.every((className) => classes.has(className));
+}
+
+function parseStylesheetRules(nodes: ChildNode[], report: MutableReport): StyleRule[] {
+  const rules: StyleRule[] = [];
+  let order = 0;
+
+  function balancedCssBlocks(css: string): Array<{ header: string; body: string }> {
+    const blocks: Array<{ header: string; body: string }> = [];
+    let cursor = 0;
+    while (cursor < css.length) {
+      const openBrace = css.indexOf("{", cursor);
+      if (openBrace === -1) break;
+      let depth = 1;
+      let quote: string | null = null;
+      let index = openBrace + 1;
+      for (; index < css.length && depth > 0; index += 1) {
+        const character = css[index];
+        if (quote !== null) {
+          if (character === quote && css[index - 1] !== "\\") quote = null;
+          continue;
+        }
+        if (character === "\"" || character === "'") {
+          quote = character;
+        } else if (character === "{") {
+          depth += 1;
+        } else if (character === "}") {
+          depth -= 1;
+        }
+      }
+      if (depth !== 0) break;
+      blocks.push({ header: css.slice(cursor, openBrace).trim(), body: css.slice(openBrace + 1, index - 1) });
+      cursor = index;
+    }
+    return blocks;
+  }
+
+  function visit(children: ChildNode[]): void {
+    for (const node of children) {
+      if (node.type === "style") {
+        const css = cssTextContent(node.children)
+          .replace(/\/\*[\s\S]*?\*\//g, "")
+          .replace(/@(import|charset|namespace)\b[^;{}]*(?:;|$)/gi, () => {
+            report.unsupportedFeatures.add("stylesheet");
+            warn(report, "unsupported-feature", "At-rules were omitted from the stylesheet.");
+            return "";
+          });
+        for (const block of balancedCssBlocks(css)) {
+          if (rules.length >= MAX_STYLESHEET_RULES) {
+            report.unsupportedFeatures.add("stylesheet");
+            warn(report, "unsupported-feature", "Stylesheet rule limit reached; remaining rules were omitted.");
+            break;
+          }
+          const rawSelector = block.header;
+          if (rawSelector.startsWith("@")) {
+            report.unsupportedFeatures.add("stylesheet");
+            warn(report, "unsupported-feature", "At-rules were omitted from the stylesheet.");
+            continue;
+          }
+          const selectors = rawSelector.split(",").map((selector) => selector.trim()).filter(Boolean);
+          const declarations = sanitizedCssDeclarations(block.body, report);
+          if (Object.keys(declarations).length === 0) continue;
+          if (order + Object.keys(declarations).length > MAX_STYLESHEET_DECLARATIONS) {
+            report.unsupportedFeatures.add("stylesheet");
+            warn(report, "unsupported-feature", "Stylesheet declaration limit reached; remaining declarations were omitted.");
+            continue;
+          }
+          order += Object.keys(declarations).length;
+          for (const selector of selectors) {
+            const specificity = selectorSpecificity(selector);
+            if (specificity === null) {
+              report.unsupportedFeatures.add("stylesheet");
+              warn(report, "unsupported-feature", `The stylesheet selector ${selector} was omitted.`);
+              continue;
+            }
+            rules.push({ selector, declarations, specificity, order });
+          }
+        }
+      }
+      if (node.type === "tag" || node.type === "script" || node.type === "style") visit(node.children);
+    }
+  }
+  visit(nodes);
+  return rules;
+}
+
+function expandSpacing(declarations: StyleMap, property: "padding" | "margin"): StyleMap {
+  const expanded: StyleMap = {};
+  const shorthand = declarations[property];
+  if (shorthand !== undefined) {
+    const values = shorthand.split(/\s+/);
+    const [top, right, bottom, left] = values.length === 1
+      ? [values[0], values[0], values[0], values[0]]
+      : values.length === 2
+        ? [values[0], values[1], values[0], values[1]]
+        : values.length === 3
+          ? [values[0], values[1], values[2], values[1]]
+          : [values[0], values[1], values[2], values[3]];
+    expanded[`${property}-top`] = top;
+    expanded[`${property}-right`] = right;
+    expanded[`${property}-bottom`] = bottom;
+    expanded[`${property}-left`] = left;
+  }
+  for (const side of ["top", "right", "bottom", "left"]) {
+    const key = `${property}-${side}`;
+    if (declarations[key] !== undefined) expanded[key] = declarations[key];
+  }
+  return expanded;
+}
+
 function safeColor(value: string | undefined): string | undefined {
   if (value === undefined) return undefined;
   const normalized = value.trim();
@@ -224,6 +497,31 @@ function safeColor(value: string | undefined): string | undefined {
     return undefined;
   }
   return /^[#a-z\d(),.%\s+-]+$/i.test(normalized) ? normalized : undefined;
+}
+
+function buildComputedStyles(nodes: ChildNode[], rules: StyleRule[], report: MutableReport): WeakMap<Element, StyleMap> {
+  const computedStyles = new WeakMap<Element, StyleMap>();
+  function visit(children: ChildNode[], inherited: StyleMap): void {
+    for (const node of children) {
+      if (node.type !== "tag") continue;
+      const matchedRules = rules
+        .filter((rule) => selectorMatches(rule.selector, node))
+        .sort((left, right) => left.specificity - right.specificity || left.order - right.order);
+      const declarations: StyleMap = { ...inherited };
+      for (const rule of matchedRules) Object.assign(declarations, rule.declarations);
+      const inlineDeclarations = safeInlineDeclarations(node.attribs.style ?? "", report);
+      Object.assign(declarations, inlineDeclarations);
+      const computed = { ...declarations, ...expandSpacing(declarations, "padding") };
+      computedStyles.set(node, computed);
+      const nextInherited: StyleMap = {};
+      for (const property of INHERITED_CSS_PROPERTIES) {
+        if (computed[property] !== undefined) nextInherited[property] = computed[property];
+      }
+      visit(node.children, nextInherited);
+    }
+  }
+  visit(nodes, {});
+  return computedStyles;
 }
 
 function backgroundWarning(context: ConversionContext, detail: string): void {
@@ -296,7 +594,7 @@ function safeBackgroundRepeat(value: string | undefined): string | undefined {
 }
 
 function readBackgroundProperties(element: Element, context: ConversionContext): Record<string, unknown> {
-  const declarations = styleDeclarations(element.attribs.style ?? "");
+  const declarations = readComputedStyles(element, context, SAFE_CSS_PROPERTIES);
   const rawImage = declarations["background-image"] ?? declarations.background ?? element.attribs.background;
   const backgroundImageUrl = safeBackgroundUrl(rawImage, context, declarations["background-image"] !== undefined || declarations.background !== undefined);
   const backgroundSize = safeBackgroundSize(declarations["background-size"]);
@@ -320,8 +618,9 @@ function readBackgroundProperties(element: Element, context: ConversionContext):
   };
 }
 
-function readBackgroundColor(element: Element): string | undefined {
-  return safeColor(styleDeclarations(element.attribs.style ?? "")["background-color"] ?? element.attribs.bgcolor);
+function readBackgroundColor(element: Element, context?: ConversionContext): string | undefined {
+  const styles = context === undefined ? styleDeclarations(element.attribs.style ?? "") : readComputedStyles(element, context, SAFE_CSS_PROPERTIES);
+  return safeColor(styles["background-color"] ?? element.attribs.bgcolor);
 }
 
 function readStyles(element: Element, allowedProperties = SAFE_STYLE_PROPERTIES): StyleMap {
@@ -336,6 +635,51 @@ function readStyles(element: Element, allowedProperties = SAFE_STYLE_PROPERTIES)
         return [declaration.slice(0, separator), declaration.slice(separator + 1)];
       }),
   );
+}
+
+function readComputedStyles(element: Element, context: ConversionContext, allowedProperties = SAFE_STYLE_PROPERTIES): StyleMap {
+  const styles = context.computedStyles.get(element) ?? {};
+  return Object.fromEntries(Object.entries(styles).filter(([property]) => allowedProperties.has(property)));
+}
+
+function readBlockSpacing(element: Element, context: ConversionContext): Record<string, number> {
+  const styles = readComputedStyles(element, context, SAFE_CSS_PROPERTIES);
+  const spacing = expandSpacing(styles, "padding");
+  const entries = Object.entries(spacing).flatMap(([property, rawValue]) => {
+    const value = Number.parseFloat(rawValue);
+    if (!Number.isFinite(value) || value < 0 || value > 1600) return [];
+    return [[
+      `padding${property.slice("padding-".length, "padding-".length + 1).toUpperCase()}${property.slice("padding-".length + 1)}`,
+      value,
+    ] as const];
+  });
+  return Object.fromEntries(entries);
+}
+
+function readPaddingValues(element: Element, context: ConversionContext): Record<string, number> {
+  const styles = readComputedStyles(element, context, SAFE_CSS_PROPERTIES);
+  const spacing = expandSpacing(styles, "padding");
+  return Object.fromEntries(
+    Object.entries(spacing).flatMap(([property, rawValue]) => {
+      const value = Number.parseFloat(rawValue);
+      return Number.isFinite(value) && value >= 0 && value <= 1600
+        ? [[property.slice("padding-".length), value]]
+        : [];
+    }),
+  );
+}
+
+function readButtonPadding(element: Element, context: ConversionContext): Record<string, number> {
+  const values = readPaddingValues(element, context);
+  const top = values.top;
+  const right = values.right;
+  const bottom = values.bottom;
+  const left = values.left;
+  if (top === undefined || right === undefined || bottom === undefined || left === undefined) return {};
+  if (top !== bottom || right !== left) {
+    warn(context.report, "unsupported-feature", "Asymmetric anchor padding was reduced to the button's vertical and horizontal padding.");
+  }
+  return { verticalPadding: top, horizontalPadding: left };
 }
 
 function safeUrl(rawUrl: string | undefined, context: ConversionContext): string | null {
@@ -386,6 +730,26 @@ function addTextMark(marks: Array<Record<string, unknown>>, mark: Record<string,
   return marks.some((existing) => JSON.stringify(existing) === JSON.stringify(mark)) ? marks : [...marks, mark];
 }
 
+function addTextStyleMark(marks: Array<Record<string, unknown>>, attrs: Record<string, string>): Array<Record<string, unknown>> {
+  if (Object.keys(attrs).length === 0) return marks;
+  const existingIndex = marks.findIndex((mark) => mark.type === "textStyle");
+  if (existingIndex === -1) return [...marks, { type: "textStyle", attrs }];
+  const nextMarks = [...marks];
+  nextMarks[existingIndex] = {
+    type: "textStyle",
+    attrs: { ...(nextMarks[existingIndex].attrs as Record<string, string> | undefined), ...attrs },
+  };
+  return nextMarks;
+}
+
+function typographyMarks(styles: StyleMap): Record<string, string> {
+  return {
+    ...(styles.color === undefined ? {} : { color: styles.color }),
+    ...(styles["font-family"] === undefined ? {} : { fontFamily: styles["font-family"] }),
+    ...(styles["font-size"] === undefined ? {} : { fontSize: styles["font-size"] }),
+  };
+}
+
 function inlineNodes(nodes: ChildNode[], context: ConversionContext, inheritedMarks: Array<Record<string, unknown>> = []): Array<Record<string, unknown>> {
   const output: Array<Record<string, unknown>> = [];
   for (const node of nodes) {
@@ -409,18 +773,16 @@ function inlineNodes(nodes: ChildNode[], context: ConversionContext, inheritedMa
     if (name === "em" || name === "i") marks = addTextMark(marks, { type: "italic" });
     if (name === "u") marks = addTextMark(marks, { type: "underline" });
     if (name === "s") marks = addTextMark(marks, { type: "strike" });
+    marks = addTextStyleMark(marks, typographyMarks(context.computedStyles.get(node) ?? {}));
+    if (/^(?:bold|bolder|[6-9]00)$/i.test(context.computedStyles.get(node)?.["font-weight"] ?? "")) {
+      marks = addTextMark(marks, { type: "bold" });
+    }
     if (name === "a") {
       const href = safeUrl(node.attribs.href, context);
       if (href !== null) marks = addTextMark(marks, { type: "link", attrs: { href } });
     }
     if (name === "span") {
-      const styles = readStyles(node, SAFE_TEXT_STYLE_PROPERTIES);
-      const attrs = {
-        ...(styles.color !== undefined ? { color: styles.color } : {}),
-        ...(styles["font-family"] !== undefined ? { fontFamily: styles["font-family"] } : {}),
-        ...(styles["font-size"] !== undefined ? { fontSize: styles["font-size"] } : {}),
-      };
-      if (Object.keys(attrs).length > 0) marks = addTextMark(marks, { type: "textStyle", attrs });
+      marks = addTextStyleMark(marks, typographyMarks(readComputedStyles(node, context, SAFE_TEXT_STYLE_PROPERTIES)));
     }
     output.push(...inlineNodes(node.children, context, marks));
   }
@@ -428,9 +790,14 @@ function inlineNodes(nodes: ChildNode[], context: ConversionContext, inheritedMa
 }
 
 function textBlockFromElement(element: Element, context: ConversionContext, level?: 1 | 2 | 3): string | null {
-  const content = inlineNodes(element.children, context);
+  let inheritedMarks: Array<Record<string, unknown>> = [];
+  inheritedMarks = addTextStyleMark(inheritedMarks, typographyMarks(readComputedStyles(element, context, SAFE_TEXT_STYLE_PROPERTIES)));
+  if (/^(?:bold|bolder|[6-9]00)$/i.test(readComputedStyles(element, context, SAFE_CSS_PROPERTIES)["font-weight"] ?? "")) {
+    inheritedMarks = addTextMark(inheritedMarks, { type: "bold" });
+  }
+  const content = inlineNodes(element.children, context, inheritedMarks);
   if (content.length === 0) return null;
-  const styles = readStyles(element);
+  const styles = readComputedStyles(element, context, SAFE_CSS_PROPERTIES);
   const paragraph = level === undefined
     ? { type: "paragraph", content }
     : { type: "heading", attrs: { level }, content };
@@ -446,7 +813,8 @@ function textBlockFromElement(element: Element, context: ConversionContext, leve
         ? { textAlign: styles["text-align"] }
         : {}),
       ...(styles.color !== undefined ? { textColor: styles.color } : {}),
-      ...(readBackgroundColor(element) === undefined ? {} : { backgroundColor: readBackgroundColor(element) }),
+      ...(readBackgroundColor(element, context) === undefined ? {} : { backgroundColor: readBackgroundColor(element, context) }),
+      ...readBlockSpacing(element, context),
     },
   } as never;
   return blockId;
@@ -458,6 +826,20 @@ function hasStructuralDescendant(element: Element): boolean {
     const name = child.name.toLowerCase();
     return name === "table" || name === "img" || name === "hr" || hasStructuralDescendant(child);
   });
+}
+
+function shouldConvertCellAsRichText(element: Element): boolean {
+  const hasDirectText = element.children.some(
+    (child) => child.type === "text" && child.data.trim().length > 0,
+  );
+  if (!hasDirectText) {
+    return false;
+  }
+  return !element.children.some(
+    (child) =>
+      child.type === "tag" &&
+      /^(?:div|h[1-6]|hr|img|ol|p|table|ul)$/i.test(child.name),
+  );
 }
 
 function imageDescendants(element: Element): Element[] {
@@ -536,12 +918,43 @@ function addLeaf(element: Element, parentId: string, context: ConversionContext)
     const href = safeUrl(element.attribs.href, context);
     const label = textContent(element.children);
     if (href === null || label.length === 0) return null;
-    const styles = readStyles(element);
+    const styles = readComputedStyles(element, context, SAFE_CSS_PROPERTIES);
     const isButton = styles["background-color"] !== undefined || /\b(button|cta|primary)\b/i.test(element.attribs.class ?? "");
     const blockId = context.ids.next(isButton ? "button" : "link");
     context.document[blockId] = isButton
-      ? { id: blockId, type: "button", parentId, childrenIds: [], properties: { label, href, ...(styles["background-color"] === undefined ? {} : { backgroundColor: styles["background-color"] }) } }
-      : { id: blockId, type: "link", parentId, childrenIds: [], properties: { text: label, href } };
+      ? {
+          id: blockId,
+          type: "button",
+          parentId,
+          childrenIds: [],
+          properties: {
+            label,
+            href,
+            ...(styles["background-color"] === undefined ? {} : { backgroundColor: styles["background-color"] }),
+            ...(styles.color === undefined ? {} : { textColor: styles.color }),
+            ...(styles["font-family"] === undefined ? {} : { fontFamily: styles["font-family"] }),
+            ...readButtonPadding(element, context),
+          },
+        }
+      : {
+          id: blockId,
+          type: "link",
+          parentId,
+          childrenIds: [],
+          properties: {
+            text: label,
+            href,
+            ...(styles.color === undefined ? {} : { textColor: styles.color }),
+            ...(styles["font-family"] === undefined ? {} : { fontFamily: styles["font-family"] }),
+            ...(styles["font-size"] === undefined ? {} : { fontSize: Number.parseFloat(styles["font-size"]) }),
+            ...(styles["text-align"] === "left" ||
+            styles["text-align"] === "center" ||
+            styles["text-align"] === "right"
+              ? { align: styles["text-align"] }
+              : {}),
+            ...readBlockSpacing(element, context),
+          },
+        };
     return blockId;
   }
   const headingMatch = /^h([1-6])$/.exec(name);
@@ -645,7 +1058,7 @@ function convertTable(element: Element, context: ConversionContext): string | nu
   const root = context.document.root as { childrenIds: string[] };
   const nestedSectionStart = root.childrenIds.length;
   const sectionId = context.ids.next("section");
-  const sectionBackgroundColor = readBackgroundColor(element);
+  const sectionBackgroundColor = readBackgroundColor(element, context);
   context.document[sectionId] = {
     id: sectionId,
     type: "section",
@@ -653,6 +1066,7 @@ function convertTable(element: Element, context: ConversionContext): string | nu
     childrenIds: [],
     properties: {
       ...readBackgroundProperties(element, context),
+      ...readBlockSpacing(element, context),
       ...(sectionBackgroundColor === undefined ? {} : { innerBackgroundColor: sectionBackgroundColor }),
     },
   } as never;
@@ -660,7 +1074,7 @@ function convertTable(element: Element, context: ConversionContext): string | nu
   const nestedRows = rows.length > 0 ? rows : element.children.flatMap((child) => child.type === "tag" ? child.children.filter((nested): nested is Element => nested.type === "tag" && nested.name.toLowerCase() === "tr") : []);
   for (const rowElement of nestedRows) {
     const rowId = context.ids.next("row");
-    const rowBackgroundColor = readBackgroundColor(rowElement);
+    const rowBackgroundColor = readBackgroundColor(rowElement, context);
     context.document[rowId] = {
       id: rowId,
       type: "row",
@@ -668,6 +1082,7 @@ function convertTable(element: Element, context: ConversionContext): string | nu
       childrenIds: [],
       properties: {
         ...readBackgroundProperties(rowElement, context),
+        ...readBlockSpacing(rowElement, context),
         ...(rowBackgroundColor === undefined ? {} : { backgroundColor: rowBackgroundColor }),
       },
     } as never;
@@ -675,7 +1090,7 @@ function convertTable(element: Element, context: ConversionContext): string | nu
     const cells = rowElement.children.filter((child): child is Element => child.type === "tag" && ["td", "th"].includes(child.name.toLowerCase()));
     for (const cell of cells) {
       const columnId = context.ids.next("column");
-      const columnBackgroundColor = readBackgroundColor(cell);
+      const columnBackgroundColor = readBackgroundColor(cell, context);
       const columnBackgroundProperties = readBackgroundProperties(cell, context);
       context.document[columnId] = {
         id: columnId,
@@ -685,10 +1100,18 @@ function convertTable(element: Element, context: ConversionContext): string | nu
         properties: {
           widthPercent: 100 / Math.max(cells.length, 1),
           ...columnBackgroundProperties,
+          ...readBlockSpacing(cell, context),
           ...(columnBackgroundColor === undefined ? {} : { backgroundColor: columnBackgroundColor }),
         },
       } as never;
       appendChild(rowId, columnId, context);
+      if (shouldConvertCellAsRichText(cell)) {
+        const textBlockId = textBlockFromElement(cell, context);
+        if (textBlockId !== null) {
+          appendChild(columnId, textBlockId, context);
+          continue;
+        }
+      }
       convertSimpleChildren(
         cell.children,
         columnId,
@@ -799,7 +1222,14 @@ export function importHtmlEmail({ html, baseUrl }: { html: string; baseUrl?: str
   const report: MutableReport = { warnings: [], unsupportedFeatures: new Set() };
   const parsed = parseDocument(html, { decodeEntities: true }) as unknown as { children: ParsedNode[] };
   recordActiveNodes(parsed.children, report);
-  const context: ConversionContext = { document: { root: { id: "root", type: "root", parentId: null, childrenIds: [], properties: { globals: {} } } }, ids: createIdFactory(), report, baseUrl: baseUrl ?? null };
+  const stylesheetRules = parseStylesheetRules(parsed.children, report);
+  const context: ConversionContext = {
+    document: { root: { id: "root", type: "root", parentId: null, childrenIds: [], properties: { globals: {} } } },
+    ids: createIdFactory(),
+    report,
+    baseUrl: baseUrl ?? null,
+    computedStyles: buildComputedStyles(parsed.children, stylesheetRules, report),
+  };
   const body = sourceBody(parsed.children);
   const nodes = body?.children ?? parsed.children;
   const sourceNodes = parsed.children;
@@ -819,14 +1249,15 @@ export function importHtmlEmail({ html, baseUrl }: { html: string; baseUrl?: str
       continue;
     }
     const sectionId = context.ids.next("section");
-    const sectionBackgroundColor = readBackgroundColor(node);
+    const sectionBackgroundColor = readBackgroundColor(node, context);
     context.document[sectionId] = {
       id: sectionId,
       type: "section",
       parentId: "root",
       childrenIds: [],
-      properties: {
-        ...readBackgroundProperties(node, context),
+    properties: {
+      ...readBackgroundProperties(node, context),
+      ...readBlockSpacing(node, context),
         ...(node.attribs.background === undefined
           ? {}
           : (() => {

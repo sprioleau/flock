@@ -344,6 +344,11 @@ export default defineSchema({
     htmlImport: v.optional(
       v.object({
         importerVersion: v.literal("1"),
+        /*
+          Immutable capability binding for import-level rollback. Older rows
+          may omit it and remain removable through normal draft deletion.
+        */
+        sourceDocumentId: v.optional(v.id("documents")),
         sourceChecksum: v.string(),
         sanitizedHtml: v.string(),
         warnings: v.array(

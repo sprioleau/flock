@@ -124,4 +124,20 @@ describe("buildSystemContext brand line placement", () => {
     expect(withLine.documentContext).toContain("Graphic product imagery");
     expect(withLine.documentContext).toContain("<brand-image-style>");
   });
+
+  it("attaches HTML importer losses only for imported drafts", () => {
+    const imported = buildSystemContext({
+      doc,
+      htmlImportContextLine:
+        "[HTML IMPORT CONTEXT]\nWarnings:\n- style_removed: The style block was omitted.",
+    });
+    const ordinary = buildSystemContext({ doc });
+
+    expect(imported.documentContext).toContain("[HTML IMPORT CONTEXT]");
+    expect(imported.documentContext).toContain("style_removed");
+    expect(ordinary.documentContext).not.toContain("HTML IMPORT CONTEXT");
+    expect(ordinary.documentContext).not.toContain("style_removed");
+    expect(imported.staticInstructions).toBe(ordinary.staticInstructions);
+    expect(imported.staticInstructions).toContain("## Refining imported HTML");
+  });
 });

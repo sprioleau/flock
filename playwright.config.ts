@@ -83,7 +83,7 @@ export default defineConfig({
   },
   projects: [{ name: "chromium", use: { ...devices["Desktop Chrome"] } }],
   webServer: {
-    command: `pnpm --filter web exec next dev --port ${E2E_PORT}`,
+    command: `apps/web/node_modules/.bin/next dev apps/web --port ${E2E_PORT}`,
     url: E2E_BASE_URL,
     reuseExistingServer: false,
     timeout: 240_000,

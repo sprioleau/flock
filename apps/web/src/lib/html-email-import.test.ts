@@ -170,4 +170,143 @@ describe("importHtmlEmail", () => {
       new HtmlEmailImportError("too-large", "That HTML file is larger than 512 KB."),
     );
   });
+
+  it("applies a bounded stylesheet cascade with id, class, element, and inline precedence", () => {
+    const result = importHtmlEmail({
+      html: `<html><head><style>
+        p { color: #111111; font-family: Arial, sans-serif; font-size: 14px; padding: 4px; }
+        .copy { color: #222222; font-size: 16px; }
+        #hero-copy { color: #333333; font-size: 18px; }
+        h1 { font-weight: 700; text-align: center; }
+      </style></head><body><table><tr><td><p id="hero-copy" class="copy" style="font-size:20px">Hero copy</p><h1>Launch</h1></td></tr></table></body></html>`,
+    });
+
+    const textBlocks = Object.values(result.document).filter((block) => block.type === "text") as Array<{
+      properties: { text: { content: Array<{ content?: Array<{ marks?: Array<{ type: string; attrs?: Record<string, string> }> }> }> }; textAlign?: string; paddingTop?: number; };
+    }>;
+    const hero = textBlocks.find((block) => JSON.stringify(block.properties.text).includes("Hero copy"));
+    expect(hero?.properties.text.content[0]?.content?.[0]?.marks).toEqual([
+      { type: "textStyle", attrs: { color: "#333333", fontFamily: "Arial, sans-serif", fontSize: "20px" } },
+    ]);
+    expect(hero?.properties.paddingTop).toBe(4);
+    expect(textBlocks.some((block) => block.properties.textAlign === "center")).toBe(true);
+  });
+
+  it("rejects unsafe and unsupported stylesheet constructs while keeping inline content", () => {
+    const result = importHtmlEmail({
+      html: `<html><head><style>
+        .safe { color: #123456; }
+        .safe:hover { color: expression(alert(1)); }
+        [data-x="y"] { color: red; }
+        .bad { background-image: url(javascript:alert(1)); }
+        @import url(https://evil.example/style.css);
+        .line { line-height: 1.5; text-transform: uppercase; margin: 10px; }
+      </style></head><body><p class="safe line">Safe content</p></body></html>`,
+    });
+
+    const textBlock = Object.values(result.document).find((block) => block.type === "text") as {
+      properties: { text: { content: Array<{ content?: Array<{ marks?: Array<{ type: string; attrs?: Record<string, string> }> }> }> }; };
+    };
+    expect(JSON.stringify(textBlock.properties.text)).toContain("#123456");
+    expect(JSON.stringify(textBlock.properties.text)).not.toContain("expression");
+    expect(result.report.unsupportedFeatures).toContain("stylesheet");
+    expect(result.report.warnings.some((warning) => warning.code === "unsupported-feature")).toBe(true);
+  });
+
+  it("does not leak nested at-rule declarations into the global cascade", () => {
+    const result = importHtmlEmail({
+      html: `<html><head><style>
+        p { color: #123456; }
+        @media screen and (max-width: 600px) { p { color: #ff0000; } }
+        @supports (display: grid) { p { color: #00ff00; } }
+        @font-face { font-family: Evil; src: url(https://evil.example/font.woff2); }
+      </style></head><body><p>Stable copy</p></body></html>`,
+    });
+
+    const textBlock = Object.values(result.document).find((block) => block.type === "text") as {
+      properties: { text: unknown };
+    };
+    expect(JSON.stringify(textBlock.properties.text)).toContain("#123456");
+    expect(JSON.stringify(textBlock.properties.text)).not.toContain("#ff0000");
+    expect(JSON.stringify(textBlock.properties.text)).not.toContain("#00ff00");
+    expect(result.report.unsupportedFeatures).toContain("stylesheet");
+  });
+
+  it("keeps a safe rule after a semicolon at-rule", () => {
+    const result = importHtmlEmail({
+      html: `<html><head><style>@import url("https://example.com/type.css"); .copy { color: #123456; }</style></head><body><p class="copy">Stable copy</p></body></html>`,
+    });
+
+    const textBlock = Object.values(result.document).find((block) => block.type === "text") as {
+      properties: { text: unknown };
+    };
+    expect(JSON.stringify(textBlock.properties.text)).toContain("#123456");
+    expect(result.report.unsupportedFeatures).toContain("stylesheet");
+  });
+
+  it("omits a decimal font size that the editable text schema cannot represent", () => {
+    const result = importHtmlEmail({
+      html: `<html><head><style>.copy { color: #123456; font-size: 13.5px; }</style></head><body><p class="copy">Stable copy</p></body></html>`,
+    });
+
+    expect(JSON.stringify(result.document)).toContain("#123456");
+    expect(JSON.stringify(result.document)).not.toContain("13.5px");
+    expect(
+      result.report.warnings.some(
+        (warning) =>
+          warning.code === "unsupported-feature" && warning.detail.includes("font-size"),
+      ),
+    ).toBe(true);
+  });
+
+  it("preserves direct table-cell copy as editable rich text", () => {
+    const result = importHtmlEmail({
+      html: `<table><tr><td class="headline" style="color:#123456;font-size:32px;text-align:center">Build your desk setup</td></tr></table>`,
+    });
+
+    const textBlock = Object.values(result.document).find((block) => block.type === "text") as {
+      properties: { text: unknown; textAlign?: string };
+    };
+    expect(JSON.stringify(textBlock.properties.text)).toContain("Build your desk setup");
+    expect(JSON.stringify(textBlock.properties.text)).toContain("32px");
+    expect(textBlock.properties.textAlign).toBe("center");
+  });
+
+  it("maps anchor padding to button internals and preserves standalone link typography", () => {
+    const result = importHtmlEmail({
+      html: `<html><head><style>
+        .cta { padding: 8px 20px; background-color: #111111; color: #ffffff; }
+        .footer-link { color: #123456; font-family: Georgia, serif; font-size: 13px; text-align: center; }
+      </style></head><body><a class="cta" href="https://example.com/buy">Buy now</a><a class="footer-link" href="https://example.com/legal">Legal</a></body></html>`,
+    });
+
+    const button = Object.values(result.document).find((block) => block.type === "button") as {
+      properties: Record<string, unknown>;
+    };
+    const link = Object.values(result.document).find((block) => block.type === "link") as {
+      properties: Record<string, unknown>;
+    };
+    expect(button.properties).toMatchObject({ verticalPadding: 8, horizontalPadding: 20 });
+    expect(button.properties.paddingTop).toBeUndefined();
+    expect(link.properties).toMatchObject({
+      textColor: "#123456",
+      fontFamily: "Georgia, serif",
+      fontSize: 13,
+      align: "center",
+    });
+  });
+
+  it("reports non-representable line height, transform, and margin instead of accepting them", () => {
+    const result = importHtmlEmail({
+      html: `<html><head><style>.copy { line-height: 1.5; text-transform: uppercase; margin: 12px; }</style></head><body><p class="copy">Copy</p></body></html>`,
+    });
+
+    expect(result.report.warnings.filter((warning) => warning.code === "unsupported-feature")).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ detail: expect.stringContaining("line-height") }),
+        expect.objectContaining({ detail: expect.stringContaining("text-transform") }),
+        expect.objectContaining({ detail: expect.stringContaining("margin") }),
+      ]),
+    );
+  });
 });

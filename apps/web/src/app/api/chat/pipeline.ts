@@ -29,6 +29,7 @@ import {
   type PipelineVariant,
 } from "./constants";
 import { resolveBrandContext } from "./brand-context";
+import { resolveHtmlImportContext } from "./html-import-context";
 import { expandGenerationBriefPart, resolveGenerationBrief } from "./generation-brief";
 import { buildSavedSectionsContext } from "./saved-sections-context";
 import { sanitizeModelToolCallInputs, sanitizeReplayedToolInputs } from "./replayed-tool-inputs";
@@ -338,12 +339,19 @@ async function runSinglePassPipeline(input: ChatPipelineInput): Promise<void> {
     it is one more Convex read against the same deployment, and the tools are
     not built until every member of this batch has landed anyway.
   */
-  const [resolvedBrandContext, savedSectionsContext, generationBrief, verifiedCaller] =
+  const [
+    resolvedBrandContext,
+    savedSectionsContext,
+    generationBrief,
+    verifiedCaller,
+    htmlImportContextLine,
+  ] =
     await Promise.all([
       resolveBrandContext({ sessionId, documentId }),
       buildSavedSectionsContext({ sessionId }),
       resolveGenerationBrief({ messages: sanitizedMessages, targetDoc: doc }),
       resolveVerifiedCaller(),
+      resolveHtmlImportContext({ documentId }),
     ]);
 
   /*
@@ -386,6 +394,7 @@ async function runSinglePassPipeline(input: ChatPipelineInput): Promise<void> {
     selectedBlockId,
     brandContextLine: resolvedBrandContext?.block ?? null,
     savedSectionsContext,
+    htmlImportContextLine,
   });
 
   /*
