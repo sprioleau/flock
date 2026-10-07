@@ -110,12 +110,12 @@ describe("fetchPage: an origin-wide bot challenge vs. an ordinary per-page block
     expect(fetch).toHaveBeenCalledTimes(1);
   });
 
-  it("reads a 200 page normally — the classification only ever fires on a failed response", async () => {
+  it("classifies a 200 challenge header as blocked and retains the HTTP status", async () => {
     vi.stubGlobal(
       "fetch",
       vi.fn(
         async () =>
-          new Response("<html><body>real page</body></html>", {
+          new Response("<html><body>challenge response</body></html>", {
             status: 200,
             headers: { "cf-mitigated": "challenge", "content-type": "text/html" },
           }),
@@ -124,6 +124,6 @@ describe("fetchPage: an origin-wide bot challenge vs. an ordinary per-page block
 
     const result = await fetchPage(PAGE_URL);
 
-    expect(result).toMatchObject({ isOk: true });
+    expect(result).toMatchObject({ isOk: false, reason: "blocked_by_bot_challenge", status: 200, finalUrl: PAGE_URL });
   });
 });

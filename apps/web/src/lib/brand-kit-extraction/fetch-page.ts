@@ -54,18 +54,24 @@ export interface FetchPageFailure {
   isOk: false;
   reason: FetchFailureReason;
   message: string;
+  status?: number;
+  finalUrl?: string;
 }
 
-export type FetchPageResult = { isOk: true; html: string; finalUrl: string } | FetchPageFailure;
+export type FetchPageResult = { isOk: true; html: string; finalUrl: string; status?: number } | FetchPageFailure;
 
 function failure({
   reason,
   message,
+  status,
+  finalUrl,
 }: {
   reason: FetchFailureReason;
   message: string;
+  status?: number;
+  finalUrl?: string;
 }): FetchPageFailure {
-  return { isOk: false, reason, message };
+  return { isOk: false, reason, message, status, finalUrl };
 }
 
 /*
@@ -243,12 +249,14 @@ export async function fetchPage(
     isn't limited to 401/403/451 either — once the edge says it mitigated the
     request, that IS the reason, whatever status it chose to wear.
   */
-  if (!response.ok && hasBotChallengeHeaders(response)) {
+  if (hasBotChallengeHeaders(response)) {
     await response.body?.cancel().catch(() => undefined);
     return failure({
       reason: "blocked_by_bot_challenge",
       message:
         "This site blocks automated readers, so no page on it can be read — trying another page won't help. We won't guess at its branding: set your logo, colors, and links here by hand instead.",
+      status: response.status,
+      finalUrl,
     });
   }
   if (response.status === 401 || response.status === 403 || response.status === 451) {
@@ -257,6 +265,8 @@ export async function fetchPage(
       reason: "blocked_by_site",
       message:
         "That site wouldn't let us read it (it blocks automated access). We won't guess at its branding — try another page on the same site.",
+      status: response.status,
+      finalUrl,
     });
   }
   if (!response.ok) {
@@ -264,6 +274,8 @@ export async function fetchPage(
     return failure({
       reason: "http_error",
       message: `We couldn't read that site (it responded with an error). Please check the address and try again.`,
+      status: response.status,
+      finalUrl,
     });
   }
   const contentType = response.headers.get("content-type") ?? "";
@@ -273,6 +285,8 @@ export async function fetchPage(
     return failure({
       reason: "not_html",
       message: "That address doesn't look like a web page — please link to a site's homepage.",
+      status: response.status,
+      finalUrl,
     });
   }
   const html = await readBodyCapped({ response, maxBytes: MAX_HTML_BYTES });
@@ -280,9 +294,11 @@ export async function fetchPage(
     return failure({
       reason: "http_error",
       message: "That page came back empty, so there was nothing to read.",
+      status: response.status,
+      finalUrl,
     });
   }
-  return { isOk: true, html, finalUrl };
+  return { isOk: true, html, finalUrl, status: response.status };
 }
 
 export type FetchBinaryResult =

@@ -57,14 +57,52 @@ function isPrivateIpv4(ip: string): boolean {
   );
 }
 
+function getMappedIpv4Address(ip: string): string | null {
+  let normalizedIp = ip.toLowerCase();
+  const dottedSuffix = normalizedIp.match(/^(.*:)(\d+\.\d+\.\d+\.\d+)$/);
+  if (dottedSuffix !== null) {
+    const octets = dottedSuffix[2]?.split(".").map(Number) ?? [];
+    if (octets.length !== 4 || octets.some((octet) => octet < 0 || octet > 255)) {
+      return null;
+    }
+    const highWord = ((octets[0] ?? 0) << 8) | (octets[1] ?? 0);
+    const lowWord = ((octets[2] ?? 0) << 8) | (octets[3] ?? 0);
+    normalizedIp = `${dottedSuffix[1]}${highWord.toString(16)}:${lowWord.toString(16)}`;
+  }
+
+  const halves = normalizedIp.split("::");
+  if (halves.length > 2) {
+    return null;
+  }
+  const leftWords = (halves[0] ?? "").split(":").filter(Boolean);
+  const rightWords = (halves[1] ?? "").split(":").filter(Boolean);
+  const zeroWordCount = halves.length === 2 ? 8 - leftWords.length - rightWords.length : 0;
+  const words = halves.length === 2
+    ? [...leftWords, ...Array.from({ length: zeroWordCount }, () => "0"), ...rightWords]
+    : leftWords;
+  if (words.length !== 8 || zeroWordCount < 0) {
+    return null;
+  }
+  if (words.slice(0, 5).some((word) => Number.parseInt(word, 16) !== 0) || Number.parseInt(words[5] ?? "", 16) !== 0xffff) {
+    return null;
+  }
+  const highWord = Number.parseInt(words[6] ?? "", 16);
+  const lowWord = Number.parseInt(words[7] ?? "", 16);
+  if (!Number.isFinite(highWord) || !Number.isFinite(lowWord)) {
+    return null;
+  }
+  return `${highWord >> 8}.${highWord & 0xff}.${lowWord >> 8}.${lowWord & 0xff}`;
+}
+
 function isPrivateIpv6(rawIp: string): boolean {
   const ip = rawIp.toLowerCase();
   /*
-    IPv4-mapped (::ffff:a.b.c.d) — defer to the IPv4 ranges.
+    IPv4-mapped addresses may use dotted or hexadecimal suffixes and any
+    equivalent IPv6 spelling. Expand them before checking the IPv4 ranges.
   */
-  const mappedMatch = ip.match(/^::ffff:(\d+\.\d+\.\d+\.\d+)$/);
-  if (mappedMatch !== null) {
-    return isPrivateIpv4(mappedMatch[1]);
+  const mappedAddress = getMappedIpv4Address(ip);
+  if (mappedAddress !== null) {
+    return isPrivateIpv4(mappedAddress);
   }
   return (
     ip === "::" ||

@@ -5,7 +5,7 @@
   that into an ABSENT tone field rather than an invented voice.
 */
 import { describe, expect, it } from "vitest";
-import { describeCopySignals, extractCopySignals } from "./extract-copy-signals";
+import { describeCopySignals, extractCopySignals, preferBrowserSemanticCopy } from "./extract-copy-signals";
 
 const PAGE = `<!doctype html><html><head>
   <title>Acme — Robots</title>
@@ -58,5 +58,92 @@ describe("extractCopySignals", () => {
     const described = describeCopySignals(extractCopySignals(PAGE))!;
     expect(described).toContain("Description: We build robots");
     expect(described).toContain("Button labels: Get started | Book a demo");
+  });
+
+  it("uses usable semantic copy instead of rebuilding conflicting HTML headline, paragraph and CTA", () => {
+    const signals = extractCopySignals(
+      '<meta name="description" content="HTML metadata stays authoritative." /><h1>Stale server heading</h1><p>This stale paragraph is long enough to look meaningful but differs from the rendered page content.</p><button>Old CTA</button>',
+      {
+        headline: "Rendered product heading",
+        firstParagraph: "The rendered page explains how teams get useful work done with less busywork and clearer priorities.",
+        ctaLabels: ["Book a conversation"],
+        landmarks: ["Main"],
+        text: [],
+        controlLabels: ["Book a conversation"],
+        imageDescriptions: [],
+        isUsable: true,
+      },
+    );
+
+    expect(signals).toMatchObject({
+      description: "HTML metadata stays authoritative.",
+      headline: "Rendered product heading",
+      firstParagraph: "The rendered page explains how teams get useful work done with less busywork and clearer priorities.",
+      ctaLabels: ["Book a conversation"],
+    });
+  });
+
+  it("uses semantic fields when present and extracts only missing fields from HTML", () => {
+    const signals = extractCopySignals(
+      '<meta name="description" content="Metadata from the page." /><h1>Old heading</h1><p>The HTML paragraph remains a fallback when the semantic tree has no paragraph copy.</p><button>Old action</button>',
+      {
+        headline: "Current rendered heading",
+        firstParagraph: null,
+        ctaLabels: ["Current action"],
+        landmarks: ["Main"],
+        text: [],
+        controlLabels: ["Current action"],
+        imageDescriptions: [],
+        isUsable: true,
+      },
+    );
+
+    expect(signals).toMatchObject({
+      description: "Metadata from the page.",
+      headline: "Current rendered heading",
+      firstParagraph: "The HTML paragraph remains a fallback when the semantic tree has no paragraph copy.",
+      ctaLabels: ["Current action"],
+    });
+  });
+});
+
+describe("preferBrowserSemanticCopy", () => {
+  it("prefers usable browser copy while retaining the HTML description", () => {
+    const htmlSignals = extractCopySignals(
+      '<meta name="description" content="Author-written metadata description." /><h1>HTML heading</h1>',
+    );
+    const signals = preferBrowserSemanticCopy(htmlSignals, {
+      headline: "Accessible heading",
+      firstParagraph: "Our semantic paragraph explains how the product helps people do their work.",
+      ctaLabels: ["Talk to our team"],
+      landmarks: ["Main"],
+      text: [],
+      controlLabels: ["Talk to our team"],
+      imageDescriptions: [],
+      isUsable: true,
+    });
+
+    expect(signals).toMatchObject({
+      description: "Author-written metadata description.",
+      headline: "Accessible heading",
+      firstParagraph: "Our semantic paragraph explains how the product helps people do their work.",
+      ctaLabels: ["Talk to our team"],
+    });
+  });
+
+  it("keeps HTML signals when the semantic tree is empty, generic, or otherwise unusable", () => {
+    const htmlSignals = extractCopySignals('<meta name="description" content="Keep this fallback." /><h1>HTML fallback</h1>');
+    const poorEvidence = {
+      headline: null,
+      firstParagraph: null,
+      ctaLabels: ["Button"],
+      landmarks: [],
+      text: [],
+      controlLabels: ["Button"],
+      imageDescriptions: [],
+      isUsable: false,
+    };
+
+    expect(preferBrowserSemanticCopy(htmlSignals, poorEvidence)).toEqual(htmlSignals);
   });
 });

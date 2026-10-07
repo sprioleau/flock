@@ -48,6 +48,59 @@ const FIXTURE_HTML = `<!doctype html><html><head>
   <style>:root { --banana: #e0592a; } .hero { color: var(--banana); background: #0f4c81; } .cta { color: #e0592a; }</style>
 </head><body><div class="hero"><h1>Acme</h1><p>We ship one robot at a time and tell you what it costs.</p></div><a class="cta" href="/start">Start</a></body></html>`;
 
+function recoveredBrowserPage() {
+  return {
+    isOk: true,
+    html: FIXTURE_HTML,
+    finalUrl: FINAL_URL,
+    screenshot: {
+      mediaType: "image/jpeg", base64: "test-image", dataUrl: "data:image/jpeg;base64,test-image",
+      width: 1280, height: 900, byteLength: 10,
+    },
+    visualEvidence: {
+      viewport: { width: 1280, height: 900 }, document: { width: 1280, height: 900 },
+      colors: [], fonts: [], elements: [], syntheticCss: "",
+    },
+    requestCount: 1,
+  };
+}
+
+describe("generateBrandKit independent acquisition", () => {
+  it("generates from Chromium after an HTTP challenge", async () => {
+    fetchPageMock.mockResolvedValue({ isOk: false, reason: "blocked_by_bot_challenge", message: "Blocked." });
+    renderPageInBrowserMock.mockResolvedValue(recoveredBrowserPage());
+    stubProbes([]);
+    expect((await generateBrandKit({ url: "acme.test" })).isOk).toBe(true);
+    expect(renderPageInBrowserMock).toHaveBeenCalledWith("https://acme.test");
+    expect(generateObjectMock).toHaveBeenCalledOnce();
+  });
+
+  it("uses accessible copy and heading hierarchy while retaining head metadata", async () => {
+    renderPageInBrowserMock.mockResolvedValue({
+      ...recoveredBrowserPage(),
+      semanticEvidence: {
+        isUsable: true, headline: "Accessible brand headline", firstParagraph: "Semantic copy from the real browser describes the product clearly.",
+        ctaLabels: ["Build with us"], landmarks: ["main"], text: [], controlLabels: ["Build with us"], imageDescriptions: [],
+        headings: [{ level: 1, text: "Accessible brand headline" }, { level: 2, text: "How it works" }], lists: [["Collaborate", "Publish"]],
+      },
+    });
+    stubProbes([]);
+    expect((await generateBrandKit({ url: "acme.test" })).isOk).toBe(true);
+    const text = generateObjectMock.mock.calls[0][0].messages[0].content[0].text;
+    expect(text).toContain("Headline: Accessible brand headline");
+    expect(text).toContain("Description: We build robots that get out of your way.");
+    expect(text).toContain("H2 How it works");
+    expect(text).toContain("Collaborate");
+  });
+
+  it("keeps generation available when browser acquisition throws", async () => {
+    renderPageInBrowserMock.mockRejectedValue(new Error("Chromium launch crashed"));
+    stubProbes([]);
+    expect((await generateBrandKit({ url: "acme.test" })).isOk).toBe(true);
+    expect(generateObjectMock).toHaveBeenCalledOnce();
+  });
+});
+
 const semanticVariation = (name: string) => ({
   name,
   emailBackgroundColor: "#f4f6f8",
@@ -186,6 +239,7 @@ beforeEach(() => {
     reason: "http_error",
     message: "No test image body configured.",
   });
+
 });
 
 describe("generateBrandKit rendered visual evidence", () => {

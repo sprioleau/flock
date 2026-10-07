@@ -1,7 +1,14 @@
 import { access } from "node:fs/promises";
 
 import { logRecord } from "../observability/log";
-import { guardUrl, type UrlGuardResult } from "./url-guard";
+import {
+  discardWarmBrowser,
+  getWarmBrowser,
+  type ManagedBrowserLike,
+  type ManagedBrowserContextLike,
+} from "./browser-manager";
+import { guardUrl, validateUrlSyntax, type UrlGuardResult } from "./url-guard";
+import { collectBrowserSemanticEvidence, type BrowserSemanticEvidence } from "./browser-semantic";
 
 const DEFAULT_VIEWPORT_WIDTH = 1280;
 const DEFAULT_VIEWPORT_HEIGHT = 900;
@@ -23,6 +30,9 @@ type BrowserRenderFailureReason =
   | "browser_unavailable"
   | "timeout"
   | "navigation_failed"
+  | "blocked_page"
+  | "challenge_page"
+  | "non_html"
   | "capture_failed";
 
 export interface BrowserVisualEvidence {
@@ -62,6 +72,7 @@ export interface BrowserRenderSuccess {
   finalUrl: string;
   screenshot: BrowserScreenshot;
   visualEvidence: BrowserVisualEvidence;
+  semanticEvidence?: BrowserSemanticEvidence;
   requestCount: number;
 }
 
@@ -82,6 +93,7 @@ interface BrowserRequestLike {
 }
 
 interface PageLike {
+  createCDPSession?(): Promise<unknown>;
   setViewport(viewport: { width: number; height: number; deviceScaleFactor: number }): Promise<void>;
   setRequestInterception(value: boolean): Promise<void>;
   setBypassServiceWorker(value: boolean): Promise<void>;
@@ -107,9 +119,17 @@ interface PageLike {
   close(): Promise<void>;
 }
 
-interface BrowserLike {
+interface NavigationResponseLike {
+  status(): number;
+  headers(): Record<string, string>;
+}
+
+interface BrowserLike extends ManagedBrowserLike {
+  createBrowserContext(): Promise<BrowserContextLike>;
+}
+
+interface BrowserContextLike extends ManagedBrowserContextLike {
   newPage(): Promise<PageLike>;
-  close(): Promise<void>;
 }
 
 interface BrowserRenderDependencies {
@@ -170,6 +190,31 @@ async function withDeadline<Value>(
   }
 }
 
+async function withDeadlineCleanup<Value>({
+  operation,
+  timeoutMs,
+  cleanup,
+}: {
+  operation: Promise<Value>;
+  timeoutMs: number;
+  cleanup: (value: Value) => Promise<void>;
+}): Promise<Value> {
+  let isLate = false;
+  void operation.then((value) => {
+    if (isLate) {
+      void cleanup(value).catch(() => undefined);
+    }
+  }, () => undefined);
+  try {
+    return await withDeadline(operation, timeoutMs);
+  } catch (error) {
+    if (error instanceof BrowserRenderDeadlineError) {
+      isLate = true;
+    }
+    throw error;
+  }
+}
+
 function remainingTimeout(
   deadline: { atMs: number; now(): number },
   capMs: number,
@@ -190,12 +235,24 @@ function createCachedGuard(
 ): (rawUrl: string) => Promise<UrlGuardResult> {
   const guardByOrigin = new Map<string, Promise<UrlGuardResult>>();
   return function guardWithOriginCache(rawUrl: string): Promise<UrlGuardResult> {
+    const syntaxResult = validateUrlSyntax(rawUrl);
+    if (!syntaxResult.isAllowed || syntaxResult.url.username.length > 0 || syntaxResult.url.password.length > 0) {
+      return Promise.resolve(
+        !syntaxResult.isAllowed
+          ? syntaxResult
+          : { isAllowed: false, reason: "Not a valid URL." },
+      );
+    }
     const cacheKey = getGuardCacheKey(rawUrl);
     const cached = guardByOrigin.get(cacheKey);
     if (cached !== undefined) {
-      return cached;
+      return cached.then((result) =>
+        result.isAllowed ? { isAllowed: true as const, url: syntaxResult.url } : result,
+      );
     }
-    const pending = guard(rawUrl);
+    const pending = guard(rawUrl).then((result) =>
+      result.isAllowed ? { isAllowed: true as const, url: syntaxResult.url } : result,
+    );
     guardByOrigin.set(cacheKey, pending);
     return pending;
   };
@@ -432,27 +489,46 @@ async function renderWithBrowser({
     options.maxScreenshotBytes ?? DEFAULT_MAX_SCREENSHOT_BYTES,
   );
   let browser: BrowserLike | null = null;
+  let context: BrowserContextLike | null = null;
   let page: PageLike | null = null;
   let requestCount = 0;
   let blockedNavigationReason: BrowserRenderFailure | null = null;
   let requestListener: ((request: BrowserRequestLike) => void) | null = null;
   let popupListener: ((popup: PageLike) => void) | null = null;
   let stage = "launch";
+  let navigationResponse: unknown = null;
+  let hasChallengeResponseHeader = false;
+  const hasCustomBrowserLauncher = options.dependencies?.launchBrowser !== undefined;
 
   try {
     try {
-      browser = await withDeadline(
-        dependencies.launchBrowser(options),
-        remainingTimeout(deadline, navigationTimeoutMs),
-      );
-      page = await withDeadline(
-        browser.newPage(),
-        remainingTimeout(deadline, settleTimeoutMs),
-      );
+      const browserPromise = dependencies.launchBrowser(options);
+      browser = await withDeadlineCleanup({
+        operation: browserPromise,
+        timeoutMs: remainingTimeout(deadline, navigationTimeoutMs),
+        cleanup: hasCustomBrowserLauncher ? discardWarmBrowser : async () => undefined,
+      });
+      context = await withDeadlineCleanup({
+        operation: browser.createBrowserContext(),
+        timeoutMs: remainingTimeout(deadline, settleTimeoutMs),
+        cleanup: closeQuietly,
+      });
+      page = await withDeadlineCleanup({
+        operation: context.newPage(),
+        timeoutMs: remainingTimeout(deadline, settleTimeoutMs),
+        cleanup: closeQuietly,
+      });
     } catch (error) {
       if (error instanceof BrowserRenderDeadlineError) {
         throw error;
       }
+      logRecord(
+        {
+          tag: "flock.brandKit.browserLaunchFailed",
+          reason: error instanceof Error ? error.message.slice(0, 200) : "unknown_error",
+        },
+        "error",
+      );
       return failure(
         "browser_unavailable",
         "The browser renderer is unavailable right now. Flock can continue with its standard page reader.",
@@ -483,9 +559,9 @@ async function renderWithBrowser({
     );
 
     /*
-      Every render launches a fresh browser process, so cookies, storage, and
-      service-worker state cannot leak between users or captures. Popups are
-      closed immediately so their traffic cannot escape page interception.
+      Each render receives a fresh browser context, isolating cookies, storage,
+      and service workers while the shared Chromium process stays warm. Popups
+      are closed immediately so their traffic cannot escape interception.
     */
     popupListener = (popup) => {
       void closeQuietly(popup);
@@ -520,13 +596,35 @@ async function renderWithBrowser({
     try {
       stage = "navigate";
       const navigationTimeout = remainingTimeout(deadline, navigationTimeoutMs);
-      await withDeadline(
+      navigationResponse = await withDeadline(
         page.goto(initialGuard.url.toString(), {
           waitUntil: "domcontentloaded",
           timeout: navigationTimeout,
         }),
         navigationTimeout,
       );
+      if (navigationResponse !== null && typeof navigationResponse === "object") {
+        const response = navigationResponse as NavigationResponseLike;
+        const responseHeaders = response.headers();
+        hasChallengeResponseHeader = Object.entries(responseHeaders).some(
+          ([header, value]) => header.toLowerCase() === "cf-mitigated" && value.toLowerCase() === "challenge",
+        );
+        const contentType = Object.entries(responseHeaders).find(
+          ([header]) => header.toLowerCase() === "content-type",
+        )?.[1]?.toLowerCase();
+        if (contentType !== undefined && !contentType.includes("text/html") && !contentType.includes("application/xhtml+xml")) {
+          return failure("non_html", "That address did not return a web page that Flock can render.");
+        }
+        if (response.status() === 401 || response.status() === 403 || response.status() === 429) {
+          if (hasChallengeResponseHeader) {
+            return failure("challenge_page", "That site presented a browser verification challenge.");
+          }
+          return failure("blocked_page", "That site blocked the browser from viewing the page.");
+        }
+        if (response.status() >= 400) {
+          return failure("navigation_failed", "That page couldn't finish loading in the browser.");
+        }
+      }
     } catch (error) {
       if (blockedNavigationReason !== null) {
         return blockedNavigationReason;
@@ -565,6 +663,42 @@ async function renderWithBrowser({
       page.evaluate<void>(triggerLazyContent, maxCaptureHeight),
       remainingTimeout(deadline, settleTimeoutMs),
     ).catch(() => undefined);
+
+    const pageClassification = await withDeadline(
+      page.evaluate<{
+        title: string;
+        text: string;
+        hasHtmlRoot: boolean;
+        hasVisibleContent: boolean;
+      }>(() => ({
+        title: document.title,
+        text: (document.body?.innerText ?? "").slice(0, 5000),
+        hasHtmlRoot: document.documentElement?.tagName.toLowerCase() === "html",
+        hasVisibleContent: Array.from(document.body?.querySelectorAll("img,svg,video,canvas,main,section") ?? []).some((element) => {
+          const rect = element.getBoundingClientRect();
+          return rect.width > 0 && rect.height > 0;
+        }),
+      })),
+      remainingTimeout(deadline, settleTimeoutMs),
+    );
+    const titleText = pageClassification.title.trim().toLowerCase();
+    const bodyText = pageClassification.text.trim().toLowerCase();
+    const isChallengeTitle = /^(just a moment|checking your browser|verify you are human|security verification)(\b|[.!…])/i.test(
+      pageClassification.title.trim(),
+    );
+    const isShortChallengeInterstitial = bodyText.length < 700 &&
+      /checking your browser|verify you are human|complete the security check|enable javascript and cookies/.test(bodyText);
+    if (hasChallengeResponseHeader || isChallengeTitle || isShortChallengeInterstitial) {
+      return failure("challenge_page", "That site presented a browser verification challenge.");
+    }
+    if (/^(access denied|request blocked|forbidden)(\b|[.!…])/.test(titleText) ||
+      (bodyText.length < 500 && /^(access denied|your request was blocked|this request was blocked)(\b|[.!…])/.test(bodyText))) {
+      return failure("blocked_page", "That site blocked the browser from viewing the page.");
+    }
+    if (!pageClassification.hasHtmlRoot ||
+      (bodyText.length === 0 && !pageClassification.hasVisibleContent && titleText.length === 0)) {
+      return failure("non_html", "That address did not return a web page that Flock can render.");
+    }
 
     stage = "capture_html";
     const html = (
@@ -636,6 +770,21 @@ async function renderWithBrowser({
       page.evaluate<BrowserVisualEvidence>(collectVisualEvidenceInPage, maxCaptureHeight),
       remainingTimeout(deadline, settleTimeoutMs),
     );
+    let semanticEvidence: BrowserSemanticEvidence | undefined;
+    if (page.createCDPSession !== undefined) {
+      semanticEvidence = await withDeadline(
+        collectBrowserSemanticEvidence(page as Parameters<typeof collectBrowserSemanticEvidence>[0]),
+        remainingTimeout(deadline, settleTimeoutMs),
+      ).catch(() => undefined);
+      logRecord(
+        {
+          tag: semanticEvidence?.isUsable
+            ? "flock.brandKit.semantic_tree_usable"
+            : "flock.brandKit.semantic_tree_unusable",
+        },
+        "info",
+      );
+    }
     const base64 = Buffer.from(screenshotBytes).toString("base64");
 
     return {
@@ -651,6 +800,7 @@ async function renderWithBrowser({
         byteLength: screenshotBytes.byteLength,
       },
       visualEvidence,
+      ...(semanticEvidence === undefined ? {} : { semanticEvidence }),
       requestCount,
     };
   } catch (error) {
@@ -677,7 +827,7 @@ async function renderWithBrowser({
       page.off?.("popup", popupListener);
     }
     await closeQuietly(page);
-    await closeQuietly(browser);
+    await closeQuietly(context);
   }
 }
 
@@ -693,7 +843,9 @@ export async function renderPageInBrowser(
 ): Promise<BrowserRenderResult> {
   const timeoutMs = Math.max(1, options.timeoutMs ?? DEFAULT_TIMEOUT_MS);
   const dependencies: BrowserRenderDependencies = {
-    launchBrowser: options.dependencies?.launchBrowser ?? launchDefaultBrowser,
+    launchBrowser:
+      options.dependencies?.launchBrowser ??
+      ((browserOptions) => getWarmBrowser(() => launchDefaultBrowser(browserOptions)) as Promise<BrowserLike>),
     guardUrl: options.dependencies?.guardUrl ?? guardUrl,
     now: options.dependencies?.now ?? Date.now,
   };

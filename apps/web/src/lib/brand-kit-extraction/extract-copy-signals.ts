@@ -20,6 +20,7 @@
 */
 
 import { decodeBasicEntities, findMetaContent } from "./html-utils";
+import type { BrowserSemanticEvidence } from "./browser-semantic";
 
 export interface CopySignals {
   /*
@@ -123,28 +124,57 @@ function extractCtaLabels(html: string): string[] {
   return labels.slice(0, MAX_CTA_LABELS);
 }
 
+function sanitizeCtaLabels(labels: string[]): string[] {
+  const safeLabels: string[] = [];
+  const seen = new Set<string>();
+  for (const rawLabel of labels) {
+    const label = rawLabel.trim();
+    const key = label.toLowerCase();
+    if (
+      label.length > 0 &&
+      label.length <= MAX_CTA_LABEL_CHARS &&
+      !seen.has(key) &&
+      safeLabels.length < MAX_CTA_LABELS
+    ) {
+      safeLabels.push(label);
+      seen.add(key);
+    }
+  }
+  return safeLabels;
+}
+
 /*
   Read the page's copy signals. Pure; nothing here fetches anything.
 */
-export function extractCopySignals(html: string): CopySignals {
+export function extractCopySignals(html: string, semanticEvidence?: BrowserSemanticEvidence): CopySignals {
   const rawDescription =
     findMetaContent({ html, key: "og:description" }) ??
     findMetaContent({ html, key: "description" });
   const description =
     rawDescription === null ? null : decodeBasicEntities(rawDescription).slice(0, MAX_DESCRIPTION_CHARS);
-  const headline = findFirstElementText({
-    html,
-    tagName: "h1",
-    minChars: 1,
-    maxChars: MAX_HEADLINE_CHARS,
-  });
-  const firstParagraph = findFirstElementText({
-    html,
-    tagName: "p",
-    minChars: MIN_PARAGRAPH_CHARS,
-    maxChars: MAX_PARAGRAPH_CHARS,
-  });
-  const ctaLabels = extractCtaLabels(html);
+  const shouldPreferSemanticEvidence = semanticEvidence?.isUsable === true;
+  const semanticHeadline = shouldPreferSemanticEvidence ? semanticEvidence?.headline?.trim() ?? null : null;
+  const semanticParagraph = shouldPreferSemanticEvidence ? semanticEvidence?.firstParagraph?.trim() ?? null : null;
+  const semanticCtaLabels = shouldPreferSemanticEvidence
+    ? sanitizeCtaLabels(semanticEvidence?.ctaLabels ?? [])
+    : [];
+  const headline = semanticHeadline
+    ? semanticHeadline.slice(0, MAX_HEADLINE_CHARS)
+    : findFirstElementText({
+        html,
+        tagName: "h1",
+        minChars: 1,
+        maxChars: MAX_HEADLINE_CHARS,
+      });
+  const firstParagraph = semanticParagraph && semanticParagraph.length >= MIN_PARAGRAPH_CHARS
+    ? semanticParagraph.slice(0, MAX_PARAGRAPH_CHARS)
+    : findFirstElementText({
+        html,
+        tagName: "p",
+        minChars: MIN_PARAGRAPH_CHARS,
+        maxChars: MAX_PARAGRAPH_CHARS,
+      });
+  const ctaLabels = semanticCtaLabels.length > 0 ? semanticCtaLabels : extractCtaLabels(html);
   return {
     description,
     headline,
@@ -152,6 +182,29 @@ export function extractCopySignals(html: string): CopySignals {
     ctaLabels,
     hasAnySignal:
       description !== null || headline !== null || firstParagraph !== null || ctaLabels.length > 0,
+  };
+}
+
+/*
+  Prefer Chromium's semantic copy when the tree has enough usable content.
+  Author-written HTML metadata remains the description source.
+*/
+export function preferBrowserSemanticCopy(
+  signals: CopySignals,
+  evidence: BrowserSemanticEvidence,
+): CopySignals {
+  if (!evidence.isUsable) {
+    return signals;
+  }
+  const headline = evidence.headline ?? signals.headline;
+  const firstParagraph = evidence.firstParagraph ?? signals.firstParagraph;
+  const ctaLabels = evidence.ctaLabels.length > 0 ? evidence.ctaLabels : signals.ctaLabels;
+  return {
+    description: signals.description,
+    headline,
+    firstParagraph,
+    ctaLabels,
+    hasAnySignal: signals.description !== null || headline !== null || firstParagraph !== null || ctaLabels.length > 0,
   };
 }
 
