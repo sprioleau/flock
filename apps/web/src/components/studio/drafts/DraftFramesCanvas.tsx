@@ -613,7 +613,7 @@ export function DraftFramesCanvas({
       <div
         ref={framesScrollerRef}
         className={cn(
-          "relative min-h-0 flex-1 overflow-auto bg-neutral-200/70 outline-none dark:bg-black/40",
+          "canvas-dotted-background relative min-h-0 flex-1 overflow-auto bg-neutral-200/70 outline-none dark:bg-black/40",
           isPanning ? "cursor-grabbing select-none" : "cursor-grab",
         )}
         tabIndex={0}

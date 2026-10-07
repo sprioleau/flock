@@ -88,6 +88,7 @@
   --secondary-foreground: oklch(0.205 0 0);
   --muted: oklch(0.97 0 0);
   --muted-foreground: oklch(0.556 0 0);
+  --canvas-dot: rgb(115 115 115 / 28%);
   --accent: oklch(0.93 0.034 272.788);
   --accent-foreground: oklch(0.257 0.09 281.288);
   --destructive: oklch(0.577 0.245 27.325);
@@ -126,6 +127,7 @@
   --secondary-foreground: oklch(0.985 0 0);
   --muted: oklch(0.269 0 0);
   --muted-foreground: oklch(0.708 0 0);
+  --canvas-dot: rgb(163 163 163 / 24%);
   --accent: oklch(0.257 0.09 281.288);
   --accent-foreground: oklch(0.985 0 0);
   --destructive: oklch(0.704 0.191 22.216);
@@ -160,6 +162,18 @@
   html {
     @apply font-sans;
   }
+}
+
+/*
+  A quiet spatial cue for the infinite canvas, inspired by 2cents.dev's
+  25px repeating dots. Local attachment carries the pattern with panning;
+  steady screen-space spacing avoids dense shimmer when zoomed far out.
+*/
+@utility canvas-dotted-background {
+  background-image: radial-gradient(circle, var(--canvas-dot) 1px, transparent 1px);
+  background-size: 25px 25px;
+  background-position: 12px 12px;
+  background-attachment: local;
 }
 
 /*
