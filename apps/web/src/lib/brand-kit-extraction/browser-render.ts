@@ -125,6 +125,8 @@ interface NavigationResponseLike {
 }
 
 interface BrowserLike extends ManagedBrowserLike {
+  shouldUseDefaultContextOnly?: boolean;
+  newPage?(): Promise<PageLike>;
   createBrowserContext(): Promise<BrowserContextLike>;
 }
 
@@ -303,11 +305,26 @@ async function launchDefaultBrowser(options: BrowserRenderOptions): Promise<Brow
   const chromiumPackUrl = options.chromiumPackUrl ?? DEFAULT_CHROMIUM_PACK_URL;
   const executablePath = await chromium.executablePath(chromiumPackUrl);
 
-  return (await puppeteer.launch({
+  const browser = (await puppeteer.launch({
     executablePath,
     args: chromium.args,
     headless: "shell",
   })) as unknown as BrowserLike;
+  /*
+    Sparticuz documents Target.createTarget failures when a new BrowserContext
+    is created in its Lambda build. Use its default context in a dedicated
+    process per render so cookies and storage still cannot cross captures.
+  */
+  browser.shouldUseDefaultContextOnly = true;
+  return browser;
+}
+
+async function launchOrReuseDefaultBrowser(options: BrowserRenderOptions): Promise<BrowserLike> {
+  const localExecutablePath = await findLocalChromeExecutable();
+  if (localExecutablePath === null) {
+    return launchDefaultBrowser(options);
+  }
+  return getWarmBrowser(() => launchDefaultBrowser(options)) as Promise<BrowserLike>;
 }
 
 function installStableRenderingStyles(): void {
@@ -506,25 +523,44 @@ async function renderWithBrowser({
       browser = await withDeadlineCleanup({
         operation: browserPromise,
         timeoutMs: remainingTimeout(deadline, navigationTimeoutMs),
-        cleanup: hasCustomBrowserLauncher ? discardWarmBrowser : async () => undefined,
+        cleanup: async (lateBrowser) => {
+          if (hasCustomBrowserLauncher || lateBrowser.shouldUseDefaultContextOnly === true) {
+            await discardWarmBrowser(lateBrowser);
+          }
+        },
       });
-      context = await withDeadlineCleanup({
-        operation: browser.createBrowserContext(),
-        timeoutMs: remainingTimeout(deadline, settleTimeoutMs),
-        cleanup: closeQuietly,
-      });
-      page = await withDeadlineCleanup({
-        operation: context.newPage(),
-        timeoutMs: remainingTimeout(deadline, settleTimeoutMs),
-        cleanup: closeQuietly,
-      });
+      if (browser.shouldUseDefaultContextOnly === true) {
+        stage = "create_default_page";
+        if (browser.newPage === undefined) {
+          throw new Error("This browser does not support creating a default-context page.");
+        }
+        page = await withDeadlineCleanup({
+          operation: browser.newPage(),
+          timeoutMs: remainingTimeout(deadline, settleTimeoutMs),
+          cleanup: closeQuietly,
+        });
+      } else {
+        stage = "create_browser_context";
+        context = await withDeadlineCleanup({
+          operation: browser.createBrowserContext(),
+          timeoutMs: remainingTimeout(deadline, settleTimeoutMs),
+          cleanup: closeQuietly,
+        });
+        stage = "create_context_page";
+        page = await withDeadlineCleanup({
+          operation: context.newPage(),
+          timeoutMs: remainingTimeout(deadline, settleTimeoutMs),
+          cleanup: closeQuietly,
+        });
+      }
     } catch (error) {
       if (error instanceof BrowserRenderDeadlineError) {
         throw error;
       }
       logRecord(
         {
-          tag: "flock.brandKit.browserLaunchFailed",
+          tag: "flock.brandKit.browserStartupFailed",
+          stage,
           reason: error instanceof Error ? error.message.slice(0, 200) : "unknown_error",
         },
         "error",
@@ -828,6 +864,9 @@ async function renderWithBrowser({
     }
     await closeQuietly(page);
     await closeQuietly(context);
+    if (browser?.shouldUseDefaultContextOnly === true) {
+      await closeQuietly(browser);
+    }
   }
 }
 
@@ -844,8 +883,7 @@ export async function renderPageInBrowser(
   const timeoutMs = Math.max(1, options.timeoutMs ?? DEFAULT_TIMEOUT_MS);
   const dependencies: BrowserRenderDependencies = {
     launchBrowser:
-      options.dependencies?.launchBrowser ??
-      ((browserOptions) => getWarmBrowser(() => launchDefaultBrowser(browserOptions)) as Promise<BrowserLike>),
+      options.dependencies?.launchBrowser ?? launchOrReuseDefaultBrowser,
     guardUrl: options.dependencies?.guardUrl ?? guardUrl,
     now: options.dependencies?.now ?? Date.now,
   };

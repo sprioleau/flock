@@ -107,6 +107,8 @@ function createHarness({
   };
   const browser = {
     connected: true,
+    shouldUseDefaultContextOnly: false,
+    newPage: vi.fn(async () => page),
     on: vi.fn(),
     off: vi.fn(),
     createBrowserContext: vi.fn(async () => {
@@ -281,6 +283,39 @@ describe("renderPageInBrowser", () => {
     expect(harness.browser.close).toHaveBeenCalledOnce();
   });
 
+  it("closes a serverless browser that launches after the render deadline", async () => {
+    const harness = createHarness();
+    harness.browser.shouldUseDefaultContextOnly = true;
+    harness.options.dependencies!.launchBrowser = vi.fn(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 30));
+      return harness.browser as never;
+    }) as unknown as NonNullable<BrowserRenderOptions["dependencies"]>["launchBrowser"];
+
+    const result = await renderPageInBrowser(PUBLIC_URL, {
+      ...harness.options,
+      timeoutMs: 8,
+      navigationTimeoutMs: 8,
+    });
+    await new Promise((resolve) => setTimeout(resolve, 35));
+
+    expect(result).toMatchObject({ isOk: false, reason: "timeout" });
+    expect(harness.browser.close).toHaveBeenCalledOnce();
+  });
+
+  it("closes a serverless browser when default-page creation fails", async () => {
+    const harness = createHarness();
+    harness.browser.shouldUseDefaultContextOnly = true;
+    harness.browser.newPage = vi.fn(async () => {
+      throw new Error("Protocol error (Target.createTarget): Target closed");
+    });
+
+    const result = await renderPageInBrowser(PUBLIC_URL, harness.options);
+
+    expect(result).toMatchObject({ isOk: false, reason: "browser_unavailable" });
+    expect(harness.browser.createBrowserContext).not.toHaveBeenCalled();
+    expect(harness.browser.close).toHaveBeenCalledOnce();
+  });
+
   it("closes a page that resolves after the render deadline", async () => {
     const harness = createHarness();
     const latePage = { ...harness.page, close: vi.fn(async () => undefined) };
@@ -325,6 +360,22 @@ describe("renderPageInBrowser", () => {
     expect(harness.contexts[0]).not.toBe(harness.contexts[1]);
     expect(harness.contexts[0]?.close).toHaveBeenCalledOnce();
     expect(harness.contexts[1]?.close).toHaveBeenCalledOnce();
+  });
+
+  it("uses a fresh default-context browser for the serverless Chromium runtime", async () => {
+    const harness = createHarness();
+    harness.browser.shouldUseDefaultContextOnly = true;
+    harness.browser.newPage = vi.fn(async () => harness.page);
+    harness.browser.createBrowserContext.mockRejectedValue(
+      new Error("Protocol error (Target.createTarget): Target closed"),
+    );
+
+    const result = await renderPageInBrowser(PUBLIC_URL, harness.options);
+
+    expect(result).toMatchObject({ isOk: true });
+    expect(harness.browser.newPage).toHaveBeenCalledOnce();
+    expect(harness.browser.createBrowserContext).not.toHaveBeenCalled();
+    expect(harness.browser.close).toHaveBeenCalledOnce();
   });
 
   it.each([
