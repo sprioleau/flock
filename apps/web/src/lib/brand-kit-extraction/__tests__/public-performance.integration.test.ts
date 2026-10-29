@@ -359,7 +359,9 @@ describe.skipIf(!isEnabled || outputDirectory === undefined)("public scraping pe
   it("records cold and warm local Chromium capture and deterministic extraction for the fixed site set", async () => {
     if (outputDirectory === undefined || !path.isAbsolute(outputDirectory)) throw new Error("FLOCK_BENCHMARK_OUTPUT must be an absolute directory path.");
     await mkdir(outputDirectory, { recursive: true });
-    /* Keep recorded baselines immutable: reruns require a new output directory. */
+    /*
+      Keep recorded baselines immutable: reruns require a new output directory.
+    */
     await writeFile(path.join(outputDirectory, "runs.jsonl"), "", { flag: "wx" });
     const reports: Array<RunReport | RunFailure> = [];
     const sitesToRun = selectedSiteIds === undefined ? benchmarkSites : benchmarkSites.filter((site) => selectedSiteIds.includes(site.id));
