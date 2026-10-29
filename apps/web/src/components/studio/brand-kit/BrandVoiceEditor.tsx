@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { Input } from "@/components/ui/input";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Textarea } from "@/components/ui/textarea";
 import {
   getBrandVoiceDescriptorChoices,
@@ -33,9 +34,6 @@ const FORMALITY_OPTIONS: { value: BrandVoiceFormality | ""; label: string }[] = 
   { value: "neutral", label: "In between" },
   { value: "formal", label: "Formal" },
 ];
-
-const SELECT_CLASSNAME =
-  "h-8 rounded-lg border border-input bg-transparent px-2 text-sm outline-none focus-visible:border-ring";
 
 /*
   Longest brand name shown inside an option label before it is trimmed.
@@ -216,12 +214,11 @@ export function BrandVoiceEditor({
           >
             How formal
           </label>
-          <select
-            id="brand-voice-formality"
+          <Select
             value={formality}
-            className={SELECT_CLASSNAME}
-            onChange={(event) => {
-              const nextFormality = event.target.value as BrandVoiceFormality | "";
+            items={FORMALITY_OPTIONS}
+            onValueChange={(value) => {
+              const nextFormality = (value ?? "") as BrandVoiceFormality | "";
               setFormality(nextFormality);
               onCommit(
                 nextFormality === ""
@@ -230,14 +227,18 @@ export function BrandVoiceEditor({
               );
             }}
             disabled={isBusy}
-            data-testid="brand-kit-voice-formality"
           >
-            {FORMALITY_OPTIONS.map((option) => (
-              <option key={option.value} value={option.value}>
-                {option.label}
-              </option>
-            ))}
-          </select>
+            <SelectTrigger id="brand-voice-formality" data-testid="brand-kit-voice-formality">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {FORMALITY_OPTIONS.map((option) => (
+                <SelectItem key={option.value} value={option.value}>
+                  {option.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </div>
         <div className="flex flex-col gap-1.5">
           <label
@@ -246,12 +247,11 @@ export function BrandVoiceEditor({
           >
             Talks about itself as
           </label>
-          <select
-            id="brand-voice-person"
+          <Select
             value={person}
-            className={SELECT_CLASSNAME}
-            onChange={(event) => {
-              const nextPerson = event.target.value as BrandVoicePerson | "";
+            items={getPersonOptions(brandName)}
+            onValueChange={(value) => {
+              const nextPerson = (value ?? "") as BrandVoicePerson | "";
               setPerson(nextPerson);
               onCommit(
                 nextPerson === ""
@@ -260,14 +260,18 @@ export function BrandVoiceEditor({
               );
             }}
             disabled={isBusy}
-            data-testid="brand-kit-voice-person"
           >
-            {getPersonOptions(brandName).map((option) => (
-              <option key={option.value} value={option.value}>
-                {option.label}
-              </option>
-            ))}
-          </select>
+            <SelectTrigger id="brand-voice-person" data-testid="brand-kit-voice-person">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {getPersonOptions(brandName).map((option) => (
+                <SelectItem key={option.value} value={option.value}>
+                  {option.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         </div>
       </div>
       <div className="flex flex-col gap-1.5">
