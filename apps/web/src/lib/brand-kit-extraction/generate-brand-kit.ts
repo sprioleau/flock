@@ -30,6 +30,8 @@
 
 import { google } from "@ai-sdk/google";
 import { globalStylesSchema } from "@flock/email-sdk";
+import { collectBrandEvidence } from "./collect-brand-evidence";
+import { downloadSourceImageFiles } from "./download-source-image-files";
 import { generateObject } from "ai";
 import { z } from "zod";
 import { createTraceId, logRecord } from "@/lib/observability/log";
@@ -59,11 +61,7 @@ import {
   type SemanticVariation,
 } from "./expand-variations";
 import { extractSiteIdentity } from "./extract-site-identity";
-import {
-  fetchBinaryResource,
-  fetchTextResource,
-} from "./fetch-page";
-import { harvestBrandSignals, type BrandSignals } from "./harvest";
+import type { BrandSignals } from "./harvest";
 import { normalizeWebsiteUrl } from "./url-guard";
 import { pickFirstRenderableImageUrl } from "./verify-image-url";
 import {
@@ -81,7 +79,6 @@ import {
 } from "./browser-render";
 import { describeBrowserSemanticEvidence, type BrowserSemanticEvidence } from "./browser-semantic";
 import { acquirePage } from "./acquire-page";
-import { selectRepresentativeSourceImages } from "./source-image-evidence";
 
 export type BrandKitGenerationResult =
   | { isOk: true; brandKit: BrandKit }
@@ -761,10 +758,9 @@ export async function generateBrandKit({
   /*
     2. Deterministic signal harvest (bounded stylesheet fetches, same guard).
   */
-  const signals = await harvestBrandSignals({
+  const { signals, sourceImages } = await collectBrandEvidence({
     html: sourcePage.html,
     finalUrl: sourcePage.finalUrl,
-    fetchCss: (cssUrl) => fetchTextResource({ url: cssUrl }),
     ...(renderedPage === null
       ? {}
       : { renderedColors: renderedPage.visualEvidence.colors }),
@@ -774,10 +770,6 @@ export async function generateBrandKit({
         Absent copy means an ABSENT tone field, never an invented voice.
   */
   const copySignals = extractCopySignals(sourcePage.html, renderedPage?.semanticEvidence);
-  const sourceImages = await selectRepresentativeSourceImages({
-    html: sourcePage.html,
-    finalUrl: sourcePage.finalUrl,
-  });
   const hasAnySignal =
     signals.rankedColors.length > 0 ||
     signals.themeColor !== null ||
@@ -811,36 +803,7 @@ export async function generateBrandKit({
   });
   const screenshot: BrowserScreenshot | null = renderedPage?.screenshot ?? null;
 
-  const sourceImageFiles: Array<{
-    type: "file";
-    mediaType: string;
-    data: Uint8Array;
-  }> = [];
-  let sourceImageBytes = 0;
-  for (const image of sourceImages) {
-    if (sourceImageBytes >= 2_500_000) {
-      break;
-    }
-    const downloaded = await fetchBinaryResource({
-      url: image.url,
-      maxBytes: 750_000,
-    });
-    if (
-      !downloaded.isOk ||
-      !downloaded.contentType.toLowerCase().startsWith("image/")
-    ) {
-      continue;
-    }
-    if (sourceImageBytes + downloaded.bytes.byteLength > 2_500_000) {
-      continue;
-    }
-    sourceImageBytes += downloaded.bytes.byteLength;
-    sourceImageFiles.push({
-      type: "file",
-      mediaType: downloaded.contentType,
-      data: downloaded.bytes,
-    });
-  }
+  const sourceImageFiles = await downloadSourceImageFiles({ sourceImages });
 
   /*
     One structured Gemini call, factored so the degraded retry below reuses

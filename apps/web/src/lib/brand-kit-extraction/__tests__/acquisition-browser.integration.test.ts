@@ -84,6 +84,11 @@ describe.skipIf(!isEnabled)("real Chromium acquisition flow", () => {
         response.end(`<html><body><main id="app">Loading isolation check</main><script>setTimeout(() => { document.querySelector('#app').textContent = localStorage.getItem('fixture-secret') || document.cookie.includes('fixture-secret') ? 'Leaked prior browser state' : 'Fresh isolated browser context'; }, 100)</script></body></html>`);
         return;
       }
+      if (mode === "delayed_update") {
+        response.writeHead(200, { "content-type": "text/html" });
+        response.end(`<html><head><title>Fixture product catalog</title></head><body><main><h1>Loading product catalog</h1><p>A representative product catalog description available before hydration.</p></main><script>setTimeout(() => { const heading = document.querySelector('h1'); heading.textContent = 'Hydrated after quiet window'; heading.style.color = '#123456'; }, 600)</script></body></html>`);
+        return;
+      }
       response.writeHead(200, { "content-type": "text/html" });
       response.end(`<html><head><title>Fixture</title></head><body><main><h1>Loading</h1><p>A meaningful fixture paragraph that explains the browser rendered page.</p><button>Explore the product</button></main><script>setTimeout(() => { document.querySelector('h1').textContent = 'Hydrated fixture brand'; document.querySelector('h1').style.color = '#123456'; localStorage.setItem('fixture-secret', 'private state'); document.cookie = 'fixture-secret=private-state'; }, 150)</script></body></html>`);
     });
@@ -118,6 +123,23 @@ describe.skipIf(!isEnabled)("real Chromium acquisition flow", () => {
         firstParagraph: "A meaningful fixture paragraph that explains the browser rendered page.",
         ctaLabels: ["Explore the product"],
       });
+    }
+  }, 45_000);
+
+  it("waits through a delayed product update after the network quiet window", async () => {
+    activeMode = "delayed_update";
+    const result = await acquirePage(fixtureUrl, { dependencies: fixtureDependencies() });
+
+    expect(result.isOk).toBe(true);
+    if (result.isOk) {
+      expect(result.renderedPage?.html.match(/<h1[^>]*>([^<]*)<\/h1>/)?.[1]).toBe("Hydrated after quiet window");
+      expect(result.renderedPage?.semanticEvidence?.headings).toContainEqual(
+        expect.objectContaining({ text: "Hydrated after quiet window" }),
+      );
+      expect(result.renderedPage?.visualEvidence.colors).toContainEqual(
+        expect.objectContaining({ value: "rgb(18, 52, 86)" }),
+      );
+      expect(result.renderedPage?.screenshot.byteLength).toBeGreaterThan(0);
     }
   }, 45_000);
 
